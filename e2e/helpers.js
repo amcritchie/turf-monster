@@ -3,14 +3,16 @@ const { setupOnchainMocks, computeMockTransaction } = require("./rpc-mock");
 
 /**
  * Log in via the login form.
- * Waits for redirect back to root after successful login.
+ * Waits for the URL to navigate away from /login — handles either landing on /
+ * or the redirect chain / → /c/:slug/lobby that ContestsController#world_cup
+ * does when at least one contest exists.
  */
 async function login(page, email, password) {
   await page.goto("/login");
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.locator('form button.btn-primary[type="submit"]').click();
-  await page.waitForURL("/");
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
 /**
@@ -23,12 +25,12 @@ async function loginAdmin(page) {
 /**
  * Log in via Phantom wallet mock.
  * Requires setupPhantomMock(page) to have been called first.
- * Clicks "Connect Wallet" on the login page and waits for redirect.
+ * Clicks "Connect Wallet" on the login page and waits for navigation away.
  */
 async function loginViaPhantom(page) {
   await page.goto("/login");
   await page.locator('button:has-text("Connect Wallet")').click();
-  await page.waitForURL("/");
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
 module.exports = {

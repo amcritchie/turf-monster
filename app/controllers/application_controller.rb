@@ -6,9 +6,15 @@ class ApplicationController < ActionController::Base
 
   before_action :detect_geo_state
   before_action :require_profile_completion
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance
+  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :onchain_session?
 
   private
+
+  # True when the current session was authenticated via Solana wallet signature
+  # (not email/password). Set by SolanaSessionsController#verify.
+  def onchain_session?
+    session[:onchain] == true
+  end
 
   def detect_geo_state
     return if session[:geo_override].present?

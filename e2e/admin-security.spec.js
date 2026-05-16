@@ -6,8 +6,9 @@ test.describe("Admin Security", () => {
     await login(page, "mason@mcritchie.studio", "password");
     await page.goto("/admin/transactions");
 
-    // Should be redirected to root with "Not authorized" alert
-    await expect(page).toHaveURL("/");
+    // Should be redirected away from /admin/ with "Not authorized" alert.
+    // The actual landing URL is /c/:slug/lobby (root_path → contests#world_cup redirect).
+    await expect(page).not.toHaveURL(/\/admin\//);
     await expect(page.locator("body")).toContainText("Not authorized");
   });
 
@@ -15,8 +16,8 @@ test.describe("Admin Security", () => {
     await login(page, "mason@mcritchie.studio", "password");
     await page.goto("/admin/geo");
 
-    // Should be redirected to root with "Not authorized" alert
-    await expect(page).toHaveURL("/");
+    // Should be redirected away from /admin/ with "Not authorized" alert.
+    await expect(page).not.toHaveURL(/\/admin\//);
     await expect(page.locator("body")).toContainText("Not authorized");
   });
 

@@ -5,7 +5,8 @@ async function doLogin(page) {
   await page.fill('input[name="email"]', "alex@mcritchie.studio");
   await page.fill('input[name="password"]', "password");
   await page.locator('form button.btn-primary[type="submit"]').click();
-  await page.waitForURL("/");
+  // / redirects to /c/:slug/lobby — wait for any URL outside /login
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
 // Enable geo blocking with WA banned + activate WA override via admin UI

@@ -43,8 +43,10 @@ test.describe("Admin Transaction Log", () => {
     await page.goto("/admin/transactions");
     await page.locator("table a").first().click();
 
-    // Verify detail page
-    await expect(page.getByRole("heading", { name: "Transaction Detail" })).toBeVisible();
+    // Wait for navigation away from the index — the show view may need a cold
+    // compile, which races the default 5s assertion timeout.
+    await page.waitForURL(/\/admin\/transactions\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: "Transaction Detail" })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("body")).toContainText("$10.00");
   });
 

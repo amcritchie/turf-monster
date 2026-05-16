@@ -4,44 +4,61 @@ Sports pick'em game for the FIFA World Cup 2026. Players select 5 team matchups 
 
 **Live**: https://turf.mcritchie.studio
 
-## Prerequisites
+Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritchie/mcritchie_studio) (the SSO hub + flagship of the 5-repo ecosystem).
 
-- Ruby 3.1+
-- PostgreSQL 14+
-- Node.js 18+ (for Playwright tests)
-- Bundler (`gem install bundler`)
-- Solana CLI (optional, for blockchain features)
+---
 
-## Setup
+## Standing up a fresh Mac? Start at the flagship.
+
+The canonical way to install Turf Monster + all 4 sibling repos + the toolchain is from McRitchie Studio's `bin/ecosystem-build` script. It clones this repo, restores `.env` from Heroku, pulls `SOLANA_ADMIN_KEY` from 1Password, runs `db:create db:migrate db:seed`, and boots the server on port 3001 — all idempotent.
+
+```bash
+git clone https://github.com/amcritchie/mcritchie_studio.git ~/projects/mcritchie_studio
+cd ~/projects/mcritchie_studio
+bin/ecosystem-build   # 1st pass: installs toolchain, bails for 1Password token
+bin/setup-1pass-token # paste token from clipboard
+bin/ecosystem-build   # 2nd pass: completes everything incl. Turf Monster
+```
+
+See [mcritchie_studio/docs/agents/system/house-burn-down.md](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/agents/system/house-burn-down.md) for the full protocol.
+
+---
+
+## Single-app dev (when you already have the toolchain)
+
+If your machine already has Ruby 3.1.7 (via `brew install ruby@3.1`), Postgres 14, Redis, Node 20, and an `.env` in place:
 
 ```bash
 git clone https://github.com/amcritchie/turf_monster.git
 cd turf_monster
 bundle install
 bin/rails db:create db:migrate db:seed
-```
-
-Seeds create 5 users (`alex@mcritchie.studio` / `password` is admin), 48 World Cup teams, 72 group stage matches, and 67 players.
-
-## Run
-
-```bash
 bin/dev
 ```
 
-Runs on **port 3001** (web server + Tailwind CSS watcher via Procfile.dev). Open http://localhost:3001.
+`bin/dev` (via Procfile.dev) launches web on port 3001 + Tailwind watcher + Sidekiq. Redis must be running first (`brew services start redis`). Open http://localhost:3001 — login `alex@mcritchie.studio` / `password`.
+
+Seeds create 5 users, 48 World Cup teams, 72 group stage matches, and 67 players.
+
+**Required `.env` keys**: `RAILS_MASTER_KEY` (not optional — seed encrypts managed wallets via `secret_key_base`), `GOOGLE_CLIENT_ID`/`SECRET`, `AWS_ACCESS_KEY_ID`/`SECRET`, `SOLANA_ADMIN_KEY` (1Password `agent.solana`).
+
+## Prerequisites (single-app path)
+
+- Ruby **3.1.7** (use `brew install ruby@3.1` — not mise/rbenv on Apple Silicon, the socket extension silently breaks)
+- PostgreSQL 14+
+- Redis (Sidekiq queue)
+- Node.js **20+** (Node 18 breaks turf_vault's `@solana/codecs-numbers` peer dep)
+- Bundler 2.4+
 
 ## Test
 
 ```bash
-# Rails unit + integration tests (71 tests)
-bin/rails test
+# Rails tests
+bin/rails test                  # 97 runs, 264 assertions
 
-# Playwright E2E tests (19 tests across 4 spec files)
-npm test
-
-# Playwright with visible browser
-npm run test:headed
+# Playwright E2E (chromium project — skip @devnet which needs a funded wallet)
+npm test                        # 42 tests
+npm run test:headed             # with visible browser
 ```
 
 ## Key Features

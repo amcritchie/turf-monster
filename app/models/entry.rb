@@ -31,7 +31,7 @@ class Entry < ApplicationRecord
     selections.each_with_object({}) { |s, h| h[s.slate_matchup_id.to_s] = true }
   end
 
-  def confirm!(tx_signature: nil)
+  def confirm!(tx_signature: nil, onchain_entry_id: nil)
     raise "Contest is not open" unless contest.open?
     raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
 
@@ -56,7 +56,7 @@ class Entry < ApplicationRecord
         if contest.entry_fee_cents > 0
           TransactionLog.record!(user: user, type: "entry_fee", amount_cents: contest.entry_fee_cents, direction: "debit", source: contest, description: "Entry fee for #{contest.name}")
         end
-        update!(status: :active, onchain_tx_signature: tx_signature)
+        update!(status: :active, onchain_tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
       end
     end
 

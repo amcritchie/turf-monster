@@ -34,6 +34,7 @@ class SolanaSessionsController < ApplicationController
     rescue_and_log(target: user) do
       user.save! if user.new_record?
       set_app_session(user)
+      session[:onchain] = true
       render json: { success: true, redirect: "/", new_user: is_new }
     end
   rescue Solana::AuthVerifier::VerificationError => e

@@ -23,6 +23,8 @@ users = seed_core_users!
 alex  = users["alex"]
 mason = users["mason"]
 mack  = users["mack"]
+# Note: alex's web3 wallet gets re-pointed to MOCK_PUBKEY_B58 at line ~175 below
+# so the Phantom-mock auth flow finds an admin user with a complete profile.
 
 # Teams — full World Cup 2026 Matchday 1 roster (48 teams)
 TEAMS_DATA = [
