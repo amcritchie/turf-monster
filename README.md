@@ -6,6 +6,8 @@ Sports pick'em game for the FIFA World Cup 2026. Players select 5 team matchups 
 
 Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritchie/mcritchie_studio) (the SSO hub + flagship of the 5-repo ecosystem).
 
+> **Part of the McRitchie ecosystem** — see [`ECOSYSTEM.md`](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/ECOSYSTEM.md) for the 5-repo map; [`house-burn-down.md`](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/agents/system/house-burn-down.md) for fresh-Mac recovery.
+
 ---
 
 ## Standing up a fresh Mac? Start at the flagship.
