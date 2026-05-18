@@ -358,4 +358,31 @@ namespace :solana do
       puts "Restored: #{restored.to_base58}"
     end
   end
+
+  desc "Print SHA256 of the committed turf_vault IDL (config/turf_vault.idl.json)"
+  task idl_hash: :environment do
+    hash = Solana::Config.idl_hash
+    if hash
+      puts "SHA256: #{hash}"
+      puts ""
+      puts "To pin this hash on prod:"
+      puts "  heroku config:set EXPECTED_IDL_HASH=#{hash} --app turf-monster"
+    else
+      puts "ERROR: #{Solana::Config::IDL_PATH} not found."
+      puts "Pull the deployed IDL first:"
+      puts "  anchor idl fetch #{Solana::Config::PROGRAM_ID} --provider.cluster #{Solana::Config::NETWORK} > #{Solana::Config::IDL_PATH}"
+      exit 1
+    end
+  end
+
+  desc "Verify the committed IDL hash matches EXPECTED_IDL_HASH (CI + boot use this)"
+  task verify_idl: :environment do
+    begin
+      Solana::Config.verify_idl!
+      puts "IDL hash OK"
+    rescue Solana::Config::IdlMismatchError => e
+      puts e.message
+      exit 1
+    end
+  end
 end
