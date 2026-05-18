@@ -8,7 +8,7 @@ class Contest < ApplicationRecord
 
   validates :name, presence: true
 
-  enum :status, { draft: "draft", open: "open", locked: "locked", settled: "settled" }
+  enum :status, { pending: "pending", open: "open", locked: "locked", settled: "settled" }
 
   scope :ranked, -> { where.not(rank: nil).order(rank: :asc) }
 

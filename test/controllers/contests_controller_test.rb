@@ -192,7 +192,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "world_cup redirects to index when no contests" do
-    Contest.update_all(status: :draft)
+    Contest.update_all(status: :pending)
     get root_path
     assert_redirected_to contests_path
   end
