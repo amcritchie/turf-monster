@@ -48,22 +48,23 @@ class ContestsController < ApplicationController
     @contest.entry_fee_cents = config[:entry_fee_cents]
     @contest.max_entries = config[:max_entries]
     @contest.status = :open
-    # UI runs its own Phantom-as-creator on-chain handshake via the
-    # prepare/confirm_onchain_contest endpoints. Suppress the after_create
-    # auto-on-chain callback so the two flows don't fight each other.
-    @contest.skip_onchain_callback = true
 
+    # The after_create callback runs Contest#create_onchain! synchronously
+    # (server-funded, Alex Bot signs both payer + creator). If on-chain
+    # creation fails, the after_create raises, the save! transaction rolls
+    # back, and no DB row is left behind — UI behavior is now atomic with
+    # the runner-style Contest.create! invocation.
     rescue_and_log(target: @contest) do
       @contest.save!
 
       respond_to do |format|
-        format.html { redirect_to @contest, notice: "Contest created!" }
+        format.html { redirect_to @contest, notice: "Contest created on-chain!" }
         format.json { render json: { success: true, slug: @contest.slug } }
       end
     end
   rescue StandardError => e
     respond_to do |format|
-      format.html { render :new, status: :unprocessable_entity }
+      format.html { flash.now[:alert] = e.message; render :new, status: :unprocessable_entity }
       format.json { render json: { success: false, error: e.message }, status: :unprocessable_entity }
     end
   end

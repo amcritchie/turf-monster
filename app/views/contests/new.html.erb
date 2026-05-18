@@ -283,113 +283,28 @@
               class: "hidden", accept: "image/*" %>
       </div>
 
-      <div x-data="{ hasWallet: window.walletProvider.isAvailable() }">
-        <template x-if="hasWallet">
-          <div>
-            <button type="submit" class="btn btn-primary btn-lg w-full">Create Contest</button>
-            <p class="text-xs text-muted text-center mt-2">Wallet signs the prizes USDC transfer</p>
-          </div>
-        </template>
-        <template x-if="!hasWallet">
-          <div class="text-center p-4 bg-surface-alt rounded-lg border border-subtle">
-            <p class="text-heading font-semibold mb-1">Wallet Required</p>
-            <p class="text-sm text-secondary">Install and connect <a href="https://phantom.app" target="_blank" class="text-primary underline">Phantom</a> to create onchain contests.</p>
-          </div>
-        </template>
+      <div>
+        <button type="submit" class="btn btn-primary btn-lg w-full" data-creating-label="Creating contest + on-chain TX…">
+          Create Contest
+        </button>
+        <p class="text-xs text-muted text-center mt-2">
+          Server creates the on-chain Contest PDA + funds the prize pool from Alex Bot's devnet USDC.
+          DB row is only saved if the on-chain step succeeds (atomic).
+        </p>
       </div>
     <% end %>
 
+    <%# Standard form submit. The controller calls Contest.create! which fires
+        the after_create callback → Solana::Vault#create_contest_server_funded
+        → submits + confirms TX on devnet → updates onchain_contest_id. If any
+        of that fails, the save! transaction rolls back and the controller
+        re-renders the form with a flash alert. No DB-only orphans possible. %>
     <script>
-      document.getElementById('contest-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        var form = e.target;
-        var btn = form.querySelector('button[type="submit"]');
-        var csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
+      document.getElementById('contest-form').addEventListener('submit', function() {
+        var btn = this.querySelector('button[type="submit"]');
+        if (!btn) return;
         btn.disabled = true;
-
-        try {
-          // 1. Create contest in DB
-          Alpine.store('solanaModal').show('Creating Contest', 'Saving contest...');
-
-          var formData = new FormData(form);
-          var createResp = await fetch(form.action, {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': csrfToken, 'Accept': 'application/json' },
-            body: formData
-          });
-          var createData = await createResp.json();
-          if (!createData.success) throw new Error(createData.error || 'Failed to create contest');
-
-          var contestSlug = createData.slug;
-
-          // 2. Connect wallet + prepare partial-signed tx
-          Alpine.store('solanaModal').show('Creating Contest', 'Preparing onchain transaction...');
-
-          var provider = window.walletProvider.detect();
-          if (!provider) throw new Error('No wallet available');
-          await provider.connect();
-
-          // Verify the connected wallet matches the logged-in user
-          var connectedKey = provider.publicKey.toBase58();
-          var userWallet = '<%= current_user&.solana_address %>';
-          if (userWallet && connectedKey !== userWallet) {
-            throw new Error('Wrong wallet connected. Switch to ' + userWallet.substring(0, 8) + '..., or reconnect your wallet on the Account page.');
-          }
-
-          var prepareResp = await fetch('/contests/' + contestSlug + '/prepare_onchain_contest', {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({})
-          });
-          var prepareData = await prepareResp.json();
-          if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare onchain contest');
-
-          // 3. Wallet co-signs the USDC transfer
-          Alpine.store('solanaModal').show('Sign Transaction', 'Approve the prizes USDC transfer in your wallet...');
-
-          var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
-          var tx = solanaWeb3.Transaction.from(txBytes);
-          var signedTx = await provider.signTransaction(tx);
-
-          // 4. Submit to Solana
-          Alpine.store('solanaModal').show('Confirming Onchain', 'Submitting transaction to Solana...');
-
-          var connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
-          var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
-
-          Alpine.store('solanaModal').show('Confirming Onchain', 'Waiting for Solana confirmation...');
-          await connection.confirmTransaction(txSig, 'confirmed');
-
-          // 5. Confirm in DB
-          Alpine.store('solanaModal').show('Confirming Contest', 'Saving onchain data...');
-
-          var confirmResp = await fetch('/contests/' + contestSlug + '/confirm_onchain_contest', {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ tx_signature: txSig, contest_pda: prepareData.contest_pda })
-          });
-          var confirmData = await confirmResp.json();
-          if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm onchain contest');
-
-          // 6. Success — redirect after countdown
-          Alpine.store('solanaModal').success(txSig, 'Contest created onchain');
-          refreshBalanceDelayed();
-          var countdown = 3;
-          Alpine.store('solanaModal').message = 'Redirecting in ' + countdown + 's...';
-          var timer = setInterval(function() {
-            countdown--;
-            if (countdown <= 0) {
-              clearInterval(timer);
-              window.location.href = '/contests/' + contestSlug;
-            } else {
-              Alpine.store('solanaModal').message = 'Redirecting in ' + countdown + 's...';
-            }
-          }, 1000);
-        } catch(err) {
-          var msg = parseSolanaError(err.message || 'Unknown error');
-          Alpine.store('solanaModal').error(msg, 'Contest Creation Failed');
-          btn.disabled = false;
-        }
+        btn.textContent = btn.dataset.creatingLabel || 'Creating…';
       });
     </script>
   </div>
