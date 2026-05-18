@@ -26,7 +26,10 @@ class ContestsController < ApplicationController
     contest_type = Contest::FORMATS.key?(requested_type) ? requested_type : "medium"
 
     @contest = Contest.new(contest_type: contest_type)
-    @contest.slate_id = params[:slate_id] if params[:slate_id].present? && Slate.exists?(id: params[:slate_id])
+    if params[:slate_id].present? && (prefilled_slate = Slate.find_by(id: params[:slate_id]))
+      @contest.slate_id = prefilled_slate.id
+      @default_sport = sport_for_slate(prefilled_slate)
+    end
   end
 
   # Admin matrix view: slates × contest types. Each cell shows how many
@@ -531,6 +534,19 @@ class ContestsController < ApplicationController
 
   def contest_params
     params.require(:contest).permit(:name, :slate_id, :contest_type, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
+  end
+
+  # Best-effort sport derivation from a slate's name. Slate/Team don't carry
+  # a sport column in this app yet; matching the name string is sufficient
+  # since slate names are operator-controlled and consistent.
+  #   "World Cup 2026 Group 1" → "fifa"
+  #   "NFL 2026 Week 1"        → "nfl"
+  def sport_for_slate(slate)
+    return "fifa" unless slate
+    name = slate.name.to_s.downcase
+    return "nfl"  if name.match?(/\bnfl\b|\bweek\s+\d/)
+    return "fifa" if name.include?("world cup") || name.include?("fifa") || name.include?("uefa") || name.include?("group")
+    "fifa"
   end
 
   def contest_update_params

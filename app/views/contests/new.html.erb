@@ -12,7 +12,7 @@
 
     <%= form_with model: @contest, url: contests_path, method: :post, id: "contest-form" do |f| %>
       <div x-data="{
-        sport: '',
+        sport: '<%= @default_sport.to_s %>',
         lockDate: '',
         lockTime: '',
         calOpen: false,
@@ -78,6 +78,13 @@
           this.lockDate = this.viewYear + '-' + m + '-' + dd;
           this.calOpen = false;
           this.sync();
+        },
+        init() {
+          // Pre-select from server-side ?slate_id=… query: auto-fire the
+          // matching sport setup so the highlight, calendar view, and
+          // default lock date/time all materialize without a user click.
+          if (this.sport === 'fifa') this.selectFifa();
+          else if (this.sport === 'nfl') this.selectNfl();
         },
         isSelected(d) {
           if (!this.lockDate) return false;
