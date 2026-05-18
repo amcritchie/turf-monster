@@ -1,0 +1,68 @@
+# Nightly devnet integration — runs Playwright tests tagged @devnet against
+# the deployed turf_vault devnet program. Requires a funded SOLANA_BOT_KEY
+# secret (operator: GitHub Settings → Secrets and variables → Actions).
+#
+# If SOLANA_BOT_KEY is unset, the job skips silently. This prevents
+# fork-PR runs from spamming the bot wallet.
+
+name: Devnet Nightly
+
+on:
+  schedule:
+    - cron: "0 8 * * *"  # 08:00 UTC daily
+  workflow_dispatch:       # also manual trigger
+
+jobs:
+  devnet:
+    runs-on: ubuntu-latest
+    # Skip if the bot key isn't configured (e.g. forks or fresh repo setup)
+    if: ${{ vars.DEVNET_NIGHTLY_ENABLED == 'true' }}
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
+      redis:
+        image: redis
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: .ruby-version, bundler-cache: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install Playwright + browsers
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Seed test DB
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+          REDIS_URL: redis://localhost:6379/0
+        run: bin/rails db:test:prepare && bin/rails runner -e test e2e/seed.rb
+
+      - name: Run @devnet Playwright suite
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+          REDIS_URL: redis://localhost:6379/0
+          SOLANA_BOT_KEY: ${{ secrets.SOLANA_BOT_KEY }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: npm test -- --grep "@devnet"
+
+      - name: Notify on failure
+        if: failure() && env.RECONCILER_ALERT_WEBHOOK != ''
+        env:
+          RECONCILER_ALERT_WEBHOOK: ${{ secrets.RECONCILER_ALERT_WEBHOOK }}
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\":\":x: Nightly @devnet failed on $(date -u +%Y-%m-%d). Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "$RECONCILER_ALERT_WEBHOOK"
