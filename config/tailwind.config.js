@@ -1,5 +1,5 @@
 const execSync = require('child_process').execSync
-const studioPath = execSync('bundle show studio').toString().trim()
+const studioPath = execSync('bundle show studio-engine').toString().trim()
 
 // Shared color palette from studio engine
 const studioColors = require(`${studioPath}/tailwind/studio.tailwind.config.js`)

@@ -74,10 +74,10 @@ gem "sidekiq-cron", "~> 1.12"
 gem "sentry-ruby"
 gem "sentry-rails"
 
-gem "studio", git: "https://github.com/amcritchie/studio.git", tag: "v0.3.1"
+gem "studio-engine", git: "https://github.com/amcritchie/studio-engine.git", tag: "v0.4.0"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
-gem "solana_studio", git: "https://github.com/amcritchie/solana_studio.git", tag: "v0.3.0"
+gem "solana-studio", git: "https://github.com/amcritchie/solana-studio.git", tag: "v0.4.0"
 
 # IP geolocation for state-level geo-blocking
 gem "geocoder"
