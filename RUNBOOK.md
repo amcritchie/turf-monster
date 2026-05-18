@@ -105,14 +105,14 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 ## Studio Engine Update Issues
 
-**`bundle update studio` fails**
+**`bundle update studio-engine` fails**
 - Diagnosis: Network or git auth issue.
-- Fix: `git ls-remote https://github.com/amcritchie/studio.git`. Clear cache: `rm -rf vendor/cache/studio-*`. Try `bundle update studio --verbose`.
+- Fix: `git ls-remote https://github.com/amcritchie/studio-engine.git`. Clear cache: `rm -rf vendor/cache/studio-*`. Try `bundle update studio-engine --verbose`.
 
 **Zeitwerk autoload conflict with SolanaStudio gem**
 - Diagnosis: `Solana::Keypair` defined by the gem at boot. Zeitwerk won't autoload the app's reopening in `app/services/solana/keypair.rb`.
 - Fix: The explicit require in `config/initializers/solana.rb` handles this. If the initializer is missing: create it with `require Rails.root.join("app/services/solana/keypair")`.
 
 **Breaking engine change**
-- Diagnosis: App crashes after `bundle update studio`. New config option or renamed method.
-- Fix: Check studio commits: `cd /Users/alex/projects/studio && git log --oneline -10`. Pin to known-good ref if needed: `gem "studio", git: "...", ref: "abc123"`.
+- Diagnosis: App crashes after `bundle update studio-engine`. New config option or renamed method.
+- Fix: Check studio-engine commits: `cd /Users/alex/projects/studio-engine && git log --oneline -10`. Pin to a known-good tag if needed: `gem "studio-engine", git: "...", tag: "v0.X.Y"`.

@@ -1,6 +1,6 @@
 # Tests to Add (Audit Tier 2 #14)
 
-The 2026-05-17 ecosystem audit identified turf_monster's test count (97 tests, 264 assertions) as low for the risk profile (real Solana tokens, 2-of-3 multisig settlement, on-chain entry/withdrawal flows). The audit's target: ~200 tests, roughly doubling current coverage, concentrated on the Solana boundary.
+The 2026-05-17 ecosystem audit identified turf-monster's test count (97 tests, 264 assertions) as low for the risk profile (real Solana tokens, 2-of-3 multisig settlement, on-chain entry/withdrawal flows). The audit's target: ~200 tests, roughly doubling current coverage, concentrated on the Solana boundary.
 
 This file is the concrete punch list. Execute in a focused session — each item below is roughly one test or one tight test cluster. After every batch, run `bin/rails test` and ensure green before continuing.
 
@@ -109,7 +109,7 @@ This file is the concrete punch list. Execute in a focused session — each item
 ## How to execute
 
 ```bash
-cd ~/projects/turf_monster
+cd ~/projects/turf-monster
 PATH="/opt/homebrew/opt/ruby@3.1/bin:$PATH" bin/rails test  # baseline (~97 runs)
 # Pick a Priority block, write its tests, run incrementally
 PATH="/opt/homebrew/opt/ruby@3.1/bin:$PATH" bin/rails test test/services/solana/vault_test.rb

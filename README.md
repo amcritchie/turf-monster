@@ -4,9 +4,9 @@ Sports pick'em game for the FIFA World Cup 2026. Players select 5 team matchups 
 
 **Live**: https://turf.mcritchie.studio
 
-Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritchie/mcritchie_studio) (the SSO hub + flagship of the 5-repo ecosystem).
+Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritchie/mcritchie-studio) (the SSO hub + flagship of the 5-repo ecosystem).
 
-> **Part of the McRitchie ecosystem** — see [`ECOSYSTEM.md`](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/ECOSYSTEM.md) for the 5-repo map; [`house-burn-down.md`](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/agents/system/house-burn-down.md) for fresh-Mac recovery.
+> **Part of the McRitchie ecosystem** — see [`ECOSYSTEM.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/ECOSYSTEM.md) for the 5-repo map; [`house-burn-down.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/house-burn-down.md) for fresh-Mac recovery.
 
 ---
 
@@ -15,14 +15,14 @@ Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritc
 The canonical way to install Turf Monster + all 4 sibling repos + the toolchain is from McRitchie Studio's `bin/ecosystem-build` script. It clones this repo, restores `.env` from Heroku, pulls `SOLANA_ADMIN_KEY` from 1Password, runs `db:create db:migrate db:seed`, and boots the server on port 3001 — all idempotent.
 
 ```bash
-git clone https://github.com/amcritchie/mcritchie_studio.git ~/projects/mcritchie_studio
-cd ~/projects/mcritchie_studio
+git clone https://github.com/amcritchie/mcritchie-studio.git ~/projects/mcritchie-studio
+cd ~/projects/mcritchie-studio
 bin/ecosystem-build   # 1st pass: installs toolchain, bails for 1Password token
 bin/setup-1pass-token # paste token from clipboard
 bin/ecosystem-build   # 2nd pass: completes everything incl. Turf Monster
 ```
 
-See [mcritchie_studio/docs/agents/system/house-burn-down.md](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/agents/system/house-burn-down.md) for the full protocol.
+See [mcritchie-studio/docs/agents/system/house-burn-down.md](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/house-burn-down.md) for the full protocol.
 
 ---
 
@@ -31,8 +31,8 @@ See [mcritchie_studio/docs/agents/system/house-burn-down.md](https://github.com/
 If your machine already has Ruby 3.1.7 (via `brew install ruby@3.1`), Postgres 14, Redis, Node 20, and an `.env` in place:
 
 ```bash
-git clone https://github.com/amcritchie/turf_monster.git
-cd turf_monster
+git clone https://github.com/amcritchie/turf-monster.git
+cd turf-monster
 bundle install
 bin/rails db:create db:migrate db:seed
 bin/dev
@@ -49,7 +49,7 @@ Seeds create 5 users, 48 World Cup teams, 72 group stage matches, and 67 players
 - Ruby **3.1.7** (use `brew install ruby@3.1` — not mise/rbenv on Apple Silicon, the socket extension silently breaks)
 - PostgreSQL 14+
 - Redis (Sidekiq queue)
-- Node.js **20+** (Node 18 breaks turf_vault's `@solana/codecs-numbers` peer dep)
+- Node.js **20+** (Node 18 breaks turf-vault's `@solana/codecs-numbers` peer dep)
 - Bundler 2.4+
 
 ## Test
@@ -69,7 +69,7 @@ npm run test:headed             # with visible browser
 - **Contest lifecycle**: draft, open, locked, settled with admin controls (fill, lock, jump, grade, reset)
 - **Multiple entries** per user per contest with different selection combos
 - **Scoring**: team goals x multiplier per selection, entries ranked, payouts distributed
-- **Solana integration**: on-chain contest escrow via [TurfVault](https://github.com/amcritchie/turf_vault) Anchor program (devnet)
+- **Solana integration**: on-chain contest escrow via [TurfVault](https://github.com/amcritchie/turf-vault) Anchor program (devnet)
 - **Phantom wallet** connect, deposit, withdraw, and direct entry
 - **Dark/light theme** toggle with green primary palette
 
@@ -89,8 +89,8 @@ The app connects to the TurfVault Anchor program on Solana devnet for contest es
 ## Architecture
 
 - Rails 7.2 with ERB views, Tailwind CSS, Alpine.js
-- Shared [Studio engine](https://github.com/amcritchie/studio) for auth, error handling, and theme system
-- [SolanaStudio](https://github.com/amcritchie/solana_studio) gem for Solana RPC and transaction building
+- Shared [Studio engine](https://github.com/amcritchie/studio-engine) for auth, error handling, and theme system
+- [SolanaStudio](https://github.com/amcritchie/solana-studio) gem for Solana RPC and transaction building
 - Slug-based foreign keys for teams, games, and players
 - All monetary values stored in cents, displayed in dollars
 

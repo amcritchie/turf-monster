@@ -1,14 +1,14 @@
 # Devnet Integration Tests (Audit Tier 3 #21)
 
-The 2026-05-17 ecosystem audit recommended a small Playwright suite (10-15 cases) tagged `@devnet` that hits the **deployed devnet** `turf_vault` program from the turf_monster Rails layer. This catches integration drift between the program and the Rails service classes — the existing `turf_vault/tests/turf_vault.ts` covers the program against localnet but not the Rails ↔ program contract.
+The 2026-05-17 ecosystem audit recommended a small Playwright suite (10-15 cases) tagged `@devnet` that hits the **deployed devnet** `turf-vault` program from the turf-monster Rails layer. This catches integration drift between the program and the Rails service classes — the existing `turf-vault/tests/turf-vault.ts` covers the program against localnet but not the Rails ↔ program contract.
 
 The nightly CI workflow at `.github/workflows/devnet-nightly.yml` is already in place (audit Tier 2 #13) and will run any tests tagged `@devnet`. This file lists the tests to write.
 
 ## Setup needed (operator, one-time)
 
-1. **Fund a CI bot wallet on devnet** (~10 SOL via the devnet faucet protocol in `turf_vault/CLAUDE.md`)
+1. **Fund a CI bot wallet on devnet** (~10 SOL via the devnet faucet protocol in `turf-vault/CLAUDE.md`)
 2. **Generate the bot keypair** and store as base58 in 1Password
-3. **Set GH secrets** in turf_monster repo:
+3. **Set GH secrets** in turf-monster repo:
    - `SOLANA_BOT_KEY` (base58 secret)
    - `SOLANA_RPC_URL` (paid Helius/QuickNode — public devnet rate-limits at scale)
    - `RECONCILER_ALERT_WEBHOOK` (optional; Slack/Discord)
@@ -56,4 +56,4 @@ Each test in `e2e/devnet-*.spec.js`, tagged `@devnet` in the describe block. Reu
 
 The 15-test suite plus the test-helper infrastructure (Phantom mock extension, /test/reset endpoint, devnet account setup, CI secret config) is realistic ~4-6 hours of focused work. Better to do in one session than scattered.
 
-When picking up: read this list, then `turf_vault/tests/turf_vault.ts` for reference on how the program's own tests structure the calls, then write `e2e/devnet-vault.spec.js` first (the round-trip tests are the foundation everything else builds on).
+When picking up: read this list, then `turf-vault/tests/turf-vault.ts` for reference on how the program's own tests structure the calls, then write `e2e/devnet-vault.spec.js` first (the round-trip tests are the foundation everything else builds on).

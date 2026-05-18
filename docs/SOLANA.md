@@ -10,11 +10,11 @@
 - `Solana::Borsh` — minimal Borsh serialization
 - `Solana::Transaction` — transaction builder, Anchor discriminators, PDA derivation
 - `Solana::Vault` — high-level business logic (deposit, withdraw, enter, settle, sync). `sync_balance` decodes seeds from UserAccount PDA. `build_enter_contest_direct` includes `user_account` PDA for seeds award.
-- `Solana::Reconciler` — compare DB vs onchain balances, log discrepancies. Runs every 15 minutes via `Solana::ReconcileJob` (sidekiq-cron, schedule in `config/schedule.yml`). Discrepancies are written to `ErrorLog` and (when `RECONCILER_ALERT_WEBHOOK` env var is set to a Slack/Discord incoming webhook URL) posted there. See [secrets-rotation runbook](https://github.com/amcritchie/mcritchie_studio/blob/main/docs/agents/system/secrets-rotation.md) for webhook setup steps.
+- `Solana::Reconciler` — compare DB vs onchain balances, log discrepancies. Runs every 15 minutes via `Solana::ReconcileJob` (sidekiq-cron, schedule in `config/schedule.yml`). Discrepancies are written to `ErrorLog` and (when `RECONCILER_ALERT_WEBHOOK` env var is set to a Slack/Discord incoming webhook URL) posted there. See [secrets-rotation runbook](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/secrets-rotation.md) for webhook setup steps.
 
-## Anchor Program (`turf_vault/`)
+## Anchor Program (`turf-vault/`)
 
-Separate project at `/Users/alex/projects/turf_vault/`. PDAs: VaultState, UserAccount, Contest, ContestEntry. Instructions: initialize, create_user_account, deposit, withdraw, create_contest, enter_contest, settle_contest, close_contest, force_close_vault, update_signers.
+Separate project at `/Users/alex/projects/turf-vault/`. PDAs: VaultState, UserAccount, Contest, ContestEntry. Instructions: initialize, create_user_account, deposit, withdraw, create_contest, enter_contest, settle_contest, close_contest, force_close_vault, update_signers.
 
 **Deployment status**: v0.8.0 deployed to devnet. 2-of-3 multisig for treasury ops.
 - Program ID: `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J`

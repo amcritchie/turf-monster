@@ -1,4 +1,4 @@
-# Turf Monster (turf_monster)
+# Turf Monster (turf-monster)
 
 Peer-to-peer sports pick'em game focused on team matchup selections with Turf Scores for the World Cup.
 
@@ -96,8 +96,8 @@ Mobile-first contest preview/info page. Renders inline matchup board or leaderbo
 - ERB views, import maps, no JS frameworks
 - bcrypt + Google OAuth + Solana wallet auth (Phantom)
 - **Sidekiq** + Redis for background jobs (web UI at `/admin/jobs`, admin-only)
-- **Studio engine gem** — `gem "studio", git: "https://github.com/amcritchie/studio.git"`
-- **SolanaStudio gem** — `gem "solana_studio", git: "https://github.com/amcritchie/solana_studio.git"`
+- **Studio engine gem** — `gem "studio-engine", git: "https://github.com/amcritchie/studio-engine.git"`
+- **SolanaStudio gem** — `gem "solana-studio", git: "https://github.com/amcritchie/solana-studio.git"`
 
 ## JS Modules (importmap)
 
@@ -134,7 +134,7 @@ Alpine's `defer` script evaluates `x-data` attributes BEFORE importmap modules l
 
 ## Studio Engine
 
-Shared code from [studio engine](https://github.com/amcritchie/studio). Configured in `config/initializers/studio.rb`.
+Shared code from [studio engine](https://github.com/amcritchie/studio-engine). Configured in `config/initializers/studio.rb`.
 
 **From the engine:** `Studio::ErrorHandling`, `ErrorLog` model, `Sluggable` concern, auth controllers, error log views, theme system, `_theme_toggle_morph` partial (spinner/toggle swap), `showNavSpinner`/`hideNavSpinner` globals, **`Studio::S3`** + **`Studio::ImageCache`** + `ImageCache` model.
 
@@ -144,7 +144,7 @@ Shared code from [studio engine](https://github.com/amcritchie/studio). Configur
 
 **S3 config:** `config.s3_bucket_prefix = "turf-monster"` overrides the engine default — bucket resolves to `turf-monster-dev` (dev/test) or `turf-monster-production` (prod). All 4 studio buckets are public-read; `mcritchie-studio-dev` has a 90-day GLACIER_IR archive rule. AWS creds via shared `op://` refs in `/Users/alex/projects/.env` (Heroku needs `heroku config:set AWS_*` separately — not yet done). `image_caches` table created 2026-04-29; not yet used by any model in this app.
 
-**Updating:** After changes to the studio repo, run `bundle update studio` here.
+**Updating:** After changes to the studio repo, run `bundle update studio-engine` here.
 
 ## Architecture
 
