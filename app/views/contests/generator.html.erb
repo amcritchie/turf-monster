@@ -62,7 +62,7 @@
                   <% if existing.any? %>
                     <div class="mt-2 space-y-1 text-left">
                       <% existing.first(3).each do |contest| %>
-                        <%= link_to contest_lobby_path(contest), class: "block px-2 py-1 rounded text-xs hover:bg-surface-alt transition" do %>
+                        <%= link_to contest_path(contest), class: "block px-2 py-1 rounded text-xs hover:bg-surface-alt transition" do %>
                           <div class="flex items-center justify-between gap-1">
                             <span class="text-body truncate">
                               <span class="<%= contest.onchain? ? 'text-mint' : 'text-yellow-500' %>">●</span>

@@ -101,7 +101,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     post enter_contest_path(@contest)
 
     assert_response :redirect
-    assert_redirected_to contest_lobby_path(@contest)
+    assert_redirected_to contest_path(@contest)
   end
 
   # --- onchain session entry tests ---
@@ -186,9 +186,9 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "world_cup redirects to lobby" do
+  test "world_cup redirects to contest show" do
     get root_path
-    assert_redirected_to contest_lobby_path(@contest)
+    assert_redirected_to contest_path(@contest)
   end
 
   test "world_cup redirects to index when no contests" do
@@ -197,38 +197,46 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to contests_path
   end
 
-  # --- lobby tests ---
+  # --- show tests (formerly lobby; merged 2026-05-17) ---
 
-  test "lobby loads for guest" do
-    get contest_lobby_path(@contest)
+  test "show loads for guest" do
+    get contest_path(@contest)
     assert_response :success
   end
 
-  test "lobby loads for logged in user" do
+  test "show loads for logged in user" do
     log_in_as(@user)
-    get contest_lobby_path(@contest)
+    get contest_path(@contest)
     assert_response :success
   end
 
-  test "lobby shows matchup board when user not in contest" do
+  test "show renders matchup board when user not in contest" do
     log_in_as(@user)
-    get contest_lobby_path(@contest)
+    get contest_path(@contest)
     assert_response :success
     assert_select "section" # board renders inline
   end
 
-  test "lobby shows leaderboard when user has entry" do
+  test "show renders 'Add Nth Entry' link when user already has an entry" do
     log_in_as(@user)
     entry = @contest.entries.create!(user: @user, status: :active)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    get contest_lobby_path(@contest)
+    get contest_path(@contest)
     assert_response :success
     assert_select "a", text: /Add 2nd Entry/
   end
 
-  test "lobby redirects for missing contest" do
-    get contest_lobby_path(id: "nonexistent")
+  test "show redirects for missing contest" do
+    get contest_path(id: "nonexistent")
     assert_redirected_to root_path
+  end
+
+  # --- legacy lobby URL backwards-compat ---
+
+  test "legacy lobby URL 301-redirects to canonical show URL" do
+    get contest_lobby_path(@contest)
+    assert_response :moved_permanently
+    assert_redirected_to contest_path(@contest)
   end
 end

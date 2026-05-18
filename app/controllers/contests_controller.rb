@@ -151,12 +151,18 @@ class ContestsController < ApplicationController
   def world_cup
     @contest = Contest.where(status: [:open, :locked, :settled]).order(created_at: :desc).first
     return redirect_to contests_path unless @contest
-    redirect_to contest_lobby_path(@contest)
+    redirect_to contest_path(@contest)
   end
 
   def show
-    load_contest_board_data
+    @creator = @contest.user
+    @has_entry = logged_in? && @contest.entries.where(user: current_user, status: [:active, :complete]).exists?
     @seeds_data = load_seeds_data
+
+    load_contest_board_data
+
+    # "More Contests" selector at the bottom of the page.
+    @other_contests = Contest.where(status: [:open, :locked]).ranked.where.not(id: @contest.id).includes(:slate)
 
     if @contest.onchain?
       begin
@@ -167,13 +173,10 @@ class ContestsController < ApplicationController
     end
   end
 
+  # Legacy lobby route — kept for permalinks shared before the show/lobby
+  # merge. Redirects to the canonical /contests/:slug.
   def lobby
-    @creator = @contest.user
-    @has_entry = logged_in? && @contest.entries.where(user: current_user, status: [:active, :complete]).exists?
-    @seeds_data = load_seeds_data
-
-    load_contest_board_data
-    @contests = Contest.where(status: [:open, :locked]).ranked.where.not(id: @contest.id).includes(:slate)
+    redirect_to contest_path(@contest), status: :moved_permanently
   end
 
   def leaderboard_poll
@@ -238,11 +241,11 @@ class ContestsController < ApplicationController
       end
 
       respond_to do |format|
-        format.html { redirect_to contest_lobby_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
+        format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
         format.json {
           render json: {
             success: true,
-            redirect: contest_lobby_path(@contest),
+            redirect: contest_path(@contest),
             tx_signature: entry.onchain_tx_signature
           }
         }
@@ -335,7 +338,7 @@ class ContestsController < ApplicationController
 
       render json: {
         success: true,
-        redirect: contest_lobby_path(@contest),
+        redirect: contest_path(@contest),
         tx_signature: params[:tx_signature],
         seeds_earned: seeds_earned,
         seeds_total: seeds_total,
