@@ -1,5 +1,5 @@
 class SolanaSessionsController < ApplicationController
-  include Solana::AuthVerifier
+  include Solana::SessionAuth
   skip_before_action :require_authentication
 
   def nonce

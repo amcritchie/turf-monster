@@ -1,6 +1,6 @@
 class AccountsController < ApplicationController
   include UserMergeable
-  include Solana::AuthVerifier
+  include Solana::SessionAuth
 
   skip_before_action :require_profile_completion, only: [:show, :complete_profile, :save_profile]
 
