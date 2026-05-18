@@ -1,0 +1,13 @@
+# Scheduled jobs run via sidekiq-cron. Loaded by config/initializers/sidekiq_cron.rb.
+# Cron syntax: minute hour day month weekday (Sidekiq-cron uses Fugit/standard cron).
+#
+# To add a job:
+#   1. Add an entry below
+#   2. Restart Sidekiq (or hit the Sidekiq web UI's Cron page → load schedule)
+#   3. Verify it appears in /admin/jobs → Cron Jobs
+
+solana_reconcile:
+  cron: "*/15 * * * *"   # every 15 minutes
+  class: Solana::ReconcileJob
+  description: Reconcile DB user balances + contest state against on-chain truth. Discrepancies are written to ErrorLog and (if RECONCILER_ALERT_WEBHOOK is set) posted to that webhook.
+  queue: default

@@ -66,6 +66,9 @@ group :test do
 end
 gem "dotenv-rails", groups: [:development, :test]
 gem "tailwindcss-rails", "~> 2.7"
+# Sidekiq + scheduled jobs (Reconciler cron, ATA ensure jobs, deposit jobs)
+gem "sidekiq-cron", "~> 1.12"
+
 gem "studio", git: "https://github.com/amcritchie/studio.git", tag: "v0.3.0"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
