@@ -21,17 +21,27 @@ Load these when working on specific areas:
 - Each selection is scored: **team goals x turf_score**
 - Entry score = sum of all selection scores
 - Entries ranked by score DESC; ties get the same rank
-- **Payouts**: Small (3 entries, $19 fee): winner-take-all $50. Standard (30 entries, $19 fee): 1st=$300, 2nd-6th=$50. Large (99 entries, $19 fee): 1st=$1,000, 2nd-9th=$100. Ties split evenly.
+- **Contest tiers** (GTM 2026-05-17, all $19 entry fee, defined in `Contest::FORMATS`):
+
+  | Tier | Entries | 1st | 2nd | 3rd-5th | 6th-9th | Pot | Margin |
+  |------|--------:|----:|----:|--------:|--------:|----:|-------:|
+  | `tiny` | 3 | $45 | — | — | — | $57 | $12 (21%) |
+  | `small` | 5 | $75 | — | — | — | $95 | $20 (21%) |
+  | `medium` | 9 | $100 | $40 | — | — | $171 | $31 (18%) |
+  | `standard` | 29 | $300 | $50 | $50 each | — | $551 | $51 (9%) |
+  | `large` | 99 | $1,000 | $100 | $100 each | $100 each | $1,881 | $81 (4%) |
+
+  Ties split evenly within their rank's payout amount.
 - Max 3 entries per user per contest (different selection combos required)
 - Entry fee deducted from user balance on confirm
 
 ## Contest Lifecycle
 
 ```
-draft → open → locked → settled
+pending → open → locked → settled
 ```
 
-- **draft**: Contest created, not yet accepting entries
+- **pending**: Contest created, not yet accepting entries (was `draft` pre-v0.4.1 of audit; Rails 7 reserves `:new` so `pending` was chosen instead)
 - **open**: Players can submit entries (toggle selections, hold-to-confirm)
 - **locked**: No new entries, waiting for game results
 - **settled**: All games scored, entries ranked, payouts distributed

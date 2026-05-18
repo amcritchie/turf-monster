@@ -48,11 +48,20 @@ class Contest < ApplicationRecord
     pool_cents / 100.0
   end
 
+  # GTM contest tiers (defined 2026-05-17). All at $19 entry fee.
+  # Margin per filled contest = gross revenue (entries × fee) − total payouts.
+  #   tiny     :  3 entries → $57   gross / $45   payout / $12 margin (78.9%)
+  #   small    :  5 entries → $95   gross / $75   payout / $20 margin (78.9%)
+  #   medium   :  9 entries → $171  gross / $140  payout / $31 margin (81.9%)
+  #   standard : 29 entries → $551  gross / $500  payout / $51 margin (90.7%)
+  #   large    : 99 entries → $1881 gross / $1800 payout / $81 margin (95.7%)
   FORMATS = {
-    "small"    => { entry_fee_cents: 19_00, max_entries: 3,  payouts: { 1 => 50_00 } },
-    "standard" => { entry_fee_cents: 19_00, max_entries: 30, payouts: { 1 => 300_00, 2 => 50_00, 3 => 50_00, 4 => 50_00, 5 => 50_00, 6 => 50_00 } },
+    "tiny"     => { entry_fee_cents: 19_00, max_entries: 3,  payouts: { 1 => 45_00 } },
+    "small"    => { entry_fee_cents: 19_00, max_entries: 5,  payouts: { 1 => 75_00 } },
+    "medium"   => { entry_fee_cents: 19_00, max_entries: 9,  payouts: { 1 => 100_00, 2 => 40_00 } },
+    "standard" => { entry_fee_cents: 19_00, max_entries: 29, payouts: { 1 => 300_00, 2 => 50_00, 3 => 50_00, 4 => 50_00, 5 => 50_00 } },
     "large"    => { entry_fee_cents: 19_00, max_entries: 99, payouts: { 1 => 1000_00, 2 => 100_00, 3 => 100_00, 4 => 100_00, 5 => 100_00, 6 => 100_00, 7 => 100_00, 8 => 100_00, 9 => 100_00 } }
-  }
+  }.freeze
 
   def format_config
     FORMATS[contest_type] || FORMATS["standard"]

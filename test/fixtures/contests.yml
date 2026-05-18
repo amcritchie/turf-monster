@@ -3,7 +3,7 @@ one:
   slug: test-contest
   entry_fee_cents: 1900
   status: open
-  max_entries: 30
+  max_entries: 29
   contest_type: standard
   starts_at: 2026-06-11 16:00:00
   slate: one

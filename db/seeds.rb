@@ -586,137 +586,37 @@ def create_slate_with_contest(slate_name:, contest_name:, games:, teams:, dk_odd
   contest
 end
 
-# ─── Create Slates + Contests ────────────────────────────────
-# 3 contests per matchday (small, standard, large) sharing the same slate
-
-# Matchday 1
-contest1_small = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 1",
-  contest_name: "Turf Totals — WC 2026 Group 1 (Small)",
-  games: MATCHDAY_1_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 11, 15, 0),
-  tagline: "Matchday 1 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "small"
-)
-contest1_small.update!(rank: 100) if contest1_small.rank.nil?
-
-contest1_standard = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 1",
-  contest_name: "Turf Totals — WC 2026 Group 1",
-  games: MATCHDAY_1_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 11, 15, 0),
-  tagline: "Matchday 1 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "standard"
-)
-contest1_standard.update!(rank: 101) if contest1_standard.rank.nil?
-
-contest1_large = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 1",
-  contest_name: "Turf Totals — WC 2026 Group 1 (Large)",
-  games: MATCHDAY_1_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 11, 15, 0),
-  tagline: "Matchday 1 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "large"
-)
-contest1_large.update!(rank: 102) if contest1_large.rank.nil?
-
-# Matchday 2
-contest2_small = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 2",
-  contest_name: "Turf Totals — WC 2026 Group 2 (Small)",
-  games: MATCHDAY_2_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 18, 12, 0),
-  general_rankings: true,
-  tagline: "Matchday 2 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "small"
-)
-contest2_small.update!(rank: 200) if contest2_small.rank.nil?
-
-contest2_standard = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 2",
-  contest_name: "Turf Totals — WC 2026 Group 2",
-  games: MATCHDAY_2_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 18, 12, 0),
-  general_rankings: true,
-  tagline: "Matchday 2 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "standard"
-)
-contest2_standard.update!(rank: 201) if contest2_standard.rank.nil?
-
-contest2_large = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 2",
-  contest_name: "Turf Totals — WC 2026 Group 2 (Large)",
-  games: MATCHDAY_2_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 18, 12, 0),
-  general_rankings: true,
-  tagline: "Matchday 2 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "large"
-)
-contest2_large.update!(rank: 202) if contest2_large.rank.nil?
-
-# Matchday 3
-contest3_small = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 3",
-  contest_name: "Turf Totals — WC 2026 Group 3 (Small)",
-  games: MATCHDAY_3_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 24, 15, 0),
-  general_rankings: true,
-  tagline: "Matchday 3 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "small"
-)
-contest3_small.update!(rank: 300) if contest3_small.rank.nil?
-
-contest3_standard = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 3",
-  contest_name: "Turf Totals — WC 2026 Group 3",
-  games: MATCHDAY_3_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 24, 15, 0),
-  general_rankings: true,
-  tagline: "Matchday 3 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "standard"
-)
-contest3_standard.update!(rank: 301) if contest3_standard.rank.nil?
-
-contest3_large = create_slate_with_contest(
-  slate_name: "World Cup 2026 Group 3",
-  contest_name: "Turf Totals — WC 2026 Group 3 (Large)",
-  games: MATCHDAY_3_GAMES,
-  teams: teams,
-  dk_odds: dk_odds,
-  starts_at: et(2026, 6, 24, 15, 0),
-  general_rankings: true,
-  tagline: "Matchday 3 — World Cup 2026 Group Stage",
-  user: admin,
-  contest_type: "large"
-)
-contest3_large.update!(rank: 302) if contest3_large.rank.nil?
-
-# Backfill creator on any existing contests without one
-Contest.where(user_id: nil).update_all(user_id: admin.id)
+# ─── Create Slates (no demo contests) ────────────────────────
+# Each matchday gets a Slate + its SlateMatchups. Contests are NOT created
+# during seed — they're created intentionally per the GTM playbook via
+# the admin UI or via dedicated scripts (see scripts/create_friend_test_contest.rb).
+#
+# Why no demo contests: contest data (entries, payouts, multisig settlement)
+# is the production surface we want to test deliberately. Seeding fake
+# contests creates noise that obscures real behavior and risks confusing
+# friend-test participants about what's real vs scaffolding.
+[
+  ["World Cup 2026 Group 1", MATCHDAY_1_GAMES, et(2026, 6, 11, 15, 0)],
+  ["World Cup 2026 Group 2", MATCHDAY_2_GAMES, et(2026, 6, 18, 12, 0)],
+  ["World Cup 2026 Group 3", MATCHDAY_3_GAMES, et(2026, 6, 24, 15, 0)]
+].each do |slate_name, games, starts_at|
+  slate = Slate.find_or_create_by!(name: slate_name) { |s| s.starts_at = starts_at }
+  games.each do |data|
+    home_team = teams[data[:home]]
+    away_team = teams[data[:away]]
+    next unless home_team && away_team
+    game = Game.find_by(home_team_slug: home_team.slug, away_team_slug: away_team.slug)
+    SlateMatchup.find_or_create_by!(slate: slate, team_slug: home_team.slug) do |m|
+      m.opponent_team_slug = away_team.slug
+      m.game_slug = game&.slug
+    end
+    SlateMatchup.find_or_create_by!(slate: slate, team_slug: away_team.slug) do |m|
+      m.opponent_team_slug = home_team.slug
+      m.game_slug = game&.slug
+    end
+  end
+  puts "  Created slate: #{slate.name} (#{slate.slate_matchups.count} matchups)"
+end
 
 # ─── Default Slate (formula defaults record) ──────────────────
 Slate.find_or_create_by!(name: "Default")
