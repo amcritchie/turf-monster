@@ -78,9 +78,13 @@
   </div>
 </div>
 
-<!-- Section 3: Conditional Cards (seeds+share for entered users, info cards for new) -->
-<div class="mb-6">
-  <% if @has_entry %>
+<!-- Section 3: Conditional cards above the board.
+     Entered users: seeds + share row.
+     Not-entered users: nothing here — the matchup board partial (Section 4)
+     renders the lobby info cards ("Build Roster" / "Win $X") inline at its
+     top, so rendering them in Section 3 too would double-display. -->
+<% if @has_entry %>
+  <div class="mb-6">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <% if @seeds_data %>
         <%= render "contests/slate_progress_xp", seeds_data: @seeds_data %>
@@ -95,10 +99,8 @@
       <% end %>
       <%= render "contests/share_invite" %>
     </div>
-  <% else %>
-    <%= render "contests/lobby_info_cards" %>
-  <% end %>
-</div>
+  </div>
+<% end %>
 
 <!-- Section 4: Matchup Board (full-width, only if user can still enter) -->
 <% if @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
