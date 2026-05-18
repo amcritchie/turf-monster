@@ -3,7 +3,7 @@ class ContestsController < ApplicationController
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
   before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll]
-  before_action :require_admin, only: [:new, :create, :edit, :update, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest]
+  before_action :require_admin, only: [:new, :create, :edit, :update, :generator, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
 
   def index
@@ -20,7 +20,23 @@ class ContestsController < ApplicationController
   end
 
   def new
-    @contest = Contest.new(contest_type: "small")
+    # Pre-fill from query params (used by the contest generator matrix at /contests/generator).
+    # Validates contest_type against FORMATS so an invalid query string can't poison the form.
+    requested_type = params[:contest_type].presence
+    contest_type = Contest::FORMATS.key?(requested_type) ? requested_type : "medium"
+
+    @contest = Contest.new(contest_type: contest_type)
+    @contest.slate_id = params[:slate_id] if params[:slate_id].present? && Slate.exists?(id: params[:slate_id])
+  end
+
+  # Admin matrix view: slates × contest types. Each cell shows how many
+  # contests of that combo exist, and clicks through to /contests/new
+  # pre-filled with that slate + tier. Makes it visually obvious which
+  # slate/tier combinations are missing contests.
+  def generator
+    @slates = Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at)
+    @contest_counts = Contest.group(:slate_id, :contest_type).count   # → {[slate_id, "medium"] => 2, ...}
+    @contests_by_cell = Contest.includes(:entries).order(created_at: :desc).group_by { |c| [c.slate_id, c.contest_type] }
   end
 
   def create

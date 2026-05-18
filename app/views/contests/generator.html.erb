@@ -1,0 +1,94 @@
+<% content_for :title, "Contest Generator" %>
+
+<div class="max-w-7xl mx-auto px-4 py-6">
+  <div class="flex items-baseline justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-heading">Contest Generator</h1>
+      <p class="text-sm text-secondary mt-1">
+        Slates × tiers. Click any cell to spin up a new on-chain contest for that combination.
+        Existing counts shown per cell; click the count to see what's already there.
+      </p>
+    </div>
+    <%= link_to "+ Custom Contest", new_contest_path, class: "btn btn-outline btn-sm" %>
+  </div>
+
+  <% if @slates.empty? %>
+    <div class="rounded-lg border border-subtle bg-surface p-8 text-center text-secondary">
+      No slates available. Run <code class="text-mint">bin/rails db:seed</code> to load the World Cup 2026 slates.
+    </div>
+  <% else %>
+    <div class="overflow-x-auto rounded-lg border border-subtle bg-surface">
+      <table class="w-full">
+        <thead>
+          <tr class="bg-surface-alt border-b border-subtle">
+            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-secondary">Slate</th>
+            <% Contest::FORMATS.each do |tier, config| %>
+              <th class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-secondary">
+                <div class="text-heading text-sm normal-case font-bold mb-0.5"><%= tier.capitalize %></div>
+                <div class="text-xs text-muted font-mono"><%= config[:max_entries] %> × <%= dollars(config[:entry_fee_cents] / 100.0) %></div>
+                <div class="text-xs text-primary font-mono">$<%= config[:payouts].values.sum / 100 %> guar.</div>
+              </th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% @slates.each_with_index do |slate, slate_idx| %>
+            <tr class="<%= slate_idx.even? ? 'bg-page' : 'bg-surface-alt/30' %> border-b border-subtle hover:bg-surface-alt/60 transition">
+              <td class="px-4 py-4 align-top">
+                <div class="font-semibold text-heading"><%= slate.name %></div>
+                <div class="text-xs text-secondary mt-0.5">locks <%= slate.starts_at.strftime("%b %-d, %Y · %H:%M %Z") %></div>
+                <div class="text-xs text-muted mt-0.5"><%= slate.slate_matchups.count %> matchups available</div>
+              </td>
+              <% Contest::FORMATS.each do |tier, config| %>
+                <%
+                  count = @contest_counts[[slate.id, tier]] || 0
+                  existing = @contests_by_cell[[slate.id, tier]] || []
+                %>
+                <td class="px-2 py-2 text-center align-top">
+                  <%= link_to new_contest_path(slate_id: slate.id, contest_type: tier),
+                              class: "block rounded-lg border-2 border-dashed #{count.zero? ? 'border-subtle hover:border-primary hover:bg-primary/5' : 'border-mint/40 hover:border-mint hover:bg-mint/5'} px-3 py-4 transition",
+                              title: "Create new #{tier} contest on #{slate.name}" do %>
+                    <div class="text-3xl font-bold <%= count.zero? ? 'text-muted' : 'text-mint' %>">
+                      <%= count %>
+                    </div>
+                    <div class="text-xs <%= count.zero? ? 'text-muted' : 'text-secondary' %> mt-1">
+                      <%= count == 1 ? "contest" : "contests" %>
+                    </div>
+                    <div class="text-xs text-primary font-medium mt-2">
+                      + new <%= tier %> →
+                    </div>
+                  <% end %>
+
+                  <% if existing.any? %>
+                    <div class="mt-2 space-y-1 text-left">
+                      <% existing.first(3).each do |contest| %>
+                        <%= link_to contest_lobby_path(contest), class: "block px-2 py-1 rounded text-xs hover:bg-surface-alt transition" do %>
+                          <div class="flex items-center justify-between gap-1">
+                            <span class="text-body truncate">
+                              <span class="<%= contest.onchain? ? 'text-mint' : 'text-yellow-500' %>">●</span>
+                              <%= contest.entries.where(status: [:active, :complete]).count %>/<%= contest.max_entries %>
+                            </span>
+                            <span class="text-muted font-mono text-[10px]"><%= contest.status %></span>
+                          </div>
+                        <% end %>
+                      <% end %>
+                      <% if existing.size > 3 %>
+                        <div class="text-xs text-muted text-center pt-1">+<%= existing.size - 3 %> more</div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 text-xs text-muted space-y-1">
+      <div><span class="text-mint">●</span> on-chain contest &nbsp;|&nbsp; <span class="text-yellow-500">●</span> DB-only (on-chain creation failed or was opted out)</div>
+      <div>"3/9" = 3 active or complete entries of 9 max.</div>
+      <div>Contests created from this page go through <code>Contest.create!</code> which auto-creates the on-chain PDA via the after_create callback (Alex Bot funds prizes).</div>
+    </div>
+  <% end %>
+</div>
