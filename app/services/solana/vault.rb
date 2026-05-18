@@ -419,6 +419,70 @@ module Solana
       { serialized_tx: serialized, contest_pda: contest_pda_b58 }
     end
 
+    # Server-funded `create_contest` — admin signs as BOTH payer AND creator.
+    # The Anchor program dedupes signers by pubkey so the single admin sig
+    # covers both required signatures. Prize-pool USDC is transferred from
+    # the admin's own ATA into the vault PDA.
+    #
+    # Use this for operator-run contests (no human creator). For contests
+    # where a different human funds the prize pool from their Phantom wallet,
+    # use `build_create_contest` + the partial-sign / co-sign UI flow instead.
+    #
+    # Submits the TX synchronously and waits for confirmation.
+    # Returns { tx_signature:, contest_pda: } (both base58 strings).
+    def create_contest_server_funded(contest_slug:, entry_fee:, max_entries:, payout_amounts:, prizes:)
+      admin = Keypair.admin
+      contest_id = Digest::SHA256.digest(contest_slug)
+      contest_pda_addr, _ = contest_pda(contest_slug)
+      vault_pda, _ = vault_state_pda
+
+      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
+      admin_b58 = Keypair.encode_base58(admin.public_key_bytes)
+      creator_ata, _ = Solana::SplToken.find_associated_token_address(admin_b58, Config::USDC_MINT)
+      vault_usdc, _ = vault_usdc_pda
+
+      data = Transaction.anchor_discriminator("create_contest") +
+             Borsh.encode_bytes32(contest_id) +
+             Borsh.encode_u64(entry_fee) +
+             Borsh.encode_u32(max_entries) +
+             Borsh.encode_vec(payout_amounts) { |amt| Borsh.encode_u64(amt) } +
+             Borsh.encode_u64(prizes)
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },   # creator (= admin; dedup'd by Solana)
+          { pubkey: vault_pda, is_signer: false, is_writable: false },              # vault_state
+          { pubkey: contest_pda_addr, is_signer: false, is_writable: true },        # contest (init)
+          { pubkey: usdc_mint, is_signer: false, is_writable: false },              # mint
+          { pubkey: creator_ata, is_signer: false, is_writable: true },             # creator_token_account (admin's ATA)
+          { pubkey: vault_usdc, is_signer: false, is_writable: true },              # vault_token_account
+          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      serialized = tx.serialize_base64
+      tx_sig = client.send_transaction(serialized)
+      # Wait for finalization so callers can immediately use the contest_pda.
+      deadline = Time.now + 30
+      loop do
+        sleep 1
+        status = client.confirm_transaction(tx_sig).dig("value", 0)
+        if status
+          raise "create_contest TX failed: #{status["err"]}" if status["err"]
+          break if %w[confirmed finalized].include?(status["confirmationStatus"])
+        end
+        raise "create_contest TX confirmation timeout (sig=#{tx_sig})" if Time.now > deadline
+      end
+
+      contest_pda_b58 = Keypair.encode_base58(contest_pda_addr)
+      { tx_signature: tx_sig, contest_pda: contest_pda_b58 }
+    end
+
     # Enter contest (admin signs, deducts from user balance onchain)
     def enter_contest(wallet_address, contest_slug, entry_num)
       admin = Keypair.admin

@@ -10,6 +10,21 @@ class Contest < ApplicationRecord
 
   enum :status, { pending: "pending", open: "open", locked: "locked", settled: "settled" }
 
+  # "All contests on chain" enforcement (2026-05-17 GTM principle):
+  # every Contest is created on-chain server-funded (admin pays the prize
+  # pool from its devnet USDC ATA) immediately after the DB row exists.
+  # If on-chain creation fails, the DB row is destroyed and the exception
+  # is re-raised — Contest.create! is effectively atomic across DB + chain.
+  #
+  # Opt-out via `skip_onchain_callback = true`:
+  #   - Test fixtures + Rails tests (Rails.env.test? is auto-skipped)
+  #   - The UI flow at /contests/new (which runs its own Phantom-as-creator
+  #     handshake — see ContestsController#create) sets this flag
+  #
+  # See Solana::Vault#create_contest_server_funded for the on-chain mechanics.
+  attr_accessor :skip_onchain_callback
+  after_create :create_onchain_with_rollback!, unless: :skip_onchain_callback_active?
+
   scope :ranked, -> { where.not(rank: nil).order(rank: :asc) }
 
   def self.target
@@ -69,6 +84,47 @@ class Contest < ApplicationRecord
 
   def payouts
     format_config[:payouts]
+  end
+
+  # On-chain Contest PDA creation, server-funded (admin pays prize pool).
+  # Invoked automatically by the after_create callback. Idempotent — re-running
+  # on an already-onchain Contest is a no-op. Raises on RPC / TX failure;
+  # caller (the after_create) destroys the DB row on failure so create! is atomic.
+  #
+  # Manual invocation (e.g. re-trying after a transient RPC failure):
+  #   Contest.find_by(slug: "...").create_onchain!
+  def create_onchain!
+    return if onchain?
+    return if entry_fee_cents.nil? || max_entries.nil?
+
+    vault = Solana::Vault.new
+    result = vault.create_contest_server_funded(
+      contest_slug:   slug,
+      entry_fee:      Solana::Config.dollars_to_lamports(entry_fee_cents / 100.0),
+      max_entries:    max_entries,
+      payout_amounts: payouts.values.map { |c| Solana::Config.dollars_to_lamports(c / 100.0) },
+      prizes:         Solana::Config.dollars_to_lamports(guaranteed_prize_cents / 100.0)
+    )
+    update!(
+      onchain_contest_id:   result[:contest_pda],
+      onchain_tx_signature: result[:tx_signature]
+    )
+    result
+  end
+
+  def skip_onchain_callback_active?
+    skip_onchain_callback || onchain? || Rails.env.test?
+  end
+
+  # after_create callback: ensures on-chain Contest PDA exists for every new
+  # Contest. If on-chain creation fails, destroys the DB row so callers see
+  # a clean "contest not created" outcome instead of a half-created state.
+  def create_onchain_with_rollback!
+    create_onchain!
+  rescue => e
+    Rails.logger.error("[Contest.create_onchain!] FAILED for slug=#{slug}: #{e.class}: #{e.message}")
+    destroy
+    raise "On-chain contest creation failed (DB row rolled back): #{e.message}"
   end
 
   def grade!

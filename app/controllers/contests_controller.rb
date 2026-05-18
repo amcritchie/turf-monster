@@ -29,6 +29,10 @@ class ContestsController < ApplicationController
     @contest.entry_fee_cents = config[:entry_fee_cents]
     @contest.max_entries = config[:max_entries]
     @contest.status = :open
+    # UI runs its own Phantom-as-creator on-chain handshake via the
+    # prepare/confirm_onchain_contest endpoints. Suppress the after_create
+    # auto-on-chain callback so the two flows don't fight each other.
+    @contest.skip_onchain_callback = true
 
     rescue_and_log(target: @contest) do
       @contest.save!
