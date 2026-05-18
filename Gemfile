@@ -66,10 +66,10 @@ group :test do
 end
 gem "dotenv-rails", groups: [:development, :test]
 gem "tailwindcss-rails", "~> 2.7"
-gem "studio", git: "https://github.com/amcritchie/studio.git"
+gem "studio", git: "https://github.com/amcritchie/studio.git", tag: "v0.3.0"
 
-# Solana primitives (Client, Keypair, Borsh, Transaction)
-gem "solana_studio", git: "https://github.com/amcritchie/solana_studio.git"
+# Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
+gem "solana_studio", git: "https://github.com/amcritchie/solana_studio.git", tag: "v0.3.0"
 
 # IP geolocation for state-level geo-blocking
 gem "geocoder"
