@@ -1,6 +1,7 @@
 module Webhooks
   class MoonpayController < ApplicationController
     skip_before_action :verify_authenticity_token
+    skip_before_action :require_authentication
     skip_before_action :detect_geo_state
     skip_before_action :require_profile_completion
 

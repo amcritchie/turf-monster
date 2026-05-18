@@ -17,9 +17,16 @@ class AccountsController < ApplicationController
     @user = current_user
     rescue_and_log(target: @user) do
       @user.update!(profile_params)
+
+      # First-time username sets up an entry-tokens upsell.
+      # An explicit return_to (e.g. mid-checkout) still wins.
+      first_username = @user.saved_change_to_username&.first.nil?
+      target = session.delete(:return_to)
+      target ||= first_username ? tokens_buy_path : root_path
+
       respond_to do |format|
-        format.html { redirect_to session.delete(:return_to) || root_path, notice: "Profile updated!" }
-        format.json { render json: { success: true, display_name: @user.display_name } }
+        format.html { redirect_to target, notice: "Profile updated!" }
+        format.json { render json: { success: true, display_name: @user.display_name, redirect: target } }
       end
     end
   rescue StandardError => e

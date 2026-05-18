@@ -1,6 +1,7 @@
 module Webhooks
   class StripeController < ApplicationController
     skip_before_action :verify_authenticity_token
+    skip_before_action :require_authentication
     skip_before_action :detect_geo_state
     skip_before_action :require_profile_completion
 
@@ -32,16 +33,24 @@ module Webhooks
       stripe_session_id = session.id
       return if TransactionLog.exists?(metadata: { "stripe_session_id" => stripe_session_id })
 
-      user_id = session.metadata["user_id"]
-      amount_cents = session.metadata["amount_cents"].to_i
+      user_id        = session.metadata["user_id"]
       wallet_address = session.metadata["wallet_address"]
 
-      StripeDepositJob.perform_later(
-        user_id: user_id,
-        amount_cents: amount_cents,
-        wallet_address: wallet_address,
-        stripe_session_id: stripe_session_id
-      )
+      if session.metadata["kind"] == "tokens"
+        TokenPurchaseJob.perform_later(
+          user_id: user_id,
+          quantity: session.metadata["quantity"].to_i,
+          wallet_address: wallet_address,
+          stripe_session_id: stripe_session_id
+        )
+      else
+        StripeDepositJob.perform_later(
+          user_id: user_id,
+          amount_cents: session.metadata["amount_cents"].to_i,
+          wallet_address: wallet_address,
+          stripe_session_id: stripe_session_id
+        )
+      end
     end
   end
 end

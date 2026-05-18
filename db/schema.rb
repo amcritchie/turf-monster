@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_17_143000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_17_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -89,6 +89,24 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_17_143000) do
     t.index ["status"], name: "index_entries_on_status"
     t.index ["user_id", "contest_id"], name: "index_entries_on_user_id_and_contest_id"
     t.index ["user_id"], name: "index_entries_on_user_id"
+  end
+
+  create_table "entry_tokens", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "entry_id"
+    t.string "status", default: "purchased", null: false
+    t.string "source", null: false
+    t.string "source_ref"
+    t.integer "price_cents", default: 0, null: false
+    t.datetime "spent_at"
+    t.datetime "refunded_at"
+    t.datetime "expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["entry_id"], name: "index_entry_tokens_on_entry_id"
+    t.index ["source_ref"], name: "index_entry_tokens_on_source_ref"
+    t.index ["user_id", "status"], name: "index_entry_tokens_on_user_id_and_status"
+    t.index ["user_id"], name: "index_entry_tokens_on_user_id"
   end
 
   create_table "error_logs", force: :cascade do |t|
@@ -334,6 +352,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_17_143000) do
   add_foreign_key "contests", "users"
   add_foreign_key "entries", "contests"
   add_foreign_key "entries", "users"
+  add_foreign_key "entry_tokens", "entries"
+  add_foreign_key "entry_tokens", "users"
   add_foreign_key "selections", "entries"
   add_foreign_key "selections", "slate_matchups"
   add_foreign_key "slate_matchups", "slates"

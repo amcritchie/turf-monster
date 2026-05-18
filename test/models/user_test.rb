@@ -40,6 +40,31 @@ class UserTest < ActiveSupport::TestCase
     assert users(:alex).has_email?
   end
 
+  # entry tokens
+
+  test "entry_token_balance counts only purchased rows" do
+    alex = users(:alex)
+    EntryToken.create!(user: alex, status: "purchased", source: "dev", price_cents: 19_00)
+    EntryToken.create!(user: alex, status: "purchased", source: "dev", price_cents: 19_00)
+    EntryToken.create!(user: alex, status: "spent", source: "dev", price_cents: 19_00, spent_at: Time.current)
+    assert_equal 2, alex.entry_token_balance
+  end
+
+  test "spend_entry_token! spends oldest first and attaches entry" do
+    alex = users(:alex)
+    older = EntryToken.create!(user: alex, status: "purchased", source: "dev", price_cents: 19_00, created_at: 2.hours.ago)
+    newer = EntryToken.create!(user: alex, status: "purchased", source: "dev", price_cents: 19_00, created_at: 1.hour.ago)
+
+    spent = alex.spend_entry_token!(entry: entries(:one))
+    assert_equal older.id, spent.id
+    assert_equal "purchased", newer.reload.status
+  end
+
+  test "spend_entry_token! raises when no tokens" do
+    jordan = users(:jordan)
+    assert_raises(RuntimeError) { jordan.spend_entry_token!(entry: entries(:two)) }
+  end
+
   # from_omniauth tests
 
   def google_auth(email: "newgoogle@example.com", name: "Google User", uid: "123456")

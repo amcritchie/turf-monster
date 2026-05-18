@@ -68,6 +68,10 @@ Rails.application.routes.draw do
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"
   post "auth/solana/verify", to: "solana_sessions#verify"
 
+  # Inline (modal) email+password login — JSON only, returns user info
+  # so the caller can replay cart selections and submit entry.
+  post "sessions/inline", to: "inline_sessions#create", as: :inline_login
+
   # Account management
   resource :account, only: [:show, :update] do
     get :complete_profile
@@ -132,6 +136,13 @@ Rails.application.routes.draw do
     post :airdrop
     get :sync
   end
+
+  # Entry tokens (web2 contest-entry currency)
+  get  "tokens/buy",             to: "tokens#buy",             as: :tokens_buy
+  post "tokens/stripe_checkout", to: "tokens#stripe_checkout", as: :tokens_stripe_checkout
+  get  "tokens/processing",      to: "tokens#processing",      as: :tokens_processing
+  get  "tokens/status",          to: "tokens#status",          as: :tokens_status
+  post "tokens/dev_mint",        to: "tokens#dev_mint",        as: :tokens_dev_mint
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"

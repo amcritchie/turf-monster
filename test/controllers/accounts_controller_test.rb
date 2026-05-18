@@ -10,6 +10,19 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to login_path
   end
 
+  test "save_profile redirects first-time username setters to tokens buy" do
+    user = User.create!(email: "newbie@mcritchie.studio", password: "password")
+    log_in_as user
+    post save_profile_account_path, params: { user: { username: "newbie" } }
+    assert_redirected_to tokens_buy_path
+  end
+
+  test "save_profile redirects subsequent username updates to root" do
+    log_in_as @alex
+    post save_profile_account_path, params: { user: { username: "alex_renamed" } }
+    assert_redirected_to root_path
+  end
+
   test "show renders for logged in user" do
     log_in_as @alex
     get account_path

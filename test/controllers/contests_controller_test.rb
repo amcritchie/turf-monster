@@ -1,6 +1,17 @@
 require "test_helper"
+require "minitest/mock"
 
 class ContestsControllerTest < ActionDispatch::IntegrationTest
+  class FakeVault
+    attr_reader :calls
+    def initialize
+      @calls = []
+    end
+    def transfer_from_user(user, amount, mint:)
+      @calls << [:transfer_from_user, user.id, amount, mint]
+      { signature: "fake-transfer-sig" }
+    end
+  end
   setup do
     @contest = contests(:one)
     @user = users(:sam)
@@ -172,6 +183,52 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     json = JSON.parse(response.body)
     assert json["success"]
     assert entry.reload.active?
+  end
+
+  # --- web2 / managed-wallet token spend ---
+
+  test "enter spends a token for managed-wallet user and calls vault.transfer_from_user" do
+    web2 = users(:jordan)
+    web2.update!(web2_solana_address: "TestManagedWallet", encrypted_web2_solana_private_key: "x")
+    @contest.update!(onchain_contest_id: "contest_pda_xyz")
+    EntryToken.create!(user: web2, status: "purchased", source: "stripe", price_cents: 19_00)
+
+    log_in_as(web2)
+    entry = @contest.entries.create!(user: web2, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      post enter_contest_path(@contest), headers: { "Accept" => "application/json" }
+    end
+
+    assert_response :success
+    assert entry.reload.active?
+    assert_equal 0, web2.entry_tokens.purchased.count
+    spent = web2.entry_tokens.spent.first
+    assert_equal entry.id, spent.entry_id
+    assert_equal 1, vault.calls.count { |c| c.first == :transfer_from_user }
+  end
+
+  test "enter blocks managed-wallet user with no tokens, no vault call" do
+    web2 = users(:jordan)
+    web2.update!(web2_solana_address: "TestManagedWallet", encrypted_web2_solana_private_key: "x")
+    @contest.update!(onchain_contest_id: "contest_pda_xyz")
+
+    log_in_as(web2)
+    entry = @contest.entries.create!(user: web2, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      post enter_contest_path(@contest), headers: { "Accept" => "application/json" }
+    end
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_match(/No entry tokens/, body["error"])
+    assert entry.reload.cart?
+    assert_equal 0, vault.calls.count
   end
 
   # --- page load tests ---

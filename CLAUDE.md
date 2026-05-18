@@ -278,7 +278,8 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 
 - [x] Google OAuth, Solana integration Phases 1-6, remove Ethereum, remove Over/Under, deploy Anchor
 - [x] Contest lobby page (`/c/:id/lobby`) — hero banner, inline board/leaderboard, admin section, contest selector
-- [ ] Deposits & withdrawals — ON ICE. Code written (Stripe, MoonPay, vault withdraw, admin 3-step flow), not committed. See `memory/deposits-withdrawals.md` for resume checklist.
+- [x] Stripe/MoonPay deposit actions — `WalletsController#stripe_deposit` + `#moonpay_deposit` are live. Buttons not yet surfaced on `/wallet`; admin 3-step withdrawal flow still pending.
+- [x] Entry tokens (web2 contest-entry currency, 2026-05-17/18) — `EntryToken` model + Stripe checkout via `TokensController#stripe_checkout` → `TokenPurchaseJob` (mints tokens, tops up custodial ATA with $19 USDC each, busts `usdc_balance` cache). Post-Stripe redirect lands on `/tokens/processing?session_id=…` which polls `/tokens/status` until tokens are minted, then swaps to a success card. `ContestsController#enter` spends a token before `vault.transfer_from_user` for managed-wallet users. Post-signup upsell redirect in `AccountsController#save_profile`. Webhook controllers skip `:require_authentication` so Stripe POSTs reach the handler. Navbar shows token count when USDC=0 but tokens>0; otherwise dollars. Refund/expiry rules + chargeback handling still TBD.
 - [x] TurfVault struct reorder — renamed `bonus` → `prizes`, `prize_pool` → `entry_fees`, reordered fields. Deployed to devnet.
 - [x] 2-of-3 multisig — TurfVault v0.8.0, Treasury admin page, PendingTransaction model. Deployed to devnet.
 - [ ] Update TBD playoff teams once results are in (March 26-31, 2026)

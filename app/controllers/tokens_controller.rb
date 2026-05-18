@@ -1,0 +1,93 @@
+class TokensController < ApplicationController
+  before_action :require_login
+  before_action :require_dev_mint_allowed, only: [:dev_mint]
+
+  def buy
+    @packs = EntryToken::PACKS
+  end
+
+  def stripe_checkout
+    quantity = params[:quantity].to_i
+    unless EntryToken::PACKS.key?(quantity)
+      return redirect_to tokens_buy_path, alert: "Unknown pack quantity"
+    end
+    unless current_user.solana_connected?
+      return redirect_to tokens_buy_path, alert: "Connect a wallet first."
+    end
+    unless Rails.application.config.x.stripe_enabled
+      return redirect_to tokens_buy_path, alert: "Card checkout isn't configured yet. Set STRIPE_SECRET_KEY and restart."
+    end
+
+    price_cents = EntryToken.pack_price_cents(quantity)
+
+    rescue_and_log(target: current_user) do
+      session = Stripe::Checkout::Session.create(
+        payment_method_types: ["card"],
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: { name: "Turf Monster — #{quantity} entry token#{'s' if quantity != 1}" },
+            unit_amount: price_cents
+          },
+          quantity: 1
+        }],
+        mode: "payment",
+        success_url: "#{tokens_processing_url}?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url:  "#{tokens_buy_url}?purchase=cancelled",
+        metadata: {
+          kind: "tokens",
+          user_id: current_user.id,
+          quantity: quantity,
+          wallet_address: current_user.solana_address
+        }
+      )
+
+      redirect_to session.url, allow_other_host: true
+    end
+  rescue StandardError => e
+    redirect_to tokens_buy_path, alert: "Checkout failed: #{e.message}"
+  end
+
+  def processing
+    @session_id = params[:session_id].to_s
+    redirect_to tokens_buy_path and return if @session_id.blank?
+  end
+
+  def status
+    session_id = params[:session_id].to_s
+    return render json: { ready: false }, status: :bad_request if session_id.blank?
+
+    tokens = current_user.entry_tokens.for_source_ref(session_id)
+    render json: {
+      ready: tokens.exists?,
+      minted: tokens.count,
+      balance: current_user.entry_token_balance
+    }
+  end
+
+  def dev_mint
+    quantity = params[:quantity].to_i
+    unless EntryToken::PACKS.key?(quantity)
+      return redirect_to tokens_buy_path, alert: "Unknown pack quantity"
+    end
+
+    rescue_and_log(target: current_user) do
+      EntryToken.purchase!(user: current_user, quantity: quantity, source: "dev", source_ref: "dev-#{SecureRandom.hex(4)}")
+      redirect_to tokens_buy_path, notice: "Minted #{quantity} test token#{'s' if quantity != 1}."
+    end
+  rescue StandardError => e
+    redirect_to tokens_buy_path, alert: "Dev mint failed: #{e.message}"
+  end
+
+  private
+
+  def require_login
+    return if logged_in?
+    redirect_to login_path, alert: "Please log in to buy entry tokens."
+  end
+
+  def require_dev_mint_allowed
+    return if current_user&.admin? && Solana::Config.devnet?
+    redirect_to tokens_buy_path, alert: "Dev mint is admin + devnet only."
+  end
+end

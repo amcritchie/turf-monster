@@ -126,6 +126,20 @@
     <% end %>
   </div>
 
+  <%# -- Entry Tokens -- %>
+  <div class="card shadow p-6 mb-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-heading mb-1">Entry Tokens</h2>
+        <p class="text-sm text-muted">1 token = 1 contest entry.</p>
+      </div>
+      <div class="flex items-center gap-4">
+        <span class="text-2xl font-bold text-primary font-mono"><%= @user.entry_token_balance %></span>
+        <%= link_to "Buy", tokens_buy_path, class: "btn btn-outline btn-sm" %>
+      </div>
+    </div>
+  </div>
+
   <%# -- Password -- %>
   <div class="card shadow p-6 mb-6">
     <h2 class="text-lg font-bold text-heading mb-4"><%= @user.has_password? ? "Change Password" : "Set Password" %></h2>

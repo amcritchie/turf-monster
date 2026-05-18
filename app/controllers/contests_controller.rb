@@ -220,7 +220,12 @@ class ContestsController < ApplicationController
         onchain_entry_id = nil
 
         if @contest.onchain? && @contest.entry_fee_cents > 0 && current_user.managed_wallet? && !current_user.phantom_wallet?
-          # Managed wallet: server-side transfer (blocking)
+          # Web2 / managed wallet: spend an entry token (which pre-funded the USDC at
+          # purchase time) then transfer the USDC on-chain. Token spend is in the same
+          # DB transaction as @contest.with_lock, so an on-chain failure rolls it back.
+          raise "No entry tokens. Buy at /tokens/buy" if current_user.entry_token_balance.zero?
+          current_user.spend_entry_token!(entry: entry)
+
           vault = Solana::Vault.new
           usdc_mint = Solana::Config::USDC_MINT
           amount = @contest.entry_fee_cents * 10_000 # cents → USDC lamports (6 decimals)

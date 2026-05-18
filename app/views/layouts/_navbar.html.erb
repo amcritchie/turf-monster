@@ -51,7 +51,13 @@
     </div>
     <%# Right side: user nav (matches sidebar width) %>
     <% balance_html = capture do %>
-      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
+      <% if display_balance.to_f == 0 && current_user.entry_token_balance > 0 %>
+        <%= link_to tokens_buy_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'" do %>
+          <%= current_user.entry_token_balance %><span class="text-xs font-normal text-secondary ml-1">tokens</span>
+        <% end %>
+      <% else %>
+        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
+      <% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
       <% if show_user %>

@@ -522,7 +522,12 @@ window.selectionBoard = function() {
       <div class="grid grid-cols-3 gap-3 md:gap-4 text-center">
         <div class="bg-surface-alt rounded-lg p-2 md:p-3">
           <p class="label-upper">Entry Fee</p>
-          <p class="font-mono text-base md:text-lg text-heading"><%= dollars(@contest.entry_fee_dollars) %></p>
+          <% if logged_in? && current_user.managed_wallet? && !current_user.phantom_wallet? %>
+            <p class="font-mono text-base md:text-lg text-heading">1 token</p>
+            <p class="text-xs text-muted"><%= current_user.entry_token_balance %> available · <%= link_to "buy", tokens_buy_path, class: "underline" %></p>
+          <% else %>
+            <p class="font-mono text-base md:text-lg text-heading"><%= dollars(@contest.entry_fee_dollars) %></p>
+          <% end %>
         </div>
         <div class="bg-surface-alt rounded-lg p-2 md:p-3">
           <p class="label-upper">Guaranteed Prize</p>

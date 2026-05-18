@@ -15,7 +15,7 @@ class TransactionLog < ApplicationRecord
   scope :completed, -> { where(status: "completed") }
   scope :by_type, ->(type) { where(transaction_type: type) }
 
-  TYPES = %w[deposit withdrawal entry_fee payout admin_credit faucet].freeze
+  TYPES = %w[deposit withdrawal entry_fee payout admin_credit faucet token_purchase].freeze
 
   def self.record!(user:, type:, amount_cents:, direction:, source: nil, description: nil, status: "completed", onchain_tx: nil, metadata: {})
     create!(

@@ -5,6 +5,7 @@ class User < ApplicationRecord
   has_one_attached :avatar
   has_many :entries, dependent: :destroy
   has_many :transaction_logs, dependent: :destroy
+  has_many :entry_tokens, dependent: :destroy
   belongs_to :inviter, class_name: "User", optional: true, foreign_key: :invited_by_id
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
@@ -178,6 +179,21 @@ class User < ApplicationRecord
     return nil if computed_level == level
     update!(level: computed_level)
     computed_level
+  end
+
+  # --- Entry tokens (web2 contest-entry currency) ---
+
+  def entry_token_balance
+    entry_tokens.purchased.count
+  end
+
+  def spend_entry_token!(entry:)
+    with_lock do
+      token = entry_tokens.purchased.order(:created_at).first
+      raise "No entry tokens available" unless token
+      token.spend!(entry: entry)
+      token
+    end
   end
 
   private
