@@ -74,7 +74,7 @@ gem "sidekiq-cron", "~> 1.12"
 gem "sentry-ruby"
 gem "sentry-rails"
 
-gem "studio", git: "https://github.com/amcritchie/studio.git", tag: "v0.3.0"
+gem "studio", git: "https://github.com/amcritchie/studio.git", tag: "v0.3.1"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
 gem "solana_studio", git: "https://github.com/amcritchie/solana_studio.git", tag: "v0.3.0"

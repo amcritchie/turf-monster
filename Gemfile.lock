@@ -1,15 +1,17 @@
 GIT
   remote: https://github.com/amcritchie/solana_studio.git
-  revision: 693b32212fd89fc2cf616342d021007748b852ad
+  revision: 58313c1a4c01618fc53cf66ac000b25a8b7a2db4
+  tag: v0.3.0
   specs:
-    solana_studio (0.2.0)
+    solana_studio (0.3.0)
       ed25519 (~> 1.3)
 
 GIT
   remote: https://github.com/amcritchie/studio.git
-  revision: 8664f8713f554e79a1f41858e06406aad1c3aa8a
+  revision: 7f765c0e520a0073f5c627e4d5311714daff78a3
+  tag: v0.3.1
   specs:
-    studio (0.2.4)
+    studio (0.3.1)
       aws-sdk-s3 (~> 1.218)
       faker (>= 2.0)
       mini_magick (~> 5.0)
@@ -97,8 +99,8 @@ GEM
       public_suffix (>= 2.0.2, < 8.0)
     ast (2.4.3)
     aws-eventstream (1.4.0)
-    aws-partitions (1.1234.0)
-    aws-sdk-core (3.244.0)
+    aws-partitions (1.1249.0)
+    aws-sdk-core (3.247.0)
       aws-eventstream (~> 1, >= 1.3.0)
       aws-partitions (~> 1, >= 1.992.0)
       aws-sigv4 (~> 1.9)
@@ -106,11 +108,11 @@ GEM
       bigdecimal
       jmespath (~> 1, >= 1.6.1)
       logger
-    aws-sdk-kms (1.123.0)
-      aws-sdk-core (~> 3, >= 3.244.0)
+    aws-sdk-kms (1.125.0)
+      aws-sdk-core (~> 3, >= 3.247.0)
       aws-sigv4 (~> 1.5)
-    aws-sdk-s3 (1.218.0)
-      aws-sdk-core (~> 3, >= 3.244.0)
+    aws-sdk-s3 (1.222.0)
+      aws-sdk-core (~> 3, >= 3.247.0)
       aws-sdk-kms (~> 1)
       aws-sigv4 (~> 1.5)
     aws-sigv4 (1.12.1)
@@ -380,12 +382,23 @@ GEM
       rexml (~> 3.2, >= 3.2.5)
       rubyzip (>= 1.2.2, < 3.0)
       websocket (~> 1.0)
+    sentry-rails (6.5.0)
+      railties (>= 5.2.0)
+      sentry-ruby (~> 6.5.0)
+    sentry-ruby (6.5.0)
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+      logger
     sidekiq (7.3.10)
       base64
       connection_pool (>= 2.3.0, < 3)
       logger
       rack (>= 2.2.4, < 3.3)
       redis-client (>= 0.23.0, < 1)
+    sidekiq-cron (1.12.0)
+      fugit (~> 1.8)
+      globalid (>= 1.0.1)
+      sidekiq (>= 6)
     snaky_hash (2.0.3)
       hashie (>= 0.1.0, < 6)
       version_gem (>= 1.1.8, < 3)
@@ -472,7 +485,10 @@ DEPENDENCIES
   rails (~> 7.2.2, >= 7.2.2.1)
   rubocop-rails-omakase
   selenium-webdriver
+  sentry-rails
+  sentry-ruby
   sidekiq
+  sidekiq-cron (~> 1.12)
   solana_studio!
   sprockets-rails
   stimulus-rails
