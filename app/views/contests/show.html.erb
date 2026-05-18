@@ -19,7 +19,12 @@
   <!-- Onchain address overlay (SE corner with shaded triangle) -->
   <% if @contest.onchain? %>
     <div class="absolute inset-0 pointer-events-none" style="background: linear-gradient(to top left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 25%, transparent 50%);"></div>
-    <a href="https://explorer.solana.com/address/<%= @contest.onchain_contest_id %>/anchor-account<%= '?cluster=devnet' if Solana::Config.devnet? %>"
+    <%# Link to the explorer's basic account view (not /anchor-account, which
+        requires the program's IDL to be published on-chain via
+        `anchor idl init` — currently not done; tracked in
+        mcritchie-studio audit doc Tier 3 #22). The base account view
+        renders raw data + lamports + owner reliably for any valid PDA. %>
+    <a href="https://explorer.solana.com/address/<%= @contest.onchain_contest_id %><%= '?cluster=devnet' if Solana::Config.devnet? %>"
        target="_blank" rel="noopener"
        class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 text-xs font-mono text-white/90 hover:text-white transition">
       ...<%= @contest.onchain_contest_id.last(6) %>
