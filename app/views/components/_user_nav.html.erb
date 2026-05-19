@@ -11,12 +11,6 @@
 <% div2_html        ||= nil %>
 
 <style>
-  .seeds-bar { height: 14px; margin-left: -6px; }
-  .seeds-fill {
-    background: linear-gradient(to right, transparent, color-mix(in srgb, var(--color-cta) 75%, transparent));
-    transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .seeds-text { font-size: 10px; }
   .username-cap { max-width: 5rem; }
   @media (min-width: 400px) { .username-cap { max-width: 6rem; } }
   @media (min-width: 768px) { .username-cap { max-width: 7rem; } }
@@ -26,8 +20,8 @@
   <% if logged_in? %>
     <%# Left column: Div 1 + Div 2 stacked %>
     <div class="flex-1">
-      <%# Div 1 (Bigger): balance + icons + username %>
-      <div class="flex items-center gap-1 leading-none" style="padding-right: 6px;">
+      <%# Div 1 (Bigger): balance + icons + username — margin-left matches Div 2's seeds bar offset so cash aligns with bar start %>
+      <div class="flex items-center gap-1 leading-none" style="padding-right: 6px; margin-left: -6px;">
         <% if balance_html.present? %>
           <%= raw balance_html %>
         <% end %>
@@ -44,83 +38,13 @@
           <%= current_user.display_name %>
         <% end %>
       </div>
-      <%# Div 2 (Smaller): wallet address (left) + level (right) with progress bar %>
-      <% server_level = current_user.respond_to?(:level) && current_user.level.present? ? current_user.level : nil %>
-      <div x-data="{
-             barWidth: 0,
-             displayLevel: <%= server_level || 1 %>,
-             leveledUp: false,
-             init() {
-               var self = this;
-               var data = this.getSeedsData();
-               if (data) {
-                 self.displayLevel = data.level;
-                 setTimeout(function() { self.barWidth = data.progress; }, 150);
-               }
-             },
-             getSeedsData() {
-               try {
-                 var raw = localStorage.getItem('seedsNavbar');
-                 if (!raw) return null;
-                 return JSON.parse(raw);
-               } catch(e) { return null; }
-             },
-             replayLevel() {
-               var self = this;
-               var data = this.getSeedsData();
-               var finalPct = data ? data.progress : self.barWidth;
-               self.displayLevel = Math.max(1, self.displayLevel - 1);
-               self.barWidth = 60;
-               setTimeout(function() { self.barWidth = 100; }, 300);
-               setTimeout(function() { self.displayLevel += 1; self.leveledUp = true; }, 1500);
-               setTimeout(function() { self.leveledUp = false; self.barWidth = 0; }, 2800);
-               setTimeout(function() { self.barWidth = finalPct; }, 3000);
-             },
-             handleSeedsUpdate(d) {
-               var self = this;
-               if (d.levelUp) {
-                 self.barWidth = d.oldPct;
-                 setTimeout(function() { self.barWidth = 100; }, 300);
-                 setTimeout(function() { self.displayLevel = d.newLevel; self.leveledUp = true; }, 1500);
-                 setTimeout(function() { self.leveledUp = false; self.barWidth = 0; }, 2800);
-                 setTimeout(function() { self.barWidth = d.progress; }, 3000);
-               } else {
-                 self.displayLevel = d.level;
-                 self.barWidth = d.progress;
-               }
-             }
-           }"
-           @navbar-replay-level.window="replayLevel()"
-           @navbar-seeds-update.window="handleSeedsUpdate($event.detail)"
-           class="dm-orange seeds-bar relative mt-0.5">
-        <%# Fill bar %>
-        <div class="seeds-fill absolute inset-y-0 left-0 rounded z-0" :style="{ width: barWidth + '%' }"></div>
-        <%# Text layer 1: muted (visible outside bar) %>
-        <div class="seeds-text absolute inset-0 flex items-center justify-between px-1.5 font-mono text-muted z-[1]">
-          <span>
-            <% if current_user.respond_to?(:truncated_solana) && current_user.try(:solana_connected?) %>
-              <%= current_user.truncated_solana %>
-            <% end %>
-          </span>
-          <% if server_level %>
-            <span :class="leveledUp && 'nav-level-pop'" x-text="'Level ' + displayLevel">Level <%= server_level %></span>
-          <% elsif show_logout_link %>
-            <%= link_to "Log out", logout_path, class: "seeds-text font-mono text-muted no-underline" %>
-          <% end %>
-        </div>
-        <%# Text layer 2: white (clip-path reveals where bar covers) %>
-        <div class="seeds-text absolute inset-0 flex items-center justify-between px-1.5 font-mono text-white z-[2]" :style="{ 'clip-path': 'inset(0 ' + (100 - barWidth) + '% 0 0)' }">
-          <span>
-            <% if current_user.respond_to?(:truncated_solana) && current_user.try(:solana_connected?) %>
-              <%= current_user.truncated_solana %>
-            <% end %>
-          </span>
-          <% if server_level %>
-            <span :class="leveledUp && 'nav-level-pop'" x-text="'Level ' + displayLevel">Level <%= server_level %></span>
-          <% elsif show_logout_link %>
-            <%= link_to "Log out", logout_path, class: "seeds-text font-mono text-white no-underline" %>
-          <% end %>
-        </div>
+      <%# Div 2 (Smaller): 5-section seeds bar + level (right) — see components/_seeds_bar %>
+      <% solana_label = current_user.respond_to?(:truncated_solana) && current_user.try(:solana_connected?) ? current_user.truncated_solana : nil %>
+      <div class="mt-0.5" style="margin-left: -6px;">
+        <%= render "components/seeds_bar",
+              seeds_data: display_seeds_data,
+              compact: true,
+              label: solana_label %>
       </div>
     </div>
     <%# Div 3 (Avatar): spans both rows %>

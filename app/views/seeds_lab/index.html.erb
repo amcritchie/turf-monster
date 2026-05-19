@@ -1,0 +1,469 @@
+<% content_for(:title, "Seeds Loader Lab — Turf Monster") %>
+
+<%# Pulse keyframe — shine happens in the first 25% of the duration, then idles. Stays here for the lab; promote to application.tailwind.css when porting. %>
+<%# --bar-progress: a single registered CSS variable that all 5 section widths derive from via calc(). The transition lives ON the variable, so the entire bar fills as ONE smooth motion (one ease curve), not 5 chained ones. %>
+<style>
+  @property --bar-progress {
+    syntax: '<number>';
+    initial-value: 0;
+    inherits: true;
+  }
+
+  .seeds-bar-continuous {
+    --bar-progress: 0;
+    transition: --bar-progress 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes seedsShimmerPulse {
+    0%   { transform: translateX(-100%); }
+    25%  { transform: translateX(200%); }
+    100% { transform: translateX(200%); }
+  }
+</style>
+
+<div class="max-w-6xl mx-auto py-8 px-4 space-y-8"
+     x-data="seedsLab()">
+
+  <%# ── Header ── %>
+  <div>
+    <h1 class="text-heading text-2xl font-bold mb-1">Seeds Loader Lab</h1>
+    <p class="text-muted text-sm">
+      Compare loader designs for the new 5-section seeds bar.
+      Each section = 20 seeds. Fill all 5 → level up + free entry token.
+      Diminishing returns within a single contest: <span class="font-mono">+25 → +19 → +14</span>.
+    </p>
+  </div>
+
+  <%# ── Simulator ── %>
+  <div class="card p-5">
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+      <div class="flex items-baseline gap-6">
+        <div>
+          <div class="text-muted text-[10px] uppercase tracking-wide">Total seeds</div>
+          <div class="text-heading font-mono font-bold text-xl" x-text="seeds">0</div>
+        </div>
+        <div>
+          <div class="text-muted text-[10px] uppercase tracking-wide">Level</div>
+          <div class="font-mono font-bold text-xl" style="color: var(--color-cta);" x-text="displayLevel">1</div>
+        </div>
+        <div>
+          <div class="text-muted text-[10px] uppercase tracking-wide">Toward next</div>
+          <div class="text-secondary font-mono text-xl"><span x-text="displaySeeds">0</span> / 100</div>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button class="btn btn-success btn-sm"
+                :disabled="levelingUp"
+                @click="add(25)">+25 <span class="opacity-60 text-[10px] ml-1">new contest</span></button>
+        <button class="btn btn-primary btn-sm"
+                :disabled="levelingUp"
+                @click="add(19)">+19 <span class="opacity-60 text-[10px] ml-1">2nd entry</span></button>
+        <button class="btn btn-outline btn-sm"
+                :disabled="levelingUp"
+                @click="add(14)">+14 <span class="opacity-60 text-[10px] ml-1">3rd entry</span></button>
+        <button class="btn btn-outline btn-sm"
+                :disabled="levelingUp"
+                @click="jumpTo(95)">Jump → 95</button>
+        <button class="btn btn-outline btn-sm"
+                :disabled="levelingUp"
+                @click="reset()">Reset</button>
+      </div>
+    </div>
+    <p class="text-muted text-xs">
+      All four variants share the same state — click a simulator button and they update in sync.
+      The level-up sequence fires whenever <span class="font-mono">seeds % 100</span> crosses zero.
+    </p>
+  </div>
+
+  <%# ── Shine controls (applies to Variant 1) ── %>
+  <div class="card p-4 space-y-3">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h3 class="text-heading font-semibold text-sm">Shine Controls</h3>
+        <p class="text-muted text-xs">Applies to Variant 1 only. Other variants keep the hardcoded continuous shine.</p>
+      </div>
+      <button class="btn btn-success btn-sm" @click="triggerShine()">Trigger now</button>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div>
+        <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Mode</label>
+        <select x-model="shineMode"
+                class="w-full text-sm rounded-md border border-subtle px-2 py-1.5"
+                style="background: var(--color-bg-surface); color: var(--color-text-primary);">
+          <option value="continuous">Continuous (every 2.5s)</option>
+          <option value="pulse">Pulse (shine + pause)</option>
+          <option value="once">Once (on mount / trigger)</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+      <div x-show="shineMode === 'pulse'">
+        <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">
+          Interval: <span class="text-secondary font-mono" x-text="shineInterval + 's'">5s</span>
+          <span class="text-muted ml-1" x-text="'(shine ≈ ' + (shineInterval * 0.25).toFixed(1) + 's)'"></span>
+        </label>
+        <input type="range" min="3" max="20" step="0.5" x-model.number="shineInterval" class="w-full">
+      </div>
+      <div>
+        <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">
+          Initial delay: <span class="text-secondary font-mono" x-text="shineDelay + 's'">0s</span>
+        </label>
+        <input type="range" min="0" max="10" step="0.5" x-model.number="shineDelay" class="w-full">
+      </div>
+      <div>
+        <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Active CSS</label>
+        <code class="block text-[10px] font-mono text-secondary px-2 py-1 rounded border border-subtle truncate"
+              style="background: var(--color-bg-surface);"
+              x-text="shineDebug()"></code>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Variants grid ── %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+    <%# ── Variant 1: Segmented (hard dividers) ── %>
+    <div class="card p-5 space-y-4">
+      <div>
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-heading font-semibold text-base">1 · Segmented</h2>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.3);"
+                :class="levelingUp ? 'level-up-pop' : ''"
+                x-text="'Level ' + displayLevel">Level 1</span>
+        </div>
+        <p class="text-muted text-xs mt-1">Five hard-divided rectangles (20 seeds each). Shine clipped to each section — gaps stay clean.</p>
+      </div>
+
+      <div class="bg-inset border border-subtle rounded-lg px-3 py-3">
+        <div class="seeds-bar-continuous flex gap-1.5"
+             style="height: 22px;"
+             :style="{ '--bar-progress': displaySeeds }">
+          <template x-for="i in 5" :key="i">
+            <div class="flex-1 relative overflow-hidden rounded-md"
+                 style="background: rgba(var(--color-primary-500-rgb), 0.22); border: 2px solid rgba(var(--color-primary-500-rgb), 0.7); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);">
+              <%# Green fill — width derives from inherited --bar-progress; one transition drives all 5 sections in lockstep %>
+              <div class="absolute inset-y-0 left-0"
+                   style="background: var(--color-cta);"
+                   :style="{ width: 'clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)' }"></div>
+              <%# Per-section shimmer — wrapped in x-if so 'Trigger now' can remount + restart the animation %>
+              <template x-if="shineVisible && shineMode !== 'off'">
+                <div class="absolute top-0 bottom-0 pointer-events-none"
+                     :style="{
+                       left: -(i - 1) * 100 + '%',
+                       width: '500%',
+                       background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)',
+                       animationName: shineAnimationName,
+                       animationDuration: shineAnimationDuration + 's',
+                       animationTimingFunction: 'ease-in-out',
+                       animationDelay: shineDelay + 's',
+                       animationIterationCount: shineIterationCount,
+                       animationFillMode: shineFillMode
+                     }"></div>
+              </template>
+            </div>
+          </template>
+        </div>
+        <div class="flex items-center justify-end mt-2 font-mono text-[11px] text-secondary">
+          <%# Rotating-integer counter — one tall column of 0..100, transform slides up by displaySeeds × line-height. Same easing as the bar so they stay locked together. %>
+          <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: var(--color-cta);">
+            <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 3.1ch; line-height: 1.25em;">
+              <span class="block"
+                    :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.2s cubic-bezier(0.16, 1, 0.3, 1)' }">
+                <template x-for="n in 101" :key="n">
+                  <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
+                </template>
+              </span>
+            </span>
+            <span class="text-secondary text-xs font-normal">seeds</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Variant 1b: Segmented + faint gap shine ── %>
+    <div class="card p-5 space-y-4">
+      <div>
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-heading font-semibold text-base">1b · Segmented + Gap Glow</h2>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.3);"
+                :class="levelingUp ? 'level-up-pop' : ''"
+                x-text="'Level ' + displayLevel">Level 1</span>
+        </div>
+        <p class="text-muted text-xs mt-1">Same as 1 but the gaps catch a faint wash — wave reads as more continuous, sections still pop brightest.</p>
+      </div>
+
+      <div class="bg-inset border border-subtle rounded-lg px-3 py-3">
+        <div class="relative" style="height: 22px;">
+          <%# Faint bar-wide shimmer behind everything — visible in gaps, dimmed in sections %>
+          <div class="absolute inset-0 pointer-events-none overflow-hidden">
+            <div class="absolute inset-0"
+                 style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+                        animation: seedsShimmer 2.5s ease-in-out infinite;"></div>
+          </div>
+          <%# Segments on top, with their own brighter shimmer — same continuous-fill trick as Variant 1 %>
+          <div class="seeds-bar-continuous flex gap-1.5 h-full relative"
+               :style="{ '--bar-progress': displaySeeds }">
+            <template x-for="i in 5" :key="'1b-' + i">
+              <div class="flex-1 relative overflow-hidden rounded-md"
+                   style="background: rgba(var(--color-primary-500-rgb), 0.22); border: 2px solid rgba(var(--color-primary-500-rgb), 0.7); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);">
+                <div class="absolute inset-y-0 left-0"
+                     style="background: var(--color-cta);"
+                     :style="{ width: 'clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)' }"></div>
+                <div class="absolute top-0 bottom-0 pointer-events-none"
+                     :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+                     style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
+                            animation: seedsShimmer 2.5s ease-in-out infinite;"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mt-2 font-mono text-[11px] text-secondary">
+          <span x-text="sectionsFilled + ' / 5 sections'">0 / 5 sections</span>
+          <span x-text="displaySeeds + ' / 100 seeds'">0 / 100 seeds</span>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Variant 2: Continuous with tick marks ── %>
+    <div class="card p-5 space-y-4">
+      <div>
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-heading font-semibold text-base">2 · Continuous + Ticks</h2>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.3);"
+                :class="levelingUp ? 'level-up-pop' : ''"
+                x-text="'Level ' + displayLevel">Level 1</span>
+        </div>
+        <p class="text-muted text-xs mt-1">Single smooth bar (matches today). Tick marks at 20/40/60/80 hint at the five sections.</p>
+      </div>
+
+      <div class="bg-inset border border-subtle rounded-lg px-3 py-3">
+        <div class="relative overflow-hidden rounded-md"
+             style="height: 22px; background: var(--color-bg-surface); border: 1px solid rgba(var(--color-primary-500-rgb), 0.25);">
+          <%# Fill %>
+          <div class="absolute inset-y-0 left-0"
+               style="background: var(--color-cta); transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);"
+               :style="{ width: displaySeeds + '%' }"></div>
+          <%# Shimmer on top of fill %>
+          <div class="absolute inset-0 pointer-events-none overflow-hidden">
+            <div class="absolute inset-y-0"
+                 style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+                        animation: seedsShimmer 2.5s ease-in-out infinite; width: 40%;"
+                 :style="{ left: Math.max(0, displaySeeds - 40) + '%' }"></div>
+          </div>
+          <%# Tick marks at 20/40/60/80 %>
+          <div class="absolute inset-y-0 pointer-events-none" style="left: 20%; width: 2px; background: rgba(255,255,255,0.45);"></div>
+          <div class="absolute inset-y-0 pointer-events-none" style="left: 40%; width: 2px; background: rgba(255,255,255,0.55);"></div>
+          <div class="absolute inset-y-0 pointer-events-none" style="left: 60%; width: 2px; background: rgba(255,255,255,0.55);"></div>
+          <div class="absolute inset-y-0 pointer-events-none" style="left: 80%; width: 2px; background: rgba(255,255,255,0.45);"></div>
+          <%# Centered counter %>
+          <span class="absolute inset-0 flex items-center justify-center text-[11px] font-mono font-bold"
+                style="color: var(--color-cta);"
+                x-text="displaySeeds + ' / 100'">0 / 100</span>
+          <span class="absolute inset-0 flex items-center justify-center text-[11px] font-mono font-bold"
+                style="color: white; clip-path: inset(0 100% 0 0);"
+                :style="{ 'clip-path': 'inset(0 ' + (100 - displaySeeds) + '% 0 0)' }"
+                x-text="displaySeeds + ' / 100'">0 / 100</span>
+        </div>
+        <div class="flex items-center justify-between mt-2 font-mono text-[11px] text-secondary">
+          <span x-text="sectionsFilled + ' / 5 sections'">0 / 5 sections</span>
+          <span>↑ ticks at 20 · 40 · 60 · 80</span>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Variant 3: Stepped seed icons ── %>
+    <div class="card p-5 space-y-4">
+      <div>
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-heading font-semibold text-base">3 · Stepped Sprouts</h2>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.3);"
+                :class="levelingUp ? 'level-up-pop' : ''"
+                x-text="'Level ' + displayLevel">Level 1</span>
+        </div>
+        <p class="text-muted text-xs mt-1">Five sprouts grow into trees. Most gamified — reads as Duolingo-style streak progress.</p>
+      </div>
+
+      <div class="bg-inset border border-subtle rounded-lg px-3 py-4">
+        <div class="flex items-end justify-around gap-2">
+          <template x-for="i in 5" :key="i">
+            <div class="flex flex-col items-center gap-2 flex-1">
+              <div class="text-3xl leading-none select-none"
+                   style="transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.5s ease;"
+                   :style="{
+                     transform: sectionFill(i) >= 100 ? 'scale(1.15)' : 'scale(0.85)',
+                     filter: sectionFill(i) >= 100 ? 'grayscale(0) opacity(1)' : 'grayscale(0.7) opacity(0.45)'
+                   }"
+                   x-text="sectionFill(i) >= 100 ? '🌳' : '🌱'"></div>
+              <div class="h-1.5 w-full rounded-full overflow-hidden" style="background: var(--color-bg-surface);">
+                <div class="h-full rounded-full"
+                     style="background: var(--color-cta); transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);"
+                     :style="{ width: sectionFill(i) + '%' }"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="flex items-center justify-between mt-3 font-mono text-[11px] text-secondary">
+          <span x-text="sectionsFilled + ' of 5 grown'">0 of 5 grown</span>
+          <span x-text="displaySeeds + ' / 100 seeds'">0 / 100 seeds</span>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Variant 4: Battery cells ── %>
+    <div class="card p-5 space-y-4">
+      <div>
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-heading font-semibold text-base">4 · Battery Cells</h2>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.3);"
+                :class="levelingUp ? 'level-up-pop' : ''"
+                x-text="'Level ' + displayLevel">Level 1</span>
+        </div>
+        <p class="text-muted text-xs mt-1">Five cells inside a battery casing. Reads as "energy filling up" — feels rewarding without explanation.</p>
+      </div>
+
+      <div class="bg-inset border border-subtle rounded-lg px-3 py-4">
+        <div class="flex items-center justify-center gap-0">
+          <div class="flex gap-1 p-1.5 rounded-md"
+               style="border: 2px solid var(--color-cta);"
+               :class="levelingUp ? 'level-up-pop' : ''">
+            <template x-for="i in 5" :key="i">
+              <div class="relative overflow-hidden rounded-sm"
+                   style="width: 32px; height: 22px; background: var(--color-bg-surface);">
+                <div class="absolute inset-y-0 left-0"
+                     style="background: var(--color-cta); transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);"
+                     :style="{ width: sectionFill(i) + '%' }"></div>
+              </div>
+            </template>
+          </div>
+          <div style="width: 5px; height: 12px; background: var(--color-cta); border-radius: 0 2px 2px 0; margin-left: -1px;"></div>
+        </div>
+        <div class="flex items-center justify-between mt-3 font-mono text-[11px] text-secondary">
+          <span x-text="sectionsFilled + ' / 5 cells'">0 / 5 cells</span>
+          <span x-text="displaySeeds + ' / 100 seeds'">0 / 100 seeds</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <%# ── Footnote ── %>
+  <div class="text-muted text-xs leading-relaxed border-t border-subtle pt-4">
+    <strong>Animation phases</strong> (shared, mirrors existing <code>_slate_progress_xp</code>):
+    fill to 100% (1.2s ease) → bounce level number at 1.5s → drain to 0 at 2.8s → refill to leftover at 3.0s.
+    All buttons are disabled while the level-up sequence is running.
+  </div>
+</div>
+
+<script>
+  function seedsLab() {
+    return {
+      seeds: 0,
+      displaySeeds: 0,
+      displayLevel: 1,
+      levelingUp: false,
+
+      // ── Shine config (Variant 1) ──
+      shineMode: 'continuous',   // 'continuous' | 'pulse' | 'once' | 'off'
+      shineInterval: 5,          // seconds — pulse cycle (shine + pause)
+      shineDelay: 0,             // seconds — initial delay before first shine
+      shineVisible: true,        // toggle false→true to remount shimmer (restarts CSS animation)
+
+
+      get shineAnimationName() {
+        return this.shineMode === 'pulse' ? 'seedsShimmerPulse' : 'seedsShimmer';
+      },
+      get shineAnimationDuration() {
+        return this.shineMode === 'pulse' ? this.shineInterval : 2.5;
+      },
+      get shineIterationCount() {
+        return this.shineMode === 'once' ? 1 : 'infinite';
+      },
+      get shineFillMode() {
+        return this.shineMode === 'once' ? 'forwards' : 'none';
+      },
+
+      shineDebug() {
+        if (this.shineMode === 'off') return 'animation: none';
+        var name = this.shineAnimationName;
+        var dur = this.shineAnimationDuration + 's';
+        var delay = this.shineDelay + 's';
+        var count = this.shineIterationCount;
+        return name + ' ' + dur + ' ease-in-out ' + delay + ' ' + count;
+      },
+
+      triggerShine() {
+        var self = this;
+        // Force-restart any in-flight animation by unmounting + remounting the shimmer divs.
+        self.shineVisible = false;
+        setTimeout(function() { self.shineVisible = true; }, 30);
+      },
+
+      get level() { return Math.floor(this.seeds / 100) + 1; },
+      get towardNext() { return this.seeds % 100; },
+      get sectionsFilled() { return Math.floor(this.displaySeeds / 20); },
+
+      sectionFill(idx) {
+        // idx is 1-indexed. Each section covers 20 seeds.
+        return Math.max(0, Math.min(100, (this.displaySeeds - (idx - 1) * 20) * 5));
+      },
+
+      add(amount) {
+        if (this.levelingUp) return;
+        var prevLevel = this.level;
+        this.seeds += amount;
+        var newLevel = this.level;
+
+        if (newLevel > prevLevel) {
+          this.runLevelUp(newLevel);
+        } else {
+          this.displaySeeds = this.towardNext;
+          this.displayLevel = this.level;
+        }
+      },
+
+      jumpTo(target) {
+        if (this.levelingUp) return;
+        // Set seeds to a specific value within the current level (does not trigger level-up).
+        var baseLevel = Math.floor(this.seeds / 100) * 100;
+        this.seeds = baseLevel + Math.min(99, Math.max(0, target));
+        this.displaySeeds = this.towardNext;
+        this.displayLevel = this.level;
+      },
+
+      reset() {
+        if (this.levelingUp) return;
+        this.seeds = 0;
+        this.displaySeeds = 0;
+        this.displayLevel = 1;
+      },
+
+      runLevelUp(newLvl) {
+        var self = this;
+        self.levelingUp = true;
+
+        // Phase 1: animate fill to 100% (CSS transition handles the smooth motion)
+        self.displaySeeds = 100;
+
+        // Phase 2: bump level number (matches existing _slate_progress_xp timing)
+        setTimeout(function() {
+          self.displayLevel = newLvl;
+        }, 1500);
+
+        // Phase 3: reset bar to 0 (drains via the same CSS transition)
+        setTimeout(function() {
+          self.displaySeeds = 0;
+        }, 2800);
+
+        // Phase 4: refill to leftover progress in the new level
+        setTimeout(function() {
+          self.displaySeeds = self.towardNext;
+          self.levelingUp = false;
+        }, 3000);
+      }
+    };
+  }
+</script>

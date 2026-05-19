@@ -1,0 +1,233 @@
+<%# locals: (seeds_data:, compact: false, label: nil, title: nil) %>
+<%#
+  Renders the 5-section seeds bar.
+  - seeds_data: { seeds:, level:, toward_next:, progress:, seeds_to_next: } from controllers/load_seeds_data helper
+  - compact: true → navbar variant (14px tall, level + label text overlay, no counter below)
+  -          false → card variant (22px tall, level badge + rotating counter, confetti on level-up)
+  - label:   optional text shown on the left of the bar (compact variant only — typically current_user.truncated_solana)
+  - title:   optional heading shown left of the level badge (card variant only)
+%>
+<% lvl = seeds_data[:level].to_i %>
+<% lvl = 1 if lvl < 1 %>
+<% toward_next = seeds_data[:toward_next].to_i %>
+<% pct = seeds_data[:progress].to_i %>
+
+<div x-data="{
+  displaySeeds: <%= toward_next %>,
+  displayLevel: <%= lvl %>,
+  levelingUp: false,
+  finalToward: <%= toward_next %>,
+
+  init() {
+    var self = this;
+    var raw = localStorage.getItem('seedsLevelUp');
+    if (raw) {
+      localStorage.removeItem('seedsLevelUp');
+      try { self.runLevelUpSequence(JSON.parse(raw)); return; } catch(e) {}
+    }
+    self.normalStart();
+  },
+
+  normalStart() {
+    var data = this.readNavData();
+    if (data) {
+      this.displayLevel = data.level;
+      this.finalToward = data.toward_next;
+    }
+    // Animate from 0 to the final value so the bar 'fills in' on page load.
+    this.displaySeeds = 0;
+    var self = this;
+    setTimeout(function() { self.displaySeeds = self.finalToward; }, 150);
+  },
+
+  readNavData() {
+    try {
+      var raw = localStorage.getItem('seedsNavbar');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch(e) { return null; }
+  },
+
+  runLevelUpSequence(lu) {
+    var self = this;
+    self.levelingUp = true;
+    self.displayLevel = lu.oldLevel;
+    self.displaySeeds = lu.oldToward || 0;
+
+    // Phase 1: fill to 100 (kicks the CSS --bar-progress transition)
+    setTimeout(function() { self.displaySeeds = 100; }, 300);
+    // Phase 2: bump level number + spawn confetti (if card variant has a confettiZone ref)
+    setTimeout(function() {
+      self.displayLevel = lu.newLevel;
+      self.spawnFirework();
+    }, 1500);
+    // Phase 3: drain to 0
+    setTimeout(function() { self.displaySeeds = 0; }, 2800);
+    // Phase 4: refill to leftover progress in the new level
+    setTimeout(function() {
+      var data = self.readNavData();
+      self.displaySeeds = data ? data.toward_next : 0;
+      self.levelingUp = false;
+    }, 3000);
+  },
+
+  spawnFirework() {
+    // No-op when there's no confettiZone ref (e.g. compact navbar variant).
+    var container = this.$refs.confettiZone;
+    if (!container) return;
+    var colors = window.CONFETTI_COLORS || ['#4BAF50', '#8E82FE', '#06D6A0', '#FF7C47', '#EF4444'];
+    var particles = 72;
+    for (var i = 0; i < particles; i++) {
+      var el = document.createElement('div');
+      el.style.cssText = 'position:absolute;width:5px;height:5px;border-radius:50%;pointer-events:none;';
+      el.style.left = '50%';
+      el.style.top = '50%';
+      el.style.background = colors[Math.floor(Math.random() * colors.length)];
+      container.appendChild(el);
+      var angle = (Math.PI * 2 * i / particles) + (Math.random() - 0.5) * 0.4;
+      var distance = 80 + Math.random() * 100;
+      var dx = Math.cos(angle) * distance;
+      var dy = Math.sin(angle) * distance;
+      var dur = 700 + Math.random() * 600;
+      el.animate([
+        { transform: 'translate(-50%, -50%) scale(1.8)', opacity: 1 },
+        { transform: 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(0.2)', opacity: 0 }
+      ], { duration: dur, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards', delay: Math.random() * 100 });
+      setTimeout(function(e) { e.remove(); }.bind(null, el), 1500);
+    }
+  },
+
+  replay() {
+    var self = this;
+    self.displayLevel = Math.max(1, self.displayLevel - 1);
+    self.displaySeeds = 60;
+    setTimeout(function() { self.displaySeeds = 100; }, 300);
+    setTimeout(function() { self.displayLevel = self.displayLevel + 1; self.levelingUp = true; }, 1500);
+    setTimeout(function() { self.displaySeeds = 0; self.levelingUp = false; }, 2800);
+    setTimeout(function() { self.displaySeeds = self.finalToward; }, 3000);
+  },
+
+  handleSeedsUpdate(d) {
+    var self = this;
+    if (d.levelUp) {
+      // Defensive: only overwrite displayLevel if oldLevel is actually provided
+      if (d.oldLevel !== undefined && d.oldLevel !== null) self.displayLevel = d.oldLevel;
+      self.displaySeeds = d.oldPct || 0;
+      self.levelingUp = true;
+      setTimeout(function() { self.displaySeeds = 100; }, 300);
+      setTimeout(function() {
+        if (d.newLevel !== undefined && d.newLevel !== null) self.displayLevel = d.newLevel;
+        self.spawnFirework();
+      }, 1500);
+      setTimeout(function() { self.displaySeeds = 0; }, 2800);
+      setTimeout(function() { self.displaySeeds = d.progress; self.levelingUp = false; }, 3000);
+    } else {
+      if (d.level !== undefined && d.level !== null) self.displayLevel = d.level;
+      self.displaySeeds = d.progress;
+    }
+  }
+}"
+     @navbar-replay-level.window="replay()"
+     @navbar-seeds-update.window="handleSeedsUpdate($event.detail)">
+
+  <% if compact %>
+    <%# ── Navbar variant: 14px bar with text overlay (matches existing _user_nav Div 2 sizing) ── %>
+    <div class="dm-orange relative overflow-hidden rounded" style="height: 14px;">
+      <%# 5-segment bar (continuous fill via --bar-progress) %>
+      <div class="absolute inset-0 seeds-bar-continuous flex gap-1" :style="{ '--bar-progress': displaySeeds }">
+        <template x-for="i in 5" :key="i">
+          <div class="flex-1 relative overflow-hidden rounded-md"
+               style="background: rgba(var(--color-primary-500-rgb), 0.18); border: 1px solid rgba(var(--color-primary-500-rgb), 0.45);">
+            <%# Bar-wide gradient: bg image is 500% of segment (= bar width), bg-position shows this segment's 1/5 slice. Clip-path animates via --bar-progress to reveal only the fill area. %>
+            <div class="absolute inset-0 pointer-events-none"
+                 :style="{
+                   backgroundPosition: ((i - 1) * 25) + '% 0',
+                   clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
+                 }"
+                 style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
+            <%# Per-section shimmer — sized to whole bar so all 5 share one continuous wave %>
+            <div class="absolute top-0 bottom-0 pointer-events-none"
+                 :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+                 style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%); animation: seedsShimmer 2.5s ease-in-out 1 both;"></div>
+          </div>
+        </template>
+      </div>
+
+      <%# Text layer 1: muted (visible outside bar fill) — matches existing seeds-text 10px sizing %>
+      <div class="absolute inset-0 flex items-center justify-between px-1.5 text-muted font-mono pointer-events-none" style="font-size: 10px; z-index: 1;">
+        <span><%= label %></span>
+        <span class="flex items-center gap-1 pointer-events-auto">
+          <a href="#" @click.prevent="replay()" x-show="$store.devMode" x-cloak
+             class="text-[9px] font-bold text-yellow-400 hover:text-yellow-300 transition">Replay</a>
+          <span :class="levelingUp && 'nav-level-pop'" x-text="'Level ' + displayLevel">Level <%= lvl %></span>
+        </span>
+      </div>
+
+      <%# Text layer 2: white (clip-path reveals as bar fills) %>
+      <div class="absolute inset-0 flex items-center justify-between px-1.5 font-mono pointer-events-none"
+           style="color: white; font-size: 10px; z-index: 2; clip-path: inset(0 100% 0 0);"
+           :style="{ 'clip-path': 'inset(0 ' + (100 - displaySeeds) + '% 0 0)' }">
+        <span><%= label %></span>
+        <span class="flex items-center gap-1">
+          <span x-show="$store.devMode" x-cloak class="text-[9px] font-bold" style="visibility: hidden;">Replay</span>
+          <span :class="levelingUp && 'nav-level-pop'" x-text="'Level ' + displayLevel">Level <%= lvl %></span>
+        </span>
+      </div>
+    </div>
+
+  <% else %>
+    <%# ── Card variant: title + level badge + 22px bar + rotating counter + confetti ── %>
+    <div class="flex items-center justify-between mb-3">
+      <% if title.present? %>
+        <h3 class="text-heading font-semibold text-sm"><%= title %></h3>
+      <% else %>
+        <span></span>
+      <% end %>
+      <div class="relative flex items-center gap-2" x-ref="confettiZone" style="overflow: visible;">
+        <a href="#" @click.prevent="replay()" x-show="$store.devMode" x-cloak
+           class="text-[10px] font-bold text-yellow-400 hover:text-yellow-300 transition">Replay</a>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full inline-block"
+              style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.3);"
+              :class="levelingUp ? 'level-up-pop' : ''"
+              x-text="'Level ' + displayLevel">
+          Level <%= lvl %>
+        </span>
+      </div>
+    </div>
+
+    <div class="seeds-bar-continuous flex gap-1.5"
+         style="height: 22px;"
+         :style="{ '--bar-progress': displaySeeds }">
+      <template x-for="i in 5" :key="i">
+        <div class="flex-1 relative overflow-hidden rounded-lg"
+             style="background: rgba(var(--color-primary-500-rgb), 0.22); border: 2px solid rgba(var(--color-primary-500-rgb), 0.7); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);">
+          <%# Bar-wide gradient: bg image is 500% of segment (= bar width), bg-position shows this segment's 1/5 slice. Clip-path animates via --bar-progress to reveal only the fill area. %>
+          <div class="absolute inset-0 pointer-events-none"
+               :style="{
+                 backgroundPosition: ((i - 1) * 25) + '% 0',
+                 clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
+               }"
+               style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
+          <div class="absolute top-0 bottom-0 pointer-events-none"
+               :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+               style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%); animation: seedsShimmer 2.5s ease-in-out 1 both;"></div>
+        </div>
+      </template>
+    </div>
+
+    <%# Rotating-integer counter %>
+    <div class="flex items-center justify-end mt-2 font-mono text-[11px] text-secondary">
+      <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: var(--color-cta);">
+        <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 3.1ch; line-height: 1.25em;">
+          <span class="block"
+                :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.2s cubic-bezier(0.16, 1, 0.3, 1)' }">
+            <template x-for="n in 101" :key="n">
+              <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
+            </template>
+          </span>
+        </span>
+        <span class="text-secondary text-xs font-normal">seeds</span>
+      </span>
+    </div>
+  <% end %>
+</div>

@@ -7,7 +7,7 @@
 <% is_preview = local_assigns.fetch(:preview, false) %>
 
 <header x-data="{ scrolled: false }" <%= '@scroll.window.throttle.50ms="scrolled = scrolled ? (window.scrollY > 40) : (window.scrollY > 60)"'.html_safe unless is_preview %>
-        class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-50 bg-page transition-shadow duration-300' %>"
+        class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[110] bg-page transition-shadow duration-300' %>"
         :class="scrolled && 'shadow-lg border-b border-subtle is-scrolled'">
   <style>
     .user-nav-col { width: 14rem; }

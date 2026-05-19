@@ -47,6 +47,7 @@ Rails.application.routes.draw do
   get "toast_test", to: "toast_test#index"
   post "toast_test/flash", to: "toast_test#trigger_flash"
   get "turf-totals-v1", to: "pages#turf_totals_v1", as: :turf_totals_v1
+  get "seeds_lab", to: "seeds_lab#index", as: :seeds_lab
 
   # Public faucet page
   get  "faucet", to: "faucet#show", as: :faucet

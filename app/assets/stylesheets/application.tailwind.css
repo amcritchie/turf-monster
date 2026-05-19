@@ -335,6 +335,27 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(200%); }
 }
+/* Pulse variant: shine happens in first 25% of duration, then idles. animation-duration controls the cycle interval. */
+@keyframes seedsShimmerPulse {
+  0%   { transform: translateX(-100%); }
+  25%  { transform: translateX(200%); }
+  100% { transform: translateX(200%); }
+}
+/* Lobby button countdown — drains a fill from full to empty over animation-duration */
+@keyframes lobby-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+/* Registered custom property — makes --bar-progress interpolatable so a single transition drives all 5 segment widths in lockstep (one ease curve, not 5 chained). */
+@property --bar-progress {
+  syntax: '<number>';
+  initial-value: 0;
+  inherits: true;
+}
+.seeds-bar-continuous {
+  --bar-progress: 0;
+  transition: --bar-progress 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 @keyframes levelPop {
   0% { transform: scale(1) rotate(0deg); }
   12% { transform: scale(3.2) rotate(-4deg); }

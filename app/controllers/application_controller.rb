@@ -6,7 +6,7 @@ class ApplicationController < ActionController::Base
 
   before_action :detect_geo_state
   before_action :require_profile_completion
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :onchain_session?
+  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?
 
   private
 
@@ -71,6 +71,37 @@ class ApplicationController < ActionController::Base
 
   def invalidate_usdc_cache(user = current_user)
     Rails.cache.delete(usdc_cache_key(user))
+  end
+
+  # Navbar seeds bar — on-chain seed count for the logged-in user
+  def display_seeds_data
+    return seeds_payload(0) unless current_user&.solana_connected?
+
+    Rails.cache.fetch(seeds_cache_key, expires_in: 60.seconds) do
+      onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
+      seeds_payload(onchain&.dig(:seeds) || 0)
+    end
+  rescue => e
+    Rails.logger.warn "Failed to fetch onchain seeds: #{e.message}"
+    seeds_payload(0)
+  end
+
+  def seeds_payload(seeds)
+    {
+      seeds: seeds,
+      level: User.level_for(seeds),
+      toward_next: User.seeds_toward_next_level(seeds),
+      progress: User.seeds_progress_percent(seeds),
+      seeds_to_next: User::SEEDS_PER_LEVEL - User.seeds_toward_next_level(seeds)
+    }
+  end
+
+  def seeds_cache_key(user = current_user)
+    "user_seeds:#{user.id}"
+  end
+
+  def invalidate_seeds_cache(user = current_user)
+    Rails.cache.delete(seeds_cache_key(user))
   end
 
   def require_profile_completion
