@@ -535,7 +535,12 @@ module Solana
     # Atomic: creates the entry, consumes the token, awards seeds per the season's
     # seed_schedule[entry_num.min(4)]. No USDC charged.
     # `entry_token_pda_b58` is the base58 PDA of the EntryTokenAccount being consumed.
-    def enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58, season_id: nil)
+    # OPSEC-004: `user_keypair` is now required — turf-vault v0.12.0 makes the
+    # `wallet` account a Signer on enter_contest_with_token. For managed (web2)
+    # wallets the server holds the custodial keypair and co-signs; this means a
+    # leaked admin key alone can no longer burn a user's entry token.
+    def enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58, user_keypair:, season_id: nil)
+      raise "user_keypair required (OPSEC-004)" unless user_keypair
       admin = Keypair.admin
       wallet_bytes = Keypair.decode_base58(wallet_address)
       vault_pda, _ = vault_state_pda
@@ -550,11 +555,12 @@ module Solana
              Borsh.encode_u32(entry_num)
 
       tx = build_tx(admin)
+      tx.add_signer(user_keypair)  # OPSEC-004: server co-signs as the managed user
       tx.add_instruction(
         program_id: @program_id,
         accounts: [
           { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: wallet_bytes, is_signer: false, is_writable: false },
+          { pubkey: wallet_bytes, is_signer: true, is_writable: false },
           { pubkey: vault_pda, is_signer: false, is_writable: false },
           { pubkey: user_pda, is_signer: false, is_writable: true },
           { pubkey: c_pda, is_signer: false, is_writable: true },

@@ -1,179 +1,29 @@
 {
-  "accounts": [
-    {
-      "discriminator": [
-        216,
-        26,
-        88,
-        18,
-        251,
-        80,
-        201,
-        96
-      ],
-      "name": "Contest"
-    },
-    {
-      "discriminator": [
-        76,
-        184,
-        226,
-        221,
-        82,
-        23,
-        41,
-        74
-      ],
-      "name": "ContestEntry"
-    },
-    {
-      "discriminator": [
-        249,
-        95,
-        33,
-        60,
-        183,
-        10,
-        145,
-        111
-      ],
-      "name": "EntryTokenAccount"
-    },
-    {
-      "discriminator": [
-        76,
-        67,
-        93,
-        156,
-        180,
-        157,
-        248,
-        47
-      ],
-      "name": "Season"
-    },
-    {
-      "discriminator": [
-        211,
-        33,
-        136,
-        16,
-        186,
-        110,
-        242,
-        127
-      ],
-      "name": "UserAccount"
-    },
-    {
-      "discriminator": [
-        228,
-        196,
-        82,
-        165,
-        98,
-        210,
-        235,
-        152
-      ],
-      "name": "VaultState"
-    }
-  ],
   "address": "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT",
-  "errors": [
-    {
-      "code": 6000,
-      "msg": "Only the vault admin can perform this action",
-      "name": "Unauthorized"
-    },
-    {
-      "code": 6001,
-      "msg": "Token mint is not accepted by this vault",
-      "name": "InvalidMint"
-    },
-    {
-      "code": 6002,
-      "msg": "Insufficient balance for this operation",
-      "name": "InsufficientBalance"
-    },
-    {
-      "code": 6003,
-      "msg": "Contest is not open for entries",
-      "name": "ContestNotOpen"
-    },
-    {
-      "code": 6004,
-      "msg": "Contest is full",
-      "name": "ContestFull"
-    },
-    {
-      "code": 6005,
-      "msg": "Contest has not been settled",
-      "name": "ContestNotSettled"
-    },
-    {
-      "code": 6006,
-      "msg": "Contest is already settled",
-      "name": "ContestAlreadySettled"
-    },
-    {
-      "code": 6007,
-      "msg": "User already entered this contest with this entry number",
-      "name": "DuplicateEntry"
-    },
-    {
-      "code": 6008,
-      "msg": "Settlement payouts exceed entry fees plus prizes",
-      "name": "SettlementOverflow"
-    },
-    {
-      "code": 6009,
-      "msg": "Arithmetic overflow",
-      "name": "Overflow"
-    },
-    {
-      "code": 6010,
-      "msg": "Payout amounts must sum to prizes amount",
-      "name": "InvalidPayoutTiers"
-    },
-    {
-      "code": 6011,
-      "msg": "Account is already larger than expected — cannot migrate",
-      "name": "AccountAlreadyMigrated"
-    },
-    {
-      "code": 6012,
-      "msg": "Account data is invalid or has wrong discriminator",
-      "name": "InvalidAccountData"
-    },
-    {
-      "code": 6013,
-      "msg": "Invalid threshold: must be 1-3",
-      "name": "InvalidThreshold"
-    },
-    {
-      "code": 6014,
-      "msg": "Duplicate signer in signers array",
-      "name": "DuplicateSigner"
-    },
-    {
-      "code": 6015,
-      "msg": "Entry token has already been consumed",
-      "name": "EntryTokenAlreadyConsumed"
-    },
-    {
-      "code": 6016,
-      "msg": "Entry token owner does not match the wallet entering the contest",
-      "name": "EntryTokenWrongOwner"
-    }
-  ],
+  "metadata": {
+    "name": "turf_vault",
+    "version": "0.12.0",
+    "spec": "0.1.0",
+    "description": "Solana escrow program for contest entry fees and prize distribution"
+  },
   "instructions": [
     {
+      "name": "close_contest",
+      "discriminator": [
+        139,
+        238,
+        103,
+        40,
+        217,
+        73,
+        90,
+        72
+      ],
       "accounts": [
         {
           "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "vault_state",
@@ -197,36 +47,36 @@
           "writable": true
         }
       ],
-      "args": [],
-      "discriminator": [
-        139,
-        238,
-        103,
-        40,
-        217,
-        73,
-        90,
-        72
-      ],
-      "name": "close_contest"
+      "args": []
     },
     {
+      "name": "create_contest",
+      "discriminator": [
+        129,
+        189,
+        164,
+        27,
+        152,
+        242,
+        123,
+        93
+      ],
       "accounts": [
         {
+          "name": "payer",
           "docs": [
             "Admin bot — pays SOL rent for Contest PDA"
           ],
-          "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
+          "name": "creator",
           "docs": [
             "Creator's Phantom wallet — signs USDC transfer for prizes"
           ],
-          "name": "creator",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "vault_state",
@@ -247,6 +97,7 @@
         },
         {
           "name": "contest",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -266,33 +117,32 @@
                 "path": "contest_id"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "mint"
         },
         {
+          "name": "creator_token_account",
           "docs": [
             "Creator's USDC token account (ATA) — source of prizes"
           ],
-          "name": "creator_token_account",
           "writable": true
         },
         {
+          "name": "vault_token_account",
           "docs": [
             "Vault's USDC token account — destination for prizes"
           ],
-          "name": "vault_token_account",
           "writable": true
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -323,28 +173,28 @@
           "name": "prizes",
           "type": "u64"
         }
-      ],
-      "discriminator": [
-        129,
-        189,
-        164,
-        27,
-        152,
-        242,
-        123,
-        93
-      ],
-      "name": "create_contest"
+      ]
     },
     {
+      "name": "create_season",
+      "discriminator": [
+        38,
+        108,
+        29,
+        127,
+        60,
+        126,
+        101,
+        3
+      ],
       "accounts": [
         {
+          "name": "admin",
           "docs": [
             "Vault signer (admin) — pays SOL rent for the Season PDA."
           ],
-          "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "vault_state",
@@ -365,6 +215,7 @@
         },
         {
           "name": "season",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -383,12 +234,11 @@
                 "path": "season_id"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -418,58 +268,10 @@
           "name": "start_at",
           "type": "i64"
         }
-      ],
-      "discriminator": [
-        38,
-        108,
-        29,
-        127,
-        60,
-        126,
-        101,
-        3
-      ],
-      "name": "create_season"
+      ]
     },
     {
-      "accounts": [
-        {
-          "name": "payer",
-          "signer": true,
-          "writable": true
-        },
-        {
-          "name": "user_account",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "wallet"
-              }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
-        }
-      ],
-      "args": [
-        {
-          "name": "wallet",
-          "type": "pubkey"
-        }
-      ],
+      "name": "create_user_account",
       "discriminator": [
         146,
         68,
@@ -480,17 +282,15 @@
         182,
         199
       ],
-      "name": "create_user_account"
-    },
-    {
       "accounts": [
         {
-          "name": "user",
-          "signer": true,
-          "writable": true
+          "name": "payer",
+          "writable": true,
+          "signer": true
         },
         {
           "name": "user_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -503,52 +303,26 @@
                 ]
               },
               {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "kind": "arg",
+                "path": "wallet"
               }
             ]
           }
         },
         {
-          "name": "mint"
-        },
-        {
-          "name": "user_token_account",
-          "writable": true
-        },
-        {
-          "name": "vault_token_account",
-          "writable": true
-        },
-        {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "amount",
-          "type": "u64"
+          "name": "wallet",
+          "type": "pubkey"
         }
-      ],
+      ]
+    },
+    {
+      "name": "deposit",
       "discriminator": [
         242,
         35,
@@ -559,20 +333,32 @@
         242,
         182
       ],
-      "name": "deposit"
-    },
-    {
       "accounts": [
         {
-          "name": "payer",
-          "signer": true,
-          "writable": true
+          "name": "user",
+          "writable": true,
+          "signer": true
         },
         {
-          "docs": [
-            "The wallet that owns the user account (may differ from payer for custodial)"
-          ],
-          "name": "wallet"
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
         },
         {
           "name": "vault_state",
@@ -592,78 +378,30 @@
           }
         },
         {
-          "name": "user_account",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "wallet"
-              }
-            ]
-          },
+          "name": "mint"
+        },
+        {
+          "name": "user_token_account",
           "writable": true
         },
         {
-          "name": "contest",
+          "name": "vault_token_account",
           "writable": true
         },
         {
-          "name": "contest_entry",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  116,
-                  114,
-                  121
-                ]
-              },
-              {
-                "account": "Contest",
-                "kind": "account",
-                "path": "contest.contest_id"
-              },
-              {
-                "kind": "account",
-                "path": "wallet"
-              },
-              {
-                "kind": "arg",
-                "path": "entry_num"
-              }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "docs": [
-            "Season whose seed_schedule controls per-entry seed awards."
-          ],
-          "name": "season"
-        },
-        {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "entry_num",
-          "type": "u32"
+          "name": "amount",
+          "type": "u64"
         }
-      ],
+      ]
+    },
+    {
+      "name": "enter_contest",
       "discriminator": [
         124,
         21,
@@ -674,46 +412,17 @@
         149,
         232
       ],
-      "name": "enter_contest"
-    },
-    {
       "accounts": [
         {
-          "docs": [
-            "Admin pays rent for the ContestEntry PDA"
-          ],
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
+          "name": "wallet",
           "docs": [
-            "The user's Phantom wallet — signs the token transfer"
-          ],
-          "name": "user",
-          "signer": true,
-          "writable": true
-        },
-        {
-          "name": "user_account",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          },
-          "writable": true
+            "The wallet that owns the user account (may differ from payer for custodial)"
+          ]
         },
         {
           "name": "vault_state",
@@ -733,11 +442,33 @@
           }
         },
         {
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
           "name": "contest",
           "writable": true
         },
         {
           "name": "contest_entry",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -751,52 +482,30 @@
                 ]
               },
               {
-                "account": "Contest",
                 "kind": "account",
-                "path": "contest.contest_id"
+                "path": "contest.contest_id",
+                "account": "Contest"
               },
               {
                 "kind": "account",
-                "path": "user"
+                "path": "wallet"
               },
               {
                 "kind": "arg",
                 "path": "entry_num"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "name": "mint"
-        },
-        {
-          "docs": [
-            "User's USDC token account (ATA) — source of entry fee"
-          ],
-          "name": "user_token_account",
-          "writable": true
-        },
-        {
-          "docs": [
-            "Vault's USDC token account — destination for entry fee"
-          ],
-          "name": "vault_token_account",
-          "writable": true
-        },
-        {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
-        },
-        {
+          "name": "season",
           "docs": [
             "Season whose seed_schedule controls per-entry seed awards."
-          ],
-          "name": "season"
+          ]
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -804,7 +513,10 @@
           "name": "entry_num",
           "type": "u32"
         }
-      ],
+      ]
+    },
+    {
+      "name": "enter_contest_direct",
       "discriminator": [
         72,
         147,
@@ -815,28 +527,26 @@
         206,
         95
       ],
-      "name": "enter_contest_direct"
-    },
-    {
       "accounts": [
         {
+          "name": "payer",
           "docs": [
             "Admin pays rent for the ContestEntry PDA"
           ],
-          "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
-          "docs": [
-            "The user's Phantom wallet — signs to authorize token consumption"
-          ],
           "name": "user",
-          "signer": true,
-          "writable": true
+          "docs": [
+            "The user's Phantom wallet — signs the token transfer"
+          ],
+          "writable": true,
+          "signer": true
         },
         {
           "name": "user_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -853,8 +563,7 @@
                 "path": "user"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "vault_state",
@@ -879,6 +588,7 @@
         },
         {
           "name": "contest_entry",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -892,9 +602,9 @@
                 ]
               },
               {
-                "account": "Contest",
                 "kind": "account",
-                "path": "contest.contest_id"
+                "path": "contest.contest_id",
+                "account": "Contest"
               },
               {
                 "kind": "account",
@@ -905,26 +615,38 @@
                 "path": "entry_num"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
+          "name": "mint"
+        },
+        {
+          "name": "user_token_account",
           "docs": [
-            "EntryTokenAccount being consumed to fund this entry.",
-            "Must be owned by `user` and not yet consumed."
+            "User's USDC token account (ATA) — source of entry fee"
           ],
-          "name": "entry_token",
           "writable": true
         },
         {
+          "name": "vault_token_account",
+          "docs": [
+            "Vault's USDC token account — destination for entry fee"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "season",
           "docs": [
             "Season whose seed_schedule controls per-entry seed awards."
-          ],
-          "name": "season"
+          ]
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -932,7 +654,10 @@
           "name": "entry_num",
           "type": "u32"
         }
-      ],
+      ]
+    },
+    {
+      "name": "enter_contest_direct_with_token",
       "discriminator": [
         164,
         30,
@@ -943,20 +668,151 @@
         248,
         17
       ],
-      "name": "enter_contest_direct_with_token"
-    },
-    {
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
+          "docs": [
+            "Admin pays rent for the ContestEntry PDA"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user",
+          "docs": [
+            "The user's Phantom wallet — signs to authorize token consumption"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contest",
           "writable": true
         },
         {
+          "name": "contest_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "arg",
+                "path": "entry_num"
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry_token",
           "docs": [
-            "The wallet that owns the user account (may differ from payer for custodial)."
+            "EntryTokenAccount being consumed to fund this entry.",
+            "Must be owned by `user` and not yet consumed."
           ],
-          "name": "wallet"
+          "writable": true
+        },
+        {
+          "name": "season",
+          "docs": [
+            "Season whose seed_schedule controls per-entry seed awards."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "entry_num",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "enter_contest_with_token",
+      "discriminator": [
+        226,
+        96,
+        42,
+        1,
+        205,
+        218,
+        206,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "wallet",
+          "docs": [
+            "The wallet that owns the user account + the entry token being consumed.",
+            "OPSEC-004: now a required Signer. Previously an UncheckedAccount, which",
+            "let any 1-of-3 vault signer (e.g. a compromised Alex Bot key) burn ANY",
+            "user's entry token without the owner's consent. For managed (web2)",
+            "wallets the server co-signs with the user's custodial keypair — so a",
+            "leaked admin key alone is no longer sufficient to consume tokens."
+          ],
+          "signer": true
         },
         {
           "name": "vault_state",
@@ -977,6 +833,7 @@
         },
         {
           "name": "user_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -993,8 +850,7 @@
                 "path": "wallet"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "contest",
@@ -1002,6 +858,7 @@
         },
         {
           "name": "contest_entry",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1015,9 +872,9 @@
                 ]
               },
               {
-                "account": "Contest",
                 "kind": "account",
-                "path": "contest.contest_id"
+                "path": "contest.contest_id",
+                "account": "Contest"
               },
               {
                 "kind": "account",
@@ -1028,26 +885,25 @@
                 "path": "entry_num"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
+          "name": "entry_token",
           "docs": [
             "EntryTokenAccount being consumed to fund this entry.",
             "Must be owned (logically) by `wallet` and not yet consumed."
           ],
-          "name": "entry_token",
           "writable": true
         },
         {
+          "name": "season",
           "docs": [
             "Season whose seed_schedule controls per-entry seed awards."
-          ],
-          "name": "season"
+          ]
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1055,53 +911,10 @@
           "name": "entry_num",
           "type": "u32"
         }
-      ],
-      "discriminator": [
-        226,
-        96,
-        42,
-        1,
-        205,
-        218,
-        206,
-        231
-      ],
-      "name": "enter_contest_with_token"
+      ]
     },
     {
-      "accounts": [
-        {
-          "name": "admin",
-          "signer": true,
-          "writable": true
-        },
-        {
-          "name": "cosigner",
-          "signer": true
-        },
-        {
-          "docs": [
-            "The existing vault account (old layout). We verify PDA seeds manually."
-          ],
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          },
-          "writable": true
-        }
-      ],
-      "args": [],
+      "name": "force_close_vault",
       "discriminator": [
         229,
         45,
@@ -1112,17 +925,22 @@
         140,
         24
       ],
-      "name": "force_close_vault"
-    },
-    {
       "accounts": [
         {
           "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
         },
         {
           "name": "vault_state",
+          "docs": [
+            "The existing vault account (old layout). We verify PDA seeds manually."
+          ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1136,8 +954,46 @@
                 ]
               }
             ]
-          },
-          "writable": true
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "usdc_mint"
@@ -1147,6 +1003,7 @@
         },
         {
           "name": "vault_usdc",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1165,11 +1022,11 @@
                 ]
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "vault_usdt",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1188,20 +1045,19 @@
                 ]
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "SysvarRent111111111111111111111111111111111",
-          "name": "rent"
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1218,25 +1074,25 @@
           "name": "threshold",
           "type": "u8"
         }
-      ],
-      "discriminator": [
-        175,
-        175,
-        109,
-        31,
-        13,
-        152,
-        155,
-        237
-      ],
-      "name": "initialize"
+      ]
     },
     {
+      "name": "migrate_user_account",
+      "discriminator": [
+        198,
+        152,
+        90,
+        54,
+        134,
+        206,
+        92,
+        198
+      ],
       "accounts": [
         {
           "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "vault_state",
@@ -1256,10 +1112,11 @@
           }
         },
         {
+          "name": "user_account",
           "docs": [
             "Verified via PDA seeds constraint + discriminator check in handler."
           ],
-          "name": "user_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1276,39 +1133,38 @@
                 "path": "wallet"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "wallet"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [],
-      "discriminator": [
-        198,
-        152,
-        90,
-        54,
-        134,
-        206,
-        92,
-        198
-      ],
-      "name": "migrate_user_account"
+      "args": []
     },
     {
+      "name": "mint_entry_token",
+      "discriminator": [
+        182,
+        192,
+        94,
+        41,
+        82,
+        185,
+        105,
+        21
+      ],
       "accounts": [
         {
+          "name": "admin",
           "docs": [
             "Vault signer (admin) — pays SOL rent for the EntryTokenAccount PDA."
           ],
-          "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "vault_state",
@@ -1328,13 +1184,14 @@
           }
         },
         {
+          "name": "user_wallet",
           "docs": [
             "`owner` on the new account. Not a signer; not modified."
-          ],
-          "name": "user_wallet"
+          ]
         },
         {
           "name": "entry_token",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1362,12 +1219,11 @@
                 "path": "sequence"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1388,25 +1244,25 @@
             ]
           }
         }
-      ],
-      "discriminator": [
-        182,
-        192,
-        94,
-        41,
-        82,
-        185,
-        105,
-        21
-      ],
-      "name": "mint_entry_token"
+      ]
     },
     {
+      "name": "settle_contest",
+      "discriminator": [
+        79,
+        122,
+        33,
+        192,
+        110,
+        98,
+        219,
+        238
+      ],
       "accounts": [
         {
           "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "cosigner",
@@ -1445,25 +1301,25 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        79,
-        122,
-        33,
-        192,
-        110,
-        98,
-        219,
-        238
-      ],
-      "name": "settle_contest"
+      ]
     },
     {
+      "name": "update_signers",
+      "discriminator": [
+        228,
+        82,
+        68,
+        150,
+        92,
+        66,
+        140,
+        174
+      ],
       "accounts": [
         {
           "name": "admin",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "cosigner",
@@ -1471,6 +1327,7 @@
         },
         {
           "name": "vault_state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1484,8 +1341,7 @@
                 ]
               }
             ]
-          },
-          "writable": true
+          }
         }
       ],
       "args": [
@@ -1502,28 +1358,29 @@
           "name": "new_threshold",
           "type": "u8"
         }
-      ],
-      "discriminator": [
-        228,
-        82,
-        68,
-        150,
-        92,
-        66,
-        140,
-        174
-      ],
-      "name": "update_signers"
+      ]
     },
     {
+      "name": "withdraw",
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
       "accounts": [
         {
           "name": "user",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "user_account",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1540,8 +1397,7 @@
                 "path": "user"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "vault_state",
@@ -1572,8 +1428,8 @@
           "writable": true
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
@@ -1581,30 +1437,186 @@
           "name": "amount",
           "type": "u64"
         }
-      ],
-      "discriminator": [
-        183,
-        18,
-        70,
-        156,
-        148,
-        109,
-        161,
-        34
-      ],
-      "name": "withdraw"
+      ]
     }
   ],
-  "metadata": {
-    "description": "Solana escrow program for contest entry fees and prize distribution",
-    "name": "turf_vault",
-    "spec": "0.1.0",
-    "version": "0.11.1"
-  },
+  "accounts": [
+    {
+      "name": "Contest",
+      "discriminator": [
+        216,
+        26,
+        88,
+        18,
+        251,
+        80,
+        201,
+        96
+      ]
+    },
+    {
+      "name": "ContestEntry",
+      "discriminator": [
+        76,
+        184,
+        226,
+        221,
+        82,
+        23,
+        41,
+        74
+      ]
+    },
+    {
+      "name": "EntryTokenAccount",
+      "discriminator": [
+        249,
+        95,
+        33,
+        60,
+        183,
+        10,
+        145,
+        111
+      ]
+    },
+    {
+      "name": "Season",
+      "discriminator": [
+        76,
+        67,
+        93,
+        156,
+        180,
+        157,
+        248,
+        47
+      ]
+    },
+    {
+      "name": "UserAccount",
+      "discriminator": [
+        211,
+        33,
+        136,
+        16,
+        186,
+        110,
+        242,
+        127
+      ]
+    },
+    {
+      "name": "VaultState",
+      "discriminator": [
+        228,
+        196,
+        82,
+        165,
+        98,
+        210,
+        235,
+        152
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Only the vault admin can perform this action"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidMint",
+      "msg": "Token mint is not accepted by this vault"
+    },
+    {
+      "code": 6002,
+      "name": "InsufficientBalance",
+      "msg": "Insufficient balance for this operation"
+    },
+    {
+      "code": 6003,
+      "name": "ContestNotOpen",
+      "msg": "Contest is not open for entries"
+    },
+    {
+      "code": 6004,
+      "name": "ContestFull",
+      "msg": "Contest is full"
+    },
+    {
+      "code": 6005,
+      "name": "ContestNotSettled",
+      "msg": "Contest has not been settled"
+    },
+    {
+      "code": 6006,
+      "name": "ContestAlreadySettled",
+      "msg": "Contest is already settled"
+    },
+    {
+      "code": 6007,
+      "name": "DuplicateEntry",
+      "msg": "User already entered this contest with this entry number"
+    },
+    {
+      "code": 6008,
+      "name": "SettlementOverflow",
+      "msg": "Settlement payouts exceed entry fees plus prizes"
+    },
+    {
+      "code": 6009,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidPayoutTiers",
+      "msg": "Payout amounts must sum to prizes amount"
+    },
+    {
+      "code": 6011,
+      "name": "AccountAlreadyMigrated",
+      "msg": "Account is already larger than expected — cannot migrate"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidAccountData",
+      "msg": "Account data is invalid or has wrong discriminator"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidThreshold",
+      "msg": "Invalid threshold: must be 1-3"
+    },
+    {
+      "code": 6014,
+      "name": "DuplicateSigner",
+      "msg": "Duplicate signer in signers array"
+    },
+    {
+      "code": 6015,
+      "name": "EntryTokenAlreadyConsumed",
+      "msg": "Entry token has already been consumed"
+    },
+    {
+      "code": 6016,
+      "name": "EntryTokenWrongOwner",
+      "msg": "Entry token owner does not match the wallet entering the contest"
+    },
+    {
+      "code": 6017,
+      "name": "SignerContinuityRequired",
+      "msg": "New signer set must retain at least one current cosigner"
+    }
+  ],
   "types": [
     {
       "name": "Contest",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "contest_id",
@@ -1661,13 +1673,13 @@
             "name": "bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "ContestEntry",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "contest_id",
@@ -1706,8 +1718,7 @@
             "name": "bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
@@ -1745,6 +1756,7 @@
       }
     },
     {
+      "name": "EntryTokenAccount",
       "docs": [
         "EntryTokenAccount: a pre-purchased contest entry token issued by the admin.",
         "User redeems one of these to enter a contest without paying the entry fee at entry time.",
@@ -1752,8 +1764,8 @@
         "PDA seeds: [b\"entry_token\", owner.as_ref(), sequence.to_le_bytes().as_ref()]",
         "Discovery: getProgramAccounts filter by `owner`."
       ],
-      "name": "EntryTokenAccount",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "owner",
@@ -1790,11 +1802,11 @@
             "name": "bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
+      "name": "Season",
       "docs": [
         "Season: a contest season with a per-entry seed-award schedule.",
         "The schedule is set at season creation and is immutable thereafter.",
@@ -1803,8 +1815,8 @@
         "",
         "PDA seeds: [b\"season\", season_id.to_le_bytes()] (u32 LE, 4 bytes)."
       ],
-      "name": "Season",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "season_id",
@@ -1840,13 +1852,13 @@
             "name": "bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "Settlement",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "wallet",
@@ -1864,13 +1876,13 @@
             "name": "payout",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "UserAccount",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "wallet",
@@ -1900,13 +1912,13 @@
             "name": "bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "VaultState",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "signers",
@@ -1941,8 +1953,7 @@
             "name": "bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     }
   ]

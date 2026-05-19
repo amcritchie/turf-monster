@@ -296,11 +296,14 @@ class ContestsController < ApplicationController
 
           vault = Solana::Vault.new
           vault.ensure_user_account(current_user.solana_address) if current_user.solana_connected?
+          # OPSEC-004: pass the managed wallet's keypair — turf-vault v0.12.0
+          # requires the token owner to sign the consume.
           result = vault.enter_contest_with_token(
             current_user.solana_address,
             @contest.slug,
             entry.entry_number,
-            token[:pda]
+            token[:pda],
+            user_keypair: current_user.solana_keypair
           )
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
