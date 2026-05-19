@@ -105,6 +105,17 @@ class WalletsController < ApplicationController
     rescue_and_log(target: current_user) do
       raise "No wallet connected" unless current_user.solana_connected?
 
+      # OPSEC-031: cap at on-chain balance at request time. Previously the
+      # action accepted any params[:amount] and an admin approving the
+      # queue would have triggered an on-chain withdraw against insufficient
+      # funds (either bouncing the TX with rent cost, or — for the bot's
+      # ATA — draining the bot). The :approve action re-checks too.
+      onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
+      available_dollars = onchain&.dig(:balance_dollars).to_f
+      if amount_dollars > available_dollars
+        raise "Withdrawal exceeds on-chain balance ($#{format('%.2f', available_dollars)} available)"
+      end
+
       TransactionLog.record!(
         user: current_user,
         type: "withdrawal",

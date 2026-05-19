@@ -22,6 +22,15 @@ module Webhooks
 
       Rails.logger.info "[tokens] webhook.received type=#{event.type} id=#{event.id} livemode=#{event.livemode}"
 
+      # OPSEC-033: refuse test-mode events in production at the controller
+      # boundary, before the validator's re-fetch. Protects against an
+      # operator misconfig where STRIPE_SECRET_KEY accidentally holds a
+      # test key (defense-in-depth on top of OPSEC-032's boot-time check).
+      if Rails.env.production? && !event.livemode
+        Rails.logger.warn "[tokens] webhook.rejected_test_event_in_production type=#{event.type} id=#{event.id}"
+        return head :ok
+      end
+
       case event.type
       when "checkout.session.completed"
         # Dump key fields from the event payload (not the full blob — Stripe sessions are huge).

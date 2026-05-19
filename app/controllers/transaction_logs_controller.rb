@@ -32,10 +32,21 @@ class TransactionLogsController < ApplicationController
       txn.with_lock do
         raise "Only pending transactions can be approved" unless txn.status == "pending"
 
+        # OPSEC-031: re-check balance at approve time. Balance may have
+        # drained between request submission and approval (e.g., user
+        # spent USDC entering a contest in between). Don't trust the
+        # already-validated request — verify against current on-chain state.
+        amount_dollars = txn.amount_cents / 100.0
+        onchain = Solana::Vault.new.sync_balance(txn.user.solana_address)
+        available_dollars = onchain&.dig(:balance_dollars).to_f
+        if amount_dollars > available_dollars
+          raise "Withdrawal exceeds current on-chain balance ($#{format('%.2f', available_dollars)} available; user may have spent down since request)"
+        end
+
         onchain_tx = nil
         if txn.user.managed_wallet? && txn.user.solana_keypair
           vault = Solana::Vault.new
-          amount_lamports = Solana::Config.dollars_to_lamports(txn.amount_cents / 100.0)
+          amount_lamports = Solana::Config.dollars_to_lamports(amount_dollars)
           onchain_tx = vault.withdraw(txn.user.solana_keypair, amount_lamports)
         end
 

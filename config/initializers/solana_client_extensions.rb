@@ -12,4 +12,13 @@ Solana::Client.class_eval do
       { encoding: encoding, commitment: commitment, filters: filters }
     ])
   end
+
+  # OPSEC-039: getGenesisHash RPC — returns the configured cluster's genesis
+  # block hash. We compare against pinned mainnet/devnet hashes at boot to
+  # detect SOLANA_RPC_URL ↔ SOLANA_NETWORK ↔ SOLANA_PROGRAM_ID misalignment
+  # (e.g., a mainnet-shaped program ID + devnet RPC URL would silently boot
+  # otherwise). See config/initializers/solana_network_alignment.rb.
+  def get_genesis_hash
+    send(:call, "getGenesisHash", [])
+  end
 end
