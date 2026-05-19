@@ -32,6 +32,7 @@
   contestName: @contest.name,
   picksRequired: @contest.picks_required,
   loggedIn: logged_in?,
+  currentUserId: current_user&.id,   # OPSEC-005 — for signed-message session-binding
   userWallet: current_user&.solana_address.to_s,
   phantomWallet: current_user&.phantom_wallet? || false,
   seedsPerLevel: User::SEEDS_PER_LEVEL
@@ -297,7 +298,8 @@ window.selectionBoard = function() {
         var nonceResp = await fetch('/auth/solana/nonce');
         var nonceData = await nonceResp.json();
         var domain = window.location.host;
-        var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\nNonce: ' + nonceData.nonce;
+        var userIdLine = cfg.currentUserId ? ('User-ID: ' + cfg.currentUserId + '\n\n') : '';  // OPSEC-005
+        var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Nonce: ' + nonceData.nonce;
         var encoded = new TextEncoder().encode(message);
         var signed = await provider.signMessage(encoded, 'utf8');
         var signatureB58 = encodeBase58(signed.signature);
@@ -471,7 +473,8 @@ window.selectionBoard = function() {
           var nonce = nonceData.nonce;
 
           var domain = window.location.host;
-          var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\nEnter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
+          var userIdLine = cfg.currentUserId ? ('User-ID: ' + cfg.currentUserId + '\n\n') : '';  // OPSEC-005
+          var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Enter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
           var encoded = new TextEncoder().encode(message);
           var signed = await provider.signMessage(encoded, 'utf8');
           var signatureB58 = encodeBase58(signed.signature);

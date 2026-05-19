@@ -1,0 +1,14 @@
+<h1>Verify your email</h1>
+
+<p>Hi <%= @user.display_name %>,</p>
+
+<p>Click the link below to verify the email address on your Turf Monster account:</p>
+
+<p><%= link_to "Verify my email", @verify_url %></p>
+
+<p>If the button doesn't work, copy and paste this URL into your browser:</p>
+<p><%= @verify_url %></p>
+
+<p>This link expires in 24 hours. If you didn't request this, you can safely ignore this message.</p>
+
+<p>— Turf Monster</p>

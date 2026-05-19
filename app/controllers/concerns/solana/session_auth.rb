@@ -17,7 +17,18 @@ module Solana
   module SessionAuth
     extend ActiveSupport::Concern
 
-    def verify_solana_signature!(message:, signature_b58:, pubkey_b58:, session:)
+    def verify_solana_signature!(message:, signature_b58:, pubkey_b58:, session:, expected_user_id: nil)
+      # OPSEC-005: when the caller is authenticated, require the signed
+      # message to embed `User-ID: <current_user.id>` so a signature
+      # captured against a *different* session's nonce can't be replayed
+      # into this user's flow. Login (solana_sessions#verify) calls without
+      # expected_user_id since there's no current_user yet — the nonce
+      # delete-before-verify below remains replay protection for that path.
+      if expected_user_id && !message.to_s.include?("User-ID: #{expected_user_id}")
+        raise ::Solana::AuthVerifier::VerificationError,
+              "Signed message missing User-ID binding for current session"
+      end
+
       # Delete nonce BEFORE verification to prevent replay
       stored_nonce = session.delete(:solana_nonce)
       nonce_at     = session.delete(:solana_nonce_at)

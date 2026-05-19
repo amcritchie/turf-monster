@@ -61,33 +61,56 @@ class UserTest < ActiveSupport::TestCase
     auth = google_auth
 
     assert_difference "User.count", 1 do
-      user = User.from_omniauth(auth)
+      user = User.from_omniauth(auth, email_verified: true)
       assert_equal "newgoogle@example.com", user.email
       assert_equal "Google User", user.name
       assert_equal "google_oauth2", user.provider
       assert_equal "123456", user.uid
       assert user.persisted?
+      # OPSEC-005: fresh Google signup auto-marks email_verified_at since
+      # Google itself asserted the email.
+      assert user.email_verified_at.present?
     end
   end
 
-  test "from_omniauth links existing password user by email" do
+  test "from_omniauth links existing password user by email when verified" do
     alex = users(:alex)
+    alex.update!(email_verified_at: Time.current)  # OPSEC-005 precondition
     auth = google_auth(email: alex.email, uid: "99999")
 
     assert_no_difference "User.count" do
-      user = User.from_omniauth(auth)
+      user = User.from_omniauth(auth, email_verified: true)
       assert_equal alex.id, user.id
       assert_equal "google_oauth2", user.provider
       assert_equal "99999", user.uid
     end
   end
 
-  test "from_omniauth returns existing OAuth user" do
-    auth = google_auth(email: "oauth@example.com", uid: "55555")
-    original = User.from_omniauth(auth)
+  test "from_omniauth refuses silent link when existing user is unverified (OPSEC-005)" do
+    alex = users(:alex)
+    alex.update!(email_verified_at: nil)
+    auth = google_auth(email: alex.email, uid: "99999")
 
     assert_no_difference "User.count" do
-      returning = User.from_omniauth(auth)
+      result = User.from_omniauth(auth, email_verified: true)
+      assert_equal :requires_verification, result
+    end
+  end
+
+  test "from_omniauth refuses when caller says Google didn't verify the email (OPSEC-005)" do
+    auth = google_auth(uid: "888")
+    assert_no_difference "User.count" do
+      result = User.from_omniauth(auth, email_verified: false)
+      assert_equal :email_not_verified, result
+    end
+  end
+
+  test "from_omniauth returns existing OAuth user" do
+    auth = google_auth(email: "oauth@example.com", uid: "55555")
+    original = User.from_omniauth(auth, email_verified: true)
+
+    assert_no_difference "User.count" do
+      returning = User.from_omniauth(auth, email_verified: true)
       assert_equal original.id, returning.id
     end
   end

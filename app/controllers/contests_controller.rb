@@ -255,7 +255,8 @@ class ContestsController < ApplicationController
         message: params[:message],
         signature_b58: params[:signature],
         pubkey_b58: params[:pubkey],
-        session: session
+        session: session,
+        expected_user_id: current_user.id  # OPSEC-005
       )
 
       raise "Wallet mismatch" unless params[:pubkey] == current_user.web3_solana_address
@@ -341,7 +342,8 @@ class ContestsController < ApplicationController
       message: params[:message],
       signature_b58: params[:signature],
       pubkey_b58: params[:pubkey],
-      session: session
+      session: session,
+      expected_user_id: current_user.id  # OPSEC-005
     )
 
     rescue_and_log(target: entry, parent: @contest) do

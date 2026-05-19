@@ -22,25 +22,50 @@ class User < ApplicationRecord
 
   # --- Class methods ---
 
-  def self.from_omniauth(auth)
-    # Returning Google user
+  # OPSEC-005: from_omniauth now refuses to silently link a freshly-arrived
+  # Google identity to an unverified-email password user. Caller must pass
+  # `email_verified: true` (set by GoogleOauthValidator after re-checking
+  # Google's tokeninfo endpoint) for any linking to occur. If the existing
+  # user hasn't proven they own the email (email_verified_at present), we
+  # refuse the link and return :requires_verification — the controller
+  # surfaces an explicit "this email already has an account; verify it
+  # first" flow rather than auto-merging.
+  #
+  # Return values:
+  #   - User instance         — happy path (returning Google user, or fresh signup)
+  #   - :requires_verification — collision with an unverified existing user
+  #   - :email_not_verified   — Google didn't verify the email (caller refused)
+  def self.from_omniauth(auth, email_verified: false)
+    # Returning Google user — already linked by (provider, uid)
     user = find_by(provider: auth.provider, uid: auth.uid)
     return user if user
 
-    # Existing password user logging in with Google — link the account
-    user = find_by(email: auth.info.email)
-    if user
-      user.update!(provider: auth.provider, uid: auth.uid)
-      return user
+    return :email_not_verified unless email_verified
+
+    # Existing user with matching email — only auto-link if THEY also
+    # proved ownership of this email at some point. Otherwise refuse: the
+    # incoming Google identity has proven the email, but the existing
+    # account hasn't, so we don't know they're the same human.
+    existing = find_by(email: auth.info.email)
+    if existing
+      return :requires_verification if existing.email_verified_at.blank?
+      existing.update!(
+        provider: auth.provider,
+        uid: auth.uid,
+        email_verified_at: existing.email_verified_at || Time.current
+      )
+      return existing
     end
 
-    # Brand new user via Google
+    # Brand new user via Google — email is verified by Google itself, so
+    # mark verified at create-time.
     create!(
       email: auth.info.email,
       name: auth.info.name,
       provider: auth.provider,
       uid: auth.uid,
-      password: SecureRandom.hex(16)
+      password: SecureRandom.hex(16),
+      email_verified_at: Time.current
     )
   rescue ActiveRecord::RecordNotUnique
     # Race condition: another request created the user between our find_by and create

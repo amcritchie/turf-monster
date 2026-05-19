@@ -73,6 +73,14 @@ Rails.application.routes.draw do
   # so the caller can replay cart selections and submit entry.
   post "sessions/inline", to: "inline_sessions#create", as: :inline_login
 
+  # Email verification (OPSEC-005). Tokens are message_verifier blobs that
+  # contain dots; constraints: { token: /.+/ } stops Rails from interpreting
+  # them as URL format extensions.
+  get  "email_verification/new",       to: "email_verifications#new",    as: :email_verifications_new
+  post "email_verification",           to: "email_verifications#create", as: :email_verifications
+  get  "email_verification/:token",    to: "email_verifications#verify", as: :email_verifications_verify,
+       constraints: { token: %r{[^/]+} }, format: false
+
   # Account management
   resource :account, only: [:show, :update] do
     get :complete_profile

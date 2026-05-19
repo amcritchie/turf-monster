@@ -1,0 +1,15 @@
+<div class="max-w-md mx-auto py-12">
+  <h1 class="text-2xl font-extrabold text-heading mb-4">Verify your email</h1>
+
+  <% if @user&.email_verified_at.present? %>
+    <p class="text-secondary mb-6">Your email is already verified. Nothing else to do.</p>
+    <%= link_to "Back to your account", account_path, class: "btn btn-primary" %>
+  <% elsif @user&.email.present? %>
+    <p class="text-secondary mb-2">We'll send a verification link to:</p>
+    <p class="font-mono text-heading mb-6"><%= @user.email %></p>
+    <%= button_to "Send verification email", email_verifications_path, method: :post, class: "btn btn-primary w-full" %>
+    <p class="text-xs text-muted mt-4">Already requested one? It's good for 24 hours. Resend to mint a fresh token.</p>
+  <% else %>
+    <p class="text-secondary mb-6">You don't have an email on file. <%= link_to "Add one in your account settings", account_path, class: "text-primary hover:underline" %> and come back here.</p>
+  <% end %>
+</div>

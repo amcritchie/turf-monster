@@ -52,7 +52,8 @@ class AccountsController < ApplicationController
       message: params[:message],
       signature_b58: params[:signature],
       pubkey_b58: params[:pubkey],
-      session: session
+      session: session,
+      expected_user_id: current_user.id  # OPSEC-005: session-bind the signature
     )
 
     rescue_and_log(target: current_user) do

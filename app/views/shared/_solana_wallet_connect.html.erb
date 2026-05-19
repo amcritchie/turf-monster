@@ -1,5 +1,9 @@
 <%# locals: (link_mode: false) %>
-<div x-data="solanaWalletConnect(<%= link_mode %>)" x-cloak>
+<%# OPSEC-005: when link_mode is true the user is logged in, so pass their
+    id into the JS so the signed wallet message can embed `User-ID: <id>`
+    and the server can refuse signatures captured against a different
+    session's nonce. Login flow (link_mode: false) leaves the id null. %>
+<div x-data="solanaWalletConnect(<%= link_mode %>, <%= (link_mode && current_user&.id) || 'null' %>)" x-cloak>
   <%# Wallet available (Phantom extension, keypair, etc.) — normal connect flow %>
   <template x-if="walletAvailable">
     <button @click="connect()" :disabled="connecting"

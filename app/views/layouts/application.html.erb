@@ -69,7 +69,7 @@
 
         // solanaWalletConnect — MUST stay inline because Alpine processes
         // x-data="solanaWalletConnect(...)" before importmap modules load.
-        window.solanaWalletConnect = function(linkMode) {
+        window.solanaWalletConnect = function(linkMode, currentUserId) {
           return {
             connecting: false,
             error: null,
@@ -88,7 +88,9 @@
                 this.statusText = 'Fetching nonce...';
                 var data = await (await fetch('/auth/solana/nonce')).json();
                 var domain = window.location.host;
-                var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\nSign in to Turf Monster\n\nNonce: ' + data.nonce;
+                // OPSEC-005: when linking (logged-in), bind the message to the active session's user
+                var userIdLine = (linkMode && currentUserId) ? ('User-ID: ' + currentUserId + '\n\n') : '';
+                var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Sign in to Turf Monster\n\nNonce: ' + data.nonce;
                 this.statusText = 'Sign message in wallet...';
                 var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
                 var signatureB58 = encodeBase58(signed.signature);
