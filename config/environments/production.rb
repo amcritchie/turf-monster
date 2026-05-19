@@ -78,6 +78,13 @@ Rails.application.configure do
   # caching is enabled.
   config.action_mailer.perform_caching = false
 
+  # OPSEC-005: production delivery via Resend (config/initializers/resend.rb).
+  # MAILER_FROM defaults to noreply@mcritchie.studio (set in
+  # ApplicationMailer). The sending domain must be verified in Resend.
+  config.action_mailer.default_url_options = { host: ENV.fetch("MAILER_HOST", "turf.mcritchie.studio"), protocol: "https" }
+  config.action_mailer.raise_delivery_errors = true
+  config.action_mailer.perform_deliveries = true
+
   # Ignore bad email addresses and do not raise email delivery errors.
   # Set this to true and configure the email server for immediate delivery to raise delivery errors.
   # config.action_mailer.raise_delivery_errors = false

@@ -93,3 +93,9 @@ gem "sidekiq"
 
 # Payment processing
 gem "stripe"
+
+# Transactional email delivery (Resend). Used by UserMailer for OPSEC-005
+# email verification + future transactional sends. Provides an ActionMailer
+# delivery method; configured in config/initializers/resend.rb. Production
+# requires RESEND_API_KEY env var.
+gem "resend"
