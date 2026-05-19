@@ -615,7 +615,24 @@ end
       m.game_slug = game&.slug
     end
   end
-  puts "  Created slate: #{slate.name} (#{slate.slate_matchups.count} matchups)"
+
+  # Rank + score matchups by GENERAL_DK_ODDS (lower odds = stronger team = higher
+  # rank). Without this, contests created against these slates render with nil
+  # turf_score and crash the leaderboard partial. Idempotent — re-running seed
+  # updates existing matchups via .update! on the find_or_create_by! result.
+  matchups = slate.slate_matchups.includes(:team).to_a
+  sorted = matchups.sort_by do |m|
+    team_data = TEAMS_DATA.find { |t| t[:name].parameterize == m.team_slug }
+    short_name = team_data&.dig(:short_name)
+    [GENERAL_DK_ODDS[short_name] || 999_999, m.team.name]
+  end
+  n = sorted.size
+  sorted.each_with_index do |matchup, i|
+    rank = i + 1
+    matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, n))
+  end
+
+  puts "  Created slate: #{slate.name} (#{slate.slate_matchups.count} matchups, ranked)"
 end
 
 # ─── Default Slate (formula defaults record) ──────────────────

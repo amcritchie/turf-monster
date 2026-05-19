@@ -225,10 +225,18 @@
                   sv = sel.points; ip = sv.to_i.to_s
                   dp = sv == sv.to_i ? nil : ".#{((sv % 1) * 10).round}"
                 else
-                  m = sel.slate_matchup.turf_score; ip = "x#{m.to_i}"
-                  dp = m == m.to_i ? nil : ".#{((m % 1) * 10).round}"
+                  # Matchups created without ranks (legacy seed paths) have nil
+                  # turf_score — render "x?" instead of crashing. Root cause
+                  # belongs in seeds/contest-create; this is defense-in-depth.
+                  m = sel.slate_matchup.turf_score
+                  ip = m ? "x#{m.to_i}" : "x?"
+                  dp = (m && m != m.to_i) ? ".#{((m % 1) * 10).round}" : nil
                 end
-                tv = (done && sel.points.present?) ? "#{sel.points} pts" : "x#{sel.slate_matchup.turf_score}"
+                tv = if done && sel.points.present?
+                       "#{sel.points} pts"
+                     else
+                       sel.slate_matchup.turf_score ? "x#{sel.slate_matchup.turf_score}" : "x?"
+                     end
                 { team: t, c1: c1, c2: c2, ip: ip, dp: dp, tv: tv }
               end
             %>
