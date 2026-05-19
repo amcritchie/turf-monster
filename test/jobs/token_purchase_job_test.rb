@@ -2,30 +2,34 @@ require "test_helper"
 require "minitest/mock"
 
 class TokenPurchaseJobTest < ActiveJob::TestCase
-  # Minimal Vault stand-in. Tracks mint_entry_token calls, can simulate a
-  # mid-loop failure, and reports a configurable set of "already on-chain"
-  # source_refs to exercise the partial-failure resume path.
+  # Minimal Vault stand-in. Tracks mint_entry_token calls and can simulate a
+  # mid-loop failure. The job resumes from `StripePurchase.tx_signatures`
+  # (the DB row is the source of truth), so we don't need to fake on-chain
+  # state to test the resume path — we pre-populate the DB row instead.
   class FakeVault
     attr_reader :mint_calls
 
-    def initialize(existing_refs: [], fail_after: nil)
-      @existing_refs = existing_refs
+    def initialize(fail_after: nil, starting_sequence: 0)
       @fail_after = fail_after
+      @starting_sequence = starting_sequence
       @mint_calls = []
     end
 
+    # Retained for backwards compatibility with any callers still asking for
+    # on-chain state. The current job no longer relies on this — see
+    # OPSEC-009 comment block in TokenPurchaseJob.
     def list_entry_tokens(_wallet, **_opts)
-      @existing_refs.map { |r| { source_ref: r, pda: "pda-#{r}", consumed: false } }
+      []
     end
 
     def next_entry_token_sequence(_wallet)
-      @existing_refs.length
+      @starting_sequence + @mint_calls.length
     end
 
     def mint_entry_token(wallet_address:, source:, source_ref:, **_opts)
       @mint_calls << source_ref
       raise StandardError, "simulated chain failure" if @fail_after && @mint_calls.length > @fail_after
-      seq = (@existing_refs.length + @mint_calls.length) - 1
+      seq = @starting_sequence + @mint_calls.length - 1
       { signature: "sig_#{seq}_#{SecureRandom.hex(2)}", pda: "pda-seq-#{seq}", sequence: seq }
     end
   end
@@ -51,10 +55,19 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     assert TransactionLog.where("metadata @> ?", { stripe_session_id: @sid }.to_json).exists?
   end
 
-  test "partial-failure: retries only the un-minted source_refs" do
-    # Simulate a previous run that minted indices 0 and 1, then crashed.
-    already_minted = ["stripe:#{@sid}:0", "stripe:#{@sid}:1"]
-    vault = FakeVault.new(existing_refs: already_minted)
+  test "partial-failure resume: starts at already_minted, mints only the remaining tokens" do
+    # Simulate a previous run that minted indices 0 and 1 and persisted their
+    # signatures to the DB before crashing on index 2. The retry should resume
+    # at i=2 (already_minted == 2) and mint only the one remaining token.
+    StripePurchase.create!(
+      user: @user,
+      stripe_session_id: @sid,
+      quantity: 3,
+      price_cents: 49_00,
+      status: "failed",
+      mint_tx_signatures: ["prev_sig_0", "prev_sig_1"].to_json
+    )
+    vault = FakeVault.new(starting_sequence: 2)
     Solana::Vault.stub :new, vault do
       TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
     end
@@ -65,7 +78,11 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
 
     purchase = StripePurchase.for_session(@sid).first
     assert_equal "minted", purchase.status
-    assert_equal 1, purchase.tx_signatures.length
+    # All three signatures (2 preserved from before + 1 new) form the final audit trail.
+    assert_equal 3, purchase.tx_signatures.length
+    assert_equal "prev_sig_0", purchase.tx_signatures[0]
+    assert_equal "prev_sig_1", purchase.tx_signatures[1]
+    assert purchase.tx_signatures[2].start_with?("sig_2_")
   end
 
   test "mid-loop failure persists captured signatures and leaves StripePurchase in failed state" do
@@ -79,6 +96,59 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     assert_equal "failed", purchase.status
     assert_equal 2, purchase.tx_signatures.length, "should have persisted the first two signatures before crash"
     assert_equal 3, vault.mint_calls.length, "should have attempted all three mints (the third raised)"
+  end
+
+  test "OPSEC-009: full failure + Sidekiq retry → final state has all 3 signatures, status minted" do
+    # First run: vault fails on the 3rd mint. Verifies partial persistence.
+    crashing_vault = FakeVault.new(fail_after: 2)
+    Solana::Vault.stub :new, crashing_vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid) rescue nil
+    end
+
+    purchase = StripePurchase.for_session(@sid).first
+    assert_equal "failed", purchase.status
+    assert_equal 2, purchase.tx_signatures.length, "first run should persist sigs 0 and 1"
+    first_run_sigs = purchase.tx_signatures.dup
+
+    # Retry: a fresh vault (no fail_after) at sequence 2 to simulate the on-chain
+    # state after the first run's two successful mints. The job should resume
+    # from already_minted == 2 and mint only the third token.
+    retry_vault = FakeVault.new(starting_sequence: 2)
+    Solana::Vault.stub :new, retry_vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
+    end
+
+    purchase.reload
+    assert_equal "minted", purchase.status
+    assert_equal 3, purchase.tx_signatures.length, "final audit trail must include all 3 mint signatures"
+    # The first two signatures from the original run are preserved verbatim.
+    assert_equal first_run_sigs, purchase.tx_signatures[0..1]
+    # The retry only attempted the third mint — not a re-mint of 0/1.
+    assert_equal 1, retry_vault.mint_calls.length
+    assert_equal "stripe:#{@sid}:2", retry_vault.mint_calls.first
+    assert TransactionLog.where("metadata @> ?", { stripe_session_id: @sid }.to_json).exists?
+  end
+
+  test "OPSEC-009: retry on already-minted purchase no-ops (does not re-mint)" do
+    # Pre-existing fully-minted purchase. A duplicate Sidekiq run (or a delayed
+    # webhook retry) must NOT attempt any on-chain mint.
+    StripePurchase.create!(
+      user: @user,
+      stripe_session_id: @sid,
+      quantity: 3,
+      price_cents: 49_00,
+      status: "minted",
+      mint_tx_signatures: %w[sig_a sig_b sig_c].to_json
+    )
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
+    end
+
+    assert_equal 0, vault.mint_calls.length, "minted purchase must not trigger any on-chain calls"
+    purchase = StripePurchase.for_session(@sid).first
+    assert_equal "minted", purchase.status
+    assert_equal %w[sig_a sig_b sig_c], purchase.tx_signatures, "existing signatures untouched"
   end
 
   test "skip when StripePurchase already minted" do

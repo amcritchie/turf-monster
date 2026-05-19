@@ -1,14 +1,18 @@
 # Stripe webhook → on-chain entry token mint (turf-vault v0.9.0+).
 #
-# Idempotency is per source_ref, anchored on what's already on-chain:
+# Idempotency (OPSEC-009): per-mint incremental persistence so a partial
+# failure (e.g. 2 of 3 minted then crash) recovers on retry without
+# re-minting or losing the audit trail:
 #   - "stripe:#{session_id}:#{i}" is the source_ref for token i of this purchase
-#   - On entry we query Vault#list_entry_tokens and skip iterations whose
-#     source_ref already exists. So a partial-failure (e.g. 2 of 3 minted then
-#     crash) recovers on retry: the first 2 are skipped, the 3rd retried.
-#   - Signatures are persisted to StripePurchase after each successful mint so
-#     a mid-loop crash leaves recoverable state.
-#   - StripePurchase rows with status "minted" are the terminal "done" marker.
-#     "pending" / "failed" rows are mid-recovery and unblock reprocessing.
+#   - Each successful mint persists its signature to StripePurchase
+#     immediately. A crash on the next iteration leaves the prior signatures
+#     in the DB as the resume point.
+#   - On retry, we start the loop at `already_minted = tx_signatures.length`
+#     and continue to `quantity`. The DB row is the source of truth for
+#     resume — the on-chain PDA `init` constraint is a backstop that would
+#     catch any over-mint via Anchor error.
+#   - Only `status == "minted"` short-circuits the job. "pending" / "failed"
+#     rows are mid-recovery and must run through the loop to resume.
 class TokenPurchaseJob < ApplicationJob
   queue_as :default
 
@@ -44,32 +48,31 @@ class TokenPurchaseJob < ApplicationJob
     Current.user            = user
 
     vault = Solana::Vault.new
-    minted_refs = vault.list_entry_tokens(wallet_address)
-                       .map { |t| t[:source_ref] }
-                       .compact
-                       .select { |r| r.start_with?("stripe:#{stripe_session_id}:") }
-                       .to_set
-    Rails.logger.info "[tokens] job.on_chain_already minted=#{minted_refs.size} of #{quantity}"
 
-    signatures = purchase.tx_signatures.dup # restore any previously persisted
+    # Resume point: count signatures we've already persisted to the DB.
+    # A previous run that crashed mid-loop has its successful mints persisted
+    # here, so the retry picks up at exactly the next un-minted index.
+    signatures    = purchase.tx_signatures.dup
+    already_minted = signatures.length
+    Rails.logger.info "[tokens] job.resume already_minted=#{already_minted} of #{quantity}"
 
-    quantity.times do |i|
-      source_ref = "stripe:#{stripe_session_id}:#{i}"
-      if minted_refs.include?(source_ref)
-        Rails.logger.info "[tokens] job.skip_mint #{i + 1}/#{quantity} already_on_chain"
-        next
+    if already_minted >= quantity
+      # Defensive: signatures already cover the full quantity. Treat as done.
+      Rails.logger.info "[tokens] job.signatures_complete already_have=#{already_minted}, marking minted"
+    else
+      (already_minted...quantity).each do |i|
+        source_ref = "stripe:#{stripe_session_id}:#{i}"
+        Rails.logger.info "[tokens] job.mint #{i + 1}/#{quantity} source_ref=stripe:#{sid_short}...:#{i} program_id=#{Solana::Config::PROGRAM_ID[0,12]}..."
+        result = vault.mint_entry_token(
+          wallet_address: wallet_address,
+          source: :stripe,
+          source_ref: source_ref
+        )
+        signatures << result[:signature]
+        # Persist incrementally — a crash on the next iteration won't lose this signature.
+        purchase.update!(mint_tx_signatures: signatures.to_json)
+        Rails.logger.info "[tokens] job.mint_ok #{i + 1}/#{quantity} sig=#{result[:signature][0,16]}... pda=#{result[:pda]&.[](0,12)}... seq=#{result[:sequence]}"
       end
-
-      Rails.logger.info "[tokens] job.mint #{i + 1}/#{quantity} source_ref=stripe:#{sid_short}...:#{i} program_id=#{Solana::Config::PROGRAM_ID[0,12]}..."
-      result = vault.mint_entry_token(
-        wallet_address: wallet_address,
-        source: :stripe,
-        source_ref: source_ref
-      )
-      signatures << result[:signature]
-      # Persist incrementally — a crash on the next iteration won't lose this signature.
-      purchase.update!(mint_tx_signatures: signatures.to_json)
-      Rails.logger.info "[tokens] job.mint_ok #{i + 1}/#{quantity} sig=#{result[:signature][0,16]}... pda=#{result[:pda]&.[](0,12)}... seq=#{result[:sequence]}"
     end
 
     purchase.mark_minted!(signatures)
