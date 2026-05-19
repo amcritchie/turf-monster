@@ -84,11 +84,18 @@ class ContestsController < ApplicationController
     payload = verify_onchain_create_payload(params[:params_token])
     raise "User mismatch — token was issued to a different user" unless payload[:user_id] == current_user.id
 
-    verify_solana_transaction!(params[:tx_signature])
-
     derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(payload[:slug]).first)
     raise "Contest PDA mismatch — slug=#{payload[:slug]}" unless params[:contest_pda] == derived_pda_b58
     raise "A contest with that name already exists" if Contest.exists?(slug: payload[:slug])
+
+    # OPSEC-010: assert the tx is the create_contest IX targeting THIS PDA,
+    # signed by the original creator from the server-issued params_token.
+    verify_solana_transaction!(
+      params[:tx_signature],
+      instruction: "create_contest",
+      signer: payload[:creator_pubkey],
+      writable: derived_pda_b58
+    )
 
     contest = build_finalized_contest(payload, derived_pda_b58, params[:tx_signature])
     contest.contest_image.attach(params[:contest_image]) if params[:contest_image].present?
@@ -144,16 +151,26 @@ class ContestsController < ApplicationController
     rescue_and_log(target: @contest) do
       raise "Already onchain" if @contest.onchain?
 
-      verify_solana_transaction!(params[:tx_signature])
+      # OPSEC-010: server-derive the contest PDA from the (already-known)
+      # contest slug; refuse to trust params[:contest_pda] without checking.
+      derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(@contest.slug).first)
+      raise "Contest PDA mismatch" unless params[:contest_pda] == derived_pda_b58
+
+      verify_solana_transaction!(
+        params[:tx_signature],
+        instruction: "create_contest",
+        signer: current_user.web3_solana_address,
+        writable: derived_pda_b58
+      )
 
       @contest.update!(
-        onchain_contest_id: params[:contest_pda],
+        onchain_contest_id: derived_pda_b58,
         onchain_tx_signature: params[:tx_signature]
       )
 
       invalidate_usdc_cache if logged_in?
 
-      render json: { success: true, tx: params[:tx_signature], pda: params[:contest_pda] }
+      render json: { success: true, tx: params[:tx_signature], pda: derived_pda_b58 }
     end
   rescue StandardError => e
     render json: { success: false, error: e.message }, status: :unprocessable_entity
@@ -372,12 +389,27 @@ class ContestsController < ApplicationController
     return render json: { error: "Entry not found" }, status: :not_found unless entry
 
     rescue_and_log(target: entry, parent: @contest) do
-      verify_solana_transaction!(params[:tx_signature])
       raise "Wallet not linked" unless current_user.web3_solana_address.present?
+
+      # OPSEC-010: server-derive the entry PDA (we know contest slug, wallet,
+      # and entry_number). Reject mismatched client-supplied PDAs, then assert
+      # the on-chain TX is the enter_contest_direct IX writing to that PDA,
+      # signed by the user's own wallet.
+      derived_entry_pda = Solana::Keypair.encode_base58(
+        Solana::Vault.new.entry_pda(@contest.slug, current_user.web3_solana_address, entry.entry_number).first
+      )
+      raise "Entry PDA mismatch" unless params[:entry_pda] == derived_entry_pda
+
+      verify_solana_transaction!(
+        params[:tx_signature],
+        instruction: "enter_contest_direct",
+        signer: current_user.web3_solana_address,
+        writable: derived_entry_pda
+      )
 
       entry.confirm_onchain!(
         tx_signature: params[:tx_signature],
-        entry_pda: params[:entry_pda]
+        entry_pda: derived_entry_pda
       )
 
       # Seeds awarded are determined on-chain by the active Season's seed_schedule.
@@ -633,24 +665,25 @@ class ContestsController < ApplicationController
 
   # ── End Phantom contest-create helpers ─────────────────────────────────────
 
-  # Verify a Solana transaction signature exists on-chain and was successful.
-  # Prevents fake TX submissions from marking entries/contests as onchain.
-  def verify_solana_transaction!(signature)
-    raise "Transaction signature required" if signature.blank?
-
-    client = Solana::Vault.new.client
-    tx_info = client.get_transaction(signature)
-    raise "Transaction not found on-chain" unless tx_info
-
-    err = tx_info.dig("meta", "err")
-    return unless err
-
-    # err is structured like {"InstructionError" => [0, {"Custom" => 6002}]} for
-    # Anchor program errors. Surface the custom code so the operator knows what
-    # actually failed without grepping the explorer.
-    custom_code = err.dig("InstructionError", 1, "Custom") rescue nil
-    detail = custom_code ? "program error code #{custom_code}" : err.inspect
-    raise "Transaction failed on-chain (#{detail})"
+  # OPSEC-010: semantic verification of a confirmed Solana transaction.
+  # Delegates to Solana::TxVerifier, which fetches the TX from chain and
+  # asserts the instruction is the one we expected (program ID + Anchor
+  # discriminator + optional signer + optional writable PDA). Prevents
+  # `params[:tx_signature]` from being any successful TX the attacker has
+  # ever seen — it has to be the create_contest/enter/settle/etc. for the
+  # expected contest/entry/pubkey.
+  #
+  # `instruction:` is required; `signer:` and `writable:` are optional but
+  # every production caller should pass both.
+  def verify_solana_transaction!(signature, instruction:, signer: nil, writable: nil)
+    Solana::TxVerifier.verify!(
+      signature: signature,
+      instruction_name: instruction,
+      signer_pubkey: signer,
+      writable_pubkey: writable
+    )
+  rescue Solana::TxVerifier::VerificationError => e
+    raise e.message
   end
 
   def set_contest
