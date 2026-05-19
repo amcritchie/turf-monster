@@ -216,21 +216,37 @@ class ContestsController < ApplicationController
         active_count = @contest.entries.where(status: [:active, :complete]).count
         raise "Contest is full" if @contest.max_entries && active_count >= @contest.max_entries
 
+        # On-chain entries require a configured season (seed_schedule lives on its PDA).
+        # Catch the missing-season case early with a clear error instead of a cryptic
+        # Anchor AccountNotInitialized further down.
+        if @contest.onchain?
+          current_sid = SeasonConfig.current_season_id
+          raise "No active season configured. Set one at /admin/seasons before users can enter on-chain contests." if current_sid.to_i.zero?
+        end
+
         tx_signature = nil
         onchain_entry_id = nil
 
         if @contest.onchain? && @contest.entry_fee_cents > 0 && current_user.managed_wallet? && !current_user.phantom_wallet?
-          # Web2 / managed wallet: spend an entry token (which pre-funded the USDC at
-          # purchase time) then transfer the USDC on-chain. Token spend is in the same
-          # DB transaction as @contest.with_lock, so an on-chain failure rolls it back.
-          raise "No entry tokens. Buy at /tokens/buy" if current_user.entry_token_balance.zero?
-          current_user.spend_entry_token!(entry: entry)
+          # Web2 / managed wallet: consume an on-chain EntryTokenAccount via the new
+          # enter_contest_with_token instruction. Atomic — entry creation + token consume
+          # + seeds +65 happen in one TX. No USDC transfer (token IS the payment).
+          token = current_user.next_unconsumed_entry_token
+          raise "No entry tokens. Buy at /tokens/buy" unless token
+
+          entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
+          entry.save! if entry.entry_number_changed?
 
           vault = Solana::Vault.new
-          usdc_mint = Solana::Config::USDC_MINT
-          amount = @contest.entry_fee_cents * 10_000 # cents → USDC lamports (6 decimals)
-          result = vault.transfer_from_user(current_user, amount, mint: usdc_mint)
+          vault.ensure_user_account(current_user.solana_address) if current_user.solana_connected?
+          result = vault.enter_contest_with_token(
+            current_user.solana_address,
+            @contest.slug,
+            entry.entry_number,
+            token[:pda]
+          )
           tx_signature = result[:signature]
+          onchain_entry_id = result[:entry_pda]
         elsif @contest.onchain? && !onchain_session?
           # Offchain session entering onchain contest: blocking vault entry
           entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
@@ -331,7 +347,9 @@ class ContestsController < ApplicationController
         entry_pda: params[:entry_pda]
       )
 
-      seeds_earned = User::SEEDS_PER_ENTRY
+      # Seeds awarded are determined on-chain by the active Season's seed_schedule.
+      # Mirror that schedule here so the modal shows the same number the program awarded.
+      seeds_earned = Solana::Vault.new.seeds_for_entry(entry.entry_number)
       seeds_total = 0
       if current_user.solana_connected?
         begin

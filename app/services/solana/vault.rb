@@ -40,6 +40,17 @@ module Solana
       Transaction.find_pda([b("entry"), contest_id, wallet_bytes, entry_num_bytes], @program_id)
     end
 
+    def entry_token_pda(wallet_address, sequence)
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+      seq_bytes = [sequence].pack("Q<") # u64 LE — matches Anchor's `sequence.to_le_bytes()`
+      Transaction.find_pda([b("entry_token"), wallet_bytes, seq_bytes], @program_id)
+    end
+
+    def season_pda(season_id)
+      id_bytes = [season_id].pack("V") # u32 LE — matches Anchor's `season_id.to_le_bytes()`
+      Transaction.find_pda([b("season"), id_bytes], @program_id)
+    end
+
     # --- ATA helpers ---
 
     def admin_usdc_ata
@@ -483,8 +494,10 @@ module Solana
       { tx_signature: tx_sig, contest_pda: contest_pda_b58 }
     end
 
-    # Enter contest (admin signs, deducts from user balance onchain)
-    def enter_contest(wallet_address, contest_slug, entry_num)
+    # Enter contest (admin signs, deducts from user balance onchain).
+    # `season_id` defaults to SeasonConfig.current_season_id — the active season's
+    # seed_schedule drives how many seeds are awarded.
+    def enter_contest(wallet_address, contest_slug, entry_num, season_id: nil)
       admin = Keypair.admin
       contest_id = Digest::SHA256.digest(contest_slug)
       wallet_bytes = Keypair.decode_base58(wallet_address)
@@ -492,6 +505,8 @@ module Solana
       user_pda, _ = user_account_pda(wallet_address)
       c_pda, _ = contest_pda(contest_slug)
       e_pda, _ = entry_pda(contest_slug, wallet_address, entry_num)
+      season_id ||= SeasonConfig.current_season_id
+      s_pda, _ = season_pda(season_id)
 
       data = Transaction.anchor_discriminator("enter_contest") +
              Borsh.encode_u32(entry_num)
@@ -506,12 +521,53 @@ module Solana
           { pubkey: user_pda, is_signer: false, is_writable: true },
           { pubkey: c_pda, is_signer: false, is_writable: true },
           { pubkey: e_pda, is_signer: false, is_writable: true },
+          { pubkey: s_pda, is_signer: false, is_writable: false },
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
         data: data
       )
 
       signature = client.send_and_confirm(tx.serialize_base64)
+      { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
+    end
+
+    # Enter contest using an unconsumed on-chain entry token (turf-vault v0.10.0+).
+    # Atomic: creates the entry, consumes the token, awards seeds per the season's
+    # seed_schedule[entry_num.min(4)]. No USDC charged.
+    # `entry_token_pda_b58` is the base58 PDA of the EntryTokenAccount being consumed.
+    def enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58, season_id: nil)
+      admin = Keypair.admin
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+      vault_pda, _ = vault_state_pda
+      user_pda, _ = user_account_pda(wallet_address)
+      c_pda, _ = contest_pda(contest_slug)
+      e_pda, _ = entry_pda(contest_slug, wallet_address, entry_num)
+      token_pda_bytes = Keypair.decode_base58(entry_token_pda_b58)
+      season_id ||= SeasonConfig.current_season_id
+      s_pda, _ = season_pda(season_id)
+
+      data = Transaction.anchor_discriminator("enter_contest_with_token") +
+             Borsh.encode_u32(entry_num)
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: wallet_bytes, is_signer: false, is_writable: false },
+          { pubkey: vault_pda, is_signer: false, is_writable: false },
+          { pubkey: user_pda, is_signer: false, is_writable: true },
+          { pubkey: c_pda, is_signer: false, is_writable: true },
+          { pubkey: e_pda, is_signer: false, is_writable: true },
+          { pubkey: token_pda_bytes, is_signer: false, is_writable: true },
+          { pubkey: s_pda, is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      signature = client.send_and_confirm(tx.serialize_base64)
+      invalidate_entry_tokens_cache(wallet_address)
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
@@ -732,6 +788,152 @@ module Solana
       }
     end
 
+    # ── Entry tokens (turf-vault v0.9.0+) ────────────────────────────────────
+    # On-chain EntryTokenAccount PDAs per token. Source enum: 0=operator, 1=stripe, 2=moonpay.
+
+    ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2 }.freeze
+    ENTRY_TOKEN_LEN = 124 # bytes — 8 disc + 32 owner + 1 source + 64 source_ref + 1 consumed + 9 consumed_at + 8 created_at + 1 bump
+
+    # Admin mints an EntryTokenAccount for `wallet_address`. Auto-picks the next sequence
+    # if not supplied. source: symbol or u8; source_ref: arbitrary string, padded/truncated to 64 bytes.
+    def mint_entry_token(wallet_address:, source:, source_ref:, sequence: nil)
+      sequence ||= next_entry_token_sequence(wallet_address)
+      source_u8 = source.is_a?(Symbol) ? ENTRY_TOKEN_SOURCE.fetch(source) : source.to_i
+
+      admin = Keypair.admin
+      pda, _ = entry_token_pda(wallet_address, sequence)
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+
+      # Pad/truncate source_ref to exactly 64 bytes
+      ref_bytes = source_ref.to_s.b.bytes.first(64)
+      ref_bytes += [0] * (64 - ref_bytes.length)
+
+      data = Transaction.anchor_discriminator("mint_entry_token") +
+             Borsh.encode_u64(sequence) +
+             [source_u8].pack("C") +
+             ref_bytes.pack("C*")
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: wallet_bytes, is_signer: false, is_writable: false },
+          { pubkey: pda, is_signer: false, is_writable: true },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      signature = client.send_and_confirm(tx.serialize_base64)
+      invalidate_entry_tokens_cache(wallet_address)
+      { signature: signature, pda: Keypair.encode_base58(pda), sequence: sequence }
+    end
+
+    # List all on-chain EntryTokenAccounts owned by `wallet_address`. 60s cache.
+    # Returns array of hashes: { pda, owner, source, source_ref, consumed, consumed_at, created_at }.
+    def list_entry_tokens(wallet_address, commitment: "confirmed")
+      Rails.cache.fetch(entry_tokens_cache_key(wallet_address), expires_in: 60.seconds) do
+        owner_b58 = wallet_address
+        program_id_b58 = Keypair.encode_base58(@program_id)
+        result = client.get_program_accounts(
+          program_id_b58,
+          filters: [
+            { dataSize: ENTRY_TOKEN_LEN },
+            { memcmp: { offset: 8, bytes: owner_b58 } }
+          ],
+          commitment: commitment
+        )
+        (result || []).map { |account| decode_entry_token(account) }
+      end
+    end
+
+    # Next sequence number = current count of tokens for this user.
+    def next_entry_token_sequence(wallet_address)
+      list_entry_tokens(wallet_address).length
+    end
+
+    def invalidate_entry_tokens_cache(wallet_address)
+      Rails.cache.delete(entry_tokens_cache_key(wallet_address))
+    end
+
+    def entry_tokens_cache_key(wallet_address)
+      "entry_tokens:#{wallet_address}"
+    end
+
+    # ── Seasons (turf-vault v0.11.0+) ────────────────────────────────────────
+    # On-chain Season PDAs hold the per-season seed schedule that entry instructions
+    # use to award seeds (replaces the old hardcoded +65).
+
+    SEASON_LEN = 101 # bytes — 8 disc + 4 season_id + 32 name + 40 schedule + 8 start_at + 8 created_at + 1 bump
+    SEASON_DEFAULT_SCHEDULE = [25, 19, 14, 10, 7].freeze
+
+    # Admin creates an on-chain Season. `schedule` must be a 5-element array of u64.
+    # `name` is truncated/padded to 32 bytes. `start_at` defaults to now.
+    def create_season(season_id:, name:, schedule:, start_at: nil)
+      raise ArgumentError, "schedule must have 5 elements" unless schedule.is_a?(Array) && schedule.length == 5
+      schedule.each { |v| raise ArgumentError, "schedule values must be non-negative" if v.to_i.negative? }
+
+      start_at ||= Time.current.to_i
+      admin = Keypair.admin
+      pda, _ = season_pda(season_id)
+      vault_pda, _ = vault_state_pda
+
+      name_bytes = name.to_s.b.bytes.first(32)
+      name_bytes += [0] * (32 - name_bytes.length)
+
+      data = Transaction.anchor_discriminator("create_season") +
+             Borsh.encode_u32(season_id) +
+             name_bytes.pack("C*") +
+             schedule.map { |v| Borsh.encode_u64(v.to_i) }.join +
+             Borsh.encode_i64(start_at.to_i)
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: vault_pda, is_signer: false, is_writable: false },
+          { pubkey: pda, is_signer: false, is_writable: true },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      signature = client.send_and_confirm(tx.serialize_base64)
+      Rails.cache.delete("seasons:all")
+      { signature: signature, pda: Keypair.encode_base58(pda), season_id: season_id }
+    end
+
+    # List every Season account on the program. 60s cache.
+    def list_seasons(commitment: "confirmed")
+      Rails.cache.fetch("seasons:all", expires_in: 60.seconds) do
+        result = client.get_program_accounts(
+          Keypair.encode_base58(@program_id),
+          filters: [{ dataSize: SEASON_LEN }],
+          commitment: commitment
+        )
+        (result || []).map { |account| decode_season(account) }.sort_by { |s| s[:season_id] }
+      end
+    end
+
+    def get_season(season_id, commitment: "confirmed")
+      pda, _ = season_pda(season_id)
+      info = client.get_account_info(Keypair.encode_base58(pda), commitment: commitment)
+      return nil unless info&.dig("value")
+      decode_season({ "pubkey" => Keypair.encode_base58(pda), "account" => info["value"] })
+    end
+
+    # How many seeds will the on-chain program award for `entry_num` under the given
+    # (or current) season? Falls back to SEASON_DEFAULT_SCHEDULE if the season can't
+    # be read — keeps the modal response sensible even mid-deploy or in tests.
+    def seeds_for_entry(entry_num, season_id: nil)
+      season_id ||= SeasonConfig.current_season_id
+      season = season_id.to_i.positive? ? (get_season(season_id) rescue nil) : nil
+      schedule = season ? season[:seed_schedule] : SEASON_DEFAULT_SCHEDULE
+      schedule[[entry_num.to_i, 4].min]
+    end
+
     # Fetch native SOL and SPL token balances for a wallet address
     def fetch_wallet_balances(wallet_address)
       sol_result = client.get_balance(wallet_address)
@@ -774,6 +976,58 @@ module Solana
 
     def b(str)
       str.b
+    end
+
+    # Decode a single Season account from getProgramAccounts / getAccountInfo result.
+    def decode_season(account)
+      data = Base64.decode64(account.dig("account", "data", 0))
+      offset = 8 # skip discriminator
+      season_id, offset = Borsh.decode_u32(data, offset)
+      name_bytes = data[offset, 32]; offset += 32
+      name = name_bytes.bytes.take_while { |b| b != 0 }.pack("C*").force_encoding("UTF-8")
+      schedule = []
+      5.times do
+        v, offset = Borsh.decode_u64(data, offset)
+        schedule << v
+      end
+      start_at, offset = Borsh.decode_u64(data, offset)  # i64 stored as 8 bytes; for any real timestamp the sign bit is 0
+      created_at, offset = Borsh.decode_u64(data, offset)
+      {
+        pda: account["pubkey"],
+        season_id: season_id,
+        name: name,
+        seed_schedule: schedule,
+        start_at: start_at,
+        created_at: created_at
+      }
+    end
+
+    # Decode a single EntryTokenAccount from getProgramAccounts result.
+    # Anchor Option<i64> serialization: 1-byte tag (0=None, 1=Some), followed by 8-byte i64
+    # in either case — the payload slot is always allocated. We always advance 9 bytes.
+    def decode_entry_token(account)
+      data = Base64.decode64(account.dig("account", "data", 0))
+      offset = 8 # skip Anchor account discriminator
+      owner_bytes, offset = Borsh.decode_pubkey(data, offset)
+      source = data[offset].ord; offset += 1
+      ref_slice = data[offset, 64]; offset += 64
+      # source_ref is a 64-byte fixed array padded with 0x00 — trim trailing zeros for display
+      source_ref = ref_slice.bytes.take_while { |b| b != 0 }.pack("C*").force_encoding("UTF-8")
+      consumed = data[offset].ord == 1; offset += 1
+      consumed_at_tag = data[offset].ord; offset += 1
+      consumed_at_value, _ = Borsh.decode_u64(data, offset)
+      consumed_at = consumed_at_tag == 1 ? consumed_at_value : nil
+      offset += 8 # payload slot is always 8 bytes regardless of tag
+      created_at, offset = Borsh.decode_u64(data, offset)
+      {
+        pda: account["pubkey"],
+        owner: Keypair.encode_base58(owner_bytes),
+        source: source,
+        source_ref: source_ref,
+        consumed: consumed,
+        consumed_at: consumed_at,
+        created_at: created_at
+      }
     end
   end
 end

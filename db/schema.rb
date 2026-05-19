@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_17_160000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_18_192531) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -89,24 +89,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_17_160000) do
     t.index ["status"], name: "index_entries_on_status"
     t.index ["user_id", "contest_id"], name: "index_entries_on_user_id_and_contest_id"
     t.index ["user_id"], name: "index_entries_on_user_id"
-  end
-
-  create_table "entry_tokens", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.bigint "entry_id"
-    t.string "status", default: "purchased", null: false
-    t.string "source", null: false
-    t.string "source_ref"
-    t.integer "price_cents", default: 0, null: false
-    t.datetime "spent_at"
-    t.datetime "refunded_at"
-    t.datetime "expires_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["entry_id"], name: "index_entry_tokens_on_entry_id"
-    t.index ["source_ref"], name: "index_entry_tokens_on_source_ref"
-    t.index ["user_id", "status"], name: "index_entry_tokens_on_user_id_and_status"
-    t.index ["user_id"], name: "index_entry_tokens_on_user_id"
   end
 
   create_table "error_logs", force: :cascade do |t|
@@ -215,6 +197,14 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_17_160000) do
     t.index ["team_slug"], name: "index_players_on_team_slug"
   end
 
+  create_table "season_configs", force: :cascade do |t|
+    t.integer "current_season_id", default: 0, null: false
+    t.string "slug", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_season_configs_on_slug", unique: true
+  end
+
   create_table "selections", force: :cascade do |t|
     t.bigint "entry_id", null: false
     t.bigint "slate_matchup_id", null: false
@@ -262,6 +252,26 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_17_160000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_slates_on_slug", unique: true
+  end
+
+  create_table "stripe_purchases", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "stripe_customer_id"
+    t.string "stripe_session_id", null: false
+    t.string "stripe_charge_id"
+    t.integer "quantity", default: 1, null: false
+    t.integer "price_cents", null: false
+    t.string "status", default: "pending", null: false
+    t.text "mint_tx_signatures"
+    t.datetime "minted_at"
+    t.datetime "refunded_at"
+    t.string "refund_reason"
+    t.string "slug", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_stripe_purchases_on_slug", unique: true
+    t.index ["stripe_session_id"], name: "index_stripe_purchases_on_stripe_session_id", unique: true
+    t.index ["user_id"], name: "index_stripe_purchases_on_user_id"
   end
 
   create_table "teams", force: :cascade do |t|
@@ -352,11 +362,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_17_160000) do
   add_foreign_key "contests", "users"
   add_foreign_key "entries", "contests"
   add_foreign_key "entries", "users"
-  add_foreign_key "entry_tokens", "entries"
-  add_foreign_key "entry_tokens", "users"
   add_foreign_key "selections", "entries"
   add_foreign_key "selections", "slate_matchups"
   add_foreign_key "slate_matchups", "slates"
+  add_foreign_key "stripe_purchases", "users"
   add_foreign_key "transaction_logs", "users"
   add_foreign_key "users", "users", column: "invited_by_id"
 end

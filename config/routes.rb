@@ -164,6 +164,16 @@ Rails.application.routes.draw do
       member { get :manage }
     end
 
+    # Free entries (on-chain token minting console)
+    get  "free_entries",                       to: "free_entries#index",    as: :free_entries
+    post "free_entries/:user_slug/mint",       to: "free_entries#mint",     as: :mint_free_entries
+    post "free_entries/mint_all",              to: "free_entries#mint_all", as: :mint_all_free_entries
+
+    # Seasons (on-chain seed schedule template)
+    get  "seasons",                            to: "seasons#index",         as: :seasons
+    post "seasons",                            to: "seasons#create"
+    post "seasons/:season_id/set_current",     to: "seasons#set_current",   as: :set_current_season
+
     resources :games, only: [], param: :slug do
       member do
         post :record_goal, path: "goals"

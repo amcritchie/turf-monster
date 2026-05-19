@@ -5,7 +5,7 @@ class User < ApplicationRecord
   has_one_attached :avatar
   has_many :entries, dependent: :destroy
   has_many :transaction_logs, dependent: :destroy
-  has_many :entry_tokens, dependent: :destroy
+  has_many :stripe_purchases, dependent: :destroy
   belongs_to :inviter, class_name: "User", optional: true, foreign_key: :invited_by_id
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
@@ -159,7 +159,8 @@ class User < ApplicationRecord
   # Seeds live on the UserAccount PDA (on-chain). 25 seeds per contest entry.
   # Level = (seeds / 100) + 1. UI-derived, no DB column.
 
-  SEEDS_PER_ENTRY = 65
+  # SEEDS_PER_ENTRY removed in 2026-05-18 entry-tokens-onchain epic — seeds are now
+  # awarded per the on-chain Season's seed_schedule. Use Solana::Vault#seeds_for_entry.
   SEEDS_PER_LEVEL = 100
 
   def self.level_for(seeds)
@@ -181,19 +182,26 @@ class User < ApplicationRecord
     computed_level
   end
 
-  # --- Entry tokens (web2 contest-entry currency) ---
+  # --- Entry tokens (on-chain EntryTokenAccount PDAs, turf-vault v0.9.0+) ---
+  # Balance comes from on-chain RPC; consumption happens atomically inside the
+  # enter_contest_with_token Anchor instruction (no spend_entry_token! needed).
 
   def entry_token_balance
-    entry_tokens.purchased.count
+    return 0 unless solana_connected?
+    Solana::Vault.new.list_entry_tokens(solana_address).count { |t| !t[:consumed] }
+  rescue => e
+    Rails.logger.warn "entry_token_balance fetch failed for user=#{id}: #{e.message}"
+    0
   end
 
-  def spend_entry_token!(entry:)
-    with_lock do
-      token = entry_tokens.purchased.order(:created_at).first
-      raise "No entry tokens available" unless token
-      token.spend!(entry: entry)
-      token
-    end
+  # Returns the first unconsumed EntryTokenAccount PDA for this user, or nil.
+  # Used by ContestsController#enter to decide between USDC-funded and token-funded entry paths.
+  def next_unconsumed_entry_token
+    return nil unless solana_connected?
+    Solana::Vault.new.list_entry_tokens(solana_address).find { |t| !t[:consumed] }
+  rescue => e
+    Rails.logger.warn "next_unconsumed_entry_token fetch failed for user=#{id}: #{e.message}"
+    nil
   end
 
   private

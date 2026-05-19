@@ -629,5 +629,31 @@ GeoSetting.find_or_create_by!(app_name: "Turf Monster") do |gs|
 end
 puts "  Created GeoSetting (enabled: #{GeoSetting.current.enabled?})"
 
+# ─── Season (on-chain seed schedule, turf-vault v0.11.0+) ────
+# DB pointer is always set (cheap). On-chain Season creation is best-effort —
+# if turf-vault isn't deployed yet, the seed logs a warning and continues so
+# `bin/rails db:seed` works in any environment (CI, fresh dev, prod).
+SEASON_ID = 1
+SEASON_NAME = "World Cup 2026"
+SEASON_SCHEDULE = Solana::Vault::SEASON_DEFAULT_SCHEDULE # [25, 19, 14, 10, 7]
+
+SeasonConfig.set_current!(SEASON_ID)
+puts "  Set SeasonConfig.current_season_id = #{SEASON_ID}"
+
+begin
+  vault = Solana::Vault.new
+  if vault.get_season(SEASON_ID)
+    puts "  Season #{SEASON_ID} already on-chain (skipping mint)"
+  else
+    result = vault.create_season(season_id: SEASON_ID, name: SEASON_NAME, schedule: SEASON_SCHEDULE)
+    puts "  Created on-chain Season #{SEASON_ID} \"#{SEASON_NAME}\" #{SEASON_SCHEDULE.inspect}"
+    puts "    TX: #{result[:signature]}"
+  end
+rescue => e
+  puts "  ⚠️  Could not bootstrap on-chain Season: #{e.message}"
+  puts "     Deploy turf-vault first: cd ../turf-vault && anchor deploy --provider.cluster devnet"
+  puts "     Then re-run `bin/rails db:seed` to finish the on-chain bootstrap."
+end
+
 puts "Done! #{User.count} users, #{Slate.count} slates, #{Contest.count} contests, #{Entry.count} entries"
 puts "  #{Team.count} teams, #{Game.count} games, #{Player.count} players, #{SlateMatchup.count} matchups"

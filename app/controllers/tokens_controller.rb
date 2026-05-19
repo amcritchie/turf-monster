@@ -3,12 +3,12 @@ class TokensController < ApplicationController
   before_action :require_dev_mint_allowed, only: [:dev_mint]
 
   def buy
-    @packs = EntryToken::PACKS
+    @packs = StripePurchase::PACKS
   end
 
   def stripe_checkout
     quantity = params[:quantity].to_i
-    unless EntryToken::PACKS.key?(quantity)
+    unless StripePurchase::PACKS.key?(quantity)
       return redirect_to tokens_buy_path, alert: "Unknown pack quantity"
     end
     unless current_user.solana_connected?
@@ -18,10 +18,10 @@ class TokensController < ApplicationController
       return redirect_to tokens_buy_path, alert: "Card checkout isn't configured yet. Set STRIPE_SECRET_KEY and restart."
     end
 
-    price_cents = EntryToken.pack_price_cents(quantity)
+    price_cents = StripePurchase.pack_price_cents(quantity)
 
     rescue_and_log(target: current_user) do
-      session = Stripe::Checkout::Session.create(
+      session_params = {
         payment_method_types: ["card"],
         line_items: [{
           price_data: {
@@ -40,7 +40,13 @@ class TokensController < ApplicationController
           quantity: quantity,
           wallet_address: current_user.solana_address
         }
-      )
+      }
+      # Pre-fill the email field if we have one. Stripe rejects the request if
+      # both `customer` and `customer_email` are passed, so we only set this
+      # when there's no Stripe customer attached yet.
+      session_params[:customer_email] = current_user.email if current_user.email.present?
+
+      session = Stripe::Checkout::Session.create(session_params)
 
       redirect_to session.url, allow_other_host: true
     end
@@ -57,23 +63,31 @@ class TokensController < ApplicationController
     session_id = params[:session_id].to_s
     return render json: { ready: false }, status: :bad_request if session_id.blank?
 
-    tokens = current_user.entry_tokens.for_source_ref(session_id)
+    purchase = current_user.stripe_purchases.for_session(session_id).first
     render json: {
-      ready: tokens.exists?,
-      minted: tokens.count,
+      ready: purchase&.status == "minted",
+      minted: purchase&.tx_signatures&.length.to_i,
       balance: current_user.entry_token_balance
     }
   end
 
+  # Dev-only helper: mint tokens directly on-chain with source="dev" instead of going through Stripe.
   def dev_mint
     quantity = params[:quantity].to_i
-    unless EntryToken::PACKS.key?(quantity)
+    unless StripePurchase::PACKS.key?(quantity)
       return redirect_to tokens_buy_path, alert: "Unknown pack quantity"
     end
 
     rescue_and_log(target: current_user) do
-      EntryToken.purchase!(user: current_user, quantity: quantity, source: "dev", source_ref: "dev-#{SecureRandom.hex(4)}")
-      redirect_to tokens_buy_path, notice: "Minted #{quantity} test token#{'s' if quantity != 1}."
+      vault = Solana::Vault.new
+      quantity.times do |i|
+        vault.mint_entry_token(
+          wallet_address: current_user.solana_address,
+          source: :operator,
+          source_ref: "dev:#{SecureRandom.hex(4)}:#{i}"
+        )
+      end
+      redirect_to tokens_buy_path, notice: "Minted #{quantity} test token#{'s' if quantity != 1} on-chain."
     end
   rescue StandardError => e
     redirect_to tokens_buy_path, alert: "Dev mint failed: #{e.message}"
