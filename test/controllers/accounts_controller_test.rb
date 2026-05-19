@@ -69,18 +69,9 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
-  test "update_level updates user level" do
-    log_in_as @alex
-    patch update_level_account_path, params: { seeds_total: 250 }, as: :json
-    assert_response :success
-    json = JSON.parse(response.body)
-    assert json["success"]
-    assert_equal 3, json["level"]
-    assert_equal 3, @alex.reload.level
-  end
-
-  test "update_level requires login" do
-    patch update_level_account_path, params: { seeds_total: 100 }, as: :json
-    assert_response :redirect
-  end
+  # OPSEC-007: update_level route + action removed. Previously accepted
+  # client-supplied seeds_total which trivially inflated user level. Level
+  # is now read directly from on-chain seeds (cached navbar localStorage
+  # is populated from the server's authoritative confirm_onchain_entry
+  # response). No replacement test needed — there's no longer a write path.
 end

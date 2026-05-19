@@ -3,6 +3,12 @@ class UsersController < ApplicationController
 
   def add_funds
     rescue_and_log(target: current_user) do
+      # OPSEC-020: this action calls vault.fund_user (admin transfers $100 USDC
+      # to the requester). Admin-only via before_action but had NO devnet
+      # guard — a compromised admin account could have drained the bot on
+      # mainnet. Belt-and-suspenders with both Rails.env and SOLANA_NETWORK.
+      raise "add_funds is production-disabled" if Rails.env.production?
+      raise "add_funds only available on Devnet" unless Solana::Config.devnet?
       raise "No wallet connected" unless current_user.solana_connected?
 
       vault = Solana::Vault.new

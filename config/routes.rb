@@ -81,7 +81,7 @@ Rails.application.routes.draw do
     post :unlink_google
     post :change_password
     patch :set_inviter
-    patch :update_level
+    # OPSEC-007: removed `patch :update_level` — client-supplied seeds_total.
   end
 
   resources :slates, only: [:index, :show] do

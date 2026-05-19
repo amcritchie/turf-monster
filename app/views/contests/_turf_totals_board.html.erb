@@ -34,8 +34,7 @@
   loggedIn: logged_in?,
   userWallet: current_user&.solana_address.to_s,
   phantomWallet: current_user&.phantom_wallet? || false,
-  seedsPerLevel: User::SEEDS_PER_LEVEL,
-  updateLevelPath: update_level_account_path
+  seedsPerLevel: User::SEEDS_PER_LEVEL
 }.to_json.html_safe %>
 </script>
 
@@ -454,7 +453,6 @@ window.selectionBoard = function() {
       this.submitting = true;
 
       var seedsPerLevel = cfg.seedsPerLevel;
-      var updateLevelPath = cfg.updateLevelPath;
 
       try {
         if (directOnchain) {
@@ -533,12 +531,9 @@ window.selectionBoard = function() {
                 oldPct: oldPct,
                 oldToward: oldSeeds % seedsPerLevel
               }));
-              // Server-side level update can fire immediately (not user-visible)
-              fetch(updateLevelPath, {
-                method: 'PATCH',
-                headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ seeds_total: confirmData.seeds_total })
-              }).catch(function(err) { console.warn('Level update failed:', err); });
+              // OPSEC-007: removed client→server PATCH /account/update_level. The
+              // navbar reads seeds/level from `seedsNavbar` localStorage above —
+              // already populated from `confirmData` which the server returned.
               // Delay the visible navbar animation 2s so the user sees the +X seeds badge in the modal first
               setTimeout(function() {
                 window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: true, oldLevel: oldLevel, oldPct: oldPct, newLevel: newLevel, progress: newPct } }));

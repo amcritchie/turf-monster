@@ -96,16 +96,12 @@ class AccountsController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
-  def update_level
-    seeds_total = params[:seeds_total].to_i
-
-    rescue_and_log(target: current_user) do
-      current_user.update_level_from_seeds!(seeds_total)
-      render json: { success: true, level: current_user.level }
-    end
-  rescue StandardError => e
-    render json: { error: e.message }, status: :unprocessable_entity
-  end
+  # OPSEC-007: removed `update_level` action. Previously accepted client-supplied
+  # `seeds_total` and persisted level from it — trivial to inflate via curl. The
+  # navbar already reads on-chain seeds via `seedsNavbar` localStorage written
+  # by `confirm_onchain_entry`'s response (authoritative server figure). The
+  # cached `users.level` column is now best-effort display only; recompute
+  # server-side from `Solana::Vault#sync_balance` when truly needed.
 
   def change_password
     rescue_and_log(target: current_user) do

@@ -22,6 +22,9 @@ class FaucetController < ApplicationController
     end
 
     rescue_and_log(target: current_user) do
+      # OPSEC-020: defense-in-depth. Solana::Config.devnet? reads SOLANA_NETWORK
+      # env, which can be misconfigured. Belt-and-suspenders the Rails env.
+      raise "Faucet is production-disabled" if Rails.env.production?
       raise "Faucet only available on Devnet" unless Solana::Config.devnet?
       raise "No Solana wallet connected" unless current_user.solana_connected?
 

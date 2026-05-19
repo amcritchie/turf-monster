@@ -1,3 +1,21 @@
+# OPSEC-013: any rake task that mutates on-chain state requires explicit
+# opt-in in production. Prevents an accidental `bin/rails solana:init_vault
+# FORCE_CLOSE=true` on a production console from bricking the live vault.
+# The opt-in is intentionally clunky — CONFIRM_PROD=yes — so it can't be
+# tab-completed or muscle-memoried.
+def require_solana_prod_confirmation!(task_name)
+  return unless Rails.env.production?
+  return if ENV["CONFIRM_PROD"] == "yes"
+  abort <<~MSG
+    Refusing to run `#{task_name}` in production without explicit confirmation.
+
+    This task mutates on-chain state. To run it in production, re-invoke with:
+      CONFIRM_PROD=yes bin/rails #{task_name} ...
+
+    See OPSEC-013 in the pre-prod audit doc.
+  MSG
+end
+
 namespace :solana do
   desc "Initialize vault on Devnet (run once)"
   task init_vault: :environment do
@@ -27,6 +45,8 @@ namespace :solana do
     puts "  USDT: #{Solana::Config::USDT_MINT}"
 
     if ENV["INIT"] == "true"
+      require_solana_prod_confirmation!("solana:init_vault INIT=true")
+
       signers_str = ENV["SIGNERS"]
       unless signers_str
         puts "\nERROR: SIGNERS env var required (comma-separated base58 signer addresses)"
@@ -50,6 +70,8 @@ namespace :solana do
       puts "  Signature: #{result[:signature]}"
       puts "  Vault PDA: #{result[:vault_pda]}"
     elsif ENV["FORCE_CLOSE"] == "true"
+      require_solana_prod_confirmation!("solana:init_vault FORCE_CLOSE=true")
+
       puts "\nForce-closing vault (migration)..."
       result = vault.force_close_vault
       puts "Vault force-closed!"
@@ -156,6 +178,11 @@ namespace :solana do
 
   desc "Mint test USDC to admin wallet (Devnet only)"
   task mint_usdc: :environment do
+    # OPSEC-020 / OPSEC-013: hard-disable on production. This task uses
+    # mint authority that only the operator holds on devnet test mints —
+    # on real mainnet USDC the call would fail, but defense-in-depth.
+    abort "solana:mint_usdc is devnet-only (see OPSEC-020)" if Rails.env.production?
+
     amount_dollars = (ENV["AMOUNT"] || "100").to_f
     amount_lamports = Solana::Config.dollars_to_lamports(amount_dollars)
 
@@ -291,6 +318,8 @@ namespace :solana do
 
   desc "Migrate UserAccount PDAs to current struct size"
   task migrate_accounts: :environment do
+    require_solana_prod_confirmation!("solana:migrate_accounts")
+
     vault = Solana::Vault.new
 
     if ENV["ADDRESS"]

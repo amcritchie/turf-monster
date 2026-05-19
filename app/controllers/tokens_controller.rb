@@ -101,7 +101,12 @@ class TokensController < ApplicationController
   end
 
   def require_dev_mint_allowed
-    return if current_user&.admin? && Solana::Config.devnet?
+    # OPSEC-020: triple gate — admin AND devnet config AND non-production Rails
+    # env. dev_mint mints real on-chain entry tokens for free; one
+    # mis-configured env var (or one stolen admin session) on mainnet would
+    # be unlimited free tokens. The route should also be removed from
+    # config/routes.rb when Rails.env.production?; this is defense-in-depth.
+    return if current_user&.admin? && Solana::Config.devnet? && !Rails.env.production?
     redirect_to tokens_buy_path, alert: "Dev mint is admin + devnet only."
   end
 end

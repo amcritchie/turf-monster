@@ -1,6 +1,16 @@
 module Solana
   module Config
-    PROGRAM_ID = ENV.fetch("SOLANA_PROGRAM_ID", "7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J")
+    # OPSEC-012: `SOLANA_PROGRAM_ID` required in production. Previously fell
+    # back to the orphaned `7Hy8…r2J` (which we no longer control on devnet
+    # and doesn't exist on mainnet). A missing env var would have silently
+    # routed every TX to a non-existent program — or worse, to whatever an
+    # attacker might deploy at that address on mainnet. Dev/test default to
+    # the current devnet program ID; prod must set it explicitly.
+    PROGRAM_ID = if Rails.env.production?
+      ENV.fetch("SOLANA_PROGRAM_ID") { raise "SOLANA_PROGRAM_ID required in production (see OPSEC-012)" }
+    else
+      ENV.fetch("SOLANA_PROGRAM_ID", "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT")
+    end
     RPC_URL = ENV.fetch("SOLANA_RPC_URL", "https://api.devnet.solana.com")
     NETWORK = ENV.fetch("SOLANA_NETWORK", "devnet")
 
