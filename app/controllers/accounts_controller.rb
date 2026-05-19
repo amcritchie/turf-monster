@@ -39,8 +39,30 @@ class AccountsController < ApplicationController
   def update
     @user = current_user
     rescue_and_log(target: @user) do
-      @user.update!(account_params)
-      redirect_to account_path, notice: "Account updated."
+      # OPSEC-046: email changes are a re-auth event. Require the current
+      # password (or proof of an unverified pre-change state, see below)
+      # before accepting. Also reset email_verified_at so the new address
+      # must be re-verified, and notify the OLD address as an out-of-band
+      # alert in case the change wasn't initiated by the legit user.
+      new_params = account_params
+      email_changing = new_params[:email].present? && new_params[:email].to_s.downcase != @user.email.to_s.downcase
+      old_email = @user.email
+
+      if email_changing
+        if @user.has_password? && !@user.authenticate(params[:current_password].to_s)
+          flash.now[:alert] = "Confirm your current password to change email."
+          render :show, status: :unprocessable_entity and return
+        end
+        new_params = new_params.merge(email_verified_at: nil)
+      end
+
+      @user.update!(new_params)
+
+      if email_changing && old_email.present?
+        UserMailer.email_change_notification(@user, old_email, @user.email).deliver_later
+      end
+
+      redirect_to account_path, notice: email_changing ? "Account updated. Verify your new email — link sent to #{@user.email}." : "Account updated."
     end
   rescue StandardError => e
     flash.now[:alert] = "Failed to update account."
@@ -114,6 +136,13 @@ class AccountsController < ApplicationController
       end
 
       current_user.update!(password: params[:new_password], password_confirmation: params[:new_password_confirmation])
+
+      # OPSEC-045: rotate the session token so any OTHER live session
+      # (stolen cookie on a different device) loses access. Update THIS
+      # session's cookie to the new token so the legit user stays signed in.
+      new_token = current_user.regenerate_session_token!
+      session[:session_token] = new_token
+
       redirect_to account_path, notice: "Password updated."
     end
   rescue StandardError => e

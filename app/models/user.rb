@@ -18,6 +18,7 @@ class User < ApplicationRecord
   validate :has_authentication_method
 
   before_save :set_name_parts, if: -> { name_changed? }
+  before_create :set_initial_session_token  # OPSEC-045
   after_create :generate_managed_wallet!
 
   # --- Class methods ---
@@ -151,6 +152,20 @@ class User < ApplicationRecord
 
   def has_password?
     password_digest.present? && password_digest != ""
+  end
+
+  # OPSEC-045: rotate the session-binding token. Call after any action
+  # that should invalidate other live sessions (password change today;
+  # consider hooking on email change + 2FA disable later). Returns the
+  # new token so callers can update session[:session_token] in step.
+  def regenerate_session_token!
+    new_token = SecureRandom.hex(32)
+    update_column(:session_token, new_token)
+    new_token
+  end
+
+  def set_initial_session_token
+    self.session_token ||= SecureRandom.hex(32)
   end
 
   def has_email?

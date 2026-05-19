@@ -4,10 +4,21 @@ class ApplicationController < ActionController::Base
 
   allow_browser versions: :modern
 
+  before_action :verify_session_token  # OPSEC-045
   before_action :set_current_context
   before_action :detect_geo_state
   before_action :require_profile_completion
   helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?
+
+  # OPSEC-045: extend the engine's set_app_session to also bind a per-user
+  # session_token in the cookie. The verify_session_token before_action
+  # compares the cookie token to user.session_token on every request —
+  # mismatch → forced logout, which is how password rotation kicks out
+  # stolen sessions.
+  def set_app_session(user)
+    super
+    session[:session_token] = user.session_token
+  end
 
   private
 
@@ -17,6 +28,24 @@ class ApplicationController < ActionController::Base
     Current.user = current_user if logged_in?
   rescue
     nil # context is best-effort; never break the request path
+  end
+
+  # OPSEC-045: enforces session-token binding. Runs early so a stale session
+  # gets cleared before any downstream code reads current_user.
+  def verify_session_token
+    return unless logged_in?
+    user_token   = current_user.session_token
+    cookie_token = session[:session_token]
+
+    return if user_token.present? && user_token == cookie_token
+
+    Rails.logger.info("[opsec-045] session_token mismatch user_id=#{current_user.id} — forcing re-login")
+    @current_user = nil
+    clear_app_session
+    respond_to do |format|
+      format.html { redirect_to login_path, alert: "Your session expired. Please sign in again." }
+      format.json { render json: { error: "session expired" }, status: :unauthorized }
+    end
   end
 
   # True when the current session was authenticated via Solana wallet signature

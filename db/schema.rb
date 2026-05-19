@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_19_202205) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_19_211801) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -373,10 +373,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_202205) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "email_verified_at"
+    t.string "session_token"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"
     t.index ["provider", "uid"], name: "index_users_on_provider_and_uid", unique: true, where: "(provider IS NOT NULL)"
+    t.index ["session_token"], name: "index_users_on_session_token"
     t.index ["slug"], name: "index_users_on_slug", unique: true
     t.index ["web2_solana_address"], name: "index_users_on_web2_solana_address", unique: true, where: "(web2_solana_address IS NOT NULL)"
     t.index ["web3_solana_address"], name: "index_users_on_web3_solana_address", unique: true, where: "(web3_solana_address IS NOT NULL)"

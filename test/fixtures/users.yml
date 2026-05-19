@@ -5,6 +5,7 @@ alex:
 
   password_digest: <%= BCrypt::Password.create("password") %>
   role: admin
+  session_token: <%= SecureRandom.hex(32) %>
 
 jordan:
   name: Jordan
@@ -12,6 +13,7 @@ jordan:
   email: jordan@mcritchie.studio
 
   password_digest: <%= BCrypt::Password.create("password") %>
+  session_token: <%= SecureRandom.hex(32) %>
 
 sam:
   name: Sam
@@ -20,3 +22,4 @@ sam:
 
   password_digest: <%= BCrypt::Password.create("password") %>
   web3_solana_address: foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds
+  session_token: <%= SecureRandom.hex(32) %>
