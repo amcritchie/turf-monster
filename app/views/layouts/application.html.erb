@@ -134,6 +134,7 @@
             seedsEarned: 0,
             seedsTotal: 0,
             seedsLevel: 0,
+            lobbyUrl: null,
             show: function(title, message) {
               this.visible = true;
               this.state = 'processing';
@@ -146,6 +147,7 @@
               this.seedsEarned = 0;
               this.seedsTotal = 0;
               this.seedsLevel = 0;
+              this.lobbyUrl = null;
               this._clearCountdown();
             },
             success: function(tx, message, autoCloseSeconds) {

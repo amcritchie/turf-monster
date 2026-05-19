@@ -533,19 +533,28 @@ window.selectionBoard = function() {
                 oldPct: oldPct,
                 oldToward: oldSeeds % seedsPerLevel
               }));
-              window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: true, oldPct: oldPct, newLevel: newLevel, progress: newPct } }));
+              // Server-side level update can fire immediately (not user-visible)
               fetch(updateLevelPath, {
                 method: 'PATCH',
                 headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seeds_total: confirmData.seeds_total })
               }).catch(function(err) { console.warn('Level update failed:', err); });
+              // Delay the visible navbar animation 2s so the user sees the +X seeds badge in the modal first
+              setTimeout(function() {
+                window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: true, oldLevel: oldLevel, oldPct: oldPct, newLevel: newLevel, progress: newPct } }));
+              }, 2000);
             } else {
-              window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: false, level: newLevel, progress: newPct } }));
+              setTimeout(function() {
+                window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: false, level: newLevel, progress: newPct } }));
+              }, 2000);
             }
           }
-          Alpine.store('solanaModal').success(txSig, 'Entry submitted onchain');
+          // 999s auto-close while reviewing seeds animation. Restore to a normal countdown when shipping (e.g. 8s).
+          var modal = Alpine.store('solanaModal');
+          modal.success(txSig, 'Entry Confirmed', 999);
+          modal.title = 'Good Luck';
+          modal.lobbyUrl = confirmData.redirect || ('/c/' + this.contestId + '/lobby');
           refreshBalanceDelayed();
-          Alpine.store('solanaModal').onClose = function() { window.location.href = confirmData.redirect || '/'; };
 
         } else {
           Alpine.store('solanaModal').show('Submitting Entry', 'Processing your entry...');
