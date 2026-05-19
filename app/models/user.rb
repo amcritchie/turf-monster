@@ -151,7 +151,12 @@ class User < ApplicationRecord
       web2_solana_address: keypair.to_base58,
       encrypted_web2_solana_private_key: keypair.encrypt
     )
-    EnsureAtaJob.perform_later(keypair.to_base58)
+    # OPSEC-044: removed proactive EnsureAtaJob.perform_later(keypair.to_base58).
+    # Pre-creating an ATA at signup spends admin SOL rent on every signup —
+    # a sybil farm via solana_sessions#verify could drain admin SOL on
+    # accounts that never deposit. ATAs are now created lazily by the code
+    # paths that actually need them (Vault#fund_user, #transfer_from_user,
+    # #transfer_spl all call ensure_ata internally before use).
     keypair
   end
 

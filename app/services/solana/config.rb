@@ -74,12 +74,24 @@ module Solana
     end
 
     # Raises Solana::Config::IdlMismatchError if the committed IDL's hash
-    # doesn't match EXPECTED_IDL_HASH. No-op when either side is empty (dev
-    # before pinning, missing IDL file).
+    # doesn't match EXPECTED_IDL_HASH.
+    #
+    # OPSEC-014: in production, BOTH EXPECTED_IDL_HASH being set AND the IDL
+    # file being present are required — fails closed. In dev/test we still
+    # short-circuit on blank/missing because local iteration is allowed
+    # against an older IDL.
     def self.verify_idl!
-      return if EXPECTED_IDL_HASH.blank?
+      if EXPECTED_IDL_HASH.blank?
+        raise IdlMismatchError, "EXPECTED_IDL_HASH required in production (see OPSEC-014)" if Rails.env.production?
+        return
+      end
+
       actual = idl_hash
-      return if actual.nil?  # warn-via-log handled in the boot hook
+      if actual.nil?
+        raise IdlMismatchError, "#{IDL_PATH} not found — IDL must be committed in production (see OPSEC-014)" if Rails.env.production?
+        return
+      end
+
       return if actual == EXPECTED_IDL_HASH
 
       raise IdlMismatchError, <<~MSG
