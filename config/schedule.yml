@@ -11,3 +11,9 @@ solana_reconcile:
   class: Solana::ReconcileJob
   description: Reconcile DB user balances + contest state against on-chain truth. Discrepancies are written to ErrorLog and (if RECONCILER_ALERT_WEBHOOK is set) posted to that webhook.
   queue: default
+
+outbound_request_sweeper:
+  cron: "17 4 * * *"     # daily at 04:17 UTC (off-peak)
+  class: OutboundRequestSweeperJob
+  description: Trim outbound_requests audit table. Successful rows kept 90 days, failed rows 180 days.
+  queue: default

@@ -13,14 +13,34 @@ module Webhooks
       begin
         event = Stripe::Webhook.construct_event(payload, sig_header, webhook_secret)
       rescue JSON::ParserError
+        Rails.logger.warn "[tokens] webhook.bad_json"
         return head :bad_request
       rescue Stripe::SignatureVerificationError
+        Rails.logger.warn "[tokens] webhook.bad_signature"
         return head :bad_request
       end
 
+      Rails.logger.info "[tokens] webhook.received type=#{event.type} id=#{event.id} livemode=#{event.livemode}"
+
       case event.type
       when "checkout.session.completed"
-        handle_checkout_completed(event.data.object)
+        # Dump key fields from the event payload (not the full blob — Stripe sessions are huge).
+        s = event.data.object
+        TokensLogger.dump("webhook.event_payload", {
+          session_id:     s.id,
+          payment_status: s.payment_status,
+          status:         s.status,
+          amount_total:   s.amount_total,
+          currency:       s.currency,
+          livemode:       s.livemode,
+          mode:           s.mode,
+          metadata:       s.metadata.to_h,
+          customer_email: s.customer_email,
+          payment_intent: s.payment_intent
+        })
+        handle_checkout_completed(s)
+      else
+        Rails.logger.info "[tokens] webhook.ignored type=#{event.type}"
       end
 
       head :ok
@@ -28,21 +48,36 @@ module Webhooks
 
     private
 
-    def handle_checkout_completed(session)
-      # Idempotency: skip if already processed
-      stripe_session_id = session.id
-      return if TransactionLog.exists?(metadata: { "stripe_session_id" => stripe_session_id })
+    def handle_checkout_completed(session_from_event)
+      stripe_session_id = session_from_event.id
+      kind = session_from_event.metadata["kind"] || "deposit"
+      sid_short = stripe_session_id[0, 24]
+      Rails.logger.info "[tokens] webhook.checkout_completed sid=#{sid_short}... kind=#{kind}"
 
+      # Re-fetch from Stripe + validate payment_status / amount / livemode / kind
+      # before doing anything. Signed payload only proves authenticity; this proves
+      # the payment actually cleared and the data matches what we expected.
+      result = StripeCheckoutValidator.new(stripe_session_id, kind: kind).call
+
+      unless result.ok?
+        Rails.logger.warn "[tokens] webhook.validator_rejected sid=#{sid_short}... reason=#{result.reason}"
+        return
+      end
+
+      # Use the re-fetched session — authoritative.
+      session        = result.session
       user_id        = session.metadata["user_id"]
       wallet_address = session.metadata["wallet_address"]
+      Rails.logger.info "[tokens] webhook.validator_ok user=#{user_id} qty=#{session.metadata["quantity"]} amount=#{session.amount_total}"
 
-      if session.metadata["kind"] == "tokens"
+      if kind == "tokens"
         TokenPurchaseJob.perform_later(
           user_id: user_id,
           quantity: session.metadata["quantity"].to_i,
           wallet_address: wallet_address,
           stripe_session_id: stripe_session_id
         )
+        Rails.logger.info "[tokens] webhook.job_enqueued sid=#{sid_short}..."
       else
         StripeDepositJob.perform_later(
           user_id: user_id,

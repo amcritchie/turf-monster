@@ -1,0 +1,55 @@
+<div class="max-w-4xl mx-auto px-4">
+  <%= link_to "← Back to outbound requests", admin_outbound_requests_path, class: "text-sm text-secondary hover:text-primary" %>
+  <h1 class="text-2xl font-extrabold text-heading mt-2 mb-1">Outbound Request #<%= @outbound_request.id %></h1>
+  <p class="text-secondary text-sm mb-6">
+    <span class="font-mono"><%= @outbound_request.method %> <%= @outbound_request.endpoint %></span>
+    · <%= @outbound_request.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") %>
+  </p>
+
+  <%# -- Top facts grid -- %>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="card p-4">
+      <p class="label-upper">Service</p>
+      <p class="font-mono text-lg text-heading"><%= @outbound_request.service %></p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">Status</p>
+      <p class="font-mono text-lg <%= @outbound_request.failed? ? 'text-red-400' : 'text-primary' %>">
+        <%= @outbound_request.status_code || (@outbound_request.failed? ? "error" : "—") %>
+      </p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">Duration</p>
+      <p class="font-mono text-lg text-heading"><%= @outbound_request.duration_ms %> ms</p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">User</p>
+      <p class="font-mono text-lg text-heading"><%= @outbound_request.user_id || "—" %></p>
+    </div>
+  </div>
+
+  <% if @outbound_request.failed? %>
+    <div class="card p-4 mb-6 border border-red-500/30 bg-red-500/5">
+      <p class="label-upper text-red-400">Error</p>
+      <p class="font-mono text-sm text-red-300 mt-1"><%= @outbound_request.error_class %></p>
+      <pre class="font-mono text-xs text-red-300/80 mt-2 whitespace-pre-wrap"><%= @outbound_request.error_message %></pre>
+    </div>
+  <% end %>
+
+  <% if @outbound_request.source_type.present? %>
+    <div class="card p-4 mb-6">
+      <p class="label-upper">Source</p>
+      <p class="font-mono text-sm text-heading"><%= @outbound_request.source_type %> #<%= @outbound_request.source_id %></p>
+    </div>
+  <% end %>
+
+  <div class="card p-4 mb-6">
+    <p class="label-upper mb-2">Request body</p>
+    <pre class="font-mono text-xs text-body whitespace-pre-wrap break-all"><%= JSON.pretty_generate(@outbound_request.request_body || {}) %></pre>
+  </div>
+
+  <div class="card p-4 mb-6">
+    <p class="label-upper mb-2">Response body</p>
+    <pre class="font-mono text-xs text-body whitespace-pre-wrap break-all"><%= JSON.pretty_generate(@outbound_request.response_body || {}) %></pre>
+  </div>
+</div>

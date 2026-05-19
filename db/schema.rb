@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_18_192531) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_19_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -165,6 +165,27 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_18_192531) do
     t.index ["owner_type", "owner_id", "purpose", "variant"], name: "idx_image_caches_owner_purpose_variant", unique: true
     t.index ["owner_type", "owner_id"], name: "index_image_caches_on_owner"
     t.index ["s3_key"], name: "index_image_caches_on_s3_key", unique: true
+  end
+
+  create_table "outbound_requests", force: :cascade do |t|
+    t.string "service", null: false
+    t.string "method"
+    t.string "endpoint"
+    t.jsonb "request_body", default: {}
+    t.jsonb "response_body", default: {}
+    t.integer "status_code"
+    t.integer "duration_ms"
+    t.string "error_class"
+    t.text "error_message"
+    t.string "source_type"
+    t.bigint "source_id"
+    t.bigint "user_id"
+    t.datetime "created_at", null: false
+    t.index ["created_at"], name: "index_outbound_requests_on_created_at"
+    t.index ["error_class"], name: "index_outbound_requests_on_error_class", where: "(error_class IS NOT NULL)"
+    t.index ["service", "created_at"], name: "index_outbound_requests_on_service_and_created_at"
+    t.index ["source_type", "source_id"], name: "index_outbound_requests_on_source_type_and_source_id"
+    t.index ["user_id"], name: "index_outbound_requests_on_user_id", where: "(user_id IS NOT NULL)"
   end
 
   create_table "pending_transactions", force: :cascade do |t|

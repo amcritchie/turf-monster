@@ -76,6 +76,7 @@ GEM
       tzinfo (~> 2.0, >= 2.0.5)
     addressable (2.8.9)
       public_suffix (>= 2.0.2, < 8.0)
+    amazing_print (2.0.0)
     ast (2.4.3)
     aws-eventstream (1.4.0)
     aws-partitions (1.1249.0)
@@ -452,6 +453,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  amazing_print
   aws-sdk-s3
   bcrypt (~> 3.1.7)
   bootsnap

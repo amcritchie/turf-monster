@@ -1,0 +1,84 @@
+<div class="max-w-7xl mx-auto px-4">
+  <h1 class="text-2xl font-extrabold text-heading mb-2">Outbound Requests</h1>
+  <p class="text-secondary text-sm mb-6">Audit log of every Stripe / Solana RPC call. Newest first, 200 rows max.</p>
+
+  <%# -- Summary -- %>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="card p-4">
+      <p class="label-upper">Total</p>
+      <p class="font-mono text-2xl text-heading"><%= @summary[:total] %></p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">Last 24h</p>
+      <p class="font-mono text-2xl text-heading"><%= @summary[:last_24h] %></p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">Failed 24h</p>
+      <p class="font-mono text-2xl <%= @summary[:failed_24h] > 0 ? 'text-red-400' : 'text-heading' %>"><%= @summary[:failed_24h] %></p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">By Service (24h)</p>
+      <p class="font-mono text-xs text-secondary"><%= @summary[:by_service].map { |k, v| "#{k}: #{v}" }.join(" · ") %></p>
+    </div>
+  </div>
+
+  <%# -- Filters -- %>
+  <%= form_with url: admin_outbound_requests_path, method: :get, local: true, class: "flex flex-wrap items-end gap-3 mb-6" do %>
+    <div>
+      <label class="label-upper block mb-1">Service</label>
+      <%= select_tag :service, options_for_select([["all", ""], *OutboundRequest::SERVICES.map { |s| [s, s] }], params[:service]), class: "input-field" %>
+    </div>
+    <div class="flex items-center gap-2 pb-2">
+      <%= check_box_tag :failed_only, "1", params[:failed_only] == "1" %>
+      <label for="failed_only" class="text-sm text-secondary">Failed only</label>
+    </div>
+    <div>
+      <label class="label-upper block mb-1">Since (UTC)</label>
+      <%= text_field_tag :since, params[:since], placeholder: "2026-05-19 00:00", class: "input-field" %>
+    </div>
+    <%= submit_tag "Filter", class: "btn btn-primary" %>
+    <%= link_to "Clear", admin_outbound_requests_path, class: "btn btn-outline" %>
+  <% end %>
+
+  <%# -- Table -- %>
+  <div class="card overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-subtle text-left text-muted">
+          <th class="px-3 py-2">Time</th>
+          <th class="px-3 py-2">Service</th>
+          <th class="px-3 py-2">Method / Endpoint</th>
+          <th class="px-3 py-2">Status</th>
+          <th class="px-3 py-2">Dur</th>
+          <th class="px-3 py-2">Source</th>
+          <th class="px-3 py-2">User</th>
+          <th class="px-3 py-2">Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @outbound_requests.each do |req| %>
+          <tr class="border-b border-subtle <%= 'bg-red-500/5' if req.failed? %>">
+            <td class="px-3 py-2 font-mono text-xs text-muted"><%= req.created_at.strftime("%m/%d %H:%M:%S") %></td>
+            <td class="px-3 py-2"><span class="badge"><%= req.service %></span></td>
+            <td class="px-3 py-2 font-mono text-xs"><%= "#{req.method} #{req.endpoint}".truncate(60) %></td>
+            <td class="px-3 py-2 font-mono text-xs">
+              <% if req.status_code %>
+                <span class="<%= req.status_code >= 400 ? 'text-red-400' : 'text-primary' %>"><%= req.status_code %></span>
+              <% else %>
+                <span class="text-muted">—</span>
+              <% end %>
+            </td>
+            <td class="px-3 py-2 font-mono text-xs text-secondary"><%= req.duration_ms %>ms</td>
+            <td class="px-3 py-2 text-xs"><%= req.source_type %><%= "##{req.source_id}" if req.source_id %></td>
+            <td class="px-3 py-2 text-xs"><%= req.user_id %></td>
+            <td class="px-3 py-2 text-xs text-red-400"><%= req.error_class %></td>
+            <td class="px-3 py-2"><%= link_to "Show", admin_outbound_request_path(req), class: "text-primary hover:underline text-xs" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+    <% if @outbound_requests.empty? %>
+      <p class="text-center text-muted py-8">No outbound requests match these filters.</p>
+    <% end %>
+  </div>
+</div>

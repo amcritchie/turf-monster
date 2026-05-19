@@ -49,6 +49,9 @@ group :development, :test do
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
+
+  # Pretty-print Stripe payloads + on-chain responses in tagged dev logs.
+  gem "amazing_print"
 end
 
 group :development do

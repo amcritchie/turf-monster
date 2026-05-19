@@ -818,14 +818,19 @@ module Solana
              [source_u8].pack("C") +
              ref_bytes.pack("C*")
 
+      vault_pda, _ = vault_state_pda
+
       tx = build_tx(admin)
       tx.add_instruction(
         program_id: @program_id,
+        # Order must match MintEntryToken<'info> in
+        # turf-vault/programs/turf_vault/src/instructions/mint_entry_token.rs.
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: wallet_bytes, is_signer: false, is_writable: false },
-          { pubkey: pda, is_signer: false, is_writable: true },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          { pubkey: admin.public_key_bytes,        is_signer: true,  is_writable: true  }, # admin (Signer, mut)
+          { pubkey: vault_pda,                     is_signer: false, is_writable: false }, # vault_state (Account<VaultState>)
+          { pubkey: wallet_bytes,                  is_signer: false, is_writable: false }, # user_wallet (Unchecked)
+          { pubkey: pda,                           is_signer: false, is_writable: true  }, # entry_token (init)
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false } # system_program
         ],
         data: data
       )
@@ -841,14 +846,20 @@ module Solana
       Rails.cache.fetch(entry_tokens_cache_key(wallet_address), expires_in: 60.seconds) do
         owner_b58 = wallet_address
         program_id_b58 = Keypair.encode_base58(@program_id)
-        result = client.get_program_accounts(
+        # `getProgramAccounts` isn't wrapped in solana-studio yet — bridge via the
+        # private JSON-RPC call. Remove this `send` once `get_program_accounts` is
+        # added to the gem's public API.
+        result = client.send(:call, "getProgramAccounts", [
           program_id_b58,
-          filters: [
-            { dataSize: ENTRY_TOKEN_LEN },
-            { memcmp: { offset: 8, bytes: owner_b58 } }
-          ],
-          commitment: commitment
-        )
+          {
+            encoding: "base64",
+            commitment: commitment,
+            filters: [
+              { dataSize: ENTRY_TOKEN_LEN },
+              { memcmp: { offset: 8, bytes: owner_b58 } }
+            ]
+          }
+        ])
         (result || []).map { |account| decode_entry_token(account) }
       end
     end
@@ -913,11 +924,15 @@ module Solana
     # List every Season account on the program. 60s cache.
     def list_seasons(commitment: "confirmed")
       Rails.cache.fetch("seasons:all", expires_in: 60.seconds) do
-        result = client.get_program_accounts(
+        # Same gem-API gap as list_entry_tokens — bridge via private JSON-RPC.
+        result = client.send(:call, "getProgramAccounts", [
           Keypair.encode_base58(@program_id),
-          filters: [{ dataSize: SEASON_LEN }],
-          commitment: commitment
-        )
+          {
+            encoding: "base64",
+            commitment: commitment,
+            filters: [{ dataSize: SEASON_LEN }]
+          }
+        ])
         (result || []).map { |account| decode_season(account) }.sort_by { |s| s[:season_id] }
       end
     end

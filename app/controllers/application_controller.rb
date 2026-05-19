@@ -4,11 +4,20 @@ class ApplicationController < ActionController::Base
 
   allow_browser versions: :modern
 
+  before_action :set_current_context
   before_action :detect_geo_state
   before_action :require_profile_completion
   helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?
 
   private
+
+  # Populates Current.* for the request lifecycle so OutboundRequestLogger can
+  # attribute Stripe / Solana calls back to the user without param threading.
+  def set_current_context
+    Current.user = current_user if logged_in?
+  rescue
+    nil # context is best-effort; never break the request path
+  end
 
   # True when the current session was authenticated via Solana wallet signature
   # (not email/password). Set by SolanaSessionsController#verify.
