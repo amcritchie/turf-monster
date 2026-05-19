@@ -146,6 +146,12 @@ class User < ApplicationRecord
 
   def generate_managed_wallet!
     return if web2_solana_address.present?
+    # OPSEC-044: admins go web3-only. Server should never hold custodial keys
+    # for accounts with elevated privileges — a managed wallet for an admin
+    # combines the highest-value account with the largest decryption surface.
+    # Admins link Phantom via the standard flow; if they need on-chain access
+    # before linking, they have none until they do.
+    return if admin?
     keypair = Solana::Keypair.generate
     update!(
       web2_solana_address: keypair.to_base58,
