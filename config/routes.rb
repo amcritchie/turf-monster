@@ -130,13 +130,13 @@ Rails.application.routes.draw do
   resources :games, only: [:index]
 
   resource :wallet, only: [:show] do
-    post :deposit
+    get  :topup
     post :stripe_deposit
     post :moonpay_deposit
     post :withdraw
     post :faucet
     post :airdrop
-    get :sync
+    get  :sync
   end
 
   # Entry tokens (web2 contest-entry currency)
@@ -154,6 +154,8 @@ Rails.application.routes.draw do
 
   # Admin: Treasury (pending multisig transactions)
   namespace :admin do
+    resources :outbound_requests, only: [:index, :show]
+
     resources :pending_transactions, only: [:index, :show], param: :slug do
       member do
         post :confirm

@@ -1,6 +1,6 @@
 class WalletsController < ApplicationController
   before_action :require_login
-  before_action :require_geo_allowed, only: [:deposit, :withdraw, :stripe_deposit, :moonpay_deposit]
+  before_action :require_geo_allowed, only: [:withdraw, :stripe_deposit, :moonpay_deposit, :topup]
 
   def show
     @user = current_user
@@ -20,26 +20,11 @@ class WalletsController < ApplicationController
     end
   end
 
-  def deposit
-    amount_dollars = params[:amount].to_f
-    return redirect_to wallet_path, alert: "Invalid amount" if amount_dollars <= 0
-
-    amount_cents = (amount_dollars * 100).to_i
-
-    rescue_and_log(target: current_user) do
-      raise "No wallet connected" unless current_user.solana_connected?
-
-      vault = Solana::Vault.new
-      amount_lamports = Solana::Config.dollars_to_lamports(amount_dollars)
-      vault.ensure_ata(current_user.solana_address, mint: Solana::Config::USDC_MINT)
-      result = vault.fund_user(current_user.solana_address, amount_lamports)
-
-      TransactionLog.record!(user: current_user, type: "deposit", amount_cents: amount_cents, direction: "credit", description: "Deposit $#{'%.2f' % amount_dollars}", onchain_tx: result[:signature])
-      invalidate_usdc_cache
-      redirect_to wallet_path, notice: "Deposited $#{'%.2f' % amount_dollars}."
+  def topup
+    unless current_user.phantom_wallet?
+      return redirect_to wallet_path, alert: "Top-up via MoonPay is only available for self-custody wallets."
     end
-  rescue StandardError => e
-    redirect_to wallet_path, alert: "Deposit failed: #{e.message}"
+    @user = current_user
   end
 
   def stripe_deposit
