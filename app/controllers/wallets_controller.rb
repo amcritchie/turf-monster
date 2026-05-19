@@ -48,6 +48,10 @@ class WalletsController < ApplicationController
         success_url: "#{wallet_url}?deposit=success",
         cancel_url: "#{wallet_url}?deposit=cancelled",
         metadata: {
+          # OPSEC-008: explicit kind so StripeCheckoutValidator's kind_mismatch
+          # check passes (validator routes on metadata["kind"] == @kind).
+          # Without this, every deposit webhook would 422 on :kind_mismatch.
+          kind: "deposit",
           user_id: current_user.id,
           amount_cents: amount_cents,
           wallet_address: current_user.solana_address

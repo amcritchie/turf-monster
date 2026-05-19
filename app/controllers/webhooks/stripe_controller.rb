@@ -79,9 +79,13 @@ module Webhooks
         )
         Rails.logger.info "[tokens] webhook.job_enqueued sid=#{sid_short}..."
       else
+        # OPSEC-008: trust session.amount_total (Stripe's authoritative figure)
+        # for the deposit amount. metadata.amount_cents is only a sanity check
+        # cross-referenced inside StripeCheckoutValidator; if it ever diverged
+        # the validator would have rejected upstream with :amount_mismatch.
         StripeDepositJob.perform_later(
           user_id: user_id,
-          amount_cents: session.metadata["amount_cents"].to_i,
+          amount_cents: session.amount_total.to_i,
           wallet_address: wallet_address,
           stripe_session_id: stripe_session_id
         )

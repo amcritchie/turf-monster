@@ -77,4 +77,41 @@ class StripeCheckoutValidatorTest < ActiveSupport::TestCase
       assert_equal :session_not_found, result.reason
     end
   end
+
+  # OPSEC-008: deposits must also pin amount_total against metadata.amount_cents
+  # so the webhook can't credit the user more than they actually paid.
+  test "ok on a paid deposit session where amount_total matches metadata.amount_cents" do
+    deposit_session = session_double(
+      id: "cs_deposit_ok",
+      amount_total: 2500,
+      metadata: {
+        "kind" => "deposit",
+        "amount_cents" => "2500",
+        "user_id" => @alex.id.to_s,
+        "wallet_address" => "TestWallet"
+      }
+    )
+    Stripe::Checkout::Session.stub :retrieve, deposit_session do
+      result = StripeCheckoutValidator.new("cs_deposit_ok", kind: "deposit").call
+      assert result.ok?, "expected deposit to validate, got reason=#{result.reason}"
+    end
+  end
+
+  test "deposit fails with :amount_mismatch when amount_total disagrees with metadata.amount_cents" do
+    deposit_session = session_double(
+      id: "cs_deposit_bad",
+      amount_total: 100, # user actually paid $1.00
+      metadata: {
+        "kind" => "deposit",
+        "amount_cents" => "10000", # metadata claims $100.00
+        "user_id" => @alex.id.to_s,
+        "wallet_address" => "TestWallet"
+      }
+    )
+    Stripe::Checkout::Session.stub :retrieve, deposit_session do
+      result = StripeCheckoutValidator.new("cs_deposit_bad", kind: "deposit").call
+      assert_not result.ok?
+      assert_equal :amount_mismatch, result.reason
+    end
+  end
 end

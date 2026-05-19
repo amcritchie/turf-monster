@@ -93,7 +93,11 @@ class StripeCheckoutValidator
       expected = StripePurchase.pack_price_cents(quantity)
       session.amount_total == expected
     else
-      true # other kinds (deposits) have variable amounts — skip
+      # OPSEC-008: deposits have a variable amount, but metadata.amount_cents
+      # MUST equal what Stripe actually charged. If they diverge, treat as
+      # tampering / programmer-bug and reject. The controller still uses
+      # session.amount_total as the source of truth when enqueuing the job.
+      session.amount_total == session.metadata["amount_cents"].to_i
     end
   rescue KeyError
     false # unknown pack quantity
