@@ -574,7 +574,7 @@ module Solana
     # Build a partially-signed enter_contest_direct transaction.
     # Admin signs (pays rent), user must sign client-side (authorizes USDC transfer).
     # Returns base64-encoded transaction for the client to co-sign and submit.
-    def build_enter_contest_direct(wallet_address, contest_slug, entry_num)
+    def build_enter_contest_direct(wallet_address, contest_slug, entry_num, season_id: nil)
       admin = Keypair.admin
       wallet_bytes = Keypair.decode_base58(wallet_address)
       user_pda, _ = user_account_pda(wallet_address)
@@ -585,6 +585,10 @@ module Solana
       usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
       user_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
       vault_usdc, _ = vault_usdc_pda
+
+      # Season PDA — v0.11.0+ enter_contest_direct reads seed_schedule from it
+      season_id ||= SeasonConfig.current_season_id
+      s_pda, _ = season_pda(season_id)
 
       data = Transaction.anchor_discriminator("enter_contest_direct") +
              Borsh.encode_u32(entry_num)
@@ -603,6 +607,7 @@ module Solana
           { pubkey: user_ata, is_signer: false, is_writable: true },                 # user_token_account
           { pubkey: vault_usdc, is_signer: false, is_writable: true },               # vault_token_account
           { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
+          { pubkey: s_pda, is_signer: false, is_writable: false },                   # season (seed_schedule)
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
         data: data
