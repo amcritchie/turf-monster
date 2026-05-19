@@ -6,10 +6,21 @@
     </svg>
   </button>
 
-  <div x-show="open" @click.outside="open = false" x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95" class="absolute right-0 mt-2 w-44 bg-surface border border-subtle rounded-lg shadow-lg z-50 py-1" style="display: none;">
+  <div x-show="open" @click.outside="open = false" x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95" class="absolute right-0 mt-2 w-48 bg-surface border border-subtle rounded-lg shadow-lg z-50 py-1" style="display: none;">
+    <%# ── Hub: curated, most-used links. Add/remove here as priorities shift. ── %>
+    <div class="px-4 py-1 text-xs font-bold uppercase tracking-wider text-muted">Hub</div>
+    <%= link_to "New Contest", new_contest_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
+    <%= link_to "Contests", contests_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
+    <%= link_to "Seasons", admin_seasons_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
+    <%= link_to "Free Entries", admin_free_entries_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
+    <%= link_to "Treasury", admin_pending_transactions_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
     <% unless Rails.env.production? %>
-      <%= link_to "Faucet", faucet_path, class: "block px-4 py-2 text-sm text-yellow-400 hover:text-yellow-300 hover:bg-surface-alt transition" %>
+      <%= link_to "Faucet", faucet_path, class: "block px-4 py-2 text-sm text-yellow-400 hover:text-yellow-300 hover:bg-surface-alt transition font-medium" %>
     <% end %>
+    <%= link_to "Jobs", "/admin/jobs", class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
+    <div class="border-t border-subtle my-1"></div>
+
+    <%# ── Everything else: the long admin list ── %>
     <button @click="open = false; showNavSpinner(); refreshBalance().finally(function() { hideNavSpinner(); })"
             class="block w-full text-left px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition">Refresh Balance</button>
     <div class="border-t border-subtle my-1"></div>
@@ -25,7 +36,6 @@
     <%= link_to "Formula", formula_report_slates_path, class: "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
     <%= link_to "Formula Defaults", admin_formula_slates_path, class: "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
     <%= link_to "Contest Generator", generator_contests_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
-    <%= link_to "Treasury", admin_pending_transactions_path, class: "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
     <%= link_to "Transactions", admin_transactions_path, class: "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
     <a href="/admin/navbar" class="block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition">Navbar</a>
     <a href="/admin/theme" class="block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition">Theme</a>
@@ -33,7 +43,6 @@
     <a href="/admin/schema" class="block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition">Schema</a>
     <%= link_to "Geo Settings", admin_geo_path, class: "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
     <a href="/error_logs" class="block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition">Error Logs</a>
-    <a href="/admin/jobs" class="block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition">Jobs</a>
     <div class="border-t border-subtle my-1"></div>
     <%= button_to geo_override_active? ? "Clear GEO Override" : "Simulate WA", admin_geo_toggle_path, method: :post,
       class: "block w-full text-left px-4 py-2 text-sm #{geo_override_active? ? 'text-red-400 hover:text-red-300' : 'text-body hover:text-heading'} hover:bg-surface-alt transition" %>
