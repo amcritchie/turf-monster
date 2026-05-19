@@ -135,6 +135,8 @@
             seedsTotal: 0,
             seedsLevel: 0,
             lobbyUrl: null,
+            recoveryLabel: null,
+            recoveryHandler: null,
             show: function(title, message) {
               this.visible = true;
               this.state = 'processing';
@@ -148,7 +150,16 @@
               this.seedsTotal = 0;
               this.seedsLevel = 0;
               this.lobbyUrl = null;
+              this.recoveryLabel = null;
+              this.recoveryHandler = null;
               this._clearCountdown();
+            },
+            setRecovery: function(label, handler) {
+              this.recoveryLabel = label;
+              this.recoveryHandler = handler;
+            },
+            _triggerRecovery: function() {
+              if (this.recoveryHandler) this.recoveryHandler();
             },
             success: function(tx, message, autoCloseSeconds) {
               this.state = 'success';
@@ -184,6 +195,8 @@
               this.seedsEarned = 0;
               this.seedsTotal = 0;
               this.seedsLevel = 0;
+              this.recoveryLabel = null;
+              this.recoveryHandler = null;
               if (cb) cb();
               this.onClose = null;
             },

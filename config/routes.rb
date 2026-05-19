@@ -104,6 +104,7 @@ Rails.application.routes.draw do
     collection do
       get :my
       get :generator
+      post :finalize
     end
     member do
       post :toggle_selection

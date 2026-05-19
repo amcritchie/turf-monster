@@ -11,17 +11,27 @@ class Contest < ApplicationRecord
   enum :status, { pending: "pending", open: "open", locked: "locked", settled: "settled" }
 
   # "All contests on chain" enforcement (2026-05-17 GTM principle):
-  # every Contest is created on-chain server-funded (admin pays the prize
-  # pool from its devnet USDC ATA) immediately after the DB row exists.
-  # If on-chain creation fails, the DB row is destroyed and the exception
-  # is re-raised — Contest.create! is effectively atomic across DB + chain.
+  # every Contest is backed by an on-chain Contest PDA on turf-vault.
+  #
+  # PRIMARY PATH — Phantom-funded (default for the /contests/new UI):
+  #   ContestsController#create builds a partially-signed `create_contest`
+  #   TX (admin pays SOL rent, creator slot left for Phantom). User signs
+  #   in their wallet → broadcast + confirm → ContestsController#finalize
+  #   creates the DB row with `skip_onchain_callback = true` and the
+  #   onchain_contest_id / onchain_tx_signature already populated.
+  #   See app/views/contests/new.html.erb + Solana::Vault#build_create_contest.
+  #
+  # FALLBACK PATH — server-funded (Rails console / operator scripts):
+  #   `Contest.create!(...)` without `skip_onchain_callback = true` fires
+  #   the after_create callback below, which calls `create_onchain!` →
+  #   Solana::Vault#create_contest_server_funded. Admin signs as both
+  #   payer + creator and funds the prize pool from custodial USDC. If the
+  #   on-chain leg fails, the DB row is destroyed and the exception
+  #   re-raised — so `create!` is atomic across DB + chain.
   #
   # Opt-out via `skip_onchain_callback = true`:
-  #   - Test fixtures + Rails tests (Rails.env.test? is auto-skipped)
-  #   - The UI flow at /contests/new (which runs its own Phantom-as-creator
-  #     handshake — see ContestsController#create) sets this flag
-  #
-  # See Solana::Vault#create_contest_server_funded for the on-chain mechanics.
+  #   - The Phantom-funded UI flow sets this on save (Contest is already on-chain).
+  #   - Test fixtures + Rails tests (Rails.env.test? auto-skips).
   attr_accessor :skip_onchain_callback
   after_create :create_onchain_with_rollback!, unless: :skip_onchain_callback_active?
 

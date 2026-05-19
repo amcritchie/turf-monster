@@ -209,7 +209,12 @@
         </div>
         <h3 class="text-heading font-bold text-lg mb-2" x-text="$store.solanaModal.title"></h3>
         <p class="text-red-400 text-sm mb-4" x-text="$store.solanaModal.errorMessage"></p>
-        <div>
+        <div class="flex flex-col gap-2 items-center">
+          <template x-if="$store.solanaModal.recoveryLabel">
+            <button @click="$store.solanaModal._triggerRecovery()"
+                    x-text="$store.solanaModal.recoveryLabel"
+                    class="btn btn-primary btn-sm"></button>
+          </template>
           <button @click="$store.solanaModal.close()" class="btn btn-outline btn-sm">Close</button>
         </div>
       </div>

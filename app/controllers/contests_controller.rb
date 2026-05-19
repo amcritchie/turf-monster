@@ -3,7 +3,7 @@ class ContestsController < ApplicationController
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
   before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll]
-  before_action :require_admin, only: [:new, :create, :edit, :update, :generator, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest]
+  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
 
   def index
@@ -42,31 +42,64 @@ class ContestsController < ApplicationController
     @contests_by_cell = Contest.includes(:entries).order(created_at: :desc).group_by { |c| [c.slate_id, c.contest_type] }
   end
 
+  # Phantom-driven contest creation:
+  #
+  #   step 1: POST /contests             → #create   — build partially-signed TX, no DB write
+  #   step 2: client signs in Phantom    → broadcast + confirm via web3.js
+  #   step 3: POST /contests/finalize    → #finalize — verify TX on-chain, create DB row
+  #
+  # Form params get signed into a token in step 1 and echoed back in step 3
+  # so the server doesn't have to trust the client's re-posted values.
+  ONCHAIN_CREATE_TOKEN_KEY = :onchain_contest_create
+  ONCHAIN_CREATE_TOKEN_TTL = 10.minutes
+
   def create
-    @contest = Contest.new(contest_params)
-    config = @contest.format_config
-    @contest.entry_fee_cents = config[:entry_fee_cents]
-    @contest.max_entries = config[:max_entries]
-    @contest.status = :open
+    return render_create_error("Phantom wallet required to create contests") unless current_user.phantom_wallet?
 
-    # The after_create callback runs Contest#create_onchain! synchronously
-    # (server-funded, Alex Bot signs both payer + creator). If on-chain
-    # creation fails, the after_create raises, the save! transaction rolls
-    # back, and no DB row is left behind — UI behavior is now atomic with
-    # the runner-style Contest.create! invocation.
-    rescue_and_log(target: @contest) do
-      @contest.save!
-
-      respond_to do |format|
-        format.html { redirect_to @contest, notice: "Contest created on-chain!" }
-        format.json { render json: { success: true, slug: @contest.slug } }
-      end
+    contest = build_unpersisted_contest_from_params
+    if (err = onchain_create_precheck(contest, current_user))
+      return render_create_error(err)
     end
+
+    vault  = Solana::Vault.new
+    result = vault.build_create_contest(
+      current_user.web3_solana_address,
+      contest.name_slug,
+      **contest.onchain_params
+    )
+
+    render json: {
+      success:       true,
+      serialized_tx: result[:serialized_tx],
+      contest_pda:   result[:contest_pda],
+      slug:          contest.name_slug,
+      params_token:  sign_onchain_create_payload(contest, current_user)
+    }
   rescue StandardError => e
-    respond_to do |format|
-      format.html { flash.now[:alert] = e.message; render :new, status: :unprocessable_entity }
-      format.json { render json: { success: false, error: e.message }, status: :unprocessable_entity }
-    end
+    Rails.logger.error("[ContestsController#create] #{e.class}: #{e.message}")
+    render_create_error(e.message)
+  end
+
+  def finalize
+    payload = verify_onchain_create_payload(params[:params_token])
+    raise "User mismatch — token was issued to a different user" unless payload[:user_id] == current_user.id
+
+    verify_solana_transaction!(params[:tx_signature])
+
+    derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(payload[:slug]).first)
+    raise "Contest PDA mismatch — slug=#{payload[:slug]}" unless params[:contest_pda] == derived_pda_b58
+    raise "A contest with that name already exists" if Contest.exists?(slug: payload[:slug])
+
+    contest = build_finalized_contest(payload, derived_pda_b58, params[:tx_signature])
+    contest.contest_image.attach(params[:contest_image]) if params[:contest_image].present?
+    contest.save!
+
+    render json: { success: true, redirect: contest_path(contest), slug: contest.slug }
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    render_create_error("Invalid or expired form token — restart the contest creation flow.")
+  rescue StandardError => e
+    Rails.logger.error("[ContestsController#finalize] #{e.class}: #{e.message}")
+    render_create_error(e.message)
   end
 
   def edit
@@ -500,6 +533,106 @@ class ContestsController < ApplicationController
 
   private
 
+  # ── Phantom contest-create helpers ─────────────────────────────────────────
+
+  def render_create_error(msg)
+    render json: { success: false, error: msg }, status: :unprocessable_entity
+  end
+
+  def build_unpersisted_contest_from_params
+    Contest.new(contest_params).tap do |c|
+      config = c.format_config
+      c.entry_fee_cents = config[:entry_fee_cents]
+      c.max_entries     = config[:max_entries]
+      c.status          = :open
+    end
+  end
+
+  def build_finalized_contest(payload, derived_pda_b58, tx_signature)
+    Contest.new(
+      name:                       payload[:name],
+      slate_id:                   payload[:slate_id],
+      contest_type:               payload[:contest_type],
+      starts_at:                  payload[:starts_at],
+      locks_at_date_selected:     payload[:locks_at_date_selected],
+      locks_at_time_selected:     payload[:locks_at_time_selected],
+      locks_at_timezone_selected: payload[:locks_at_timezone_selected],
+      entry_fee_cents:            payload[:entry_fee_cents],
+      max_entries:                payload[:max_entries],
+      status:                     :open,
+      user:                       current_user,
+      onchain_contest_id:         derived_pda_b58,
+      onchain_tx_signature:       tx_signature
+    ).tap { |c| c.skip_onchain_callback = true }
+  end
+
+  # Returns nil if it's safe to proceed, or an error message string explaining
+  # why we should refuse to build a TX. The on-chain checks (PDA existence,
+  # wallet USDC balance) make round-trips to devnet, so order them last.
+  def onchain_create_precheck(contest, creator)
+    slug = contest.name_slug
+    return "Name is required" if slug.blank?
+    return "A contest with that name already exists" if Contest.exists?(slug: slug)
+
+    vault   = Solana::Vault.new
+    pda_b58 = Solana::Keypair.encode_base58(vault.contest_pda(slug).first)
+    if vault.client.get_account_info(pda_b58)&.dig("value")
+      # Catches the "stranded contest" case where a prior finalize attempt
+      # failed AFTER the on-chain TX succeeded. Anchor's `init` constraint
+      # would reject a re-mint anyway — fail loudly here instead of letting
+      # the user waste a Phantom signature.
+      return "On-chain Contest PDA #{pda_b58.first(8)}… already exists for this name. Pick a different name."
+    end
+
+    insufficient_usdc_error(contest, creator, vault)
+  end
+
+  def insufficient_usdc_error(contest, creator, vault)
+    prize_cents = contest.guaranteed_prize_cents
+    return nil unless prize_cents.positive?
+
+    ata_b58 = Solana::Keypair.encode_base58(
+      Solana::SplToken.find_associated_token_address(creator.web3_solana_address, Solana::Config::USDC_MINT).first
+    )
+    balance_info  = vault.client.get_token_account_balance(ata_b58) rescue nil
+    balance_cents = (balance_info&.dig("value", "uiAmount").to_f * 100).round
+    return nil if balance_cents >= prize_cents
+
+    "Insufficient USDC: prize pool needs $#{format('%.2f', prize_cents / 100.0)}, " \
+      "your wallet has $#{format('%.2f', balance_cents / 100.0)}. " \
+      "Top up or pick a smaller tier."
+  end
+
+  # Signed payload used to round-trip form params from #create → Phantom → #finalize
+  # without trusting the client's re-posted values. JSON serialization downgrades
+  # symbol keys to strings — #verify wraps the result in HashWithIndifferentAccess.
+  def sign_onchain_create_payload(contest, creator)
+    payload = {
+      slug:                       contest.name_slug,
+      name:                       contest.name,
+      slate_id:                   contest.slate_id,
+      contest_type:               contest.contest_type,
+      starts_at:                  contest.starts_at&.iso8601,
+      locks_at_date_selected:     contest.locks_at_date_selected,
+      locks_at_time_selected:     contest.locks_at_time_selected,
+      locks_at_timezone_selected: contest.locks_at_timezone_selected,
+      entry_fee_cents:            contest.entry_fee_cents,
+      max_entries:                contest.max_entries,
+      user_id:                    creator.id,
+      creator_pubkey:             creator.web3_solana_address
+    }
+    Rails.application.message_verifier(ONCHAIN_CREATE_TOKEN_KEY)
+         .generate(payload, expires_in: ONCHAIN_CREATE_TOKEN_TTL)
+  end
+
+  def verify_onchain_create_payload(token)
+    Rails.application.message_verifier(ONCHAIN_CREATE_TOKEN_KEY)
+         .verify(token)
+         .with_indifferent_access
+  end
+
+  # ── End Phantom contest-create helpers ─────────────────────────────────────
+
   # Verify a Solana transaction signature exists on-chain and was successful.
   # Prevents fake TX submissions from marking entries/contests as onchain.
   def verify_solana_transaction!(signature)
@@ -508,7 +641,16 @@ class ContestsController < ApplicationController
     client = Solana::Vault.new.client
     tx_info = client.get_transaction(signature)
     raise "Transaction not found on-chain" unless tx_info
-    raise "Transaction failed on-chain" if tx_info.dig("meta", "err")
+
+    err = tx_info.dig("meta", "err")
+    return unless err
+
+    # err is structured like {"InstructionError" => [0, {"Custom" => 6002}]} for
+    # Anchor program errors. Surface the custom code so the operator knows what
+    # actually failed without grepping the explorer.
+    custom_code = err.dig("InstructionError", 1, "Custom") rescue nil
+    detail = custom_code ? "program error code #{custom_code}" : err.inspect
+    raise "Transaction failed on-chain (#{detail})"
   end
 
   def set_contest

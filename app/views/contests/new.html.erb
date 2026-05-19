@@ -288,24 +288,165 @@
           Create Contest
         </button>
         <p class="text-xs text-muted text-center mt-2">
-          Server creates the on-chain Contest PDA + funds the prize pool from Alex Bot's devnet USDC.
-          DB row is only saved if the on-chain step succeeds (atomic).
+          You sign the on-chain Contest PDA creation with your Phantom wallet. The prize pool USDC
+          transfers from your wallet to the vault. The DB row is created only after the on-chain
+          transaction confirms — no orphans possible.
         </p>
       </div>
     <% end %>
 
-    <%# Standard form submit. The controller calls Contest.create! which fires
-        the after_create callback → Solana::Vault#create_contest_server_funded
-        → submits + confirms TX on devnet → updates onchain_contest_id. If any
-        of that fails, the save! transaction rolls back and the controller
-        re-renders the form with a flash alert. No DB-only orphans possible. %>
+    <%# Phantom-driven contest creation. POST /contests builds a partially-signed
+        TX (admin pays SOL rent, creator slot left for Phantom). User signs in
+        Phantom, we broadcast + confirm, then POST /contests/finalize creates the
+        DB row. Non-Phantom users get the solanaModal in error state with a CTA. %>
+    <script type="application/json" id="contest-new-config">
+      <%= {
+        hasPhantom: current_user&.phantom_wallet?,
+        userWallet: current_user&.web3_solana_address,
+        csrfToken:  form_authenticity_token,
+        finalizePath: finalize_contests_path,
+        usdcBalance: display_balance.to_f,
+        tierPrizes:  Contest::FORMATS.transform_values { |c| c[:payouts].values.sum / 100.0 },
+        tierEntryFees: Contest::FORMATS.transform_values { |c| c[:entry_fee_cents] / 100.0 }
+      }.to_json.html_safe %>
+    </script>
     <script>
-      document.getElementById('contest-form').addEventListener('submit', function() {
-        var btn = this.querySelector('button[type="submit"]');
-        if (!btn) return;
-        btn.disabled = true;
-        btn.textContent = btn.dataset.creatingLabel || 'Creating…';
-      });
+      (function() {
+        var cfg = JSON.parse(document.getElementById('contest-new-config').textContent);
+        var form = document.getElementById('contest-form');
+        var btn = form.querySelector('button[type="submit"]');
+        var origLabel = btn.textContent.trim();
+
+        function setBusy(label) { btn.disabled = true; btn.textContent = label; }
+        function setIdle() { btn.disabled = false; btn.textContent = origLabel; }
+
+        function showWalletRequiredModal() {
+          var modal = Alpine.store('solanaModal');
+          modal.show('Phantom Wallet Required', '');
+          modal.error('Contest creation is a web3 transaction — connect a Phantom wallet on your Account page first, then come back.', 'Phantom Wallet Required');
+        }
+
+        function showInsufficientUsdcModal(prizeNeeded, balanceHave) {
+          var modal = Alpine.store('solanaModal');
+          var fmt = function(n) { return '$' + n.toFixed(2); };
+          modal.show('Insufficient USDC', '');
+          modal.error(
+            'This tier needs ' + fmt(prizeNeeded) + ' USDC for the prize pool. Your wallet has ' + fmt(balanceHave) + '. Mint $500 test USDC to your wallet, or pick a smaller tier.',
+            'Insufficient USDC'
+          );
+          modal.setRecovery('Mint $500 Test USDC', mintTestUsdcAndRetry);
+        }
+
+        async function mintTestUsdcAndRetry() {
+          var modal = Alpine.store('solanaModal');
+          modal.show('Minting USDC', 'Minting $500 test USDC to your wallet…');
+          try {
+            var resp = await fetch('/faucet', {
+              method: 'POST',
+              headers: { 'X-CSRF-Token': cfg.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify({ amount: 500 })
+            });
+            var data = await resp.json();
+            if (!data.success) throw new Error(data.error || 'Mint failed');
+
+            // Refresh the in-page balance so the click-time check passes on retry
+            cfg.usdcBalance = (cfg.usdcBalance || 0) + (data.amount || 500);
+
+            modal.show('Minted $500 USDC', 'Retrying contest creation…');
+            // Programmatic re-submit goes through the same submit handler;
+            // the affordability check now passes with the bumped balance.
+            form.requestSubmit();
+          } catch (err) {
+            console.error('[contest create — mint]', err);
+            modal.error(err.message || String(err), 'Mint Failed');
+            modal.setRecovery('Try Again', mintTestUsdcAndRetry);
+          }
+        }
+
+        form.addEventListener('submit', async function(e) {
+          e.preventDefault();
+
+          if (!cfg.hasPhantom || !window.walletProvider || !window.walletProvider.isAvailable()) {
+            showWalletRequiredModal();
+            return;
+          }
+
+          // Click-time affordability check — fail before touching Phantom or the
+          // server when the user can't fund this tier's prize pool. The server
+          // re-checks in #create with a fresh RPC lookup (this client value is
+          // cached 60s) so a stale balance can't sneak a doomed TX past.
+          var selectedTier = (form.querySelector('input[name="contest[contest_type]"]') || {}).value;
+          var prizeNeeded  = cfg.tierPrizes && cfg.tierPrizes[selectedTier] != null ? cfg.tierPrizes[selectedTier] : 0;
+          var balanceHave  = cfg.usdcBalance || 0;
+          if (prizeNeeded > balanceHave) {
+            showInsufficientUsdcModal(prizeNeeded, balanceHave);
+            return;
+          }
+
+          setBusy('Preparing on-chain TX…');
+          var modal = Alpine.store('solanaModal');
+          modal.show('Preparing Transaction', 'Building the on-chain create_contest instruction…');
+
+          try {
+            var provider = window.walletProvider.detect();
+            var connectResp = await provider.connect();
+            var pubkeyB58 = connectResp.publicKey.toBase58();
+            if (cfg.userWallet && pubkeyB58 !== cfg.userWallet) {
+              throw new Error('Wrong wallet connected. Switch to ' + cfg.userWallet.substring(0, 8) + '… in Phantom and try again.');
+            }
+
+            // Step 1 — POST the form params multipart; server returns the partially-signed TX
+            var prepareForm = new FormData(form);
+            // The image isn't on-chain — strip it out of the prepare call to keep the response small
+            prepareForm.delete('contest[contest_image]');
+            var prepareResp = await fetch(form.action, {
+              method: 'POST',
+              headers: { 'X-CSRF-Token': cfg.csrfToken, 'Accept': 'application/json' },
+              body: prepareForm
+            });
+            var prepareData = await prepareResp.json();
+            if (!prepareData.success) throw new Error(prepareData.error || 'Failed to build transaction');
+
+            modal.show('Sign Transaction', 'Approve the prize-pool USDC transfer in Phantom…');
+
+            // Step 2 — deserialize, sign, broadcast
+            var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
+            var tx = solanaWeb3.Transaction.from(txBytes);
+            var signedTx = await provider.signTransaction(tx);
+
+            modal.show('Broadcasting', 'Submitting to Solana devnet…');
+            var connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+            var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+
+            modal.show('Confirming', 'Waiting for Solana confirmation…');
+            await connection.confirmTransaction(txSig, 'confirmed');
+
+            // Step 3 — POST tx_signature + params_token + image to finalize
+            modal.show('Saving', 'Creating the contest record…');
+            var finalizeForm = new FormData();
+            finalizeForm.append('tx_signature', txSig);
+            finalizeForm.append('contest_pda', prepareData.contest_pda);
+            finalizeForm.append('params_token', prepareData.params_token);
+            var imageFile = form.querySelector('input[type="file"][name="contest[contest_image]"]').files[0];
+            if (imageFile) finalizeForm.append('contest_image', imageFile);
+
+            var finalResp = await fetch(cfg.finalizePath, {
+              method: 'POST',
+              headers: { 'X-CSRF-Token': cfg.csrfToken, 'Accept': 'application/json' },
+              body: finalizeForm
+            });
+            var finalData = await finalResp.json();
+            if (!finalData.success) throw new Error(finalData.error || 'Failed to save contest');
+
+            modal.show('Done', 'Redirecting to your new contest…');
+            window.location.href = finalData.redirect;
+          } catch (err) {
+            console.error('[contest create]', err);
+            modal.error(err.message || String(err), 'Contest Creation Failed');
+            setIdle();
+          }
+        });
+      })();
     </script>
   </div>
 
