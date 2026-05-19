@@ -25,7 +25,7 @@ module Admin
 
     def mint_all
       rescue_and_log do
-        users = User.where.not(solana_address: nil)
+        users = users_with_wallet
         total = 0
         users.find_each do |user|
           owed = compute_owed_for(user)
@@ -44,8 +44,18 @@ module Admin
       @vault ||= Solana::Vault.new
     end
 
+    # User has no `solana_address` column — the schema splits it into
+    # `web2_solana_address` (managed) and `web3_solana_address` (Phantom).
+    # `User#solana_address` (method) returns web3 || web2.
+    def users_with_wallet
+      User.where(
+        "(web3_solana_address IS NOT NULL AND web3_solana_address != '') OR " \
+        "(web2_solana_address IS NOT NULL AND web2_solana_address != '')"
+      )
+    end
+
     def compute_user_data
-      User.where.not(solana_address: [nil, ""]).map do |user|
+      users_with_wallet.map do |user|
         seeds = (vault.sync_balance(user.solana_address) rescue nil)&.dig(:seeds) || 0
         tokens = (vault.list_entry_tokens(user.solana_address) rescue [])
         level = (seeds / SEEDS_PER_LEVEL) + 1

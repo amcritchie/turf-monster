@@ -9,17 +9,32 @@ module Admin
     end
 
     def create
-      rescue_and_log do
-        name = params[:name].to_s.strip
-        season_id = params[:season_id].to_i
-        schedule = (0..4).map { |i| params[:"slot_#{i}"].to_i }
-        raise "Name required" if name.blank?
-        raise "Schedule must be 5 non-negative integers" unless schedule.length == 5 && schedule.all? { |v| v >= 0 }
+      name      = params[:name].to_s.strip
+      season_id = params[:season_id].to_i
+      schedule  = (0..4).map { |i| params[:"slot_#{i}"].to_i }
 
+      # User-input validation — bounce with a flash, not a 500. These aren't
+      # exceptional conditions; just bad/empty form input.
+      if name.blank?
+        flash[:alert] = "Name is required"
+        return redirect_to admin_seasons_path
+      end
+      unless schedule.length == 5 && schedule.all? { |v| v >= 0 }
+        flash[:alert] = "Schedule must be 5 non-negative integers"
+        return redirect_to admin_seasons_path
+      end
+
+      # On-chain leg can fail (RPC, dupe season_id, etc.) — that's the path
+      # that gets logged to ErrorLog. rescue_and_log re-raises so we still
+      # get the standard 500 page if something unexpected blows up.
+      rescue_and_log do
         result = vault.create_season(season_id: season_id, name: name, schedule: schedule)
         SeasonConfig.set_current!(season_id) if params[:set_current] == "1"
         flash[:notice] = "Created season \"#{name}\" (id=#{season_id}). TX: #{result[:signature][0, 16]}…"
       end
+      redirect_to admin_seasons_path
+    rescue StandardError => e
+      flash[:alert] = "Failed to create season: #{e.message}"
       redirect_to admin_seasons_path
     end
 
