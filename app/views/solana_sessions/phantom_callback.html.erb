@@ -238,8 +238,17 @@
       // Try to reconstruct message from our stored data
       var serverNonce = localStorage.getItem('phantom_dl_nonce');
       var domain = window.location.host;
+      // OPSEC-005: include `User-ID: <id>` when we were linking — mirrors
+      // the statement we built in startPhantomDeepLink so the server's
+      // session-binding check passes.
+      var storedUserId = localStorage.getItem('phantom_dl_user_id');
+      var storedLinkMode = localStorage.getItem('phantom_dl_link_mode') === 'true';
+      var statementLine = 'Sign in to Turf Monster';
+      if (storedLinkMode && storedUserId) {
+        statementLine += '\nUser-ID: ' + storedUserId;
+      }
       message = domain + ' wants you to sign in with your Solana account:\n' +
-        walletPubkey + '\n\nSign in to Turf Monster\n\nNonce: ' + serverNonce;
+        walletPubkey + '\n\n' + statementLine + '\n\nNonce: ' + serverNonce;
       dbg('Reconstructed message', truncate(message, 60));
     }
 

@@ -26,8 +26,10 @@ class StripeCheckoutValidatorTest < ActiveSupport::TestCase
   end
 
   test "fails when TransactionLog already records the session (idempotent re-receipt)" do
+    # OPSEC-022: idempotency now keyed on the dedicated stripe_session_id
+    # column (DB unique partial index), not metadata JSONB.
     TransactionLog.record!(user: @alex, type: "token_purchase", amount_cents: 19_00, direction: "credit",
-                           metadata: { stripe_session_id: "cs_dup" })
+                           stripe_session_id: "cs_dup")
     result = StripeCheckoutValidator.new("cs_dup", kind: "tokens").call
     assert_not result.ok?
     assert_equal :already_processed, result.reason

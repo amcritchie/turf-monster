@@ -2,8 +2,9 @@ class StripeDepositJob < ApplicationJob
   queue_as :default
 
   def perform(user_id:, amount_cents:, wallet_address:, stripe_session_id:)
-    # Idempotency check
-    return if TransactionLog.exists?(metadata: { "stripe_session_id" => stripe_session_id })
+    # OPSEC-022: idempotency via dedicated indexed column instead of JSONB
+    # scan. Race-safe (DB unique partial index catches concurrent inserts).
+    return if TransactionLog.exists?(stripe_session_id: stripe_session_id)
 
     user = User.find_by(id: user_id)
     return unless user
@@ -39,7 +40,12 @@ class StripeDepositJob < ApplicationJob
       direction: "credit",
       description: "Stripe deposit $#{'%.2f' % (amount_cents / 100.0)}",
       onchain_tx: onchain_tx,
-      metadata: { stripe_session_id: stripe_session_id, method: "stripe" }
+      metadata: { method: "stripe" },
+      stripe_session_id: stripe_session_id  # OPSEC-022
     )
+  rescue ActiveRecord::RecordNotUnique
+    # Concurrent webhook delivery beat us to the insert — that's fine,
+    # the other worker recorded it. No double-deposit.
+    Rails.logger.info("[StripeDepositJob] duplicate stripe_session_id=#{stripe_session_id} — already recorded")
   end
 end

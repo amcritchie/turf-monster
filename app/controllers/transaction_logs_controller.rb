@@ -27,17 +27,20 @@ class TransactionLogsController < ApplicationController
     return redirect_to admin_transactions_path, alert: "Transaction not found" unless txn
 
     rescue_and_log(target: txn) do
-      raise "Only pending transactions can be approved" unless txn.status == "pending"
+      # OPSEC-030: serialize so two admin clicks can't both pass the
+      # "pending?" check and both execute the on-chain withdrawal.
+      txn.with_lock do
+        raise "Only pending transactions can be approved" unless txn.status == "pending"
 
-      # Execute onchain withdrawal for managed wallet users
-      onchain_tx = nil
-      if txn.user.managed_wallet? && txn.user.solana_keypair
-        vault = Solana::Vault.new
-        amount_lamports = Solana::Config.dollars_to_lamports(txn.amount_cents / 100.0)
-        onchain_tx = vault.withdraw(txn.user.solana_keypair, amount_lamports)
+        onchain_tx = nil
+        if txn.user.managed_wallet? && txn.user.solana_keypair
+          vault = Solana::Vault.new
+          amount_lamports = Solana::Config.dollars_to_lamports(txn.amount_cents / 100.0)
+          onchain_tx = vault.withdraw(txn.user.solana_keypair, amount_lamports)
+        end
+
+        txn.update!(status: "approved", onchain_tx: onchain_tx)
       end
-
-      txn.update!(status: "approved", onchain_tx: onchain_tx)
       redirect_to admin_transactions_path(status: "pending"), notice: "Withdrawal approved for #{txn.user.display_name}. Onchain withdrawal executed."
     end
   rescue StandardError => e

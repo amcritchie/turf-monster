@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_19_200108) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_19_202205) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -339,9 +339,13 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_200108) do
     t.string "slug"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "stripe_session_id"
+    t.string "moonpay_tx_id"
+    t.index ["moonpay_tx_id"], name: "index_transaction_logs_on_moonpay_tx_id_unique", unique: true, where: "(moonpay_tx_id IS NOT NULL)"
     t.index ["slug"], name: "index_transaction_logs_on_slug", unique: true
     t.index ["source_type", "source_id"], name: "index_transaction_logs_on_source_type_and_source_id"
     t.index ["status"], name: "index_transaction_logs_on_status"
+    t.index ["stripe_session_id"], name: "index_transaction_logs_on_stripe_session_id_unique", unique: true, where: "(stripe_session_id IS NOT NULL)"
     t.index ["transaction_type"], name: "index_transaction_logs_on_transaction_type"
     t.index ["user_id", "status"], name: "index_transaction_logs_on_user_id_and_status"
     t.index ["user_id", "transaction_type"], name: "index_transaction_logs_on_user_id_and_type"

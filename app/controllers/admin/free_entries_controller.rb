@@ -13,12 +13,19 @@ module Admin
     def mint
       user = User.find_by!(slug: params[:user_slug])
       rescue_and_log(target: user) do
-        owed = compute_owed_for(user)
-        raise "Nothing owed to #{user.display_name}" if owed.zero?
-        count = params[:count].present? ? params[:count].to_i : owed
-        count = [count, owed].min
-        signatures = mint_n_tokens(user, count)
-        flash[:notice] = "Minted #{signatures.length} free #{'entry'.pluralize(signatures.length)} for #{user.display_name}"
+        # OPSEC-030: serialize per-user. Double-click previously raced both
+        # requests past compute_owed_for and both minted N tokens. The
+        # on-chain sequence-collision check is still the source-of-truth
+        # protection against actual double-mint, but the lock prevents the
+        # wasted admin SOL rent on a doomed second instruction.
+        user.with_lock do
+          owed = compute_owed_for(user)
+          raise "Nothing owed to #{user.display_name}" if owed.zero?
+          count = params[:count].present? ? params[:count].to_i : owed
+          count = [count, owed].min
+          signatures = mint_n_tokens(user, count)
+          flash[:notice] = "Minted #{signatures.length} free #{'entry'.pluralize(signatures.length)} for #{user.display_name}"
+        end
       end
       redirect_to admin_free_entries_path
     end

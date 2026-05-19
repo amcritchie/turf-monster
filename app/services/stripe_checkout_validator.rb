@@ -83,7 +83,7 @@ class StripeCheckoutValidator
   # done. "pending" / "failed" rows are mid-recovery and should not block reprocess.
   def already_processed?
     StripePurchase.for_session(@session_id).where(status: "minted").exists? ||
-      TransactionLog.exists?(metadata: { "stripe_session_id" => @session_id })
+      TransactionLog.exists?(stripe_session_id: @session_id)  # OPSEC-022: indexed column
   end
 
   def amount_matches?(session)

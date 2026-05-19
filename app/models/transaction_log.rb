@@ -17,7 +17,11 @@ class TransactionLog < ApplicationRecord
 
   TYPES = %w[deposit withdrawal entry_fee payout admin_credit faucet token_purchase].freeze
 
-  def self.record!(user:, type:, amount_cents:, direction:, source: nil, description: nil, status: "completed", onchain_tx: nil, metadata: {})
+  # OPSEC-022: stripe_session_id + moonpay_tx_id columns have DB-level
+  # partial unique indexes. Callers passing these get idempotency enforced
+  # at the row-insert level instead of via JSONB scan + TOCTOU.
+  # Duplicate inserts raise ActiveRecord::RecordNotUnique.
+  def self.record!(user:, type:, amount_cents:, direction:, source: nil, description: nil, status: "completed", onchain_tx: nil, metadata: {}, stripe_session_id: nil, moonpay_tx_id: nil)
     create!(
       user: user,
       transaction_type: type,
@@ -29,7 +33,9 @@ class TransactionLog < ApplicationRecord
       description: description,
       status: status,
       onchain_tx: onchain_tx,
-      metadata: metadata
+      metadata: metadata,
+      stripe_session_id: stripe_session_id,
+      moonpay_tx_id: moonpay_tx_id
     )
   end
 

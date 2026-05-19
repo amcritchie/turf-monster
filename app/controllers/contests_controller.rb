@@ -183,17 +183,23 @@ class ContestsController < ApplicationController
     rescue_and_log(target: entry, parent: @contest) do
       raise "Contest not settled" unless @contest.settled?
       raise "No payout for this entry" if entry.payout_cents.to_i == 0
-      raise "Already paid" if entry.payout_tx_signature.present?
       raise "User has no Solana wallet" unless entry.user.solana_connected?
 
-      vault = Solana::Vault.new
-      amount = Solana::Config.dollars_to_lamports(entry.payout_cents / 100.0)
-      result = vault.transfer_spl(entry.user.solana_address, amount, mint: Solana::Config::USDC_MINT)
+      # OPSEC-030: serialize per-entry to prevent double-pay on admin
+      # double-click. The "Already paid" check inside the lock + on-chain
+      # transfer + DB update happen as one critical section.
+      result_sig = entry.with_lock do
+        raise "Already paid" if entry.payout_tx_signature.present?
 
-      entry.update!(payout_tx_signature: result[:signature])
+        vault = Solana::Vault.new
+        amount = Solana::Config.dollars_to_lamports(entry.payout_cents / 100.0)
+        result = vault.transfer_spl(entry.user.solana_address, amount, mint: Solana::Config::USDC_MINT)
+        entry.update!(payout_tx_signature: result[:signature])
+        result[:signature]
+      end
+
       invalidate_usdc_cache
-
-      render json: { success: true, tx: result[:signature], entry_id: entry.id }
+      render json: { success: true, tx: result_sig, entry_id: entry.id }
     end
   rescue StandardError => e
     render json: { success: false, error: e.message }, status: :unprocessable_entity

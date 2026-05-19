@@ -2,7 +2,7 @@
 // Uses signIn deep link — ONE trip to Phantom (connect + sign combined)
 // Flow: generate keypair → fetch nonce → build SIWS input → redirect to Phantom signIn
 
-function startPhantomDeepLink(linkMode) {
+function startPhantomDeepLink(linkMode, currentUserId) {
   var cluster = document.body.dataset.solanaCluster || 'devnet';
   var callbackUrl = window.location.origin + '/auth/phantom/callback';
 
@@ -13,12 +13,21 @@ function startPhantomDeepLink(linkMode) {
   fetch('/auth/solana/nonce')
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      // OPSEC-005: when linking a wallet to a logged-in user, embed
+      // `User-ID: <id>` so the server can refuse signatures captured
+      // against a different session's nonce. Login (no currentUserId)
+      // skips the binding line.
+      var statement = 'Sign in to Turf Monster';
+      if (linkMode && currentUserId) {
+        statement = statement + '\nUser-ID: ' + currentUserId;
+      }
+
       // Build SIWS input (CAIP-122 / Sign In With Solana format)
       // Note: chainId omitted — optional per spec, avoids mismatch warning
       // when app is on devnet but user's wallet is on mainnet
       var signInInput = {
         domain: window.location.host,
-        statement: 'Sign in to Turf Monster',
+        statement: statement,
         uri: window.location.origin,
         version: '1',
         nonce: data.nonce,
@@ -33,6 +42,11 @@ function startPhantomDeepLink(linkMode) {
       localStorage.setItem('phantom_dl_step', 'signIn');
       localStorage.setItem('phantom_dl_link_mode', linkMode ? 'true' : 'false');
       localStorage.setItem('phantom_dl_cluster', cluster);
+      if (currentUserId) {
+        localStorage.setItem('phantom_dl_user_id', String(currentUserId));
+      } else {
+        localStorage.removeItem('phantom_dl_user_id');
+      }
 
       // Base58-encode the SIWS input JSON (NOT encrypted — per Phantom signIn protocol)
       var payloadB58 = encodeBase58(new TextEncoder().encode(JSON.stringify(signInInput)));

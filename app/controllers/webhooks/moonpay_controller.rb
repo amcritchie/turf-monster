@@ -48,7 +48,8 @@ module Webhooks
 
     def handle_transaction_completed(data)
       moonpay_tx_id = data["id"]
-      return if TransactionLog.exists?(metadata: { "moonpay_tx_id" => moonpay_tx_id })
+      # OPSEC-022: idempotency via indexed column.
+      return if TransactionLog.exists?(moonpay_tx_id: moonpay_tx_id)
 
       wallet_address = data["walletAddress"]
 

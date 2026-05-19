@@ -2,8 +2,8 @@ class MoonpayDepositJob < ApplicationJob
   queue_as :default
 
   def perform(user_id:, amount_cents:, wallet_address:, moonpay_tx_id:)
-    # Idempotency check
-    return if TransactionLog.exists?(metadata: { "moonpay_tx_id" => moonpay_tx_id })
+    # OPSEC-022: idempotency via dedicated indexed column.
+    return if TransactionLog.exists?(moonpay_tx_id: moonpay_tx_id)
 
     user = User.find_by(id: user_id)
     return unless user
@@ -27,7 +27,10 @@ class MoonpayDepositJob < ApplicationJob
       direction: "credit",
       description: "MoonPay deposit $#{'%.2f' % (amount_cents / 100.0)}",
       onchain_tx: onchain_tx,
-      metadata: { moonpay_tx_id: moonpay_tx_id, method: "moonpay" }
+      metadata: { method: "moonpay" },
+      moonpay_tx_id: moonpay_tx_id  # OPSEC-022
     )
+  rescue ActiveRecord::RecordNotUnique
+    Rails.logger.info("[MoonpayDepositJob] duplicate moonpay_tx_id=#{moonpay_tx_id} — already recorded")
   end
 end
