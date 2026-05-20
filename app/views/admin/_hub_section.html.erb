@@ -1,0 +1,8 @@
+<%# Section wrapper for the Link Hub (app/views/admin/hub.html.erb).
+    Renders a titled heading and responsive tile grid; yields the tiles. %>
+<section>
+  <h2 class="label-upper font-bold mb-3"><%= title %></h2>
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <%= yield %>
+  </div>
+</section>

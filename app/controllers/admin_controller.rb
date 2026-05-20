@@ -4,8 +4,6 @@ class AdminController < ApplicationController
   def navbar
   end
 
-  # Link hub — central index of the tools + actions that used to live in the
-  # navbar gear dropdown. See app/views/admin/hub.html.erb.
   def hub
     @active_slate   = Slate.joins(:slate_matchups).distinct.order(created_at: :desc).first
     @latest_contest = Contest.order(created_at: :desc).first

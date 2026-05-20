@@ -6,63 +6,47 @@
     <p class="text-secondary text-sm">Admin tools, data browsers, and quick actions — everything that used to live in the navbar gear.</p>
   </div>
 
-  <%# ── Hub: curated, most-used links ── %>
-  <section>
-    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Hub</h2>
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <%= render "hub_tile", name: "New Contest",  url: new_contest_path, status: :flagged, note: "Not added to the gear" %>
-      <%= render "hub_tile", name: "Contests",     url: contests_path, status: :reviewed %>
-      <%= render "hub_tile", name: "Seasons",      url: admin_seasons_path, status: :reviewed %>
-      <%= render "hub_tile", name: "Free Entries", url: admin_free_entries_path %>
-      <%= render "hub_tile", name: "Treasury",     url: admin_pending_transactions_path %>
-      <% unless Rails.env.production? %>
-        <%= render "hub_tile", name: "Faucet",     url: faucet_path %>
-      <% end %>
-      <%= render "hub_tile", name: "Jobs",         url: "/admin/jobs", status: :reviewed %>
-    </div>
-  </section>
+  <%= render layout: "hub_section", locals: { title: "Hub" } do %>
+    <%= render "hub_tile", name: "New Contest",  url: new_contest_path, status: :flagged %>
+    <%= render "hub_tile", name: "Contests",     url: contests_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Seasons",      url: admin_seasons_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Free Entries", url: admin_free_entries_path %>
+    <%= render "hub_tile", name: "Treasury",     url: admin_pending_transactions_path %>
+    <% unless Rails.env.production? %>
+      <%= render "hub_tile", name: "Faucet",     url: faucet_path %>
+    <% end %>
+    <%= render "hub_tile", name: "Jobs",         url: "/admin/jobs", status: :reviewed %>
+  <% end %>
 
-  <%# ── Design ── %>
-  <section>
-    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Design</h2>
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <%= render "hub_tile", name: "Theme",      url: "/admin/theme" %>
-      <%= render "hub_tile", name: "Navbar",     url: admin_navbar_path %>
-      <%= render "hub_tile", name: "Toast Test", url: "/toast_test" %>
-    </div>
-  </section>
+  <%= render layout: "hub_section", locals: { title: "Design" } do %>
+    <%= render "hub_tile", name: "Theme",      url: admin_theme_path %>
+    <%= render "hub_tile", name: "Navbar",     url: admin_navbar_path %>
+    <%= render "hub_tile", name: "Toast Test", url: toast_test_path %>
+  <% end %>
 
-  <%# ── Sports ── %>
-  <section>
-    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Sports</h2>
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <%= render "hub_tile", name: "Teams",   url: teams_path %>
-      <%= render "hub_tile", name: "Players", url: players_path %>
-      <%= render "hub_tile", name: "Games",   url: games_path %>
-    </div>
-  </section>
+  <%= render layout: "hub_section", locals: { title: "Sports" } do %>
+    <%= render "hub_tile", name: "Teams",   url: teams_path %>
+    <%= render "hub_tile", name: "Players", url: players_path %>
+    <%= render "hub_tile", name: "Games",   url: games_path %>
+  <% end %>
 
-  <%# ── Everything else: the long admin list ── %>
-  <section>
-    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Everything Else</h2>
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <%= render "hub_tile", name: "Slate Formula", url: slates_path, status: :reviewed %>
-      <% if @active_slate %>
-        <%= render "hub_tile", name: "Slate Simulator", url: manage_admin_slate_path(@active_slate), status: :reviewed %>
-      <% end %>
-      <%= render "hub_tile", name: "Formula",          url: formula_report_slates_path, status: :flagged, note: "Not added to the gear" %>
-      <%= render "hub_tile", name: "Formula Defaults", url: admin_formula_slates_path, status: :flagged, note: "Not added to the gear" %>
-      <%= render "hub_tile", name: "Contest Generator", url: generator_contests_path, status: :flagged, note: "Not added to the gear" %>
-      <%= render "hub_tile", name: "Transactions",     url: admin_transactions_path %>
-      <%= render "hub_tile", name: "Schema",           url: "/admin/schema" %>
-      <%= render "hub_tile", name: "Geo Settings",     url: admin_geo_path, status: :reviewed %>
-      <%= render "hub_tile", name: "Error Logs",       url: "/error_logs", status: :reviewed %>
-    </div>
-  </section>
+  <%= render layout: "hub_section", locals: { title: "Everything Else" } do %>
+    <%= render "hub_tile", name: "Slate Formula", url: slates_path, status: :reviewed %>
+    <% if @active_slate %>
+      <%= render "hub_tile", name: "Slate Simulator", url: manage_admin_slate_path(@active_slate), status: :reviewed %>
+    <% end %>
+    <%= render "hub_tile", name: "Formula",           url: formula_report_slates_path, status: :flagged %>
+    <%= render "hub_tile", name: "Formula Defaults",  url: admin_formula_slates_path, status: :flagged %>
+    <%= render "hub_tile", name: "Contest Generator", url: generator_contests_path, status: :flagged %>
+    <%= render "hub_tile", name: "Transactions",      url: admin_transactions_path %>
+    <%= render "hub_tile", name: "Schema",            url: admin_schema_path %>
+    <%= render "hub_tile", name: "Geo Settings",      url: admin_geo_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Error Logs",        url: error_logs_path, status: :reviewed %>
+  <% end %>
 
-  <%# ── Actions: non-navigation controls (POST forms + JS triggers) ── %>
+  <%# Actions — buttons and POST forms; a flex row, not the hub_section tile grid. %>
   <section>
-    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Actions</h2>
+    <h2 class="label-upper font-bold mb-3">Actions</h2>
     <div class="flex flex-wrap gap-3">
       <button type="button"
               @click="showNavSpinner(); refreshBalance().finally(function() { hideNavSpinner(); })"

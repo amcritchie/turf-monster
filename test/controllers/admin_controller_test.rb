@@ -23,16 +23,11 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get admin_hub_path
     assert_response :success
-    assert_select "a[href=?][data-status=?]", contests_path, "reviewed"
-    assert_select "a[href=?][data-status=?]", admin_seasons_path, "reviewed"
-    assert_select "a[href=?][data-status=?]", slates_path, "reviewed"
-    assert_select "a[href=?][data-status=?]", admin_geo_path, "reviewed"
-    assert_select "a[href=?][data-status=?]", error_logs_path, "reviewed"
-    assert_select "a[href=?][data-status=?]", "/admin/jobs", "reviewed"
-    assert_select "a[href=?][data-status=?]", admin_formula_slates_path, "flagged"
-    assert_select "a[href=?][data-status=?]", new_contest_path, "flagged"
-    assert_select "a[href=?][data-status=?]", formula_report_slates_path, "flagged"
-    assert_select "a[href=?][data-status=?]", generator_contests_path, "flagged"
+    reviewed = [contests_path, admin_seasons_path, slates_path, admin_geo_path, error_logs_path, "/admin/jobs"]
+    flagged  = [admin_formula_slates_path, new_contest_path, formula_report_slates_path, generator_contests_path]
+    reviewed.each { |path| assert_select "a[href=?][data-status=?]", path, "reviewed" }
+    flagged.each  { |path| assert_select "a[href=?][data-status=?]", path, "flagged" }
+
     assert_select "span", text: "Not added to the gear"
   end
 

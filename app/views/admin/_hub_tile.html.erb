@@ -5,20 +5,21 @@
       status — optional review state, drives the tile colour:
                  :reviewed — green; filed into the navbar gear dropdown
                  :flagged  — red; reviewed but deliberately left out of the gear
-      note   — optional short String shown under the name (e.g. why it's flagged) %>
+      note   — optional line under the name; :flagged tiles default it to
+               "Not added to the gear" %>
 <% status = local_assigns[:status] %>
-<% note   = local_assigns[:note] %>
+<% note   = local_assigns[:note] || ("Not added to the gear" if status == :flagged) %>
 <% accent = { reviewed: "var(--color-success)", flagged: "var(--color-danger)" }[status] %>
+<% accent_style = "color: #{accent}" if accent %>
 <%= link_to url, class: "card card-hover flex items-center justify-between gap-2 px-4 py-3 group",
       data: (status ? { status: status } : {}) do %>
   <span class="flex flex-col gap-0.5">
     <span class="text-sm font-medium transition <%= "text-heading group-hover:text-primary" unless accent %>"
-          style="<%= "color: #{accent}" if accent %>"><%= name %></span>
+          style="<%= accent_style %>"><%= name %></span>
     <% if note.present? %>
-      <span class="text-xs <%= "text-muted" unless accent %>"
-            style="<%= "color: #{accent}" if accent %>"><%= note %></span>
+      <span class="text-xs <%= "text-muted" unless accent %>" style="<%= accent_style %>"><%= note %></span>
     <% end %>
   </span>
   <span class="text-xs transition <%= "text-muted group-hover:text-primary" unless accent %>"
-        style="<%= "color: #{accent}" if accent %>">&rarr;</span>
+        style="<%= accent_style %>">&rarr;</span>
 <% end %>
