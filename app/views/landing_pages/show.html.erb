@@ -62,7 +62,8 @@
         <p class="text-secondary text-xs text-center mb-5"><%= @contest.lock_time_display %></p>
 
         <%= link_to @landing_page.cta_label_display, contest_path(@contest.slug, scroll: 280),
-              class: "btn btn-primary btn-lg w-full shadow-lg shadow-primary/20" %>
+              class: "btn btn-primary btn-lg w-full shadow-lg shadow-primary/20",
+              target: "_blank", rel: "noopener" %>
       </div>
     <% else %>
       <div class="card p-6 mb-6 text-center">
@@ -91,10 +92,10 @@
     <p class="text-center text-muted text-xs">
       <% if @contest&.world_cup_survivor? %>
         New here?
-        <%= link_to "Visit the Help Center", help_path, class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
+        <%= link_to "Visit the Help Center", help_path, target: "_blank", rel: "noopener", class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
       <% else %>
         New to Turf Totals?
-        <%= link_to "See how it works", turf_totals_v1_path, class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
+        <%= link_to "See how it works", turf_totals_v1_path, target: "_blank", rel: "noopener", class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
       <% end %>
     </p>
   </div>
