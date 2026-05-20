@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "Turf Totals" %></title>
+    <%= render "layouts/studio/head" %>
+  </head>
+
+  <%# Minimal funnel layout — no navbar or footer, keeps visitors on the CTA. %>
+  <body class="bg-page text-body min-h-screen">
+    <%= render "layouts/studio/flash" %>
+    <%= yield %>
+  </body>
+</html>

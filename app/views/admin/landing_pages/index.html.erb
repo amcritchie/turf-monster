@@ -1,0 +1,60 @@
+<% content_for(:title, "Landing Pages — Admin") %>
+
+<div class="max-w-5xl mx-auto py-8 px-4 space-y-6">
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-heading text-2xl font-bold mb-1">Landing Pages</h1>
+      <p class="text-muted text-sm">
+        Public funnel pages at <span class="font-mono">/l/&lt;slug&gt;</span>. Each one points its
+        CTA at a contest and tags signups with its slug for attribution.
+      </p>
+    </div>
+    <%= link_to "New Landing Page", new_admin_landing_page_path, class: "btn btn-success" %>
+  </div>
+
+  <div class="card overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-subtle text-muted text-[10px] uppercase tracking-wide">
+          <th class="text-left px-4 py-3">Name</th>
+          <th class="text-left px-3 py-3">URL</th>
+          <th class="text-left px-3 py-3">CTA Contest</th>
+          <th class="text-center px-3 py-3">Status</th>
+          <th class="text-right px-3 py-3">Signups</th>
+          <th class="text-right px-4 py-3">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @landing_pages.each do |lp| %>
+          <tr class="border-b border-subtle/40 hover:bg-inset transition">
+            <td class="px-4 py-3 text-heading font-semibold"><%= lp.name %></td>
+            <td class="px-3 py-3">
+              <%= link_to "/l/#{lp.slug}", landing_page_path(lp), target: "_blank", rel: "noopener",
+                    class: "font-mono text-xs text-primary hover:underline" %>
+            </td>
+            <td class="px-3 py-3 text-secondary">
+              <% if lp.contest %><%= lp.contest.name %><% else %><span class="text-muted">— none —</span><% end %>
+            </td>
+            <td class="px-3 py-3 text-center">
+              <% if lp.active? %>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" style="background: rgba(var(--color-primary-500-rgb), 0.15); color: var(--color-cta); border: 1px solid rgba(var(--color-primary-500-rgb), 0.4);">LIVE</span>
+              <% else %>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-inset text-muted border border-subtle">DRAFT</span>
+              <% end %>
+            </td>
+            <td class="px-3 py-3 text-right font-mono text-heading"><%= lp.signup_count %></td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <%= link_to "Edit", edit_admin_landing_page_path(lp), class: "btn btn-outline btn-sm" %>
+              <%= button_to "Delete", admin_landing_page_path(lp), method: :delete,
+                    class: "btn btn-outline btn-sm", form: { class: "inline-block ml-1" },
+                    data: { turbo_confirm: %(Delete "#{lp.name}"? This can't be undone.) } %>
+            </td>
+          </tr>
+        <% end %>
+        <% if @landing_pages.empty? %>
+          <tr><td colspan="6" class="px-4 py-10 text-center text-muted">No landing pages yet. Create the first one.</td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>

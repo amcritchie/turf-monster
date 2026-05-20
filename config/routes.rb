@@ -59,6 +59,9 @@ Rails.application.routes.draw do
   get "help/phantom",      to: "help#phantom",     as: :help_phantom
   get "help/glossary",     to: "help#glossary",    as: :help_glossary
 
+  # Landing pages — public funnel pages (admin-managed via Admin::LandingPagesController)
+  get "l/:slug", to: "landing_pages#show", as: :landing_page
+
   # Phantom deep link callback — must be before Studio.routes to avoid
   # matching OmniAuth's /auth/:provider/callback wildcard
   get  "auth/phantom/callback", to: "solana_sessions#phantom_callback"
@@ -166,6 +169,9 @@ Rails.application.routes.draw do
   # Admin: Treasury (pending multisig transactions)
   namespace :admin do
     resources :outbound_requests, only: [:index, :show]
+
+    # Landing pages — funnel page manager (public pages live at /l/:slug)
+    resources :landing_pages, only: %i[index new create edit update destroy], param: :slug
 
     resources :pending_transactions, only: [:index, :show], param: :slug do
       member do

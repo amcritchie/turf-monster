@@ -1,0 +1,93 @@
+<% page_title = @landing_page.headline.presence || @landing_page.name %>
+<% content_for :title, "#{page_title} — Turf Totals" %>
+<% content_for :head do %>
+  <meta property="og:title" content="<%= page_title %>">
+  <% if @landing_page.subheadline.present? %>
+    <meta property="og:description" content="<%= @landing_page.subheadline %>">
+  <% end %>
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="<%= request.base_url %>/logo.png">
+<% end %>
+
+<div class="min-h-screen flex flex-col items-center px-4 py-8">
+  <% unless @landing_page.active? %>
+    <div class="w-full max-w-md mb-4 rounded-lg bg-yellow-500/15 border border-yellow-500/40 text-yellow-300 text-xs font-semibold px-3 py-2 text-center">
+      Preview — this landing page is inactive and not visible to the public.
+    </div>
+  <% end %>
+
+  <div class="w-full max-w-md">
+    <%# Brand %>
+    <%= link_to root_path, class: "flex items-center justify-center gap-2 mb-8" do %>
+      <img src="/logo.png" alt="Turf Monster" class="w-10 h-10 rounded-full shadow-lg">
+      <span class="text-xl font-extrabold tracking-tight"><span class="text-heading">Turf</span><span class="text-primary">Totals</span></span>
+    <% end %>
+
+    <%# Hero %>
+    <div class="text-center mb-8">
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-heading leading-tight mb-3"><%= page_title %></h1>
+      <% if @landing_page.subheadline.present? %>
+        <p class="text-secondary text-lg"><%= @landing_page.subheadline %></p>
+      <% end %>
+    </div>
+
+    <%# Contest snapshot + CTA %>
+    <% if @contest %>
+      <div class="card p-6 mb-6">
+        <p class="text-muted text-[10px] uppercase tracking-widest text-center mb-1">The Contest</p>
+        <p class="text-heading text-xl font-bold text-center mb-5"><%= @contest.name %></p>
+
+        <div class="grid grid-cols-3 gap-3 text-center mb-5">
+          <div>
+            <p class="font-mono text-2xl font-bold text-heading">$<%= @contest.entry_fee_dollars.to_i %></p>
+            <p class="text-muted text-[10px] uppercase tracking-wide">Entry</p>
+          </div>
+          <div>
+            <p class="font-mono text-2xl font-bold text-primary">$<%= @contest.guaranteed_prize_dollars.to_i %></p>
+            <p class="text-muted text-[10px] uppercase tracking-wide">Prizes</p>
+          </div>
+          <div>
+            <p class="font-mono text-2xl font-bold text-heading"><%= @contest.active_entry_count %>/<%= @contest.max_entries %></p>
+            <p class="text-muted text-[10px] uppercase tracking-wide">Entries</p>
+          </div>
+        </div>
+
+        <p class="text-secondary text-xs text-center mb-5"><%= @contest.lock_time_display %></p>
+
+        <%= link_to @landing_page.cta_label_display, contest_lobby_path(@contest.slug),
+              class: "btn btn-primary btn-lg w-full shadow-lg shadow-primary/20" %>
+      </div>
+    <% else %>
+      <div class="card p-6 mb-6 text-center">
+        <p class="text-secondary mb-4">The contest for this page is being set up — check back soon.</p>
+        <span class="btn btn-primary btn-lg w-full opacity-50 cursor-not-allowed">Contest coming soon</span>
+      </div>
+    <% end %>
+
+    <%# How it works %>
+    <div class="mb-8">
+      <p class="text-muted text-[10px] uppercase tracking-widest text-center mb-4">How it works</p>
+      <div class="space-y-3">
+        <% [
+             ["Pick 6 teams", "Choose six World Cup team matchups for your entry."],
+             ["Goals × Turf Score", "Each team scores its goals times a Turf Score multiplier."],
+             ["Top scores win cash", "The highest entry totals split the prize pool."]
+           ].each_with_index do |(title, body), i| %>
+          <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-7 h-7 rounded-full bg-primary/15 text-primary font-bold text-sm flex items-center justify-center"><%= i + 1 %></span>
+            <div>
+              <p class="text-heading font-semibold text-sm"><%= title %></p>
+              <p class="text-muted text-xs"><%= body %></p>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <%# Footer %>
+    <p class="text-center text-muted text-xs">
+      New to Turf Totals?
+      <%= link_to "See how it works", turf_totals_v1_path, class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
+    </p>
+  </div>
+</div>

@@ -1,0 +1,14 @@
+<% content_for(:title, "Edit #{@landing_page.name} — Admin") %>
+
+<div class="max-w-2xl mx-auto py-8 px-4">
+  <div class="mb-6 flex items-start justify-between gap-4">
+    <div>
+      <%= link_to "← Landing Pages", admin_landing_pages_path, class: "text-muted text-xs hover:text-secondary" %>
+      <h1 class="text-heading text-2xl font-bold mt-1">Edit Landing Page</h1>
+    </div>
+    <%= link_to "View page →", landing_page_path(@landing_page), target: "_blank", rel: "noopener",
+          class: "btn btn-outline btn-sm" %>
+  </div>
+
+  <%= render "form" %>
+</div>

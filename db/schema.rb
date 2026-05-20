@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_19_230200) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_20_140100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -173,6 +173,20 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_230200) do
     t.index ["owner_type", "owner_id", "purpose", "variant"], name: "idx_image_caches_owner_purpose_variant", unique: true
     t.index ["owner_type", "owner_id"], name: "index_image_caches_on_owner"
     t.index ["s3_key"], name: "index_image_caches_on_s3_key", unique: true
+  end
+
+  create_table "landing_pages", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "slug"
+    t.string "headline"
+    t.text "subheadline"
+    t.string "cta_label"
+    t.bigint "contest_id"
+    t.boolean "active", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contest_id"], name: "index_landing_pages_on_contest_id"
+    t.index ["slug"], name: "index_landing_pages_on_slug", unique: true
   end
 
   create_table "messages", force: :cascade do |t|
@@ -426,10 +440,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_230200) do
     t.datetime "email_verified_at"
     t.string "session_token"
     t.boolean "payment_risk_flag", default: false, null: false
+    t.string "reference"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"
     t.index ["provider", "uid"], name: "index_users_on_provider_and_uid", unique: true, where: "(provider IS NOT NULL)"
+    t.index ["reference"], name: "index_users_on_reference"
     t.index ["session_token"], name: "index_users_on_session_token"
     t.index ["slug"], name: "index_users_on_slug", unique: true
     t.index ["web2_solana_address"], name: "index_users_on_web2_solana_address", unique: true, where: "(web2_solana_address IS NOT NULL)"
@@ -443,6 +459,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_230200) do
   add_foreign_key "entries", "contests"
   add_foreign_key "entries", "users"
   add_foreign_key "games", "survivor_rounds"
+  add_foreign_key "landing_pages", "contests", on_delete: :nullify
   add_foreign_key "messages", "contests"
   add_foreign_key "messages", "users"
   add_foreign_key "selections", "entries"

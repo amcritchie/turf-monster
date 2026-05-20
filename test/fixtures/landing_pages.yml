@@ -1,0 +1,14 @@
+launch:
+  name: Friends Test Funnel
+  slug: friends-test
+  headline: Join the 9-Player Contest
+  subheadline: Pick 6 teams. Highest score wins the pot.
+  cta_label: Enter Now
+  contest: one
+  active: true
+
+draft:
+  name: Draft Funnel
+  slug: draft-funnel
+  headline: Coming Soon
+  active: false

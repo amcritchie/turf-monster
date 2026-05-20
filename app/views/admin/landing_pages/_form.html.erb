@@ -1,0 +1,72 @@
+<% field_class = "w-full text-sm rounded-md border border-subtle px-2 py-1.5" %>
+<% field_style = "background: var(--color-bg-surface); color: var(--color-text-primary);" %>
+
+<%= form_with model: [:admin, @landing_page], local: true, class: "space-y-5" do |f| %>
+  <% if @landing_page.errors.any? %>
+    <div class="rounded-lg bg-red-900/40 border border-red-700 text-red-300 text-sm px-4 py-3">
+      <p class="font-semibold mb-1"><%= pluralize(@landing_page.errors.count, "error") %> to fix:</p>
+      <ul class="list-disc list-inside space-y-0.5">
+        <% @landing_page.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="card p-6 space-y-4">
+    <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Name <span class="normal-case">(internal label)</span></label>
+      <%= f.text_field :name, required: true, placeholder: "Friends 9-Entry Test",
+            class: field_class, style: field_style %>
+    </div>
+
+    <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Slug</label>
+      <%= f.text_field :slug, placeholder: "leave blank to generate from the name",
+            class: "#{field_class} font-mono", style: field_style %>
+      <p class="text-muted text-xs mt-1">Public URL: <span class="font-mono"><%= request.base_url %>/l/&lt;slug&gt;</span></p>
+    </div>
+
+    <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Headline</label>
+      <%= f.text_field :headline, placeholder: "Join the 9-Player Contest",
+            class: field_class, style: field_style %>
+    </div>
+
+    <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Subheadline</label>
+      <%= f.text_area :subheadline, rows: 2, placeholder: "Pick 6 teams. Highest score wins the pot.",
+            class: field_class, style: field_style %>
+    </div>
+  </div>
+
+  <div class="card p-6 space-y-4">
+    <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">CTA Contest</label>
+      <%= f.select :contest_id,
+            options_for_select(@contests.map { |c| ["#{c.name} · #{c.max_entries || '?'}-entry · #{c.status}", c.id] }, @landing_page.contest_id),
+            { include_blank: "— No contest yet —" },
+            class: field_class, style: field_style %>
+      <p class="text-muted text-xs mt-1">The CTA button sends visitors to this contest's lobby.</p>
+    </div>
+
+    <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">CTA Button Label</label>
+      <%= f.text_field :cta_label, placeholder: "Enter the Contest",
+            class: field_class, style: field_style %>
+    </div>
+
+    <div>
+      <label class="flex items-center gap-2 text-sm text-secondary">
+        <%= f.check_box :active, class: "rounded" %>
+        Active — visible to the public at the URL above
+      </label>
+      <p class="text-muted text-xs mt-1">A page can only be activated once a CTA contest is selected.</p>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <%= f.submit(@landing_page.new_record? ? "Create Landing Page" : "Save Changes", class: "btn btn-success") %>
+    <%= link_to "Cancel", admin_landing_pages_path, class: "btn btn-outline" %>
+  </div>
+<% end %>

@@ -18,6 +18,8 @@
       <% end %>
 
       <%= form_with model: @user, url: signup_path, method: :post do |f| %>
+        <%# Funnel attribution — carried from a landing page or ?reference= link %>
+        <%= f.hidden_field :reference, value: cookies[:reference] if cookies[:reference].present? %>
         <div class="mb-5">
           <label for="user_email" class="block text-sm text-secondary mb-2 font-medium">Email</label>
           <%= f.email_field :email, id: "user_email", autofocus: true,

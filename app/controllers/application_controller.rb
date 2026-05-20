@@ -6,6 +6,7 @@ class ApplicationController < ActionController::Base
 
   before_action :verify_session_token  # OPSEC-045
   before_action :set_current_context
+  before_action :capture_reference
   before_action :detect_geo_state
   before_action :require_profile_completion
   helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?
@@ -28,6 +29,18 @@ class ApplicationController < ActionController::Base
     Current.user = current_user if logged_in?
   rescue
     nil # context is best-effort; never break the request path
+  end
+
+  # Funnel/campaign attribution. Captures a `?reference=` URL param into a
+  # cookie on first touch (never overwritten) so it survives the journey to
+  # signup, where it's written onto the new user across all auth paths.
+  # Landing pages also seed this cookie with their slug — see
+  # LandingPagesController#show.
+  def capture_reference
+    return if params[:reference].blank?
+    return if cookies[:reference].present?
+
+    cookies[:reference] = { value: params[:reference].to_s.first(64), expires: 30.days }
   end
 
   # OPSEC-045: enforces session-token binding. Runs early so a stale session

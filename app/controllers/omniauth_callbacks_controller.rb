@@ -42,13 +42,23 @@ class OmniauthCallbacksController < ApplicationController
         end
       end
     else
-      # Normal login/signup flow
+      # Normal login/signup flow. Capture "is this a brand-new account?"
+      # before from_omniauth — the User after_create runs its own update!
+      # (managed wallet), so previously_new_record? is unreliable afterward.
+      new_signup = User.find_by(provider: auth.provider, uid: auth.uid).nil? &&
+                   User.find_by(email: auth.info.email).nil?
       result = User.from_omniauth(auth, email_verified: true)
       case result
       when :email_not_verified
         return redirect_to login_path, alert: "Google sign-in rejected: your email is not verified by Google."
       when :requires_verification
         return redirect_to login_path, alert: "An account already exists for #{auth.info.email}. Sign in with your password and verify your email before linking Google."
+      end
+
+      # First-touch funnel attribution for brand-new Google signups.
+      if new_signup && result.is_a?(User) && result.reference.blank? && cookies[:reference].present?
+        result.update_column(:reference, cookies[:reference].to_s.first(64))
+        cookies.delete(:reference)
       end
 
       rescue_and_log(target: result) do

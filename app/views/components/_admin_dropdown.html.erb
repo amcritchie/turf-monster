@@ -26,9 +26,14 @@
         <%= link_to "Slate Simulator", manage_admin_slate_path(active_slate), class: link_class %>
       <% end %>
       <%= link_to "Slate Formula", slates_path, class: link_class %>
+      <% featured_landing_page = LandingPage.active.order(updated_at: :desc).first %>
+      <% if featured_landing_page %>
+        <%= link_to "Landing Page", landing_page_path(featured_landing_page), class: link_class %>
+      <% end %>
 
       <div class="border-t border-subtle my-1"></div>
       <div class="<%= header_class %>">Admin</div>
+      <%= link_to "Landing Pages", admin_landing_pages_path, class: link_class %>
       <%= link_to "Geo Settings", admin_geo_path, class: link_class %>
       <%= link_to "Error Logs", error_logs_path, class: link_class %>
       <%= link_to "Jobs", "/admin/jobs", class: link_class %>

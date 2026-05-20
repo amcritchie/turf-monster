@@ -1,0 +1,10 @@
+<% content_for(:title, "New Landing Page — Admin") %>
+
+<div class="max-w-2xl mx-auto py-8 px-4">
+  <div class="mb-6">
+    <%= link_to "← Landing Pages", admin_landing_pages_path, class: "text-muted text-xs hover:text-secondary" %>
+    <h1 class="text-heading text-2xl font-bold mt-1">New Landing Page</h1>
+  </div>
+
+  <%= render "form" %>
+</div>

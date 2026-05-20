@@ -28,11 +28,13 @@ class SolanaSessionsController < ApplicationController
       name: "anon",
       username: Studio::UsernameGenerator.generate,
       web3_solana_address: pubkey_b58,
-      password: SecureRandom.hex(16)
+      password: SecureRandom.hex(16),
+      reference: cookies[:reference].presence&.first(64) # first-touch funnel attribution
     )
 
     rescue_and_log(target: user) do
       user.save! if user.new_record?
+      cookies.delete(:reference) if is_new
       set_app_session(user)
       session[:onchain] = true
       render json: { success: true, redirect: "/", new_user: is_new }
