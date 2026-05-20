@@ -53,7 +53,7 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     get landing_page_path(lp)
     assert_response :success
     assert_select "p", text: "Win or draw to survive"       # survivor how-it-works step
-    assert_select "p", text: "Goals × Turf Score", count: 0 # not the Turf Totals copy
+    assert_select "p", text: "Pick 6 teams", count: 0 # not the Turf Totals copy
     assert_select "p", text: "Free"                         # $0 entry renders as Free
   end
 

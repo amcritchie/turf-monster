@@ -11,8 +11,9 @@ module LandingPagesHelper
     else
       [
         ["Pick 6 teams", "Choose six World Cup team matchups for your entry."],
-        ["Goals × Turf Score", "Each team scores its goals times a Turf Score multiplier."],
-        ["Top scores win cash", "The highest entry totals split the prize pool."]
+        ["Create Account", "Sign up with email or Google — it only takes a few seconds."],
+        ["Submit Entry", "Confirm your six picks and submit your entry."],
+        ["Contest Locks", "The contest locks and games are simulated Wednesday the 27th at 8 PM MST."]
       ]
     end
   end
