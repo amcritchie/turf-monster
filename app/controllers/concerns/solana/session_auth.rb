@@ -33,10 +33,14 @@ module Solana
       stored_nonce = session.delete(:solana_nonce)
       nonce_at     = session.delete(:solana_nonce_at)
 
+      # OPSEC-018: bind the signature to this host. The client builds the
+      # message with `window.location.host`; request.host_with_port is the
+      # server-side equal (hostname, plus port only when non-default).
       ::Solana::AuthVerifier.verify!(
         message:       message,
         signature_b58: signature_b58,
         pubkey_b58:    pubkey_b58,
+        expected_host: request.host_with_port,
         stored_nonce:  stored_nonce,
         nonce_at:      nonce_at
       )
