@@ -70,4 +70,17 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select ".lp-blobs svg"
     assert_select ".lp-bg", count: 0
   end
+
+  test "renders the badge under the title when set" do
+    @active.update!(badge: "Alpha Test")
+    get landing_page_path(@active)
+    assert_response :success
+    assert_select ".lp-badge", text: "Alpha Test"
+  end
+
+  test "renders no badge when the badge is blank" do
+    get landing_page_path(@active) # launch fixture has no badge
+    assert_response :success
+    assert_select ".lp-badge", count: 0
+  end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_20_150000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_20_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -186,6 +186,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_20_150000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "background_style", default: "gradient", null: false
+    t.string "badge"
     t.index ["contest_id"], name: "index_landing_pages_on_contest_id"
     t.index ["slug"], name: "index_landing_pages_on_slug", unique: true
   end

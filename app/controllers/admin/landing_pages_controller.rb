@@ -55,7 +55,7 @@ module Admin
     end
 
     def landing_page_params
-      params.require(:landing_page).permit(:name, :slug, :headline, :subheadline, :cta_label, :contest_id, :active, :background_style)
+      params.require(:landing_page).permit(:name, :slug, :headline, :subheadline, :badge, :cta_label, :contest_id, :active, :background_style)
     end
   end
 end

@@ -34,6 +34,13 @@
     </div>
 
     <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Badge <span class="normal-case">(optional)</span></label>
+      <%= f.text_field :badge, placeholder: "e.g. Alpha Test — leave blank for no badge",
+            class: field_class, style: field_style %>
+      <p class="text-muted text-xs mt-1">A small pill shown under the headline. Blank = no badge.</p>
+    </div>
+
+    <div>
       <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Subheadline</label>
       <%= f.text_area :subheadline, rows: 2, placeholder: "Pick 6 teams. Highest score wins the pot.",
             class: field_class, style: field_style %>

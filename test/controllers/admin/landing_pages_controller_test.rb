@@ -94,4 +94,13 @@ class Admin::LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_landing_pages_path
     assert_equal "blobs", LandingPage.find_by(name: "Blobby Funnel").background_style
   end
+
+  test "create accepts a badge label" do
+    log_in_as(@admin)
+    post admin_landing_pages_path, params: {
+      landing_page: { name: "Badged Funnel", contest_id: contests(:one).id, badge: "Beta" }
+    }
+    assert_redirected_to admin_landing_pages_path
+    assert_equal "Beta", LandingPage.find_by(name: "Badged Funnel").badge
+  end
 end
