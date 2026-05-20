@@ -44,4 +44,16 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     get landing_page_path("does-not-exist")
     assert_redirected_to root_path
   end
+
+  test "a survivor contest funnel shows survivor copy and a free entry" do
+    survivor = Contest.create!(name: "WC Survivor Test", game_type: "world_cup_survivor",
+                               contest_type: "survivor_wc_free", status: "open")
+    lp = LandingPage.create!(name: "Survivor Funnel", headline: "Last One Standing",
+                             contest: survivor, active: true)
+    get landing_page_path(lp)
+    assert_response :success
+    assert_select "p", text: "Win or draw to survive"       # survivor how-it-works step
+    assert_select "p", text: "Goals × Turf Score", count: 0 # not the Turf Totals copy
+    assert_select "p", text: "Free"                         # $0 entry renders as Free
+  end
 end

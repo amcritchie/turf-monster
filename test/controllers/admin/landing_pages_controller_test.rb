@@ -69,4 +69,13 @@ class Admin::LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href=?]", admin_landing_pages_path         # Admin section → manager
     assert_select "a[href=?]", landing_page_path(@landing_page) # FIFA section → live page
   end
+
+  test "the contest dropdown includes survivor contests" do
+    Contest.create!(name: "Dropdown Survivor", game_type: "world_cup_survivor",
+                    contest_type: "survivor_wc_free", status: "open")
+    log_in_as(@admin)
+    get new_admin_landing_page_path
+    assert_response :success
+    assert_select "select#landing_page_contest_id option", text: /Dropdown Survivor/
+  end
 end

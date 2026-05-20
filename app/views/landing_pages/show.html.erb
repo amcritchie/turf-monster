@@ -39,7 +39,7 @@
 
         <div class="grid grid-cols-3 gap-3 text-center mb-5">
           <div>
-            <p class="font-mono text-2xl font-bold text-heading">$<%= @contest.entry_fee_dollars.to_i %></p>
+            <p class="font-mono text-2xl font-bold text-heading"><%= @contest.entry_fee_cents.to_i.zero? ? "Free" : "$#{@contest.entry_fee_dollars.to_i}" %></p>
             <p class="text-muted text-[10px] uppercase tracking-wide">Entry</p>
           </div>
           <div>
@@ -68,11 +68,7 @@
     <div class="mb-8">
       <p class="text-muted text-[10px] uppercase tracking-widest text-center mb-4">How it works</p>
       <div class="space-y-3">
-        <% [
-             ["Pick 6 teams", "Choose six World Cup team matchups for your entry."],
-             ["Goals × Turf Score", "Each team scores its goals times a Turf Score multiplier."],
-             ["Top scores win cash", "The highest entry totals split the prize pool."]
-           ].each_with_index do |(title, body), i| %>
+        <% funnel_how_it_works(@contest).each_with_index do |(title, body), i| %>
           <div class="flex items-start gap-3">
             <span class="flex-shrink-0 w-7 h-7 rounded-full bg-primary/15 text-primary font-bold text-sm flex items-center justify-center"><%= i + 1 %></span>
             <div>
@@ -86,8 +82,13 @@
 
     <%# Footer %>
     <p class="text-center text-muted text-xs">
-      New to Turf Totals?
-      <%= link_to "See how it works", turf_totals_v1_path, class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
+      <% if @contest&.world_cup_survivor? %>
+        New here?
+        <%= link_to "Visit the Help Center", help_path, class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
+      <% else %>
+        New to Turf Totals?
+        <%= link_to "See how it works", turf_totals_v1_path, class: "text-primary hover:text-primary-300 underline underline-offset-2" %>
+      <% end %>
     </p>
   </div>
 </div>
