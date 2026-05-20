@@ -208,8 +208,8 @@
                 </template>
               </div>
             <% end %>
-            <%# Score (mobile — end of info row) %>
-            <div class="md:hidden text-right flex-shrink-0 ml-auto" style="min-width:3rem">
+            <%# Score — right end of the top info row %>
+            <div class="text-right flex-shrink-0 ml-auto" style="min-width:3.5rem">
               <div class="font-mono font-bold text-lg <%= dimmed ? 'text-muted' : 'text-violet' %>"><%= sprintf('%.1f', entry.score) %></div>
             </div>
             <%# Selections — stacked on mobile (tap to expand 3×2), inline on desktop %>
@@ -240,7 +240,7 @@
                 { team: t, c1: c1, c2: c2, ip: ip, dp: dp, tv: tv }
               end
             %>
-            <div class="w-full md:w-auto md:flex-1" x-data="{ picksOpen: false, wide: window.innerWidth >= 490, mid: window.innerWidth >= 490, dkFull: window.innerWidth >= 1080 }" @resize.window="wide = window.innerWidth >= 490; mid = window.innerWidth >= 490; dkFull = window.innerWidth >= 1080">
+            <div class="w-full" x-data="{ picksOpen: false, wide: window.innerWidth >= 490, mid: window.innerWidth >= 490, dkFull: window.innerWidth >= 1080 }" @resize.window="wide = window.innerWidth >= 490; mid = window.innerWidth >= 490; dkFull = window.innerWidth >= 1080">
               <%# Stacked pills (below 1080px): compressed → 3×2 grid on tap %>
               <div x-show="!dkFull" x-cloak @click="picksOpen = !picksOpen">
                 <div class="cursor-pointer" :class="picksOpen ? 'grid grid-cols-3 gap-1.5' : 'flex'">
@@ -256,10 +256,10 @@
                   <% end %>
                 </div>
               </div>
-              <%# Desktop: inline pills (1080px+) %>
-              <div x-show="dkFull" x-cloak class="flex flex-wrap justify-end gap-1.5">
+              <%# Desktop (1080px+): one full-width row of 6 even pills %>
+              <div x-show="dkFull" x-cloak class="grid grid-cols-6 gap-1.5">
                 <% pills.each do |p| %>
-                  <span class="inline-flex items-center justify-between w-28 px-2 py-1 rounded-lg text-xs font-semibold text-white border border-white/15"
+                  <span class="flex items-center justify-between min-w-0 px-2 py-1 rounded-lg text-xs font-semibold text-white border border-white/15"
                         style="background: linear-gradient(135deg, <%= p[:c1] %>cc, <%= p[:c2] %>99)"
                         title="<%= p[:team].name %> — <%= p[:tv] %>">
                     <span class="truncate"><%= p[:team].emoji %> <%= p[:team].short_name %></span>
@@ -267,10 +267,6 @@
                   </span>
                 <% end %>
               </div>
-            </div>
-            <%# Score (desktop — end of full row) %>
-            <div class="hidden md:block text-right flex-shrink-0" style="min-width:4.5rem">
-              <div class="font-mono font-bold text-lg <%= dimmed ? 'text-muted' : 'text-violet' %>"><%= sprintf('%.1f', entry.score) %></div>
             </div>
           </div>
         </div>
