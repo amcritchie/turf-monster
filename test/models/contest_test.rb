@@ -43,4 +43,13 @@ class ContestTest < ActiveSupport::TestCase
     @contest.entries.create!(user: @user, status: :cart)
     assert_equal 2, @contest.active_entry_count
   end
+
+  test "season_id is bound to the active season on create (OPSEC-023)" do
+    contest = Contest.create!(name: "Season Bind Test", slate: slates(:one), status: :open)
+    assert_equal SeasonConfig.current_season_id, contest.season_id
+  end
+
+  test "onchain_params includes season_id (OPSEC-023)" do
+    assert @contest.onchain_params.key?(:season_id)
+  end
 end

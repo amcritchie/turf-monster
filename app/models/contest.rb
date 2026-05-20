@@ -35,6 +35,11 @@ class Contest < ApplicationRecord
   attr_accessor :skip_onchain_callback
   after_create :create_onchain_with_rollback!, unless: :skip_onchain_callback_active?
 
+  # OPSEC-023: bind each contest to the active season at creation. turf-vault
+  # v0.13.0 stores season_id on the Contest PDA and rejects any entry whose
+  # Season account doesn't match it, so entries must always pass this season.
+  before_create { self.season_id ||= SeasonConfig.current_season_id }
+
   scope :ranked, -> { where.not(rank: nil).order(rank: :asc) }
 
   def self.target
@@ -113,7 +118,8 @@ class Contest < ApplicationRecord
       entry_fee:      Solana::Config.dollars_to_lamports(entry_fee_cents / 100.0),
       max_entries:    max_entries,
       payout_amounts: payouts.values.map { |c| Solana::Config.dollars_to_lamports(c / 100.0) },
-      prizes:         Solana::Config.dollars_to_lamports(guaranteed_prize_cents / 100.0)
+      prizes:         Solana::Config.dollars_to_lamports(guaranteed_prize_cents / 100.0),
+      season_id:      season_id || SeasonConfig.current_season_id
     )
     update!(
       onchain_contest_id:   result[:contest_pda],
@@ -336,7 +342,8 @@ class Contest < ApplicationRecord
       entry_fee: Solana::Config.dollars_to_lamports(fee_cents / 100.0),
       max_entries: max_entries || format_config[:max_entries],
       payout_amounts: payout_amounts,
-      prizes: Solana::Config.dollars_to_lamports(guaranteed / 100.0)
+      prizes: Solana::Config.dollars_to_lamports(guaranteed / 100.0),
+      season_id: season_id || SeasonConfig.current_season_id
     }
   end
 

@@ -303,7 +303,8 @@ class ContestsController < ApplicationController
             @contest.slug,
             entry.entry_number,
             token[:pda],
-            user_keypair: current_user.solana_keypair
+            user_keypair: current_user.solana_keypair,
+            season_id: @contest.season_id
           )
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
@@ -314,7 +315,7 @@ class ContestsController < ApplicationController
 
           vault = Solana::Vault.new
           vault.ensure_user_account(current_user.solana_address) if current_user.solana_connected?
-          result = vault.enter_contest(current_user.solana_address, @contest.slug, entry.entry_number)
+          result = vault.enter_contest(current_user.solana_address, @contest.slug, entry.entry_number, season_id: @contest.season_id)
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
         end
@@ -380,7 +381,8 @@ class ContestsController < ApplicationController
       result = vault.build_enter_contest_direct(
         current_user.web3_solana_address,
         @contest.slug,
-        entry.entry_number
+        entry.entry_number,
+        season_id: @contest.season_id
       )
 
       render json: {

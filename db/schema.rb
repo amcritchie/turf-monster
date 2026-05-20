@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_19_211801) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -62,6 +62,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_211801) do
     t.string "locks_at_date_selected"
     t.string "locks_at_time_selected"
     t.string "locks_at_timezone_selected"
+    t.integer "season_id"
     t.index ["rank"], name: "index_contests_on_rank"
     t.index ["slate_id"], name: "index_contests_on_slate_id"
     t.index ["slug"], name: "index_contests_on_slug", unique: true

@@ -388,7 +388,7 @@ module Solana
     # Build a partially-signed create_contest transaction.
     # Admin signs (pays PDA rent), creator must sign client-side (authorizes prizes USDC transfer).
     # Returns base64-encoded transaction for the creator to co-sign and submit.
-    def build_create_contest(wallet_address, contest_slug, entry_fee:, max_entries:, payout_amounts:, prizes:)
+    def build_create_contest(wallet_address, contest_slug, entry_fee:, max_entries:, payout_amounts:, prizes:, season_id: nil)
       admin = Keypair.admin
       wallet_bytes = Keypair.decode_base58(wallet_address)
       contest_id = Digest::SHA256.digest(contest_slug)
@@ -399,8 +399,12 @@ module Solana
       creator_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
       vault_usdc, _ = vault_usdc_pda
 
+      # OPSEC-023: create_contest now records the season the contest is bound to.
+      season_id ||= SeasonConfig.current_season_id
+
       data = Transaction.anchor_discriminator("create_contest") +
              Borsh.encode_bytes32(contest_id) +
+             Borsh.encode_u32(season_id) +
              Borsh.encode_u64(entry_fee) +
              Borsh.encode_u32(max_entries) +
              Borsh.encode_vec(payout_amounts) { |amt| Borsh.encode_u64(amt) } +
@@ -441,7 +445,7 @@ module Solana
     #
     # Submits the TX synchronously and waits for confirmation.
     # Returns { tx_signature:, contest_pda: } (both base58 strings).
-    def create_contest_server_funded(contest_slug:, entry_fee:, max_entries:, payout_amounts:, prizes:)
+    def create_contest_server_funded(contest_slug:, entry_fee:, max_entries:, payout_amounts:, prizes:, season_id: nil)
       admin = Keypair.admin
       contest_id = Digest::SHA256.digest(contest_slug)
       contest_pda_addr, _ = contest_pda(contest_slug)
@@ -452,8 +456,12 @@ module Solana
       creator_ata, _ = Solana::SplToken.find_associated_token_address(admin_b58, Config::USDC_MINT)
       vault_usdc, _ = vault_usdc_pda
 
+      # OPSEC-023: create_contest now records the season the contest is bound to.
+      season_id ||= SeasonConfig.current_season_id
+
       data = Transaction.anchor_discriminator("create_contest") +
              Borsh.encode_bytes32(contest_id) +
+             Borsh.encode_u32(season_id) +
              Borsh.encode_u64(entry_fee) +
              Borsh.encode_u32(max_entries) +
              Borsh.encode_vec(payout_amounts) { |amt| Borsh.encode_u64(amt) } +
