@@ -17,6 +17,11 @@ class TokensController < ApplicationController
     unless Rails.application.config.x.stripe_enabled
       return redirect_to tokens_buy_path, alert: "Card checkout isn't configured yet. Set STRIPE_SECRET_KEY and restart."
     end
+    # OPSEC-036: a prior chargeback flagged this account — block further card
+    # purchases so a stolen-card buyer can't keep racking up disputes.
+    if current_user.payment_risk_flag
+      return redirect_to tokens_buy_path, alert: "Card purchases are disabled on this account. Please contact support."
+    end
 
     price_cents = StripePurchase.pack_price_cents(quantity)
 

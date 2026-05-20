@@ -75,6 +75,20 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
     assert_match(/Card checkout isn't configured/, flash[:alert])
   end
 
+  test "stripe_checkout blocks a payment-risk-flagged user (OPSEC-036)" do
+    log_in_as @jordan
+    @jordan.update!(
+      web2_solana_address: "TestWalletAddr123",
+      encrypted_web2_solana_private_key: "x",
+      payment_risk_flag: true
+    )
+    with_stripe_enabled do
+      post tokens_stripe_checkout_path, params: { quantity: 1 }
+    end
+    assert_redirected_to tokens_buy_path
+    assert_match(/disabled on this account/, flash[:alert])
+  end
+
   test "processing requires session_id" do
     log_in_as @jordan
     get tokens_processing_path

@@ -48,6 +48,12 @@ module Webhooks
           payment_intent: s.payment_intent
         })
         handle_checkout_completed(s)
+      when "charge.dispute.created", "charge.dispute.funds_withdrawn"
+        # OPSEC-036: a chargeback. Flag the buyer + record it so the operator
+        # isn't silently defrauded (stolen-card token buy → dispute weeks later).
+        handle_dispute(event.data.object)
+      when "charge.refunded"
+        handle_refund(event.data.object)
       else
         Rails.logger.info "[tokens] webhook.ignored type=#{event.type}"
       end
@@ -99,6 +105,46 @@ module Webhooks
           stripe_session_id: stripe_session_id
         )
       end
+    end
+
+    # OPSEC-036: a dispute (chargeback) was opened. Flag the buyer so further
+    # card purchases are blocked, and log loudly for operator follow-up.
+    def handle_dispute(dispute)
+      purchase = stripe_purchase_for_payment_intent(dispute.payment_intent)
+      if purchase
+        purchase.user.update!(payment_risk_flag: true)
+        Rails.logger.error "[tokens] webhook.dispute user=#{purchase.user_id} purchase=#{purchase.id} " \
+          "charge=#{dispute.charge} reason=#{dispute.reason} amount=#{dispute.amount} — user flagged, card purchases blocked"
+      else
+        Rails.logger.error "[tokens] webhook.dispute UNMATCHED charge=#{dispute.charge} pi=#{dispute.payment_intent} " \
+          "reason=#{dispute.reason} amount=#{dispute.amount} — manual review required"
+      end
+    end
+
+    # OPSEC-036: a charge was refunded — record it on the StripePurchase.
+    def handle_refund(charge)
+      purchase = stripe_purchase_for_payment_intent(charge.payment_intent)
+      if purchase
+        purchase.mark_refunded!(reason: "stripe charge.refunded") unless purchase.status == "refunded"
+        Rails.logger.warn "[tokens] webhook.refund purchase=#{purchase.id} user=#{purchase.user_id} charge=#{charge.id} — marked refunded"
+      else
+        Rails.logger.warn "[tokens] webhook.refund UNMATCHED charge=#{charge.id} pi=#{charge.payment_intent}"
+      end
+    end
+
+    # Dispute/refund events carry a payment_intent, not a checkout session id.
+    # StripePurchase is keyed by session id, so resolve pi → session → purchase.
+    def stripe_purchase_for_payment_intent(payment_intent_id)
+      return nil if payment_intent_id.blank?
+
+      sessions = Stripe::Checkout::Session.list(payment_intent: payment_intent_id, limit: 1)
+      session_id = sessions.data.first&.id
+      return nil if session_id.blank?
+
+      StripePurchase.for_session(session_id).first
+    rescue Stripe::StripeError => e
+      Rails.logger.error "[tokens] webhook.purchase_lookup_failed pi=#{payment_intent_id}: #{e.message}"
+      nil
     end
   end
 end

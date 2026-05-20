@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_19_230100) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_19_230200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -425,6 +425,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_230100) do
     t.datetime "updated_at", null: false
     t.datetime "email_verified_at"
     t.string "session_token"
+    t.boolean "payment_risk_flag", default: false, null: false
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"

@@ -53,19 +53,25 @@ module Webhooks
 
       wallet_address = data["walletAddress"]
 
-      # OPSEC-035 (FIXME before mainnet enable): MoonPay's BUY payload uses
-      # baseCurrency = the asset being purchased (USDC), quoteCurrency = the
-      # fiat the user paid (USD). For our purposes the crypto amount lives
-      # in baseCurrencyAmount. Trust the webhook payload here is provisional
-      # — for production we should re-fetch via the MoonPay API
-      # (GET /v3/transactions/:id) and use that response as authoritative.
+      # OPSEC-035: credit ONLY the crypto amount. MoonPay's BUY payload uses
+      # baseCurrency = the asset purchased (USDC), quoteCurrency = the fiat
+      # paid (USD); the crypto amount is `baseCurrencyAmount`. The old code
+      # fell back to `quoteCurrencyAmount` when baseCurrencyAmount was absent
+      # — crediting a USD figure as USDC, a silent over-credit. There is no
+      # safe fallback: a missing baseCurrencyAmount means the crypto amount
+      # is unknown, so credit nothing.
+      #
+      # FIXME before mainnet: re-fetch via the MoonPay API
+      # (GET /v1/transactions/:id, needs a MoonPay API key) and treat that
+      # response as authoritative instead of trusting the webhook payload.
       crypto_amount =
         if data["cryptoTransactionId"].present?
-          (data["baseCurrencyAmount"] || data["quoteCurrencyAmount"]).to_f
+          data["baseCurrencyAmount"].to_f
         else
           0
         end
       amount_cents = (crypto_amount * 100).to_i
+      return if amount_cents <= 0
 
       # OPSEC-061: user attribution by wallet address is spoofable in theory.
       # For now we accept it because (a) Solana addresses are user-supplied

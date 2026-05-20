@@ -36,6 +36,11 @@ class StripePurchase < ApplicationRecord
     )
   end
 
+  # OPSEC-036: Stripe charge.refunded — record the refund for forensics.
+  def mark_refunded!(reason: nil)
+    update!(status: "refunded", refunded_at: Time.current, refund_reason: reason)
+  end
+
   def tx_signatures
     return [] if mint_tx_signatures.blank?
     JSON.parse(mint_tx_signatures)

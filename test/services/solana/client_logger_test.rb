@@ -48,4 +48,14 @@ class Solana::ClientLoggerTest < ActiveSupport::TestCase
     assert_equal "StandardError", rec.error_class
     assert_match(/rpc boom/, rec.error_message)
   end
+
+  test "redacts the signed-transaction param for sendTransaction (OPSEC-037)" do
+    client = FakeClient.new
+    raw_tx = "BASE64SIGNEDTX" + ("x" * 400)
+    client.send(:call, "sendTransaction", [raw_tx, { "encoding" => "base64" }])
+    params = OutboundRequest.last.request_body["params"]
+    refute_includes params.to_s, raw_tx, "raw signed TX bytes must not be stored"
+    assert_match(/redacted tx/, params.first.to_s)
+    assert_match(/sha256:/, params.first.to_s)
+  end
 end
