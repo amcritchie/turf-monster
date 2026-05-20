@@ -54,11 +54,12 @@ validate :has_authentication_method  # must have email, solana_address, or provi
 
 ## SSO Satellite Role
 
-This app receives one-way SSO from McRitchie Studio (the hub). Login page shows "Continue as [name]" button (from engine's `_sso_continue.html.erb` partial) when user is logged into Studio. `GET /sso_login` provides one-click SSO from the hub's nav link. Logout only clears this app's session. Wallet-only users (no email) cannot SSO. Hub logo at `public/studio-logo.svg`. Requires shared `SECRET_KEY_BASE`.
+This app receives one-way SSO from McRitchie Studio (the hub). Login page shows "Continue as [name]" button (from engine's `_sso_continue.html.erb` partial) when user is logged into Studio. `GET /sso_login` (the hub's nav-link target) redirects to this app's login page; sign-in itself goes through the CSRF-protected `POST /sso_continue` button there (OPSEC-016 — the GET no longer mutates the session). Logout only clears this app's session. Wallet-only users (no email) cannot SSO. Hub logo at `public/studio-logo.svg`. Requires shared `SECRET_KEY_BASE`.
 
 ## Solana Auth Security
 
 - **Nonce replay prevention**: Solana nonces include timestamp, enforced 5-minute expiry window. Nonce is deleted from session before verification (delete-before-verify pattern) to prevent replay attacks.
+- **Host binding** (OPSEC-018): the signed message must name the request host as its opening token (`"<host> wants to sign in…"`). `Solana::SessionAuth#verify_solana_signature!` passes `expected_host: request.host_with_port` to the gem's `Solana::AuthVerifier.verify!`, so a signature the user produced for another dApp (with a matching nonce) can't satisfy turf-monster login.
 
 ## Account Routes
 
