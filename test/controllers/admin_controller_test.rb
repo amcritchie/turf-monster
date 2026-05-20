@@ -15,6 +15,7 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", text: "Link Hub"
     assert_select "h2", text: "Design"              # hub section
     assert_select "h2", text: "Sports"              # hub section
+    assert_select "h2", text: "Admin"               # hub section
     assert_select "a[href=?]", admin_seasons_path   # a navigation link moved off the gear
     assert_select "button", text: "Refresh Balance" # an action control moved off the gear
   end
@@ -24,7 +25,8 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     get admin_hub_path
     assert_response :success
     reviewed = [contests_path, admin_seasons_path, slates_path, admin_geo_path, error_logs_path, "/admin/jobs"]
-    flagged  = [admin_formula_slates_path, new_contest_path, formula_report_slates_path, generator_contests_path]
+    flagged  = [admin_formula_slates_path, new_contest_path, formula_report_slates_path, generator_contests_path,
+                admin_pending_transactions_path, admin_transactions_path]
     reviewed.each { |path| assert_select "a[href=?][data-status=?]", path, "reviewed" }
     flagged.each  { |path| assert_select "a[href=?][data-status=?]", path, "flagged" }
 

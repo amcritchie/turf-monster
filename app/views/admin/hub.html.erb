@@ -6,18 +6,6 @@
     <p class="text-secondary text-sm">Admin tools, data browsers, and quick actions — everything that used to live in the navbar gear.</p>
   </div>
 
-  <%= render layout: "hub_section", locals: { title: "Hub" } do %>
-    <%= render "hub_tile", name: "New Contest",  url: new_contest_path, status: :flagged %>
-    <%= render "hub_tile", name: "Contests",     url: contests_path, status: :reviewed %>
-    <%= render "hub_tile", name: "Seasons",      url: admin_seasons_path, status: :reviewed %>
-    <%= render "hub_tile", name: "Free Entries", url: admin_free_entries_path %>
-    <%= render "hub_tile", name: "Treasury",     url: admin_pending_transactions_path %>
-    <% unless Rails.env.production? %>
-      <%= render "hub_tile", name: "Faucet",     url: faucet_path %>
-    <% end %>
-    <%= render "hub_tile", name: "Jobs",         url: "/admin/jobs", status: :reviewed %>
-  <% end %>
-
   <%= render layout: "hub_section", locals: { title: "Design" } do %>
     <%= render "hub_tile", name: "Theme",      url: admin_theme_path %>
     <%= render "hub_tile", name: "Navbar",     url: admin_navbar_path %>
@@ -30,6 +18,24 @@
     <%= render "hub_tile", name: "Games",   url: games_path %>
   <% end %>
 
+  <%= render layout: "hub_section", locals: { title: "Admin" } do %>
+    <%= render "hub_tile", name: "Schema",       url: admin_schema_path %>
+    <%= render "hub_tile", name: "Free Entries", url: admin_free_entries_path %>
+    <% unless Rails.env.production? %>
+      <%= render "hub_tile", name: "Faucet",     url: faucet_path %>
+    <% end %>
+    <%= render "hub_tile", name: "Geo Settings", url: admin_geo_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Error Logs",   url: error_logs_path, status: :reviewed %>
+  <% end %>
+
+  <%= render layout: "hub_section", locals: { title: "Hub" } do %>
+    <%= render "hub_tile", name: "New Contest", url: new_contest_path, status: :flagged %>
+    <%= render "hub_tile", name: "Contests",    url: contests_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Seasons",     url: admin_seasons_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Treasury",    url: admin_pending_transactions_path, status: :flagged %>
+    <%= render "hub_tile", name: "Jobs",        url: "/admin/jobs", status: :reviewed %>
+  <% end %>
+
   <%= render layout: "hub_section", locals: { title: "Everything Else" } do %>
     <%= render "hub_tile", name: "Slate Formula", url: slates_path, status: :reviewed %>
     <% if @active_slate %>
@@ -38,10 +44,7 @@
     <%= render "hub_tile", name: "Formula",           url: formula_report_slates_path, status: :flagged %>
     <%= render "hub_tile", name: "Formula Defaults",  url: admin_formula_slates_path, status: :flagged %>
     <%= render "hub_tile", name: "Contest Generator", url: generator_contests_path, status: :flagged %>
-    <%= render "hub_tile", name: "Transactions",      url: admin_transactions_path %>
-    <%= render "hub_tile", name: "Schema",            url: admin_schema_path %>
-    <%= render "hub_tile", name: "Geo Settings",      url: admin_geo_path, status: :reviewed %>
-    <%= render "hub_tile", name: "Error Logs",        url: error_logs_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Transactions",      url: admin_transactions_path, status: :flagged %>
   <% end %>
 
   <%# Actions — buttons and POST forms; a flex row, not the hub_section tile grid. %>
