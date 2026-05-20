@@ -9,6 +9,12 @@
   }
 }
 
+/* Toast notifications must stack above the sticky navbar (z-[110]).
+   studio-engine's _flash.html.erb sets these too low (60 / 55), and
+   #toast-container's z-index is an inline style — hence !important. */
+#toast-container { z-index: 120 !important; }
+.toast-page-blur { z-index: 115 !important; }
+
 /* Theme CSS custom properties are now engine-generated via studio_theme_css_tag */
 
 @layer components {
