@@ -42,6 +42,15 @@
 
   <div class="card p-6 space-y-4">
     <div>
+      <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Background Style</label>
+      <%= f.select :background_style,
+            options_for_select([["Animated gradient", "gradient"], ["Rotating blobs", "blobs"]], @landing_page.background_style),
+            {},
+            class: field_class, style: field_style %>
+      <p class="text-muted text-xs mt-1">The animated background behind the splash.</p>
+    </div>
+
+    <div>
       <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">CTA Contest</label>
       <%= f.select :contest_id,
             options_for_select(@contests.map { |c| ["#{c.name} · #{c.game_type.titleize} · #{c.status}", c.id] }, @landing_page.contest_id),

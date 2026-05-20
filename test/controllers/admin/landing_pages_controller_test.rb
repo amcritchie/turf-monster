@@ -78,4 +78,20 @@ class Admin::LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "select#landing_page_contest_id option", text: /Dropdown Survivor/
   end
+
+  test "the form offers a background style choice" do
+    log_in_as(@admin)
+    get new_admin_landing_page_path
+    assert_response :success
+    assert_select "select#landing_page_background_style option", text: "Rotating blobs"
+  end
+
+  test "create accepts a background style" do
+    log_in_as(@admin)
+    post admin_landing_pages_path, params: {
+      landing_page: { name: "Blobby Funnel", contest_id: contests(:one).id, active: true, background_style: "blobs" }
+    }
+    assert_redirected_to admin_landing_pages_path
+    assert_equal "blobs", LandingPage.find_by(name: "Blobby Funnel").background_style
+  end
 end

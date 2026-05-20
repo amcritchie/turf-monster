@@ -5,6 +5,10 @@ class LandingPage < ApplicationRecord
   # exists; `contest_required_when_active` blocks publishing without one.
   belongs_to :contest, optional: true
 
+  # Which animated background the splash renders — partials live in
+  # app/views/landing_pages/backgrounds/.
+  enum :background_style, { gradient: "gradient", blobs: "blobs" }
+
   # Populate the slug before validation so uniqueness can be checked on it.
   # (Sluggable also re-runs set_slug before_save — idempotent once set.)
   before_validation :set_slug
@@ -24,6 +28,17 @@ class LandingPage < ApplicationRecord
 
   def cta_label_display
     cta_label.presence || "Enter the Contest"
+  end
+
+  # Background partial to render, under landing_pages/backgrounds/.
+  def background_partial
+    blobs? ? "blobs" : "gradient"
+  end
+
+  # The gradient is a dark background (light text); blobs is a light
+  # background (dark text). Drives the splash theme — see the landing layout.
+  def dark_splash?
+    !blobs?
   end
 
   # Signups attributed to this funnel (User#reference == this page's slug).

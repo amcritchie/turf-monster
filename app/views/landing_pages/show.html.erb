@@ -7,36 +7,9 @@
   <% end %>
   <meta property="og:type" content="website">
   <meta property="og:image" content="<%= request.base_url %>/logo.png">
-
-  <style>
-    /* Animated gradient splash background — adapted from a CodePen by design.kayac.com */
-    @keyframes lp-grad {
-      0%, 100% { background-position: 50% 0%; }
-      50%      { background-position: 50% 100%; }
-    }
-    .lp-bg {
-      position: fixed; inset: 0; z-index: 0;
-      background: linear-gradient(to bottom,
-        #655bef 0%, #fa28bf 20%, #ff4665 40%,
-        #fbde4e 60%, #00fbea 80%, #555def 100%);
-      background-size: 100% 400%;
-      animation: lp-grad 17.5s ease-in-out infinite;
-    }
-    .lp-scrim { position: fixed; inset: 0; z-index: 0; background: rgba(13, 11, 30, 0.62); }
-    .lp-splash { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45); }
-    .lp-splash .text-heading   { color: #ffffff !important; }
-    .lp-splash .text-body      { color: rgba(255, 255, 255, 0.92) !important; }
-    .lp-splash .text-secondary { color: rgba(255, 255, 255, 0.86) !important; }
-    .lp-splash .text-muted     { color: rgba(255, 255, 255, 0.72) !important; }
-    .lp-splash .card { box-shadow: 0 24px 55px -15px rgba(0, 0, 0, 0.6); }
-    @media (prefers-reduced-motion: reduce) {
-      .lp-bg { animation: none; background-position: 50% 40%; }
-    }
-  </style>
 <% end %>
 
-<div class="lp-bg" aria-hidden="true"></div>
-<div class="lp-scrim" aria-hidden="true"></div>
+<%= render "landing_pages/backgrounds/#{@landing_page.background_partial}" %>
 
 <div class="lp-splash relative z-10 min-h-screen flex flex-col items-center px-4 py-8">
   <% unless @landing_page.active? %>

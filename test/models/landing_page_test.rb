@@ -55,4 +55,18 @@ class LandingPageTest < ActiveSupport::TestCase
     users(:jordan).update!(reference: lp.slug)
     assert_equal 1, lp.signup_count
   end
+
+  test "defaults to the gradient background (a dark splash)" do
+    lp = LandingPage.new
+    assert_equal "gradient", lp.background_style
+    assert lp.dark_splash?
+    assert_equal "gradient", lp.background_partial
+  end
+
+  test "a blobs page is a light splash" do
+    lp = LandingPage.new(background_style: "blobs")
+    assert lp.blobs?
+    assert_not lp.dark_splash?
+    assert_equal "blobs", lp.background_partial
+  end
 end

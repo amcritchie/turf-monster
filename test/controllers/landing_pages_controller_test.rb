@@ -56,4 +56,18 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "p", text: "Goals × Turf Score", count: 0 # not the Turf Totals copy
     assert_select "p", text: "Free"                         # $0 entry renders as Free
   end
+
+  test "renders the gradient background by default" do
+    get landing_page_path(@active)
+    assert_response :success
+    assert_select ".lp-bg"
+  end
+
+  test "renders the blob background when the page selects it" do
+    @active.update!(background_style: "blobs")
+    get landing_page_path(@active)
+    assert_response :success
+    assert_select ".lp-blobs svg"
+    assert_select ".lp-bg", count: 0
+  end
 end

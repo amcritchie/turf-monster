@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<%# Funnel splash always renders dark — it sits on the animated gradient. %>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <title><%= content_for(:title) || "Turf Totals" %></title>
     <%= render "layouts/studio/head" %>
+    <%# The splash theme follows the landing page's background style. %>
+    <% splash_dark = @landing_page.nil? || @landing_page.dark_splash? %>
+    <script>document.documentElement.classList.<%= splash_dark ? "add" : "remove" %>("dark");</script>
   </head>
 
   <%# Minimal funnel layout — no navbar or footer, keeps visitors on the CTA. %>
