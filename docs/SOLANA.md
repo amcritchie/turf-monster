@@ -16,14 +16,15 @@
 
 Separate project at `/Users/alex/projects/turf-vault/`. PDAs: VaultState, UserAccount, Contest, ContestEntry. Instructions: initialize, create_user_account, deposit, withdraw, create_contest, enter_contest, settle_contest, close_contest, force_close_vault, update_signers.
 
-**Deployment status**: v0.8.0 deployed to devnet. 2-of-3 multisig for treasury ops.
-- Program ID: `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J`
-- Vault PDA: `7z313HTVNcxhvCBkkDQv794RpXeRrfCLb5WJ4dFAQQeh`
+**Deployment status**: deployed to devnet. 2-of-3 multisig for treasury ops.
+- Program ID: `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` (devnet — current)
+  - Old orphaned program: `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J` (upgrade authority lost; ~3.45 SOL of rent locked there). See the 2026-05-18 program-ID migration in `CLAUDE.md`'s TODO log.
+- Vault PDA: derived from the program ID at seed `[b"vault"]` — re-derived per `Solana::Transaction` against the current `PROGRAM_ID`.
 - Signer 1 (server): Alex Bot — `F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ`
 - Signer 2: Alex — `7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr`
 - Signer 3: Mason — `CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR`
 - Threshold: 2-of-3 (treasury ops only)
-- IDL Account: `DCP2XRu8ZwzsCpXBgu5xa4vTYdYQhKUZRU49iJuFv8Lf`
+- IDL: committed at `config/turf_vault.idl.json`, SHA256-pinned via `EXPECTED_IDL_HASH` (see `Solana::Config#verify_idl!`).
 - USDC Mint: `222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9`
 - USDT Mint: `9mxkN8KaVA8FFgDE2LEsn2UbYLPG8Xg9bf4V9MYYi8Ne`
 

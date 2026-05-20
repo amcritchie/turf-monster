@@ -10,7 +10,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 **Missing env vars on Heroku**
 - Diagnosis: App crashes on boot. Check `heroku logs --tail --app turf-monster`.
-- Fix: Required vars: `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Set with: `heroku config:set KEY=value --app turf-monster`.
+- Fix: Vars currently set on the `turf-monster` app: `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `RAILS_SERVE_STATIC_FILES`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `MAILER_FROM`, `MANAGED_WALLET_ENCRYPTION_KEY`, `EXPECTED_IDL_HASH`, `SOLANA_PROGRAM_ID`. Boot fails closed without `MANAGED_WALLET_ENCRYPTION_KEY` (OPSEC-015), `SOLANA_PROGRAM_ID` (OPSEC-012), or `EXPECTED_IDL_HASH` (OPSEC-014). See `.env.example` for the documented set. Set with: `heroku config:set KEY=value --app turf-monster`.
 
 **Migration fails**
 - Diagnosis: `heroku run bin/rails db:migrate --app turf-monster` errors. Check exact SQL error in logs.
@@ -28,7 +28,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 **Wrong network (mainnet vs devnet)**
 - Diagnosis: Transactions fail with "account not found" or wrong program ID.
-- Fix: Verify `SOLANA_RPC_URL` points to devnet: `bin/rails runner "puts Solana::Client.new.send_rpc('getVersion', [])"`. Program ID `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J` is only deployed on devnet.
+- Fix: Verify `SOLANA_RPC_URL` points to devnet: `bin/rails runner "puts Solana::Client.new.send_rpc('getVersion', [])"`. Program ID `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` is only deployed on devnet.
 
 ## Phantom Wallet Connection Issues
 

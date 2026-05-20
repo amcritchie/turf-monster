@@ -96,7 +96,7 @@ Mobile-first contest preview/info page. Renders inline matchup board or leaderbo
 - **Database**: Heroku Postgres (essential-0)
 - **Redis**: Heroku Redis mini (`redis-clear-09691`) — `REDIS_URL` set automatically
 - **Deploy**: `git push heroku main` (then `heroku run bin/rails db:migrate --app turf-monster` if needed)
-- **Env vars**: `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- **Env vars** (currently set on Heroku): `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `RAILS_SERVE_STATIC_FILES`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `MAILER_FROM`, `MANAGED_WALLET_ENCRYPTION_KEY`, `EXPECTED_IDL_HASH`, `SOLANA_PROGRAM_ID`. See `.env.example` for the full documented set (including `SOLANA_ADMIN_KEY` / `SOLANA_RPC_URL` for local dev).
 
 ## Tech Stack
 
@@ -171,7 +171,7 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 ## Models
 
 - **User** — name, username, email (nullable), solana_address, wallet_type, role, slug. Balance is on-chain USDC. See `docs/AUTH.md`.
-- **Contest** — name, tagline, entry_fee_cents, status, max_entries, rank, slate association, onchain fields, slug. `belongs_to :user` (creator, optional). `has_one_attached :contest_image` (Active Storage). Helpers: `lock_time_display`, `active_entry_count`, `locks_at` (alias for `starts_at`).
+- **Contest** — name, tagline, entry_fee_cents, status, max_entries, rank, season_id (OPSEC-023), slate association, onchain fields, slug. `belongs_to :user` (creator, optional). `has_one_attached :contest_image` (Active Storage). Helpers: `lock_time_display`, `active_entry_count`, `locks_at` (alias for `starts_at`).
 - **ContestMatchup** — team_slug, opponent_team_slug, rank, turf_score, status. Belongs to contest + teams via slug FKs.
 - **Entry** — user + contest, score, status (cart/active/complete/abandoned), rank, payout_cents, onchain fields, slug (includes id)
 - **Selection** — joins entry + contest_matchup (unique pair)
@@ -244,7 +244,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 ## Testing
 
 ### Rails Tests
-- `bin/rails test` — **91 tests** total (minitest + fixtures)
+- `bin/rails test` — **198 tests** total (minitest + fixtures)
 - Test fixtures: 6 contest_matchups, 6 teams, 2 games
 - Test password: `"password"` (min 6 chars)
 - Test helper: `log_in_as(user)` defaults to password "password"
