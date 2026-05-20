@@ -1,5 +1,6 @@
 <%# Contest chat panel — real-time via Turbo Streams over ActionCable.
-    Reading is public; posting is limited to entrants + admins
+    Composer is pinned at the top, under the heading; messages read newest-first
+    below it. Reading is public; posting is limited to entrants + admins
     (Contest#chat_participant?). The .chat-admin class on the root reveals the
     per-message Hide buttons for admins — broadcast partials can't know the
     viewer, so visibility is driven by this container class. %>
@@ -9,39 +10,57 @@
 <style>
   .chat-admin-only { display: none; }
   .chat-admin .chat-admin-only { display: inline-block; }
+
+  /* New messages slide + fade in as they prepend to the list. */
+  @keyframes chat-message-in {
+    from { opacity: 0; transform: translateY(-0.85rem) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .chat-message-in { animation: chat-message-in 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* Keyboard-shortcut keycaps shown inside the Send button. */
+  .chat-kbd {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 1.1rem; height: 1.1rem; padding: 0 0.3rem;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 0.3rem;
+    font-size: 0.72rem; line-height: 1;
+  }
+
+  /* Pulsing "Live" indicator — a radar-ping ring behind the solid dot. */
+  @keyframes chat-live-ping {
+    0%        { transform: scale(1);   opacity: 0.6; }
+    70%, 100% { transform: scale(2.6); opacity: 0; }
+  }
+  .chat-live-ping { animation: chat-live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+  /* Soften the bottom edge of the message list — content fades out. */
+  .chat-scroll-fade {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
+            mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
+  }
 </style>
 
-<div class="card overflow-hidden flex flex-col <%= 'chat-admin' if current_user&.admin? %>"
+<div class="flex flex-col <%= 'chat-admin' if current_user&.admin? %>"
      style="height: 32rem;"
      x-data="contestChat(<%= messages.empty? %>)"
      data-post-url="<%= contest_messages_path(contest) %>">
   <%= turbo_stream_from contest, :messages %>
 
   <%# Header %>
-  <div class="flex items-center justify-between px-4 py-3 border-b border-subtle flex-shrink-0">
-    <h2 class="text-lg font-semibold text-body flex items-center gap-2">
-      <span>💬</span> Contest Chat
-    </h2>
+  <div class="flex items-center justify-between mb-4 flex-shrink-0">
+    <h2 class="text-xl font-semibold text-body">Contest Chat</h2>
     <span class="flex items-center gap-1.5 text-xs text-muted">
-      <span class="w-2 h-2 rounded-full bg-primary"></span> Live
+      <span class="relative inline-flex w-2 h-2">
+        <span class="chat-live-ping absolute inline-flex w-full h-full rounded-full bg-primary"></span>
+        <span class="relative inline-flex w-2 h-2 rounded-full bg-primary"></span>
+      </span>
+      Live
     </span>
   </div>
 
-  <%# Messages — scrollable, newest at the bottom. %>
-  <div x-ref="scroll" class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
-    <div id="contest_<%= contest.id %>_messages" x-ref="messageList"
-         class="flex flex-col justify-end min-h-full space-y-4">
-      <% if messages.empty? %>
-        <p x-show="empty" class="text-sm text-muted text-center py-8">
-          No messages yet — say hi 👋
-        </p>
-      <% end %>
-      <%= render partial: "messages/message", collection: messages %>
-    </div>
-  </div>
-
-  <%# Composer %>
-  <div class="border-t border-subtle p-3 flex-shrink-0">
+  <%# Composer — pinned at the top, directly under the heading. %>
+  <div class="flex-shrink-0 pb-3 border-b border-subtle">
     <% if !contest.chat_enabled? %>
       <p class="text-sm text-muted text-center py-1">Chat is closed for this contest.</p>
     <% elsif !logged_in? %>
@@ -51,46 +70,87 @@
     <% elsif !can_post %>
       <p class="text-sm text-muted text-center py-1">Enter the contest to join the chat.</p>
     <% else %>
-      <form class="flex items-end gap-2" @submit.prevent="send()">
-        <textarea x-model="body" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
+      <form class="flex items-center gap-2" @submit.prevent="send()">
+        <textarea x-model="body" x-ref="input" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
                   placeholder="Message the contest…"
-                  @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); send(); }"
-                  class="flex-1 resize-none rounded-lg bg-surface-alt border border-subtle px-3 py-2 text-sm text-body placeholder:text-muted focus:outline-none focus:border-primary"></textarea>
+                  @keydown.enter="if ($event.metaKey || $event.ctrlKey) { $event.preventDefault(); send(); }"
+                  class="flex-1 h-10 resize-none rounded-lg bg-surface-alt border border-subtle px-3 py-2 text-sm text-body placeholder:text-muted focus:outline-none focus:border-primary"></textarea>
         <button type="submit" :disabled="sending || !body.trim()"
                 :class="{ 'opacity-50 cursor-not-allowed': sending || !body.trim() }"
-                class="btn btn-primary btn-sm flex-shrink-0">Send</button>
+                class="btn btn-primary btn-sm flex-shrink-0 inline-flex items-center gap-2 h-10">
+          <span>Send</span>
+          <span class="inline-flex items-center gap-1" aria-hidden="true">
+            <kbd class="chat-kbd" x-text="isMac ? '⌘' : 'Ctrl'"></kbd>
+            <kbd class="chat-kbd">↵</kbd>
+          </span>
+        </button>
       </form>
     <% end %>
+  </div>
+
+  <%# Messages — newest first, reading top to bottom. %>
+  <div class="flex-1 min-h-0 overflow-y-auto pt-3 chat-scroll-fade">
+    <div id="contest_<%= contest.id %>_messages" x-ref="messageList" class="flex flex-col space-y-4">
+      <% if messages.empty? %>
+        <p x-show="empty" class="text-sm text-muted text-center py-8">
+          No messages yet — say hi 👋
+        </p>
+      <% end %>
+      <%= render partial: "messages/message", collection: messages %>
+    </div>
   </div>
 </div>
 
 <script>
   // Inline (not a module): Alpine evaluates x-data before importmap modules
   // load — see CLAUDE.md "Inline JS that MUST stay inline".
+
+  // Error toast — the studio-engine toast manager renders 'alert' as error styling.
+  function chatToast(title, message) {
+    window.dispatchEvent(new CustomEvent('toast', {
+      detail: { type: 'alert', title: title, message: message || '', duration: 4000 }
+    }));
+  }
+
   function contestChat(isEmpty) {
     return {
       body: '',
       sending: false,
       empty: isEmpty,
+      // ⌘+Enter on Mac, Ctrl+Enter elsewhere — drives the Send-button hint.
+      isMac: /Mac/i.test(navigator.platform || navigator.userAgent || ''),
       init() {
-        this.$nextTick(() => this.scrollToBottom());
+        // Focus the composer on load so you can type straight away.
+        // preventScroll keeps the page from jumping down to the chat; on
+        // mobile the panel sits in a hidden tab, so focus() no-ops there.
+        this.$nextTick(() => { this.$refs.input?.focus({ preventScroll: true }); });
+
         var listEl = this.$refs.messageList;
         if (listEl) {
-          new MutationObserver(() => {
+          // New messages prepend at the top — clear the empty state and play a
+          // slide-in animation on each freshly added bubble.
+          new MutationObserver((mutations) => {
             this.empty = false;
-            this.scrollToBottom();
+            mutations.forEach((m) => {
+              m.addedNodes.forEach((node) => {
+                if (node.nodeType === 1 && node.id && node.id.startsWith('message_')) {
+                  node.classList.add('chat-message-in');
+                }
+              });
+            });
           }).observe(listEl, { childList: true });
         }
-        // Re-anchor to the newest message when the panel becomes visible
-        // (mobile Chat tab) or the window resizes.
-        var scrollEl = this.$refs.scroll;
-        if (scrollEl && window.ResizeObserver) {
-          new ResizeObserver(() => this.scrollToBottom()).observe(scrollEl);
+
+        // Desktop: keep the panel as tall as the leaderboard column so the two
+        // columns line up at the bottom. Mobile keeps the fixed CSS height.
+        var leaderboard = document.getElementById('leaderboard-container');
+        if (leaderboard && window.ResizeObserver) {
+          var panel = this.$root;
+          var desktop = window.matchMedia('(min-width: 768px)');
+          new ResizeObserver(function () {
+            panel.style.height = desktop.matches ? leaderboard.offsetHeight + 'px' : '32rem';
+          }).observe(leaderboard);
         }
-      },
-      scrollToBottom() {
-        var el = this.$refs.scroll;
-        if (el) el.scrollTop = el.scrollHeight;
       },
       async send() {
         var text = this.body.trim();
@@ -110,14 +170,10 @@
           if (resp.ok && data.ok) {
             this.body = '';
           } else {
-            window.dispatchEvent(new CustomEvent('toast', {
-              detail: { type: 'error', title: 'Message not sent', message: data.error || 'Please try again.', duration: 4000 }
-            }));
+            chatToast('Message not sent', data.error || 'Please try again.');
           }
         } catch (e) {
-          window.dispatchEvent(new CustomEvent('toast', {
-            detail: { type: 'error', title: 'Message not sent', message: 'Network error.', duration: 4000 }
-          }));
+          chatToast('Message not sent', 'Network error.');
         } finally {
           this.sending = false;
         }
@@ -135,9 +191,7 @@
       }
     }).then(function(r) {
       if (!r.ok) {
-        window.dispatchEvent(new CustomEvent('toast', {
-          detail: { type: 'error', title: 'Could not hide message', message: '', duration: 3000 }
-        }));
+        chatToast('Could not hide message');
       }
       // On success the bubble is removed for everyone via the Turbo Stream broadcast.
     }).catch(function() {});

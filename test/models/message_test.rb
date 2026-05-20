@@ -45,7 +45,7 @@ class MessageTest < ActiveSupport::TestCase
     assert_not_nil message.hidden_at
   end
 
-  test "recent_for returns visible messages oldest-first" do
+  test "recent_for returns visible messages newest-first" do
     older   = Message.create!(contest: @contest, user: @user, body: "older", created_at: 2.minutes.ago)
     newer   = Message.create!(contest: @contest, user: @user, body: "newer", created_at: 1.minute.ago)
     removed = Message.create!(contest: @contest, user: @user, body: "removed")
@@ -54,6 +54,6 @@ class MessageTest < ActiveSupport::TestCase
     result = Message.recent_for(@contest)
 
     assert_not_includes result, removed
-    assert_operator result.index(older), :<, result.index(newer)
+    assert_operator result.index(newer), :<, result.index(older)
   end
 end

@@ -11,19 +11,20 @@ class Message < ApplicationRecord
   # hidden_at nil = visible. Admin soft-delete sets it (see #hide!).
   scope :visible, -> { where(hidden_at: nil) }
 
-  # Real-time delivery (ActionCable + Turbo Streams). New messages append to
+  # Real-time delivery (ActionCable + Turbo Streams). New messages prepend to
   # the panel; an admin hide removes the bubble for everyone. The partial is
   # rendered viewer-agnostically — see app/views/messages/_message.html.erb.
   after_create_commit :broadcast_new_message
   after_update_commit :broadcast_removal, if: -> { saved_change_to_hidden_at? && hidden? }
 
-  # Last `limit` visible messages for a contest, oldest-first (initial render order).
+  # Last `limit` visible messages for a contest, newest-first — the chat panel
+  # reads top to bottom with the freshest message on top.
   def self.recent_for(contest, limit: 50)
     visible.where(contest: contest)
+           .includes(user: { avatar_attachment: :blob })
            .order(created_at: :desc, id: :desc)
            .limit(limit)
            .to_a
-           .reverse
   end
 
   def hidden?
@@ -37,16 +38,22 @@ class Message < ApplicationRecord
 
   private
 
+  # Broadcasts are best-effort — a cable/Redis hiccup must not fail the request
+  # that already saved (and committed) the message.
   def broadcast_new_message
-    broadcast_append_to(
+    broadcast_prepend_to(
       [contest, :messages],
       target: "contest_#{contest_id}_messages",
       partial: "messages/message",
       locals: { message: self }
     )
+  rescue => e
+    ErrorLog.capture!(e)
   end
 
   def broadcast_removal
     broadcast_remove_to([contest, :messages], target: "message_#{id}")
+  rescue => e
+    ErrorLog.capture!(e)
   end
 end
