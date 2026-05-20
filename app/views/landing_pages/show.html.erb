@@ -61,7 +61,7 @@
 
         <p class="text-secondary text-xs text-center mb-5"><%= @contest.lock_time_display %></p>
 
-        <%= link_to @landing_page.cta_label_display, contest_path(@contest.slug, scroll: 100),
+        <%= link_to @landing_page.cta_label_display, contest_path(@contest.slug, scroll: 300),
               class: "btn btn-primary btn-lg w-full shadow-lg shadow-primary/20" %>
       </div>
     <% else %>
