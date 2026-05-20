@@ -414,4 +414,45 @@ namespace :solana do
       exit 1
     end
   end
+
+  # OPSEC-015: migrate managed-wallet private keys from the legacy encryption
+  # scheme (secret_key_base[0,32], ~128-bit) to the current v2 scheme
+  # (MANAGED_WALLET_ENCRYPTION_KEY via KeyGenerator, 256-bit). Safe to run
+  # anytime — idempotent (skips rows already at v2), non-destructive
+  # (re-encrypts to the same plaintext), and roundtrip-verified per row
+  # before the write. Run on prod after deploying the OPSEC-015 code +
+  # setting MANAGED_WALLET_ENCRYPTION_KEY.
+  desc "OPSEC-015: re-encrypt managed-wallet keys to the current (v2) scheme"
+  task reencrypt_managed_wallets: :environment do
+    scope = User.where.not(encrypted_web2_solana_private_key: [nil, ""])
+    total = scope.count
+    migrated = skipped = failed = 0
+    puts "Re-encrypting #{total} managed-wallet key(s)..."
+
+    scope.find_each do |user|
+      current = user.encrypted_web2_solana_private_key
+      if Solana::Keypair.current_version?(current)
+        skipped += 1
+        next
+      end
+      begin
+        fresh = Solana::Keypair.reencrypt(current)
+        # Roundtrip sanity: the re-encrypted value MUST decrypt back to the
+        # same wallet pubkey before we overwrite the row. Guards against a
+        # silent corruption that would lock the user out of their funds.
+        roundtrip = Solana::Keypair.from_encrypted(fresh).to_base58
+        unless roundtrip == user.web2_solana_address
+          raise "roundtrip pubkey mismatch (#{roundtrip} != #{user.web2_solana_address})"
+        end
+        user.update_column(:encrypted_web2_solana_private_key, fresh)
+        migrated += 1
+      rescue => e
+        failed += 1
+        puts "  FAILED user ##{user.id} (#{user.web2_solana_address}): #{e.message}"
+      end
+    end
+
+    puts "Done: #{migrated} migrated, #{skipped} already v2, #{failed} failed."
+    exit 1 if failed.positive?
+  end
 end
