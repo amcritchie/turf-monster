@@ -1,0 +1,90 @@
+<%# Local override of studio-engine's schema/index.html.erb (gem v0.4.3).
+    Fix: Postgres expression indexes (e.g. index_users_on_lower_username)
+    return `columns` as a String, not an Array — the gem's bare
+    `idx.columns.join` then raises NoMethodError. Array() normalises both.
+    Delete this file once the fix lands upstream in studio-engine. %>
+<section class="mb-6" x-data="{ search: '' }">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-2xl font-bold text-heading">Database Schema</h2>
+    <span class="text-sm text-muted"><%= @tables.size %> tables</span>
+  </div>
+
+  <div class="mb-6 relative">
+    <input type="text" placeholder="Filter tables..." x-model="search"
+           @keydown.escape.prevent="search = ''"
+           class="input-field pr-10 py-2.5 text-sm placeholder-muted" />
+    <button x-show="search.length > 0" x-cloak @click="search = ''"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-heading transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <% @tables.each do |table| %>
+      <div class="card p-0 overflow-hidden"
+           x-show="!search || '<%= table[:name] %>'.includes(search.toLowerCase())" x-cloak>
+        <div class="px-4 py-3 border-b border-subtle flex items-center justify-between">
+          <h3 class="text-heading font-bold text-sm font-mono"><%= table[:name] %></h3>
+          <span class="text-xs text-muted"><%= table[:columns].size %> columns</span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-left text-muted border-b border-subtle">
+                <th class="px-4 py-2 font-medium">Column</th>
+                <th class="px-4 py-2 font-medium">Type</th>
+                <th class="px-4 py-2 font-medium">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% table[:columns].each do |col| %>
+                <tr class="border-b border-subtle last:border-0 hover:bg-surface-alt transition">
+                  <td class="px-4 py-1.5">
+                    <span class="font-semibold text-heading font-mono"><%= col.name %></span>
+                    <% if col.name == "id" %>
+                      <span class="ml-1 text-primary font-bold">PK</span>
+                    <% end %>
+                  </td>
+                  <td class="px-4 py-1.5 text-secondary font-mono"><%= col.sql_type %></td>
+                  <td class="px-4 py-1.5">
+                    <span class="inline-flex gap-1.5 flex-wrap">
+                      <% unless col.null %>
+                        <span class="text-warning font-medium">NOT NULL</span>
+                      <% end %>
+                      <% if col.default.present? %>
+                        <span class="text-muted">default: <span class="text-secondary font-mono"><%= col.default %></span></span>
+                      <% end %>
+                    </span>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+
+        <% if table[:indexes].any? %>
+          <div class="px-4 py-2 border-t border-subtle bg-surface-alt">
+            <p class="text-muted text-xs font-medium mb-1">Indexes</p>
+            <% table[:indexes].each do |idx| %>
+              <div class="flex items-center gap-2 text-xs py-0.5">
+                <span class="text-secondary font-mono truncate flex-1"><%= Array(idx.columns).join(", ") %></span>
+                <% if idx.unique %>
+                  <span class="text-primary font-medium shrink-0">UNIQUE</span>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+  <template x-if="search && document.querySelectorAll('[x-show]:not([style*=\'display: none\'])').length === 0">
+    <div class="empty-state py-12 text-center">
+      <p class="text-muted">No tables matching "<span x-text="search"></span>"</p>
+    </div>
+  </template>
+</section>
