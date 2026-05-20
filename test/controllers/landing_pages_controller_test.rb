@@ -13,9 +13,9 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", text: @active.headline
   end
 
-  test "renders the CTA pointing at the contest lobby" do
+  test "renders the CTA pointing at the contest" do
     get landing_page_path(@active)
-    assert_select "a[href=?]", contest_lobby_path(@active.contest.slug), text: @active.cta_label
+    assert_select "a[href=?]", contest_path(@active.contest.slug, scroll: 100), text: @active.cta_label
   end
 
   test "visiting seeds the reference cookie with the slug" do

@@ -220,6 +220,17 @@
   </script>
 <% end %>
 
+<!-- Auto-scroll on arrival — driven by a ?scroll=<px> URL param
+     (e.g. a landing-page CTA links here with ?scroll=100). -->
+<script>
+  (function() {
+    var px = parseInt(new URLSearchParams(window.location.search).get('scroll'), 10);
+    if (px > 0) {
+      setTimeout(function() { window.scrollTo({ top: px, behavior: 'smooth' }); }, 200);
+    }
+  })();
+</script>
+
 <!-- Section 7: More Contests -->
 <% if @other_contests&.any? %>
   <div>
