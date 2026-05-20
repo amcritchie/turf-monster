@@ -71,7 +71,7 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select ".lp-bg", count: 0
   end
 
-  test "renders the badge under the title when set" do
+  test "renders the badge when set" do
     @active.update!(badge: "Alpha Test")
     get landing_page_path(@active)
     assert_response :success
