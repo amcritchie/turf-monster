@@ -31,14 +31,9 @@ class LandingPage < ApplicationRecord
   end
 
   # Background partial to render, under landing_pages/backgrounds/.
+  # Both backgrounds are dark splashes (the funnel always renders dark).
   def background_partial
     blobs? ? "blobs" : "gradient"
-  end
-
-  # The gradient is a dark background (light text); blobs is a light
-  # background (dark text). Drives the splash theme — see the landing layout.
-  def dark_splash?
-    !blobs?
   end
 
   # Signups attributed to this funnel (User#reference == this page's slug).
