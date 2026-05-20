@@ -1,0 +1,24 @@
+<%# Link tile for the admin Link Hub (app/views/admin/hub.html.erb).
+    Locals:
+      name   — link label (String)
+      url    — link target (path or String)
+      status — optional review state, drives the tile colour:
+                 :reviewed — green; filed into the navbar gear dropdown
+                 :flagged  — red; reviewed but deliberately left out of the gear
+      note   — optional short String shown under the name (e.g. why it's flagged) %>
+<% status = local_assigns[:status] %>
+<% note   = local_assigns[:note] %>
+<% accent = { reviewed: "var(--color-success)", flagged: "var(--color-danger)" }[status] %>
+<%= link_to url, class: "card card-hover flex items-center justify-between gap-2 px-4 py-3 group",
+      data: (status ? { status: status } : {}) do %>
+  <span class="flex flex-col gap-0.5">
+    <span class="text-sm font-medium transition <%= "text-heading group-hover:text-primary" unless accent %>"
+          style="<%= "color: #{accent}" if accent %>"><%= name %></span>
+    <% if note.present? %>
+      <span class="text-xs <%= "text-muted" unless accent %>"
+            style="<%= "color: #{accent}" if accent %>"><%= note %></span>
+    <% end %>
+  </span>
+  <span class="text-xs transition <%= "text-muted group-hover:text-primary" unless accent %>"
+        style="<%= "color: #{accent}" if accent %>">&rarr;</span>
+<% end %>

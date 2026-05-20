@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_19_230100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -63,6 +63,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
     t.string "locks_at_time_selected"
     t.string "locks_at_timezone_selected"
     t.integer "season_id"
+    t.boolean "chat_enabled", default: true, null: false
+    t.string "game_type", default: "turf_totals", null: false
+    t.index ["game_type"], name: "index_contests_on_game_type"
     t.index ["rank"], name: "index_contests_on_rank"
     t.index ["slate_id"], name: "index_contests_on_slate_id"
     t.index ["slug"], name: "index_contests_on_slug", unique: true
@@ -84,6 +87,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
     t.string "slug"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "eliminated_round"
     t.index ["contest_id", "status"], name: "index_entries_on_contest_id_and_status"
     t.index ["contest_id"], name: "index_entries_on_contest_id"
     t.index ["slug"], name: "index_entries_on_slug", unique: true
@@ -121,10 +125,13 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
     t.integer "away_score"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "survivor_round_id"
+    t.string "advancing_team_slug"
     t.index ["away_team_slug"], name: "index_games_on_away_team_slug"
     t.index ["home_team_slug"], name: "index_games_on_home_team_slug"
     t.index ["slug"], name: "index_games_on_slug", unique: true
     t.index ["status"], name: "index_games_on_status"
+    t.index ["survivor_round_id"], name: "index_games_on_survivor_round_id"
   end
 
   create_table "geo_settings", force: :cascade do |t|
@@ -166,6 +173,19 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
     t.index ["owner_type", "owner_id", "purpose", "variant"], name: "idx_image_caches_owner_purpose_variant", unique: true
     t.index ["owner_type", "owner_id"], name: "index_image_caches_on_owner"
     t.index ["s3_key"], name: "index_image_caches_on_s3_key", unique: true
+  end
+
+  create_table "messages", force: :cascade do |t|
+    t.bigint "contest_id", null: false
+    t.bigint "user_id", null: false
+    t.text "body", null: false
+    t.datetime "hidden_at"
+    t.bigint "hidden_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contest_id", "created_at"], name: "index_messages_on_contest_id_and_created_at"
+    t.index ["hidden_by_id"], name: "index_messages_on_hidden_by_id", where: "(hidden_by_id IS NOT NULL)"
+    t.index ["user_id"], name: "index_messages_on_user_id"
   end
 
   create_table "outbound_requests", force: :cascade do |t|
@@ -296,6 +316,36 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
     t.index ["user_id"], name: "index_stripe_purchases_on_user_id"
   end
 
+  create_table "survivor_picks", force: :cascade do |t|
+    t.bigint "entry_id", null: false
+    t.bigint "survivor_round_id", null: false
+    t.string "team_slug", null: false
+    t.string "result", default: "pending", null: false
+    t.string "slug"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["entry_id", "survivor_round_id"], name: "index_survivor_picks_on_entry_and_round", unique: true
+    t.index ["entry_id", "team_slug"], name: "index_survivor_picks_on_entry_and_team", unique: true
+    t.index ["entry_id"], name: "index_survivor_picks_on_entry_id"
+    t.index ["slug"], name: "index_survivor_picks_on_slug", unique: true
+    t.index ["survivor_round_id"], name: "index_survivor_picks_on_survivor_round_id"
+    t.index ["team_slug"], name: "index_survivor_picks_on_team_slug"
+  end
+
+  create_table "survivor_rounds", force: :cascade do |t|
+    t.integer "number", null: false
+    t.string "name", null: false
+    t.string "stage", default: "group", null: false
+    t.datetime "picks_lock_at"
+    t.string "status", default: "upcoming", null: false
+    t.string "slug"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["number"], name: "index_survivor_rounds_on_number", unique: true
+    t.index ["slug"], name: "index_survivor_rounds_on_slug", unique: true
+    t.index ["status"], name: "index_survivor_rounds_on_status"
+  end
+
   create_table "teams", force: :cascade do |t|
     t.string "slug", null: false
     t.string "name", null: false
@@ -391,10 +441,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_19_220000) do
   add_foreign_key "contests", "users"
   add_foreign_key "entries", "contests"
   add_foreign_key "entries", "users"
+  add_foreign_key "games", "survivor_rounds"
+  add_foreign_key "messages", "contests"
+  add_foreign_key "messages", "users"
   add_foreign_key "selections", "entries"
   add_foreign_key "selections", "slate_matchups"
   add_foreign_key "slate_matchups", "slates"
   add_foreign_key "stripe_purchases", "users"
+  add_foreign_key "survivor_picks", "entries"
+  add_foreign_key "survivor_picks", "survivor_rounds"
   add_foreign_key "transaction_logs", "users"
   add_foreign_key "users", "users", column: "invited_by_id"
 end

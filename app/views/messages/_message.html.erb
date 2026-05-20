@@ -1,0 +1,18 @@
+<%# Single chat message. Rendered on initial page load AND via Turbo Stream
+    broadcast (Message#broadcast_new_message) — so it must NOT use current_user
+    or any per-viewer state. The "Hide" button is revealed by CSS only inside
+    a .chat-admin panel (see contests/_chat_panel). %>
+<div id="message_<%= message.id %>" class="group flex items-start gap-2.5">
+  <%= render "components/avatar", user: message.user, size: "nav" %>
+  <div class="min-w-0 flex-1">
+    <div class="flex items-baseline gap-2">
+      <span class="text-sm font-bold text-heading truncate"><%= message.user.display_name %></span>
+      <span class="text-xs text-muted flex-shrink-0"><%= message.created_at.strftime("%-l:%M %p") %></span>
+      <button type="button"
+              class="chat-admin-only ml-auto flex-shrink-0 text-xs font-medium text-muted hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+              data-message-url="<%= contest_message_path(message.contest, message) %>"
+              onclick="hideChatMessage(this)">Hide</button>
+    </div>
+    <p class="text-sm text-secondary break-words whitespace-pre-wrap leading-snug mt-0.5"><%= message.body %></p>
+  </div>
+</div>

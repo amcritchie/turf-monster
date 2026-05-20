@@ -229,6 +229,14 @@
         <p class="text-xs text-muted mt-1">Lowest rank = shown on root page. Use increments of 100.</p>
       </div>
 
+      <div class="mb-6">
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <%= f.check_box :chat_enabled, class: "w-4 h-4", style: "accent-color: var(--color-primary)" %>
+          <span class="text-sm text-secondary font-medium">Enable contest chat</span>
+        </label>
+        <p class="text-xs text-muted mt-1">Players can post messages on the contest page. Uncheck to close the chat room.</p>
+      </div>
+
       <button type="submit" class="btn btn-primary btn-lg w-full">Save Changes</button>
     <% end %>
   </div>

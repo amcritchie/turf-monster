@@ -92,6 +92,12 @@ class Rack::Attack
     req.ip if req.post? && req.path == "/email_verification"
   end
 
+  ### Throttle: contest chat — message-post flood backstop
+  # Coarse per-IP cap; MessagesController enforces a precise per-user cooldown.
+  throttle("chat_messages/ip", limit: 40, period: 1.minute) do |req|
+    req.ip if req.post? && req.path.match?(%r{\A/contests/[^/]+/messages\z})
+  end
+
   ### Response: throttled requests get 429
   self.throttled_responder = lambda do |request|
     match_data = request.env["rack.attack.match_data"] || {}

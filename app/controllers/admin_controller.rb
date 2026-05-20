@@ -4,6 +4,13 @@ class AdminController < ApplicationController
   def navbar
   end
 
+  # Link hub — central index of the tools + actions that used to live in the
+  # navbar gear dropdown. See app/views/admin/hub.html.erb.
+  def hub
+    @active_slate   = Slate.joins(:slate_matchups).distinct.order(created_at: :desc).first
+    @latest_contest = Contest.order(created_at: :desc).first
+  end
+
   def usdc_balance
     return render json: { error: "Not logged in" }, status: :unauthorized unless logged_in?
     return render json: { balance: 0 } unless current_user.solana_connected?

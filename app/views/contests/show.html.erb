@@ -114,9 +114,40 @@
   </div>
 <% end %>
 
-<!-- Section 5: Leaderboard (always full-width) -->
-<div id="leaderboard-container" class="mb-8">
-  <%= render "contests/turf_totals_leaderboard" %>
+<!-- Section 5: Leaderboard + Chat -->
+<%# Leaderboard + Chat split (2026-05-19). Two columns on desktop, a
+    Leaderboard / Chat tab toggle on mobile. The chat panel (contests/_chat_panel)
+    is currently a UI preview — backend wiring is the next step. To revert to the
+    original single-column page, replace this whole block with a full-width div
+    (id "leaderboard-container", class "mb-8") that renders the
+    contests/turf_totals_leaderboard partial once. %>
+<div x-data="{ tab: 'leaderboard' }" class="mb-8">
+  <%# Tab switcher — mobile only %>
+  <div class="flex gap-1 mb-4 md:hidden bg-surface-alt rounded-lg p-1">
+    <button type="button" @click="tab = 'leaderboard'"
+            :class="tab === 'leaderboard' ? 'bg-primary text-white' : 'text-secondary hover:text-heading'"
+            class="flex-1 py-2 rounded-md text-sm font-semibold transition">
+      Leaderboard
+    </button>
+    <button type="button" @click="tab = 'chat'"
+            :class="tab === 'chat' ? 'bg-primary text-white' : 'text-secondary hover:text-heading'"
+            class="flex-1 py-2 rounded-md text-sm font-semibold transition">
+      Chat
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
+    <%# Left — leaderboard. compact: true renders just the ranked list (no
+        contest-details / admin chrome) so both columns start at the same place.
+        Keeps id="leaderboard-container" for the leaderboard_poll JS. %>
+    <div id="leaderboard-container" :class="tab === 'leaderboard' ? '' : 'hidden'" class="md:block">
+      <%= render "contests/turf_totals_leaderboard", compact: true %>
+    </div>
+    <%# Right — contest chat panel (see contests/_chat_panel). %>
+    <div x-cloak :class="tab === 'chat' ? '' : 'hidden'" class="md:block">
+      <%= render "contests/chat_panel", contest: @contest %>
+    </div>
+  </div>
 </div>
 
 <!-- Section 6: Admin Actions (logged-in admin, unsettled contests) -->

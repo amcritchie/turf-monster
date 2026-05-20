@@ -1,0 +1,145 @@
+<%# Contest chat panel — real-time via Turbo Streams over ActionCable.
+    Reading is public; posting is limited to entrants + admins
+    (Contest#chat_participant?). The .chat-admin class on the root reveals the
+    per-message Hide buttons for admins — broadcast partials can't know the
+    viewer, so visibility is driven by this container class. %>
+<% messages = Message.recent_for(contest) %>
+<% can_post = logged_in? && contest.chat_enabled? && contest.chat_participant?(current_user) %>
+
+<style>
+  .chat-admin-only { display: none; }
+  .chat-admin .chat-admin-only { display: inline-block; }
+</style>
+
+<div class="card overflow-hidden flex flex-col <%= 'chat-admin' if current_user&.admin? %>"
+     style="height: 32rem;"
+     x-data="contestChat(<%= messages.empty? %>)"
+     data-post-url="<%= contest_messages_path(contest) %>">
+  <%= turbo_stream_from contest, :messages %>
+
+  <%# Header %>
+  <div class="flex items-center justify-between px-4 py-3 border-b border-subtle flex-shrink-0">
+    <h2 class="text-lg font-semibold text-body flex items-center gap-2">
+      <span>💬</span> Contest Chat
+    </h2>
+    <span class="flex items-center gap-1.5 text-xs text-muted">
+      <span class="w-2 h-2 rounded-full bg-primary"></span> Live
+    </span>
+  </div>
+
+  <%# Messages — scrollable, newest at the bottom. %>
+  <div x-ref="scroll" class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+    <div id="contest_<%= contest.id %>_messages" x-ref="messageList"
+         class="flex flex-col justify-end min-h-full space-y-4">
+      <% if messages.empty? %>
+        <p x-show="empty" class="text-sm text-muted text-center py-8">
+          No messages yet — say hi 👋
+        </p>
+      <% end %>
+      <%= render partial: "messages/message", collection: messages %>
+    </div>
+  </div>
+
+  <%# Composer %>
+  <div class="border-t border-subtle p-3 flex-shrink-0">
+    <% if !contest.chat_enabled? %>
+      <p class="text-sm text-muted text-center py-1">Chat is closed for this contest.</p>
+    <% elsif !logged_in? %>
+      <p class="text-sm text-muted text-center py-1">
+        <%= link_to "Log in", login_path, class: "text-primary hover:text-primary-300 font-medium" %> to join the chat.
+      </p>
+    <% elsif !can_post %>
+      <p class="text-sm text-muted text-center py-1">Enter the contest to join the chat.</p>
+    <% else %>
+      <form class="flex items-end gap-2" @submit.prevent="send()">
+        <textarea x-model="body" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
+                  placeholder="Message the contest…"
+                  @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); send(); }"
+                  class="flex-1 resize-none rounded-lg bg-surface-alt border border-subtle px-3 py-2 text-sm text-body placeholder:text-muted focus:outline-none focus:border-primary"></textarea>
+        <button type="submit" :disabled="sending || !body.trim()"
+                :class="{ 'opacity-50 cursor-not-allowed': sending || !body.trim() }"
+                class="btn btn-primary btn-sm flex-shrink-0">Send</button>
+      </form>
+    <% end %>
+  </div>
+</div>
+
+<script>
+  // Inline (not a module): Alpine evaluates x-data before importmap modules
+  // load — see CLAUDE.md "Inline JS that MUST stay inline".
+  function contestChat(isEmpty) {
+    return {
+      body: '',
+      sending: false,
+      empty: isEmpty,
+      init() {
+        this.$nextTick(() => this.scrollToBottom());
+        var listEl = this.$refs.messageList;
+        if (listEl) {
+          new MutationObserver(() => {
+            this.empty = false;
+            this.scrollToBottom();
+          }).observe(listEl, { childList: true });
+        }
+        // Re-anchor to the newest message when the panel becomes visible
+        // (mobile Chat tab) or the window resizes.
+        var scrollEl = this.$refs.scroll;
+        if (scrollEl && window.ResizeObserver) {
+          new ResizeObserver(() => this.scrollToBottom()).observe(scrollEl);
+        }
+      },
+      scrollToBottom() {
+        var el = this.$refs.scroll;
+        if (el) el.scrollTop = el.scrollHeight;
+      },
+      async send() {
+        var text = this.body.trim();
+        if (!text || this.sending) return;
+        this.sending = true;
+        try {
+          var resp = await fetch(this.$root.dataset.postUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: JSON.stringify({ message: { body: text } })
+          });
+          var data = await resp.json().catch(() => ({}));
+          if (resp.ok && data.ok) {
+            this.body = '';
+          } else {
+            window.dispatchEvent(new CustomEvent('toast', {
+              detail: { type: 'error', title: 'Message not sent', message: data.error || 'Please try again.', duration: 4000 }
+            }));
+          }
+        } catch (e) {
+          window.dispatchEvent(new CustomEvent('toast', {
+            detail: { type: 'error', title: 'Message not sent', message: 'Network error.', duration: 4000 }
+          }));
+        } finally {
+          this.sending = false;
+        }
+      }
+    };
+  }
+
+  function hideChatMessage(btn) {
+    if (!window.confirm('Hide this message for everyone?')) return;
+    fetch(btn.dataset.messageUrl, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+      }
+    }).then(function(r) {
+      if (!r.ok) {
+        window.dispatchEvent(new CustomEvent('toast', {
+          detail: { type: 'error', title: 'Could not hide message', message: '', duration: 3000 }
+        }));
+      }
+      // On success the bubble is removed for everyone via the Turbo Stream broadcast.
+    }).catch(function() {});
+  }
+</script>

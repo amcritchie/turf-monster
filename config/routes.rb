@@ -131,6 +131,9 @@ Rails.application.routes.draw do
       post :confirm_onchain_contest
       post :payout_entry
     end
+
+    # Contest chat — create (entrants/admins) + destroy (admin soft-delete).
+    resources :messages, only: [:create, :destroy]
   end
 
   resources :teams, only: [:index, :show]
@@ -193,6 +196,9 @@ Rails.application.routes.draw do
       end
     end
   end
+
+  # Admin: Link hub — central index of admin tools + actions
+  get "admin/hub", to: "admin#hub", as: :admin_hub
 
   # Admin: Navbar review
   get "admin/navbar", to: "admin#navbar", as: :admin_navbar

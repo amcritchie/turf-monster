@@ -4,6 +4,7 @@ class Entry < ApplicationRecord
   belongs_to :user
   belongs_to :contest
   has_many :selections, dependent: :destroy
+  has_many :survivor_picks, dependent: :destroy
 
   enum :status, { cart: "cart", active: "active", complete: "complete", abandoned: "abandoned" }
 
@@ -138,6 +139,35 @@ class Entry < ApplicationRecord
 
   def onchain?
     onchain_entry_id.present?
+  end
+
+  # --- Survivor ---
+
+  def survivor?
+    contest.world_cup_survivor?
+  end
+
+  def eliminated?
+    eliminated_round.present?
+  end
+
+  def alive?
+    survivor? && !eliminated?
+  end
+
+  # Rounds successfully survived — every round before elimination, or every
+  # surviving pick so far for an entry still alive.
+  def rounds_survived
+    eliminated_round ? eliminated_round - 1 : survivor_picks.survived.count
+  end
+
+  def pick_for(survivor_round)
+    survivor_picks.find_by(survivor_round: survivor_round)
+  end
+
+  # Team slugs already used — no team may be picked twice across the tournament.
+  def used_team_slugs
+    survivor_picks.pluck(:team_slug)
   end
 
   def to_param

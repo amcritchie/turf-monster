@@ -1,0 +1,83 @@
+<% content_for(:title, "Link Hub — Turf Monster") %>
+
+<div class="max-w-5xl mx-auto py-8 space-y-10">
+  <div>
+    <h1 class="text-heading text-3xl font-extrabold mb-1">Link Hub</h1>
+    <p class="text-secondary text-sm">Admin tools, data browsers, and quick actions — everything that used to live in the navbar gear.</p>
+  </div>
+
+  <%# ── Hub: curated, most-used links ── %>
+  <section>
+    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Hub</h2>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <%= render "hub_tile", name: "New Contest",  url: new_contest_path, status: :flagged, note: "Not added to the gear" %>
+      <%= render "hub_tile", name: "Contests",     url: contests_path, status: :reviewed %>
+      <%= render "hub_tile", name: "Seasons",      url: admin_seasons_path, status: :reviewed %>
+      <%= render "hub_tile", name: "Free Entries", url: admin_free_entries_path %>
+      <%= render "hub_tile", name: "Treasury",     url: admin_pending_transactions_path %>
+      <% unless Rails.env.production? %>
+        <%= render "hub_tile", name: "Faucet",     url: faucet_path %>
+      <% end %>
+      <%= render "hub_tile", name: "Jobs",         url: "/admin/jobs", status: :reviewed %>
+    </div>
+  </section>
+
+  <%# ── Design ── %>
+  <section>
+    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Design</h2>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <%= render "hub_tile", name: "Theme",      url: "/admin/theme" %>
+      <%= render "hub_tile", name: "Navbar",     url: admin_navbar_path %>
+      <%= render "hub_tile", name: "Toast Test", url: "/toast_test" %>
+    </div>
+  </section>
+
+  <%# ── Sports ── %>
+  <section>
+    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Sports</h2>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <%= render "hub_tile", name: "Teams",   url: teams_path %>
+      <%= render "hub_tile", name: "Players", url: players_path %>
+      <%= render "hub_tile", name: "Games",   url: games_path %>
+    </div>
+  </section>
+
+  <%# ── Everything else: the long admin list ── %>
+  <section>
+    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Everything Else</h2>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <%= render "hub_tile", name: "Slate Formula", url: slates_path, status: :reviewed %>
+      <% if @active_slate %>
+        <%= render "hub_tile", name: "Slate Simulator", url: manage_admin_slate_path(@active_slate), status: :reviewed %>
+      <% end %>
+      <%= render "hub_tile", name: "Formula",          url: formula_report_slates_path, status: :flagged, note: "Not added to the gear" %>
+      <%= render "hub_tile", name: "Formula Defaults", url: admin_formula_slates_path, status: :flagged, note: "Not added to the gear" %>
+      <%= render "hub_tile", name: "Contest Generator", url: generator_contests_path, status: :flagged, note: "Not added to the gear" %>
+      <%= render "hub_tile", name: "Transactions",     url: admin_transactions_path %>
+      <%= render "hub_tile", name: "Schema",           url: "/admin/schema" %>
+      <%= render "hub_tile", name: "Geo Settings",     url: admin_geo_path, status: :reviewed %>
+      <%= render "hub_tile", name: "Error Logs",       url: "/error_logs", status: :reviewed %>
+    </div>
+  </section>
+
+  <%# ── Actions: non-navigation controls (POST forms + JS triggers) ── %>
+  <section>
+    <h2 class="text-xs font-bold uppercase tracking-wider text-muted mb-3">Actions</h2>
+    <div class="flex flex-wrap gap-3">
+      <button type="button"
+              @click="showNavSpinner(); refreshBalance().finally(function() { hideNavSpinner(); })"
+              class="btn btn-outline btn-sm">Refresh Balance</button>
+      <button type="button"
+              @click="$dispatch('navbar-replay-level')"
+              class="btn btn-outline btn-sm">Replay Level</button>
+      <%= button_to(geo_override_active? ? "Clear GEO Override" : "Simulate WA",
+            admin_geo_toggle_path, method: :post,
+            class: "btn btn-sm #{geo_override_active? ? 'btn-danger' : 'btn-outline'}") %>
+      <% if @latest_contest %>
+        <%= button_to "Reset Contest", reset_contest_path(@latest_contest), method: :post,
+              data: { turbo_confirm: "Reset contest? This clears all entries and results." },
+              class: "btn btn-danger btn-sm" %>
+      <% end %>
+    </div>
+  </section>
+</div>

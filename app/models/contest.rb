@@ -2,13 +2,17 @@ class Contest < ApplicationRecord
   include Sluggable
 
   has_many :entries, dependent: :destroy
-  belongs_to :slate
+  has_many :messages, dependent: :destroy
+  belongs_to :slate, optional: true
   belongs_to :user, optional: true
   has_one_attached :contest_image
 
   validates :name, presence: true
+  # Turf Totals contests run off a Slate; World Cup Survivor contests don't.
+  validates :slate, presence: true, if: :turf_totals?
 
   enum :status, { pending: "pending", open: "open", locked: "locked", settled: "settled" }
+  enum :game_type, { turf_totals: "turf_totals", world_cup_survivor: "world_cup_survivor" }
 
   # "All contests on chain" enforcement (2026-05-17 GTM principle):
   # every Contest is backed by an on-chain Contest PDA on turf-vault.
@@ -51,11 +55,11 @@ class Contest < ApplicationRecord
   end
 
   def picks_required
-    6
+    world_cup_survivor? ? 0 : 6
   end
 
   def max_entries_per_user
-    3
+    world_cup_survivor? ? 1 : 3
   end
 
   def entry_fee_dollars
@@ -90,7 +94,12 @@ class Contest < ApplicationRecord
     "small"    => { entry_fee_cents: 19_00, max_entries: 5,  payouts: { 1 => 75_00 } },
     "medium"   => { entry_fee_cents: 19_00, max_entries: 9,  payouts: { 1 => 100_00, 2 => 40_00 } },
     "standard" => { entry_fee_cents: 19_00, max_entries: 29, payouts: { 1 => 300_00, 2 => 50_00, 3 => 50_00, 4 => 50_00, 5 => 50_00 } },
-    "large"    => { entry_fee_cents: 19_00, max_entries: 99, payouts: { 1 => 1000_00, 2 => 100_00, 3 => 100_00, 4 => 100_00, 5 => 100_00, 6 => 100_00, 7 => 100_00, 8 => 100_00, 9 => 100_00 } }
+    "large"    => { entry_fee_cents: 19_00, max_entries: 99, payouts: { 1 => 1000_00, 2 => 100_00, 3 => 100_00, 4 => 100_00, 5 => 100_00, 6 => 100_00, 7 => 100_00, 8 => 100_00, 9 => 100_00 } },
+
+    # World Cup Survivor — single guaranteed prize, 59 entrants, one entry per user.
+    # Paid margin (full): $1,121 gross - $1,000 payout = $121. Free contest is a loss-leader.
+    "survivor_wc_paid" => { entry_fee_cents: 19_00, max_entries: 59, payouts: { 1 => 1000_00 } },
+    "survivor_wc_free" => { entry_fee_cents: 0,     max_entries: 59, payouts: { 1 => 200_00 } }
   }.freeze
 
   def format_config
@@ -146,7 +155,8 @@ class Contest < ApplicationRecord
   def grade!
     with_lock do
       raise "Contest is already settled" if settled?
-      score_entries!
+      # World Cup Survivor sets entry scores during round grading — skip matchup scoring.
+      score_entries! unless world_cup_survivor?
 
       ranked = entries.where(status: [:active, :complete]).order(score: :desc).includes(:user).to_a
       ranked.each { |e| e.update!(status: "complete") if e.active? }
@@ -390,6 +400,14 @@ class Contest < ApplicationRecord
 
   def active_entry_count
     entries.where(status: [:active, :complete]).count
+  end
+
+  # Who may post in this contest's chat: admins, or anyone with a confirmed
+  # entry. Cart/abandoned entries don't count. Everyone can *read* the chat.
+  def chat_participant?(user)
+    return false unless user
+    return true if user.admin?
+    entries.where(user_id: user.id, status: [:active, :complete]).exists?
   end
 
   def name_slug

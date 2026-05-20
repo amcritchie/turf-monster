@@ -3,6 +3,8 @@ class Game < ApplicationRecord
 
   belongs_to :home_team, class_name: "Team", foreign_key: :home_team_slug, primary_key: :slug
   belongs_to :away_team, class_name: "Team", foreign_key: :away_team_slug, primary_key: :slug
+  belongs_to :advancing_team, class_name: "Team", foreign_key: :advancing_team_slug, primary_key: :slug, optional: true
+  belongs_to :survivor_round, optional: true
   has_many :goals, foreign_key: :game_slug, primary_key: :slug, dependent: :destroy
 
   # Recount goals and update home_score / away_score from Goal records
