@@ -271,7 +271,8 @@ class Contest < ApplicationRecord
       combo.each do |matchup_id|
         entry.selections.create!(slate_matchup_id: matchup_id)
       end
-      entry.confirm!
+      # Admin-seeded fill — comped, so it bypasses the entry payment gate.
+      entry.confirm!(comped: true)
     end
   end
 

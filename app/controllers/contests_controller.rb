@@ -297,6 +297,14 @@ class ContestsController < ApplicationController
           raise "No active season configured. Set one at /admin/seasons before users can enter on-chain contests." if current_sid.to_i.zero?
         end
 
+        # A paid contest must be backed by an on-chain Contest PDA — that PDA is
+        # where the entry token / USDC payment is recorded. An off-chain paid
+        # contest has no payment rail, so refuse rather than create a free entry.
+        # (Entry#confirm! enforces the same gate as a model-level backstop.)
+        if @contest.entry_fee_cents.to_i.positive? && !@contest.onchain?
+          raise "This contest isn't on-chain yet — paid entry is unavailable."
+        end
+
         tx_signature = nil
         onchain_entry_id = nil
 

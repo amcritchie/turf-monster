@@ -32,7 +32,16 @@ class Entry < ApplicationRecord
     selections.each_with_object({}) { |s, h| h[s.slate_matchup_id.to_s] = true }
   end
 
-  def confirm!(tx_signature: nil, onchain_entry_id: nil)
+  # Activate a cart entry. A paid contest's entry may only be activated with
+  # proof of payment: `tx_signature` is the on-chain signature returned by a
+  # consumed entry token or a vault entry, set server-side in
+  # ContestsController#enter. Without it we refuse rather than hand out a free
+  # entry — this is the gate that closes the off-chain-paid-contest hole.
+  #
+  # `comped: true` is the admin-seed escape hatch (Contest#fill! only): it
+  # activates entries for seeded users without payment. Real user entries
+  # always pass through the gate.
+  def confirm!(tx_signature: nil, onchain_entry_id: nil, comped: false)
     raise "Contest is not open" unless contest.open?
     raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
 
@@ -54,6 +63,14 @@ class Entry < ApplicationRecord
       end
 
       transaction do
+        # Payment gate: never activate a paid entry without proof of payment —
+        # a tx_signature from a consumed entry token or a vault entry. `comped`
+        # exempts admin-seeded fills. This closes the free-entry hole where an
+        # off-chain paid contest skipped every payment branch in #enter.
+        if contest.entry_fee_cents.to_i.positive? && tx_signature.blank? && !comped
+          raise "Entry payment required — no entry token consumed or on-chain payment recorded"
+        end
+
         if contest.entry_fee_cents > 0
           TransactionLog.record!(user: user, type: "entry_fee", amount_cents: contest.entry_fee_cents, direction: "debit", source: contest, description: "Entry fee for #{contest.name}")
         end

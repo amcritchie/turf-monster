@@ -73,11 +73,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   test "enter confirms cart entry with JSON" do
     log_in_as(@user)
+    contest = free_contest
 
-    entry = @contest.entries.create!(user: @user, status: :cart)
+    entry = contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    post enter_contest_path(@contest),
+    post enter_contest_path(contest),
       headers: { "Accept" => "application/json" }
 
     assert_response :success
@@ -105,14 +106,15 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   test "enter with HTML redirects on success" do
     log_in_as(@user)
+    contest = free_contest
 
-    entry = @contest.entries.create!(user: @user, status: :cart)
+    entry = contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    post enter_contest_path(@contest)
+    post enter_contest_path(contest)
 
     assert_response :redirect
-    assert_redirected_to contest_path(@contest)
+    assert_redirected_to contest_path(contest)
   end
 
   # --- onchain session entry tests ---
@@ -134,13 +136,14 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   test "enter accepts onchain session with valid signature" do
     key = log_in_as_onchain(@user)
+    contest = free_contest
 
-    entry = @contest.entries.create!(user: @user, status: :cart)
+    entry = contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    signed_params = sign_entry_message(key, @user, @contest.name)
+    signed_params = sign_entry_message(key, @user, contest.name)
 
-    post enter_contest_path(@contest),
+    post enter_contest_path(contest),
       params: signed_params,
       as: :json
 
@@ -172,17 +175,34 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   test "enter works for offchain session" do
     log_in_as(@user)
+    contest = free_contest
 
-    entry = @contest.entries.create!(user: @user, status: :cart)
+    entry = contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    post enter_contest_path(@contest),
+    post enter_contest_path(contest),
       headers: { "Accept" => "application/json" }
 
     assert_response :success
     json = JSON.parse(response.body)
     assert json["success"]
     assert entry.reload.active?
+  end
+
+  test "enter rejects a paid contest that is not on-chain" do
+    log_in_as(@user)
+    # contests(:one) is paid ($19) but has no onchain_contest_id — the exact
+    # state that used to hand out a free entry. The payment gate must refuse it.
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    post enter_contest_path(@contest),
+      headers: { "Accept" => "application/json" }
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_match(/on-chain/i, json["error"])
+    assert entry.reload.cart?, "an unpaid entry must never be activated"
   end
 
   # --- web2 / managed-wallet token spend ---
@@ -282,5 +302,22 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     post generate_bundle_contests_path(key: "survivor")
     assert_response :redirect
     assert_not LandingPage.exists?(slug: "survivor")
+  end
+
+  private
+
+  # A free, off-chain contest — the only kind a successful #enter can be
+  # exercised against without a Solana RPC mock (paid entries need a real
+  # on-chain token consume / vault transfer). Free entries skip the payment gate.
+  def free_contest
+    Contest.create!(
+      name: "Free Plumbing Contest",
+      slate: slates(:one),
+      contest_type: "standard",
+      entry_fee_cents: 0,
+      max_entries: 29,
+      status: :open,
+      starts_at: 2.weeks.from_now
+    )
   end
 end

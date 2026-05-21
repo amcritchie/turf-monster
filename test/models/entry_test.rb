@@ -12,11 +12,29 @@ class EntryTest < ActiveSupport::TestCase
     @m6 = slate_matchups(:m6)
   end
 
-  test "confirm! sets status to active" do
+  test "confirm! activates a paid entry given payment proof" do
     entry = @contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    entry.confirm!
+    entry.confirm!(tx_signature: "paid-tx-sig")
+
+    assert entry.active?
+  end
+
+  test "confirm! rejects a paid entry with no payment proof" do
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    error = assert_raises(RuntimeError) { entry.confirm! }
+    assert_match(/payment required/i, error.message)
+    assert entry.reload.cart?
+  end
+
+  test "confirm! activates a comped entry without payment" do
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    entry.confirm!(comped: true)
 
     assert entry.active?
   end
@@ -49,12 +67,11 @@ class EntryTest < ActiveSupport::TestCase
     assert_equal "fake_tx_sig_123", entry.onchain_tx_signature
   end
 
-  test "confirm! does not call enter_onchain!" do
+  test "confirm! leaves onchain fields nil for an off-chain contest" do
     entry = @contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
-    # confirm! should not attempt any onchain calls
-    entry.confirm!
+    entry.confirm!(comped: true)
 
     assert entry.active?
     assert_nil entry.onchain_tx_signature
@@ -96,7 +113,7 @@ class EntryTest < ActiveSupport::TestCase
     # First entry
     entry1 = @contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry1.selections.create!(slate_matchup: m) }
-    entry1.confirm!
+    entry1.confirm!(comped: true)
 
     # Second entry with same combo
     entry2 = @contest.entries.create!(user: @user, status: :cart)
