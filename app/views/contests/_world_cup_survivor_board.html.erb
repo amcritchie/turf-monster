@@ -14,15 +14,12 @@
 %>
 
 <script type="application/json" id="survivor-config">
+<%# Contest/round data only — auth + wallet state comes from $store.session. %>
 <%= {
   contestSlug:        @contest.slug,
   entryFeeCents:      fee_c,
   contestOnchain:     @contest.onchain?,
   contestName:        @contest.name,
-  loggedIn:           logged_in?,
-  currentUserId:      current_user&.id,
-  userWallet:         current_user&.solana_address.to_s,
-  phantomWallet:      current_user&.phantom_wallet? || false,
   currentRoundId:     cr&.id,
   currentRoundLocked: cr ? cr.picks_locked? : true,
   myPick:             (entered && cr ? my_picks_by_round[cr.id]&.team_slug : nil),
@@ -40,8 +37,6 @@ window.survivorBoard = function() {
     contestId:          cfg.contestSlug,
     contestName:        cfg.contestName,
     contestOnchain:     cfg.contestOnchain,
-    loggedIn:           cfg.loggedIn,
-    userWallet:         cfg.userWallet,
     myPick:             cfg.myPick,
     usedTeams:          cfg.usedTeams || [],
     currentRoundId:     cfg.currentRoundId,
@@ -86,27 +81,29 @@ window.survivorBoard = function() {
     // Enter the contest. Phantom wallets pay directly on-chain; managed/other
     // wallets go through the server enter path. Mirrors the Turf Totals flow.
     async confirmEntry() {
-      if (!this.loggedIn) { window.location.href = '/login'; return; }
+      var sess = Alpine.store('session');
+      if (sess.isGuest) { window.location.href = '/login'; return; }
       if (this.submitting) return;
       this.submitting = true;
 
-      var directOnchain = this.contestOnchain && window.walletProvider &&
-                          window.walletProvider.isAvailable() && cfg.phantomWallet;
+      // web3 (Phantom session) on an on-chain contest signs directly;
+      // web2 (managed wallet) goes through the server /enter path.
+      var useOnchainFlow = sess.isWeb3 && this.contestOnchain;
       var modal = Alpine.store('solanaModal');
 
       try {
-        if (directOnchain) {
+        if (useOnchainFlow) {
           var provider = window.walletProvider.detect();
           modal.show('Sign Entry', 'Approve in your wallet…');
           var connectResp = await provider.connect();
           var pubkeyB58 = connectResp.publicKey.toBase58();
-          if (this.userWallet && pubkeyB58 !== this.userWallet) {
-            throw new Error('Wrong wallet connected. Switch to ' + this.userWallet.substring(0, 8) + '…');
+          if (sess.address && pubkeyB58 !== sess.address) {
+            throw new Error('Wrong wallet connected. Switch to ' + sess.address.substring(0, 8) + '…');
           }
 
           var nonce = (await (await fetch('/auth/solana/nonce')).json()).nonce;
           var domain = window.location.host;
-          var userIdLine = cfg.currentUserId ? ('User-ID: ' + cfg.currentUserId + '\n\n') : '';
+          var userIdLine = sess.userId ? ('User-ID: ' + sess.userId + '\n\n') : '';
           var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 +
                         '\n\n' + userIdLine + 'Enter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
           var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
