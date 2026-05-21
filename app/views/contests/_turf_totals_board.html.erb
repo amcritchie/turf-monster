@@ -22,6 +22,11 @@
     }
   end
 %>
+<%#
+  Contest/cart data only. Auth + wallet state (loggedIn, mode, userId,
+  address) comes from the canonical #session-context / $store.session —
+  see application.html.erb. Kept here: userEmail (a display value).
+%>
 <%= {
   matchupData: matchup_data,
   cartSelections: cart_selections,
@@ -31,11 +36,7 @@
   contestOnchain: @contest.onchain?,
   contestName: @contest.name,
   picksRequired: @contest.picks_required,
-  loggedIn: logged_in?,
-  currentUserId: current_user&.id,   # OPSEC-005 — for signed-message session-binding
-  userWallet: current_user&.solana_address.to_s,
   userEmail: current_user&.email.to_s,
-  phantomWallet: current_user&.phantom_wallet? || false,
   seedsPerLevel: User::SEEDS_PER_LEVEL
 }.to_json.html_safe %>
 </script>
@@ -61,9 +62,10 @@ window.selectionBoard = function() {
     errorTimer: null,
     contestId: cfg.contestSlug,
     csrfToken: document.querySelector('meta[name="csrf-token"]')?.content,
-    loggedIn: cfg.loggedIn,
+    // Auth/wallet state is read live from the canonical Alpine.store('session')
+    // (see application.html.erb) — never copied here, so it can't go stale.
+    get loggedIn() { var s = Alpine.store('session'); return s ? s.loggedIn : false; },
     entryFeeCents: cfg.entryFeeCents,
-    userWallet: cfg.userWallet,
     userEmail: cfg.userEmail || '',
     contestOnchain: cfg.contestOnchain,
     contestName: cfg.contestName,
@@ -338,8 +340,9 @@ window.selectionBoard = function() {
         }
         // Account created + logged in. New users have no username yet —
         // open the inline complete-profile modal; the lineup auto-submits
-        // once a username is saved.
-        this.loggedIn = true;
+        // once a username is saved. Email signup is a web2 (managed) session.
+        var sess = Alpine.store('session');
+        if (sess) { sess.loggedIn = true; sess.mode = 'web2'; }
         this.signupSubmitting = false;
         this.openProfileModal('email');
       } catch (e) {
@@ -405,7 +408,8 @@ window.selectionBoard = function() {
         var nonceResp = await fetch('/auth/solana/nonce');
         var nonceData = await nonceResp.json();
         var domain = window.location.host;
-        var userIdLine = cfg.currentUserId ? ('User-ID: ' + cfg.currentUserId + '\n\n') : '';  // OPSEC-005
+        var sessUid = (Alpine.store('session') || {}).userId;
+        var userIdLine = sessUid ? ('User-ID: ' + sessUid + '\n\n') : '';  // OPSEC-005
         var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Nonce: ' + nonceData.nonce;
         var encoded = new TextEncoder().encode(message);
         var signed = await provider.signMessage(encoded, 'utf8');
@@ -466,7 +470,8 @@ window.selectionBoard = function() {
         try { popup.close(); } catch (_) {}
 
         if (e.data.status === 'success') {
-          self.loggedIn = true;
+          var gSess = Alpine.store('session');
+          if (gSess) { gSess.loggedIn = true; gSess.mode = 'web2'; }
           if (e.data.needs_profile_completion) {
             self.openProfileModal('google');
           } else {
@@ -695,12 +700,15 @@ window.selectionBoard = function() {
     },
 
     async confirmEntry() {
-      if (!this.loggedIn) {
+      var sess = Alpine.store('session');
+      if (sess.isGuest) {
         this.showLoginModal();
         return;
       }
 
-      var directOnchain = this.contestOnchain && window.walletProvider.isAvailable() && cfg.phantomWallet;
+      // web3 = a Phantom-authenticated session — sign the entry directly.
+      // web2 = managed wallet — POST /enter (server consumes an entry token).
+      var useOnchainFlow = sess.isWeb3 && this.contestOnchain;
 
       this.setHoldSuccess();
       this.submitting = true;
@@ -708,15 +716,15 @@ window.selectionBoard = function() {
       var seedsPerLevel = cfg.seedsPerLevel;
 
       try {
-        if (directOnchain) {
+        if (useOnchainFlow) {
           var provider = window.walletProvider.detect();
           Alpine.store('solanaModal').show('Sign Entry', 'Approve in your wallet...');
 
           var resp = await provider.connect();
           var pubkeyB58 = resp.publicKey.toBase58();
 
-          if (this.userWallet && pubkeyB58 !== this.userWallet) {
-            throw new Error('Wrong wallet connected. Switch to ' + this.userWallet.substring(0, 8) + '..., or reconnect your wallet on the Account page.');
+          if (sess.address && pubkeyB58 !== sess.address) {
+            throw new Error('Wrong wallet connected. Switch to ' + sess.address.substring(0, 8) + '..., or reconnect your wallet on the Account page.');
           }
 
           var nonceResp = await fetch('/auth/solana/nonce');
@@ -724,7 +732,7 @@ window.selectionBoard = function() {
           var nonce = nonceData.nonce;
 
           var domain = window.location.host;
-          var userIdLine = cfg.currentUserId ? ('User-ID: ' + cfg.currentUserId + '\n\n') : '';  // OPSEC-005
+          var userIdLine = sess.userId ? ('User-ID: ' + sess.userId + '\n\n') : '';  // OPSEC-005
           var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Enter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
           var encoded = new TextEncoder().encode(message);
           var signed = await provider.signMessage(encoded, 'utf8');
@@ -1083,7 +1091,7 @@ window.selectionBoard = function() {
           on_success: "d.confirmEntry()",
           early_action: "d.confirmEntry()",
           early_action_at: 1500,
-          early_action_guard: "d.contestOnchain && window.walletProvider.isAvailable()" %>
+          early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
         </div>
         <button x-show="selectionCount > 0" @click="clearSelections()"
                 class="w-full py-2 text-sm font-semibold text-secondary hover:text-red-400 transition">
@@ -1382,7 +1390,7 @@ window.selectionBoard = function() {
         on_success: "d.confirmEntry()",
         early_action: "d.confirmEntry()",
         early_action_at: 1500,
-        early_action_guard: "d.contestOnchain && window.walletProvider.isAvailable()" %>
+        early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
     </div>
     <p x-show="selectionCount < <%= @contest.picks_required %>" class="text-heading font-bold text-sm text-center mb-3">Your Picks</p>
     <div class="grid grid-cols-3 gap-1.5">
