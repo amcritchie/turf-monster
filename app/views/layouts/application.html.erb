@@ -48,6 +48,7 @@
           }
         });
       </script>
+      <script type="application/json" id="session-context"><%= wallet_context.to_json.html_safe %></script>
       <script>
         // --- Inline Solana stores + components ---
         // Alpine's defer script fires alpine:init BEFORE importmap modules execute.
@@ -121,6 +122,36 @@
         // Solana modal store — registered when Alpine starts
         document.addEventListener('alpine:init', function() {
           if (Alpine.store('solanaModal')) return;
+
+          // Canonical session store — the single source of truth for the
+          // viewer's auth/wallet state (guest / web2 / web3). Seeded from the
+          // server-rendered #session-context (SessionContext#to_h) on every
+          // page render; the whole UI branches on $store.session.mode.
+          Alpine.store('session', {
+            loggedIn: false,
+            mode: 'guest',
+            phantomLinked: false,
+            userId: null,
+            address: '',
+            get isGuest() { return this.mode === 'guest'; },
+            get isWeb2() { return this.mode === 'web2'; },
+            get isWeb3() { return this.mode === 'web3'; },
+            hydrate: function(ctx) {
+              if (!ctx) return;
+              this.loggedIn = !!ctx.loggedIn;
+              this.mode = ctx.mode || 'guest';
+              this.phantomLinked = !!ctx.phantomLinked;
+              this.userId = ctx.userId || null;
+              this.address = ctx.address || '';
+            }
+          });
+          (function() {
+            var el = document.getElementById('session-context');
+            if (!el) return;
+            try { Alpine.store('session').hydrate(JSON.parse(el.textContent)); }
+            catch (e) { console.warn('[session] context parse failed', e); }
+          })();
+
           var cluster = document.body ? (document.body.dataset.solanaCluster || 'devnet') : 'devnet';
           var clusterParam = cluster === 'devnet' ? '?cluster=devnet' : '';
           Alpine.store('solanaModal', {
@@ -207,6 +238,15 @@
               return 'https://explorer.solana.com/tx/' + this.txSignature + clusterParam;
             }
           });
+        });
+
+        // Re-seed the canonical session store on every Turbo navigation —
+        // auth state can change between page loads.
+        document.addEventListener('turbo:load', function() {
+          var store = (window.Alpine && Alpine.store) ? Alpine.store('session') : null;
+          var el = document.getElementById('session-context');
+          if (!store || !el) return;
+          try { store.hydrate(JSON.parse(el.textContent)); } catch (e) {}
         });
 
       </script>
