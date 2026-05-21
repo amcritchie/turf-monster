@@ -8,6 +8,8 @@ All optional — user needs at least one:
 - **Google OAuth** — via OmniAuth, links to existing email users automatically
 - **Solana wallet (Phantom)** — Ed25519 signature verification, `SolanaSessionsController`
 
+> See [`SIGNUP_FLOWS.md`](SIGNUP_FLOWS.md) for end-to-end sequence diagrams of all three sign-up paths — frontend, backend, third parties, and on-chain.
+
 ## User Model Auth Design
 
 ```ruby

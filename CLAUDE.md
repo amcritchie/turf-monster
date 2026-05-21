@@ -9,6 +9,7 @@ Load these when working on specific areas:
 | File | When to read |
 |------|-------------|
 | `docs/AUTH.md` | Authentication, account management, admin authorization, SSO |
+| `docs/SIGNUP_FLOWS.md` | Sign-up flow sequence diagrams (Phantom / Google / manual) |
 | `docs/SOLANA.md` | Solana integration, wallet types, onchain flows, rake tasks |
 | `docs/FORMULAS.md` | Scoring formulas, slate system, Chart.js patterns |
 | `docs/UI_PATTERNS.md` | Branding, theme colors, matchup grid, hold button, animations |
