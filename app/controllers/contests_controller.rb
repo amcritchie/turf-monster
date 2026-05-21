@@ -3,7 +3,7 @@ class ContestsController < ApplicationController
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
   before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
 
   def index
@@ -40,6 +40,18 @@ class ContestsController < ApplicationController
     @slates = Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at)
     @contest_counts = Contest.group(:slate_id, :contest_type).count   # → {[slate_id, "medium"] => 2, ...}
     @contests_by_cell = Contest.includes(:entries).order(created_at: :desc).group_by { |c| [c.slate_id, c.contest_type] }
+  end
+
+  # Provision a curated contest + landing-page bundle (see ContestBundle).
+  # A newly created contest builds its on-chain PDA via the after_create callback.
+  def generate_bundle
+    rescue_and_log do
+      result = ContestBundle.generate!(params[:key], creator: current_user)
+      flash[:notice] = %(Provisioned "#{result[:contest].name}" + /l/#{result[:landing_page].slug}.)
+    end
+    redirect_to generator_contests_path
+  rescue StandardError => e
+    redirect_to generator_contests_path, alert: "Generate failed: #{e.message}"
   end
 
   # Phantom-driven contest creation:

@@ -260,4 +260,27 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :moved_permanently
     assert_redirected_to contest_path(@contest)
   end
+
+  # --- generate_bundle (provision setup bundles) ---
+
+  test "generator page renders for admins" do
+    log_in_as(users(:alex))
+    get generator_contests_path
+    assert_response :success
+  end
+
+  test "generate_bundle provisions a bundle for admins" do
+    log_in_as(users(:alex))
+    assert_difference ["Contest.count", "LandingPage.count"], 1 do
+      post generate_bundle_contests_path(key: "survivor")
+    end
+    assert_redirected_to generator_contests_path
+  end
+
+  test "generate_bundle is admin-only" do
+    log_in_as(@user) # users(:sam) — not an admin
+    post generate_bundle_contests_path(key: "survivor")
+    assert_response :redirect
+    assert_not LandingPage.exists?(slug: "survivor")
+  end
 end

@@ -123,6 +123,7 @@ Rails.application.routes.draw do
     collection do
       get :my
       get :generator
+      post :generate_bundle
       post :finalize
     end
     member do

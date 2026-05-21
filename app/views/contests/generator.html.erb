@@ -12,6 +12,32 @@
     <%= link_to "+ Custom Contest", new_contest_path, class: "btn btn-outline btn-sm" %>
   </div>
 
+  <%# One-click provisioning of the curated contest + landing-page bundles. %>
+  <div class="mb-6 rounded-lg border border-subtle bg-surface p-4">
+    <h2 class="text-sm font-bold uppercase tracking-wider text-secondary mb-1">Provision Setup</h2>
+    <p class="text-xs text-muted mb-3">
+      One-click create a curated contest + its landing page. Idempotent — safe to re-run.
+      A new contest is created on-chain (Alex Bot funds the prize pool).
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <% ContestBundle::ALL.each do |key, spec| %>
+        <% existing = LandingPage.find_by(slug: spec[:landing_page][:slug]) %>
+        <div class="rounded-lg border border-subtle p-3">
+          <div class="text-sm font-semibold text-heading mb-2"><%= spec[:label] %></div>
+          <%= button_to "Generate", generate_bundle_contests_path(key: key), method: :post,
+                class: "btn btn-primary btn-sm w-full", form: { class: "block" },
+                data: { turbo_confirm: %(Generate "#{spec[:contest][:name]}" + /l/#{spec[:landing_page][:slug]}? A new contest is funded on-chain.) } %>
+          <% if existing %>
+            <%= link_to "✓ live — /l/#{existing.slug}", landing_page_path(existing), target: "_blank", rel: "noopener",
+                  class: "block text-xs text-mint mt-2 hover:underline" %>
+          <% else %>
+            <p class="text-xs text-muted mt-2">Not provisioned yet.</p>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
   <% if @slates.empty? %>
     <div class="rounded-lg border border-subtle bg-surface p-8 text-center text-secondary">
       No slates available. Run <code class="text-mint">bin/rails db:seed</code> to load the World Cup 2026 slates.
