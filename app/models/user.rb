@@ -146,6 +146,17 @@ class User < ApplicationRecord
     web3_solana_address.present?
   end
 
+  # Canonical wallet identity — which kind of wallet this account holds,
+  # independent of how the current session authenticated (see SessionContext).
+  #   :phantom — has a self-custody web3 wallet (a managed wallet may also exist)
+  #   :managed — custodial wallet only
+  #   :none    — no wallet at all (e.g. an admin who has not linked Phantom)
+  def wallet_kind
+    return :phantom if phantom_wallet?
+    return :managed if managed_wallet?
+    :none
+  end
+
   def google_connected?
     provider == "google_oauth2" && uid.present?
   end

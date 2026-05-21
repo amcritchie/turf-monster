@@ -9,7 +9,7 @@ class ApplicationController < ActionController::Base
   before_action :capture_reference
   before_action :detect_geo_state
   before_action :require_profile_completion
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?
+  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
   # session_token in the cookie. The verify_session_token before_action
@@ -77,6 +77,13 @@ class ApplicationController < ActionController::Base
   # (not email/password). Set by SolanaSessionsController#verify.
   def onchain_session?
     session[:onchain] == true
+  end
+
+  # Canonical auth + wallet state for this request — the single source of truth
+  # the whole UI branches on (web3 / web2 / guest). Serialised into the page and
+  # mirrored client-side by Alpine.store('session'). See SessionContext.
+  def wallet_context
+    @wallet_context ||= SessionContext.new(user: current_user, onchain_session: onchain_session?)
   end
 
   def detect_geo_state
