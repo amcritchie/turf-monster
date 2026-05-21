@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll]
-  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest]
+  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
 
   def index
@@ -244,13 +244,17 @@ class ContestsController < ApplicationController
       render json: { changed: false }
     else
       load_contest_board_data
-      html = render_to_string(partial: "contests/turf_totals_leaderboard", locals: { compact: true })
+      partial = @contest.world_cup_survivor? ? "contests/world_cup_survivor_leaderboard" : "contests/turf_totals_leaderboard"
+      html = render_to_string(partial: partial, locals: { compact: true })
       render json: { changed: true, version: current_version, html: html }
     end
   end
 
   def enter
     entry = @contest.entries.cart.find_by(user: current_user)
+    # Survivor contests have no pick-building phase — entering creates the entry
+    # directly. (Turf Totals' cart entry is created by toggle_selection.)
+    entry ||= @contest.entries.find_or_create_by!(user: current_user, status: :cart) if @contest.world_cup_survivor?
     return redirect_to root_path, alert: "No cart entry found" unless entry
 
     # Onchain sessions MUST provide a wallet signature proof
@@ -345,6 +349,8 @@ class ContestsController < ApplicationController
   # Admin signs (pays rent), returns base64 tx for user to co-sign client-side.
   def prepare_entry
     entry = @contest.entries.cart.find_by(user: current_user)
+    # Survivor contests have no pick-building phase — see #enter.
+    entry ||= @contest.entries.find_or_create_by!(user: current_user, status: :cart) if @contest.world_cup_survivor?
     return render json: { error: "No cart entry found" }, status: :unprocessable_entity unless entry
 
     # Verify Phantom wallet signature
@@ -494,6 +500,38 @@ class ContestsController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
+  # World Cup Survivor — submit or replace this entry's pick for a round.
+  def pick
+    raise "Not a survivor contest" unless @contest.world_cup_survivor?
+
+    round = params[:round_id].present? ? SurvivorRound.find_by(id: params[:round_id]) : SurvivorRound.current
+    entry = @contest.entries.where(user: current_user, status: [:active, :complete]).first
+
+    rescue_and_log(target: entry, parent: @contest) do
+      raise "Enter the contest before making a pick" unless entry
+      raise "You've been eliminated from this contest" if entry.eliminated?
+      raise "Round not found" unless round
+      raise "#{round.name} is locked" if round.picks_locked?
+
+      team = Team.find_by(slug: params[:team_slug].to_s)
+      raise "Team not found" unless team
+      unless round.games.where("home_team_slug = :s OR away_team_slug = :s", s: team.slug).exists?
+        raise "#{team.name} is not playing in #{round.name}"
+      end
+      if entry.survivor_picks.where(team_slug: team.slug).where.not(survivor_round_id: round.id).exists?
+        raise "You've already used #{team.name} — no team can be picked twice"
+      end
+
+      pick = entry.survivor_picks.find_or_initialize_by(survivor_round: round)
+      pick.team_slug = team.slug
+      pick.save!
+
+      render json: { success: true, round_id: round.id, team_slug: team.slug, team_name: team.name }
+    end
+  rescue StandardError => e
+    render json: { success: false, error: e.message }, status: :unprocessable_entity
+  end
+
   def simulate_game
     rescue_and_log(target: @contest) do
       game = @contest.simulate_next_game!
@@ -523,6 +561,20 @@ class ContestsController < ApplicationController
       format.html { redirect_to @contest || root_path, alert: e.message }
       format.json { render json: { success: false, error: e.message }, status: :unprocessable_entity }
     end
+  end
+
+  # World Cup Survivor — grade a round across every survivor entry (rounds are
+  # global). Admin-only; the round's games must be final first.
+  def grade_round
+    rescue_and_log(target: @contest) do
+      raise "Not a survivor contest" unless @contest.world_cup_survivor?
+      round = params[:round_id].present? ? SurvivorRound.find_by(id: params[:round_id]) : SurvivorRound.current
+      raise "No round to grade" unless round
+      Survivor::GradeRound.call(round)
+      redirect_to @contest, notice: "#{round.name} graded."
+    end
+  rescue StandardError => e
+    redirect_to @contest || root_path, alert: e.message
   end
 
   def fill
@@ -710,6 +762,8 @@ class ContestsController < ApplicationController
   end
 
   def load_contest_board_data
+    return load_survivor_board_data if @contest.world_cup_survivor?
+
     if @contest.locked? || @contest.settled?
       cache_key = "contest/#{@contest.slug}/v#{@contest.updated_at.to_i}/show_data"
       cached = Rails.cache.fetch(cache_key, expires_in: 1.hour) do
@@ -725,6 +779,16 @@ class ContestsController < ApplicationController
       @entries = @contest.entries.where(status: [:active, :complete]).includes(:user, selections: { slate_matchup: [:team, :game] }).order(score: :desc)
     end
     @cart_entry = @contest.entries.cart.find_by(user: current_user) if logged_in?
+  end
+
+  # World Cup Survivor uses rounds + off-chain picks, not slate matchups.
+  def load_survivor_board_data
+    @survivor_rounds = SurvivorRound.ordered.to_a
+    @current_round = @survivor_rounds.find { |r| !r.completed? }
+    @entries = @contest.entries.where(status: [:active, :complete])
+                       .includes(:user, survivor_picks: [:survivor_round, :team])
+                       .to_a
+    @my_entry = current_user && @entries.find { |e| e.user_id == current_user.id }
   end
 
   def load_seeds_data

@@ -70,7 +70,7 @@
       <span class="text-lg font-extrabold text-heading"><%= entry_count %>/<%= max %></span>
       <span class="text-xs text-muted ml-1">Entries</span>
     </div>
-    <% if @has_entry && @contest.open? %>
+    <% if @has_entry && @contest.open? && @contest.turf_totals? %>
       <%
         my_count = @contest.entries.where(user: current_user, status: [:active, :complete]).count
         next_num = my_count + 1
@@ -107,8 +107,12 @@
   </div>
 <% end %>
 
-<!-- Section 4: Matchup Board (full-width, only if user can still enter) -->
-<% if @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
+<!-- Section 4: Board — Turf Totals matchups, or the World Cup Survivor board -->
+<% if @contest.world_cup_survivor? %>
+  <div class="mb-8">
+    <%= render "contests/world_cup_survivor_board" %>
+  </div>
+<% elsif @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
   <div class="mb-8">
     <%= render "contests/turf_totals_board" %>
   </div>
@@ -116,9 +120,8 @@
 
 <!-- Section 5: Leaderboard + Chat -->
 <%# Leaderboard + Chat split (2026-05-19). Two columns on desktop, a
-    Leaderboard / Chat tab toggle on mobile. The chat panel (contests/_chat_panel)
-    is currently a UI preview — backend wiring is the next step. To revert to the
-    original single-column page, replace this whole block with a full-width div
+    Leaderboard / Chat tab toggle on mobile. To revert to the original
+    single-column page, replace this whole block with a full-width div
     (id "leaderboard-container", class "mb-8") that renders the
     contests/turf_totals_leaderboard partial once. %>
 <div x-data="{ tab: 'leaderboard' }" class="mb-8">
@@ -141,7 +144,7 @@
         contest-details / admin chrome) so both columns start at the same place.
         Keeps id="leaderboard-container" for the leaderboard_poll JS. %>
     <div id="leaderboard-container" :class="tab === 'leaderboard' ? '' : 'hidden'" class="md:block">
-      <%= render "contests/turf_totals_leaderboard", compact: true %>
+      <%= render (@contest.world_cup_survivor? ? "contests/world_cup_survivor_leaderboard" : "contests/turf_totals_leaderboard"), compact: true %>
     </div>
     <%# Right — contest chat panel (see contests/_chat_panel). %>
     <div x-cloak :class="tab === 'chat' ? '' : 'hidden'" class="md:block">
@@ -150,8 +153,29 @@
   </div>
 </div>
 
-<!-- Section 6: Admin Actions (logged-in admin, unsettled contests) -->
-<% if current_user&.admin? && !@contest.settled? %>
+<!-- Section 5b: Survivor Admin -->
+<% if current_user&.admin? && !@contest.settled? && @contest.world_cup_survivor? %>
+  <div class="mb-8">
+    <h3 class="text-sm font-semibold text-secondary mb-3">Admin</h3>
+    <div class="card p-4">
+      <p class="text-xs font-semibold text-muted mb-2 uppercase tracking-wide">Contest</p>
+      <div class="flex flex-wrap gap-2">
+        <% if @contest.open? %>
+          <%= button_to "Lock Entries", lock_contest_path(@contest), method: :post, class: "btn btn-sm bg-yellow-600 hover:bg-yellow-500 text-white" %>
+        <% end %>
+        <% if @current_round %>
+          <%= button_to "Grade #{@current_round.name}", grade_round_contest_path(@contest, round_id: @current_round.id), method: :post, class: "btn btn-primary btn-sm" %>
+        <% else %>
+          <%= button_to "Settle Contest", grade_contest_path(@contest), method: :post, class: "btn btn-primary btn-sm" %>
+        <% end %>
+      </div>
+      <p class="text-xs text-muted mt-2">Grade each round once its matches are final; settle the contest after the Final.</p>
+    </div>
+  </div>
+<% end %>
+
+<!-- Section 6: Admin Actions (Turf Totals) -->
+<% if current_user&.admin? && !@contest.settled? && @contest.turf_totals? %>
   <div class="mb-8">
     <h3 class="text-sm font-semibold text-secondary mb-3">Admin</h3>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

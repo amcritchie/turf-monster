@@ -51,7 +51,7 @@
     <div>
       <label class="text-muted text-[10px] uppercase tracking-wide block mb-1">Background Style</label>
       <%= f.select :background_style,
-            options_for_select([["Animated gradient", "gradient"], ["Rotating blobs", "blobs"]], @landing_page.background_style),
+            options_for_select([["Animated gradient", "gradient"], ["Rotating blobs", "blobs"], ["Pulsing circles", "circles"]], @landing_page.background_style),
             {},
             class: field_class, style: field_style %>
       <p class="text-muted text-xs mt-1">The animated background behind the splash.</p>

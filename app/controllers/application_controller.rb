@@ -19,6 +19,18 @@ class ApplicationController < ActionController::Base
   def set_app_session(user)
     super
     session[:session_token] = user.session_token
+    # The onchain-session flag is a Phantom-wallet-signature privilege. Reset
+    # it on every login so a stale flag from an earlier Phantom session can't
+    # leak into a later email/Google login (which would make ContestsController
+    # #enter demand a wallet signature). SolanaSessionsController#verify calls
+    # set_app_session and then re-grants the flag for genuine wallet auth.
+    session.delete(:onchain)
+  end
+
+  # Clear the onchain flag on logout too, alongside the engine's session wipe.
+  def clear_app_session
+    super
+    session.delete(:onchain)
   end
 
   private

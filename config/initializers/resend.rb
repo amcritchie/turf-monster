@@ -12,7 +12,7 @@
 #   the SPF/DKIM/DMARC DNS records they show. Until verified, sends from
 #   that domain are rejected by Resend with 422 "domain not verified."
 
-if ENV["RESEND_API_KEY"].present?
+if ENV["RESEND_API_KEY"].present? && !Rails.env.test?
   require "resend"
 
   Resend.api_key = ENV["RESEND_API_KEY"]

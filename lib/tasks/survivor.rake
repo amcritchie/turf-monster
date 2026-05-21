@@ -45,4 +45,71 @@ namespace :survivor do
     puts "Done. #{SurvivorRound.count} rounds, " \
          "#{Game.where.not(survivor_round_id: nil).count} games linked."
   end
+
+  desc "Create the two World Cup Survivor contests (paid + free) — fires on-chain creation"
+  task create_contests: :environment do
+    admin = User.find_by(email: "alex@mcritchie.studio")
+    raise "Admin user alex@mcritchie.studio not found — run db:seed first" unless admin
+
+    specs = [
+      { name: "World Cup Survivor",          contest_type: "survivor_wc_paid" },
+      { name: "World Cup Survivor Free Roll", contest_type: "survivor_wc_free" }
+    ]
+
+    specs.each do |spec|
+      slug = spec[:name].parameterize
+      if (existing = Contest.find_by(slug: slug))
+        puts "  • #{spec[:name]} — already exists (on-chain: #{existing.onchain? ? existing.onchain_contest_id : 'NO'})"
+        next
+      end
+
+      format = Contest::FORMATS.fetch(spec[:contest_type])
+      begin
+        contest = Contest.create!(
+          name:            spec[:name],
+          game_type:       "world_cup_survivor",
+          contest_type:    spec[:contest_type],
+          entry_fee_cents: format[:entry_fee_cents],
+          max_entries:     format[:max_entries],
+          status:          "open",
+          user:            admin
+        )
+        puts "  ✓ #{spec[:name]} — slug=#{contest.slug}  " \
+             "entry=$#{contest.entry_fee_dollars}  prize=$#{contest.guaranteed_prize_dollars}  " \
+             "PDA=#{contest.onchain_contest_id}"
+      rescue => e
+        puts "  ✗ #{spec[:name]} — #{e.message}"
+      end
+    end
+  end
+
+  desc "Dry-run a full 8-round World Cup Survivor tournament (rolls back — nothing persists)"
+  task :simulate, [:slug] => :environment do |_t, args|
+    slug = args[:slug].presence || "world-cup-survivor-free-roll"
+    contest = Contest.find_by(slug: slug)
+    raise "Contest not found: #{slug}" unless contest
+
+    puts "Simulating #{contest.name} (#{slug}) — dry run, nothing persists"
+    puts
+    report = Survivor::SimulateTournament.call(contest)
+    total  = [report[:total_entries], 1].max
+
+    puts "  #{report[:total_entries]} entries"
+    report[:rounds].each do |r|
+      bar = "#" * (r[:alive_after] * 40 / total)
+      puts "  R#{r[:number]} #{r[:name].ljust(18)} #{r[:alive_before].to_s.rjust(3)} -> " \
+           "#{r[:alive_after].to_s.rjust(3)} alive  (#{r[:eliminated]} out)  #{bar}"
+    end
+    puts
+    if report[:winners].any?
+      label = report[:winners].size > 1 ? "Winners" : "Winner"
+      puts "  #{label}: #{report[:winners].join(', ')}"
+      puts "  Survived #{report[:max_rounds]} round(s) — split $#{report[:prize_cents] / 100} " \
+           "= $#{format('%.2f', report[:prize_each_cents] / 100.0)} each"
+    else
+      puts "  No entries to settle."
+    end
+    puts
+    puts "(rolled back — games, rounds, contests, entries unchanged)"
+  end
 end

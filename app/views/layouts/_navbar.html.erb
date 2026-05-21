@@ -6,9 +6,25 @@
 <% show_user = local_assigns.fetch(:show_logged_in, logged_in?) %>
 <% is_preview = local_assigns.fetch(:preview, false) %>
 
-<header x-data="{ scrolled: false }" <%= '@scroll.window.throttle.50ms="scrolled = scrolled ? (window.scrollY > 40) : (window.scrollY > 60)"'.html_safe unless is_preview %>
+<header x-data="{ scrolled: false }" <%= '@scroll.window="scrolled = scrolled ? (window.scrollY > 5) : (window.scrollY > 60)"'.html_safe unless is_preview %>
         class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[110] bg-page transition-shadow duration-300' %>"
         :class="scrolled && 'shadow-lg border-b border-subtle is-scrolled'">
+  <% unless is_preview || Rails.env.production? %>
+    <%# Env banner — rides inside the sticky header so it stays visible and
+        never leaves a phantom gap for layout math (see --nav-h below). %>
+    <div style="background:#eab308; color:#000; font-size:12px; font-weight:700; padding:2px 12px; position:relative;">
+      <%= Rails.env.capitalize %> Environment
+      <span style="position:absolute; right:8px; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:6px;">
+        <button @click="$store.devMode = !$store.devMode; localStorage.setItem('devMode', $store.devMode)"
+                class="rounded cursor-pointer"
+                style="font-size:10px; font-weight:700; padding:1px 6px;"
+                :style="$store.devMode ? 'background:rgba(0,0,0,0.4); color:#fff;' : 'background:rgba(0,0,0,0.2); color:#000;'">DEV MODE</button>
+        <% if Solana::Config.devnet? %>
+          <span class="rounded" style="font-size:10px; font-weight:700; padding:1px 6px; background:rgba(0,0,0,0.2);">DEVNET</span>
+        <% end %>
+      </span>
+    </div>
+  <% end %>
   <style>
     .user-nav-col { width: 14rem; }
     .nav-title { display: flex; gap: 0.25em; align-items: baseline; }
@@ -86,3 +102,6 @@
     </span>
   </div>
 </header>
+<%# --nav-h + overflow-anchor are shipped by studio-engine (>=0.4.4) from
+    layouts/studio/_head.html.erb — no per-app navbar script needed. %>
+

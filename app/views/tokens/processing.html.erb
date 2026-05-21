@@ -1,4 +1,4 @@
-<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>')" x-init="start()">
+<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : "" %>')" x-init="start()">
   <div class="card shadow p-8 text-center">
     <%# Loading state %>
     <template x-if="!ready && !errored">
@@ -26,7 +26,8 @@
         <p class="text-sm text-secondary mb-6">
           You now have <span class="font-bold text-primary font-mono" x-text="balance"></span> available.
         </p>
-        <div class="flex gap-3 justify-center">
+        <p x-show="contestUrl" class="text-sm text-secondary">Returning to your contest…</p>
+        <div x-show="!contestUrl" class="flex gap-3 justify-center">
           <%= link_to "Enter a contest", root_path, class: "btn btn-primary" %>
           <%= link_to "Buy more", tokens_buy_path, class: "btn btn-outline" %>
         </div>
@@ -50,9 +51,10 @@
 </div>
 
 <script>
-  function tokenProcessing(sessionId) {
+  function tokenProcessing(sessionId, contestUrl) {
     return {
       ready: false,
+      contestUrl: contestUrl,
       minted: 0,
       balance: 0,
       elapsed: 0,
@@ -88,6 +90,20 @@
             this.balance = d.balance;
             this.ready = true;
             this.stop();
+            if (window.opener && !window.opener.closed) {
+              // Opened in a new tab from the contest — hand control back
+              // there (it finishes the entry) and close this tab.
+              try {
+                window.opener.postMessage(
+                  { source: 'tt-tokens', status: 'minted', contestUrl: contestUrl },
+                  window.location.origin
+                );
+              } catch (e) {}
+              setTimeout(function () { window.close(); }, 1500);
+            } else if (contestUrl) {
+              // Same-tab checkout — return to the contest to finish.
+              setTimeout(function () { window.location.href = contestUrl; }, 1800);
+            }
           }
         } catch (e) { /* keep polling */ }
       }

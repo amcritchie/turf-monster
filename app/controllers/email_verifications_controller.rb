@@ -27,19 +27,22 @@ class EmailVerificationsController < ApplicationController
 
   def create
     @user = current_user
-    return redirect_to root_path, alert: "Email already verified." if @user.email_verified_at.present?
-    return redirect_to account_path, alert: "No email on file." if @user.email.blank?
+    return render_verification_result(false, "Email already verified.", root_path) if @user.email_verified_at.present?
+    return render_verification_result(false, "No email on file.", account_path) if @user.email.blank?
 
+    # Optional contest context — the verify link returns the user there to
+    # finish their entry once their email is confirmed.
+    contest = Contest.find_by(slug: params[:contest].presence)
     token = Rails.application.message_verifier(VERIFY_TOKEN_KEY).generate(
-      { user_id: @user.id, email: @user.email },
+      { user_id: @user.id, email: @user.email, return_to: contest && contest_path(contest) },
       expires_in: VERIFY_TOKEN_TTL
     )
-    UserMailer.email_verification(@user, token).deliver_later
+    UserMailer.email_verification(@user, token, contest: contest).deliver_later
 
-    redirect_to email_verifications_new_path, notice: "Verification email sent. Check your inbox."
+    render_verification_result(true, "Verification email sent. Check your inbox.", email_verifications_new_path)
   rescue StandardError => e
     Rails.logger.error("[EmailVerificationsController#create] #{e.class}: #{e.message}")
-    redirect_to email_verifications_new_path, alert: "Could not send the verification email."
+    render_verification_result(false, "Could not send the verification email.", email_verifications_new_path)
   end
 
   def verify
@@ -52,7 +55,15 @@ class EmailVerificationsController < ApplicationController
 
     user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
 
-    if logged_in?
+    # If the token carried a contest return path, send the user there to
+    # finish the entry. The path comes from a signed token, but guard against
+    # anything that isn't a plain local path regardless.
+    return_to = payload[:return_to].to_s
+    return_to = nil unless return_to.start_with?("/") && !return_to.start_with?("//")
+
+    if return_to
+      redirect_to return_to, notice: "Email verified — finish entering your contest!"
+    elsif logged_in?
       redirect_to account_path, notice: "Email verified. Thanks!"
     else
       redirect_to login_path, notice: "Email verified. You can sign in now."
@@ -62,5 +73,24 @@ class EmailVerificationsController < ApplicationController
   rescue StandardError => e
     Rails.logger.error("[EmailVerificationsController#verify] #{e.class}: #{e.message}")
     redirect_to root_path, alert: "Verification failed: #{e.message}"
+  end
+
+  private
+
+  # Respond to both the inline auth modal (JSON) and the standalone
+  # /email_verification/new page (HTML redirect + flash).
+  def render_verification_result(ok, message, html_redirect)
+    respond_to do |format|
+      format.json do
+        if ok
+          render json: { success: true }
+        else
+          render json: { success: false, error: message }, status: :unprocessable_entity
+        end
+      end
+      format.html do
+        redirect_to html_redirect, (ok ? { notice: message } : { alert: message })
+      end
+    end
   end
 end

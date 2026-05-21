@@ -72,9 +72,17 @@ Rails.application.routes.draw do
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"
   post "auth/solana/verify", to: "solana_sessions#verify"
 
+  # Google OAuth popup entrypoint — sets a popup-mode session flag, then
+  # hands off to OmniAuth. The callback renders a window-closer page.
+  get "auth/google_popup", to: "omniauth_callbacks#popup"
+
   # Inline (modal) email+password login — JSON only, returns user info
   # so the caller can replay cart selections and submit entry.
   post "sessions/inline", to: "inline_sessions#create", as: :inline_login
+
+  # Inline (modal) email+password signup — JSON only. Mirrors the login
+  # route above; creates the account, then the caller resumes the cart.
+  post "registrations/inline", to: "inline_registrations#create", as: :inline_signup
 
   # Email verification (OPSEC-005). Tokens are message_verifier blobs that
   # contain dots; constraints: { token: /.+/ } stops Rails from interpreting
@@ -119,11 +127,13 @@ Rails.application.routes.draw do
     end
     member do
       post :toggle_selection
+      post :pick
       post :enter
       post :prepare_entry
       post :confirm_onchain_entry
       post :clear_picks
       post :grade
+      post :grade_round
       post :fill
       post :lock
       post :jump

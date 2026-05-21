@@ -67,4 +67,10 @@ class LandingPageTest < ActiveSupport::TestCase
     assert lp.blobs?
     assert_equal "blobs", lp.background_partial
   end
+
+  test "a circles page renders the circles partial" do
+    lp = LandingPage.new(background_style: "circles")
+    assert lp.circles?
+    assert_equal "circles", lp.background_partial
+  end
 end

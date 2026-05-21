@@ -29,10 +29,15 @@ class AccountsController < ApplicationController
         format.json { render json: { success: true, display_name: @user.display_name, redirect: target } }
       end
     end
-  rescue StandardError => e
+  rescue StandardError
+    title, message = profile_error_toast
     respond_to do |format|
-      format.html { flash.now[:alert] = e.message; render :complete_profile, status: :unprocessable_entity }
-      format.json { render json: { error: e.message }, status: :unprocessable_entity }
+      format.html do
+        @profile_error_title = title
+        @profile_error_message = message
+        render :complete_profile, status: :unprocessable_entity
+      end
+      format.json { render json: { error: message }, status: :unprocessable_entity }
     end
   end
 
@@ -159,6 +164,18 @@ class AccountsController < ApplicationController
 
   def profile_params
     params.require(:user).permit(:username, :avatar)
+  end
+
+  # Friendly (title, message) for a profile-save failure. A username
+  # collision is a normal user error, so it gets a specific, non-scary toast
+  # rather than the raw "Validation failed: …" exception message.
+  def profile_error_toast
+    username_taken = @user.errors.details[:username]&.any? { |d| d[:error] == :taken }
+    if username_taken
+      ["Username Taken", "Please choose a new username"]
+    else
+      ["Couldn't Save Profile", @user.errors.full_messages.first || "Please try again."]
+    end
   end
 
   def load_solana_balances

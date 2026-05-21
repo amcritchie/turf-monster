@@ -7,7 +7,7 @@ class LandingPage < ApplicationRecord
 
   # Which animated background the splash renders — partials live in
   # app/views/landing_pages/backgrounds/.
-  enum :background_style, { gradient: "gradient", blobs: "blobs" }
+  enum :background_style, { gradient: "gradient", blobs: "blobs", circles: "circles" }
 
   # Populate the slug before validation so uniqueness can be checked on it.
   # (Sluggable also re-runs set_slug before_save — idempotent once set.)
@@ -31,9 +31,9 @@ class LandingPage < ApplicationRecord
   end
 
   # Background partial to render, under landing_pages/backgrounds/.
-  # Both backgrounds are dark splashes (the funnel always renders dark).
+  # All backgrounds are dark splashes (the funnel always renders dark).
   def background_partial
-    blobs? ? "blobs" : "gradient"
+    self.class.background_styles.key?(background_style) ? background_style : "gradient"
   end
 
   # Signups attributed to this funnel (User#reference == this page's slug).

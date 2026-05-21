@@ -2,9 +2,16 @@
 
 <p>Hi <%= @user.display_name %>,</p>
 
-<p>Click the link below to verify the email address on your Turf Monster account:</p>
+<% if @contest %>
+  <p>You're almost in <strong><%= @contest.name %></strong>! Confirm your email below —
+     you'll land right back on the contest to finish your entry:</p>
 
-<p><%= link_to "Verify my email", @verify_url %></p>
+  <p><%= link_to "Verify & finish my entry", @verify_url %></p>
+<% else %>
+  <p>Click the link below to verify the email address on your Turf Monster account:</p>
+
+  <p><%= link_to "Verify my email", @verify_url %></p>
+<% end %>
 
 <p>If the button doesn't work, copy and paste this URL into your browser:</p>
 <p><%= @verify_url %></p>

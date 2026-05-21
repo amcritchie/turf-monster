@@ -265,7 +265,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - **Tailwind class compilation**: New utility classes won't compile unless already used elsewhere. Use inline `style` for one-offs.
 - **Chart.js + Alpine.js**: Never store Chart.js instances as Alpine reactive properties (Proxy infinite loops). See `docs/FORMULAS.md`.
 - **Cross-component Alpine**: Use global functions/variables instead of `$dispatch`/`$store` for shared state.
-- **Navbar scroll bounce**: Unscroll threshold must be low (5px) to prevent oscillation when navbar height change pushes scrollY back across the threshold. Uses `.throttle.50ms` on scroll handler.
+- **Navbar / sticky-nav scroll**: Bounce is prevented by `overflow-anchor: none` on `<body>` — shipped by studio-engine (≥0.4.4) from `layouts/studio/_head.html.erb` — which stops Chrome/Firefox scroll-anchoring from dragging `scrollY` when the sticky navbar resizes. The scroll handler is **unthrottled** (throttling drops the trailing event and strands the navbar collapsed); hysteresis is 5/60. Fixed elements below the navbar position off `var(--nav-h)` — a `ResizeObserver`-fed CSS var also shipped by the engine head — never hardcode the offset.
 
 ## Workflow
 

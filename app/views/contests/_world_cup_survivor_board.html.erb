@@ -1,0 +1,311 @@
+<%
+  entered  = @my_entry.present?
+  alive    = @my_entry&.alive?
+  cr       = @current_round
+  fee_c    = @contest.entry_fee_cents.to_i
+  prize    = @contest.guaranteed_prize_dollars.to_i
+  enter_label = fee_c > 0 ? "Enter Contest — $#{fee_c / 100}" : "Enter the Free Roll"
+
+  # Off-chain picks, keyed by round — your own picks are always visible to you.
+  my_picks_by_round = entered ? @my_entry.survivor_picks.index_by(&:survivor_round_id) : {}
+  # Teams used in rounds OTHER than the current one — locked out (no reuse).
+  used_team_slugs   = entered ? @my_entry.survivor_picks.reject { |p| p.survivor_round_id == cr&.id }.map(&:team_slug) : []
+  cr_games = cr ? cr.games.includes(:home_team, :away_team).order(:kickoff_at).to_a : []
+%>
+
+<script type="application/json" id="survivor-config">
+<%= {
+  contestSlug:        @contest.slug,
+  entryFeeCents:      fee_c,
+  contestOnchain:     @contest.onchain?,
+  contestName:        @contest.name,
+  loggedIn:           logged_in?,
+  currentUserId:      current_user&.id,
+  userWallet:         current_user&.solana_address.to_s,
+  phantomWallet:      current_user&.phantom_wallet? || false,
+  currentRoundId:     cr&.id,
+  currentRoundLocked: cr ? cr.picks_locked? : true,
+  myPick:             (entered && cr ? my_picks_by_round[cr.id]&.team_slug : nil),
+  usedTeams:          used_team_slugs
+}.to_json.html_safe %>
+</script>
+
+<script>
+// survivorBoard — inline because Alpine evaluates x-data before importmap modules load.
+window.survivorBoard = function() {
+  var cfg = JSON.parse(document.getElementById('survivor-config').textContent);
+
+  return {
+    csrfToken:          document.querySelector('meta[name="csrf-token"]')?.content,
+    contestId:          cfg.contestSlug,
+    contestName:        cfg.contestName,
+    contestOnchain:     cfg.contestOnchain,
+    loggedIn:           cfg.loggedIn,
+    userWallet:         cfg.userWallet,
+    myPick:             cfg.myPick,
+    usedTeams:          cfg.usedTeams || [],
+    currentRoundId:     cfg.currentRoundId,
+    currentRoundLocked: cfg.currentRoundLocked,
+    submitting:         false,
+    error:              null,
+    errorTimer:         null,
+
+    teamUsed(slug) { return this.usedTeams.indexOf(slug) !== -1; },
+    isMyPick(slug) { return this.myPick === slug; },
+
+    showError(message) {
+      this.error = message;
+      if (this.errorTimer) clearTimeout(this.errorTimer);
+      var self = this;
+      this.errorTimer = setTimeout(function() { self.error = null; }, 5000);
+    },
+
+    // Submit / change this entry's pick for the current round.
+    async pickTeam(slug) {
+      if (this.currentRoundLocked || this.submitting) return;
+      if (this.teamUsed(slug)) { this.showError('You already used that team this tournament.'); return; }
+
+      var prev = this.myPick;
+      this.myPick = slug; // optimistic
+      this.submitting = true;
+      try {
+        var resp = await fetch('/contests/' + this.contestId + '/pick', {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ round_id: this.currentRoundId, team_slug: slug })
+        });
+        var data = await resp.json();
+        if (!data.success) { this.myPick = prev; this.showError(data.error || 'Pick failed.'); }
+      } catch (e) {
+        this.myPick = prev;
+        this.showError('Network error — pick not saved.');
+      }
+      this.submitting = false;
+    },
+
+    // Enter the contest. Phantom wallets pay directly on-chain; managed/other
+    // wallets go through the server enter path. Mirrors the Turf Totals flow.
+    async confirmEntry() {
+      if (!this.loggedIn) { window.location.href = '/login'; return; }
+      if (this.submitting) return;
+      this.submitting = true;
+
+      var directOnchain = this.contestOnchain && window.walletProvider &&
+                          window.walletProvider.isAvailable() && cfg.phantomWallet;
+      var modal = Alpine.store('solanaModal');
+
+      try {
+        if (directOnchain) {
+          var provider = window.walletProvider.detect();
+          modal.show('Sign Entry', 'Approve in your wallet…');
+          var connectResp = await provider.connect();
+          var pubkeyB58 = connectResp.publicKey.toBase58();
+          if (this.userWallet && pubkeyB58 !== this.userWallet) {
+            throw new Error('Wrong wallet connected. Switch to ' + this.userWallet.substring(0, 8) + '…');
+          }
+
+          var nonce = (await (await fetch('/auth/solana/nonce')).json()).nonce;
+          var domain = window.location.host;
+          var userIdLine = cfg.currentUserId ? ('User-ID: ' + cfg.currentUserId + '\n\n') : '';
+          var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 +
+                        '\n\n' + userIdLine + 'Enter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
+          var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
+          var signatureB58 = encodeBase58(signed.signature);
+
+          modal.show('Preparing Transaction', 'Building on-chain transaction…');
+          var prepareData = await (await fetch('/contests/' + this.contestId + '/prepare_entry', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
+          })).json();
+          if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
+
+          modal.show('Sign Transaction', 'Approve the entry transaction in your wallet…');
+          var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
+          var signedTx = await provider.signTransaction(solanaWeb3.Transaction.from(txBytes));
+
+          modal.show('Confirming On-chain', 'Submitting to Solana…');
+          var connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+          var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+          await connection.confirmTransaction(txSig, 'confirmed');
+
+          modal.show('Confirming Entry', 'Saving your entry…');
+          var confirmData = await (await fetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ tx_signature: txSig, entry_id: prepareData.entry_id, entry_pda: prepareData.entry_pda })
+          })).json();
+          if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm entry');
+
+          modal.success(txSig, "You're in! Good luck.");
+          modal.onClose = function() { window.location.href = confirmData.redirect || window.location.pathname; };
+          if (typeof refreshBalanceDelayed === 'function') refreshBalanceDelayed();
+        } else {
+          modal.show('Submitting Entry', 'Processing your entry…');
+          var data = await (await fetch('/contests/' + this.contestId + '/enter', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': this.csrfToken, 'Accept': 'application/json' }
+          })).json();
+
+          if (data.success) {
+            if (data.tx_signature) {
+              modal.success(data.tx_signature, "You're in! Good luck.");
+              modal.onClose = function() { window.location.href = data.redirect || window.location.pathname; };
+              if (typeof refreshBalanceDelayed === 'function') refreshBalanceDelayed();
+            } else {
+              modal.close();
+              window.location.href = data.redirect || window.location.pathname;
+            }
+          } else {
+            modal.error(data.error || 'Something went wrong');
+            this.submitting = false;
+          }
+        }
+      } catch (err) {
+        var msg = (typeof parseSolanaError === 'function')
+          ? parseSolanaError(err.message || 'Entry failed')
+          : (err.message || 'Entry failed');
+        if (modal && modal.visible) { modal.error(msg); } else { this.showError(msg); }
+        this.submitting = false;
+      }
+    }
+  };
+};
+</script>
+
+<div x-data="survivorBoard()" x-cloak>
+
+  <!-- Error toast -->
+  <div x-show="error" x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="-translate-y-4 opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
+       class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
+    <div class="bg-red-900/90 border border-red-700 rounded-xl px-4 py-3 shadow-2xl">
+      <p class="text-red-200 text-sm" x-text="error"></p>
+    </div>
+  </div>
+
+  <!-- Status / CTA banner -->
+  <% if !entered %>
+    <div class="card p-6 mb-6 text-center">
+      <div class="text-3xl mb-2">🏆 ⚽️</div>
+      <h2 class="text-xl font-bold text-heading mb-1">Last one standing wins $<%= prize %></h2>
+      <p class="text-sm text-secondary max-w-md mx-auto mb-4">
+        Pick one team each round. If they <strong class="text-heading">win or draw</strong> you survive —
+        a loss knocks you out. No team twice. <%= @survivor_rounds.size %> rounds, last survivor takes the prize.
+      </p>
+      <% if @contest.open? %>
+        <button type="button" data-testid="survivor-enter" @click="confirmEntry()" :disabled="submitting"
+                class="btn btn-primary btn-lg disabled:cursor-wait">
+          <span x-text="submitting ? 'Entering…' : '<%= j enter_label %>'"></span>
+        </button>
+        <% unless logged_in? %>
+          <p class="text-xs text-muted mt-2">You'll be asked to log in first.</p>
+        <% end %>
+      <% else %>
+        <p class="text-sm text-muted font-medium">Entries are closed — the tournament has started.</p>
+      <% end %>
+    </div>
+  <% else %>
+    <div class="card p-4 mb-6 flex items-center gap-3 <%= alive ? 'ring-1 ring-primary/40' : '' %>">
+      <div class="text-2xl"><%= alive ? '✅' : '💀' %></div>
+      <div class="flex-1 min-w-0">
+        <% if alive %>
+          <p class="font-bold text-heading">You're alive</p>
+          <p class="text-sm text-secondary">Survived <%= @my_entry.rounds_survived %> round<%= 's' unless @my_entry.rounds_survived == 1 %> — keep picking to stay in.</p>
+        <% else %>
+          <p class="font-bold text-muted">Eliminated in Round <%= @my_entry.eliminated_round %></p>
+          <p class="text-sm text-muted">You're out — but you can still watch it play out.</p>
+        <% end %>
+      </div>
+      <span class="px-3 py-1 rounded-full text-sm font-bold flex-shrink-0 <%= alive ? 'bg-primary/15 text-primary' : 'bg-surface-alt text-muted' %>">
+        <%= alive ? 'ALIVE' : 'OUT' %>
+      </span>
+    </div>
+  <% end %>
+
+  <!-- Current-round picker -->
+  <% if entered && alive && cr && !cr.picks_locked? && cr_games.any? %>
+    <div class="mb-6">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <h3 class="text-sm font-semibold text-secondary"><%= cr.name %> — pick a team to survive</h3>
+        <% if cr.picks_lock_at %>
+          <span class="text-xs text-muted whitespace-nowrap">locks <%= cr.picks_lock_at.strftime('%b %-d, %-I:%M %p') %></span>
+        <% end %>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <% cr_games.each do |game| %>
+          <div class="card p-2 flex items-center gap-1">
+            <% game_teams = [game.home_team, game.away_team] %>
+            <% game_teams.each_with_index do |team, idx| %>
+              <% next unless team %>
+              <% if idx == 1 %><span class="text-[10px] text-muted font-bold px-0.5">vs</span><% end %>
+              <button type="button" data-testid="survivor-team"
+                      @click="pickTeam('<%= j team.slug %>')"
+                      :disabled="submitting || teamUsed('<%= j team.slug %>')"
+                      :class="isMyPick('<%= j team.slug %>') ? 'ring-2 ring-primary bg-primary/10' : 'hover:bg-surface-alt'"
+                      class="flex-1 min-w-0 rounded-lg p-2 text-center transition disabled:opacity-40 disabled:cursor-not-allowed">
+                <div class="text-xl leading-none"><%= team.emoji %></div>
+                <div class="text-xs font-semibold text-heading truncate mt-0.5"><%= team.short_name %></div>
+                <div class="text-[10px] text-muted" x-show="teamUsed('<%= j team.slug %>')" x-cloak>used</div>
+              </button>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+      <p class="text-xs text-muted mt-2" x-show="myPick" x-cloak>
+        Pick saved — you can change it until the round locks.
+      </p>
+    </div>
+  <% elsif entered && alive && cr && cr.picks_locked? %>
+    <div class="card p-4 mb-6 text-center text-sm text-muted">
+      Picks for <%= cr.name %> are locked. Results post once the matches finish.
+    </div>
+  <% elsif entered && alive && cr && cr_games.empty? %>
+    <div class="card p-4 mb-6 text-center text-sm text-muted">
+      <%= cr.name %> fixtures aren't set yet — check back once the bracket is drawn.
+    </div>
+  <% end %>
+
+  <!-- Rounds rail -->
+  <div class="mb-8">
+    <h3 class="text-sm font-semibold text-secondary mb-3">Tournament Rounds</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <% @survivor_rounds.each do |round| %>
+        <%
+          is_current = cr && round.id == cr.id
+          pick = my_picks_by_round[round.id]
+        %>
+        <div class="card p-2.5 <%= is_current ? 'ring-1 ring-primary/50' : '' %>">
+          <div class="flex items-center justify-between gap-1">
+            <span class="text-xs font-bold text-heading truncate"><%= round.name %></span>
+            <% if round.completed? %>
+              <span class="text-[10px] text-muted flex-shrink-0">done</span>
+            <% elsif round.picks_locked? %>
+              <span class="text-[10px] text-yellow-500 flex-shrink-0">locked</span>
+            <% elsif is_current %>
+              <span class="text-[10px] text-primary font-semibold flex-shrink-0">pick now</span>
+            <% end %>
+          </div>
+          <% if entered && pick %>
+            <div class="mt-1.5 flex items-center gap-1">
+              <span class="text-base"><%= pick.team&.emoji %></span>
+              <span class="text-xs font-semibold text-secondary truncate"><%= pick.team&.short_name %></span>
+              <% if pick.survived? %>
+                <span class="ml-auto text-primary text-xs font-bold">✓</span>
+              <% elsif pick.eliminated? %>
+                <span class="ml-auto text-red-400 text-xs font-bold">✗</span>
+              <% end %>
+            </div>
+          <% elsif entered %>
+            <p class="mt-1.5 text-[10px] text-muted"><%= round.picks_locked? ? 'no pick' : '—' %></p>
+          <% else %>
+            <p class="mt-1.5 text-[10px] text-muted"><%= round.picks_lock_at&.strftime('%b %-d') || 'TBD' %></p>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <%= render "components/json_debug", record: @contest.as_json, label: "Contest JSON", collapsible: true %>
+</div>

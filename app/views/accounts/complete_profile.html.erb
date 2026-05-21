@@ -23,3 +23,30 @@
     <% end %>
   </div>
 </section>
+
+<% if @profile_error_message.present? %>
+  <%# Validation failed — surface a titled toast. This app starts Alpine early
+      and streams x-data via a MutationObserver, so no fixed lifecycle event
+      reliably lands a page-load toast. Poll until the toast-manager component
+      is live, then dispatch through its documented `toast` event. %>
+  <script>
+    (function () {
+      var detail = {
+        type: 'alert',
+        title: <%= @profile_error_title.to_json.html_safe %>,
+        message: <%= @profile_error_message.to_json.html_safe %>
+      };
+      var tries = 0;
+      (function poll() {
+        var container = document.getElementById('toast-container');
+        var host = container && container.closest('[x-data]');
+        var data = (host && window.Alpine && Alpine.$data) ? Alpine.$data(host) : null;
+        if (data && typeof data.add === 'function') {
+          window.dispatchEvent(new CustomEvent('toast', { detail: detail }));
+        } else if (tries++ < 60) {
+          setTimeout(poll, 100);
+        }
+      })();
+    })();
+  </script>
+<% end %>

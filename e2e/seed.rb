@@ -8,12 +8,14 @@ puts "Seeding test database for Playwright..."
 # Clear in dependency order
 TransactionLog.delete_all
 GeoSetting.delete_all
+SurvivorPick.delete_all
 Selection.delete_all
 Entry.delete_all
 SlateMatchup.delete_all
 Contest.delete_all
 Slate.delete_all
 Game.delete_all
+SurvivorRound.delete_all
 Team.delete_all
 User.delete_all
 
@@ -190,4 +192,29 @@ GeoSetting.create!(
   banned_states: GeoSetting::DEFAULT_BANNED_STATES
 )
 
-puts "Seeded: #{User.count} users, #{Team.count} teams, #{Slate.count} slates, #{Contest.count} contests, #{SlateMatchup.count} matchups, #{GeoSetting.count} geo_settings"
+# ─── World Cup Survivor ───────────────────────────────────────
+# Eight global rounds; round 1 reuses the 24 Matchday-1 games as its fixtures.
+survivor_rounds = [
+  [1, "Group Matchday 1", "group"], [2, "Group Matchday 2", "group"],
+  [3, "Group Matchday 3", "group"], [4, "Round of 32", "knockout"],
+  [5, "Round of 16", "knockout"],   [6, "Quarter-finals", "knockout"],
+  [7, "Semi-finals", "knockout"],   [8, "Final", "knockout"],
+].map do |num, rname, stage|
+  SurvivorRound.create!(number: num, name: rname, stage: stage, status: "upcoming",
+                        picks_lock_at: 2.weeks.from_now + num.days)
+end
+Game.update_all(survivor_round_id: survivor_rounds.first.id)
+
+Contest.create!(
+  name: "World Cup Survivor",
+  game_type: "world_cup_survivor",
+  contest_type: "survivor_wc_free",
+  entry_fee_cents: 0,
+  max_entries: 59,
+  status: "open",
+  # Backdated so the Turf Totals contest stays the most-recent one and `/`
+  # still redirects there (existing smoke tests depend on it).
+  created_at: 1.day.ago
+)
+
+puts "Seeded: #{User.count} users, #{Team.count} teams, #{Slate.count} slates, #{Contest.count} contests, #{SlateMatchup.count} matchups, #{SurvivorRound.count} survivor rounds, #{GeoSetting.count} geo_settings"

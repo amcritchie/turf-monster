@@ -519,23 +519,26 @@ module Solana
       data = Transaction.anchor_discriminator("enter_contest") +
              Borsh.encode_u32(entry_num)
 
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: wallet_bytes, is_signer: false, is_writable: false },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: c_pda, is_signer: false, is_writable: true },
-          { pubkey: e_pda, is_signer: false, is_writable: true },
-          { pubkey: s_pda, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
-        ],
-        data: data
-      )
-
-      signature = client.send_and_confirm(tx.serialize_base64)
+      # First-time entrant's UserAccount may have just been created — retry if
+      # its PDA hasn't reached the preflight node yet (Anchor 3012 / 0xbc4).
+      signature = with_account_init_retry do
+        tx = build_tx(admin)
+        tx.add_instruction(
+          program_id: @program_id,
+          accounts: [
+            { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+            { pubkey: wallet_bytes, is_signer: false, is_writable: false },
+            { pubkey: vault_pda, is_signer: false, is_writable: false },
+            { pubkey: user_pda, is_signer: false, is_writable: true },
+            { pubkey: c_pda, is_signer: false, is_writable: true },
+            { pubkey: e_pda, is_signer: false, is_writable: true },
+            { pubkey: s_pda, is_signer: false, is_writable: false },
+            { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          ],
+          data: data
+        )
+        client.send_and_confirm(tx.serialize_base64)
+      end
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
@@ -562,25 +565,27 @@ module Solana
       data = Transaction.anchor_discriminator("enter_contest_with_token") +
              Borsh.encode_u32(entry_num)
 
-      tx = build_tx(admin)
-      tx.add_signer(user_keypair)  # OPSEC-004: server co-signs as the managed user
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: wallet_bytes, is_signer: true, is_writable: false },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: c_pda, is_signer: false, is_writable: true },
-          { pubkey: e_pda, is_signer: false, is_writable: true },
-          { pubkey: token_pda_bytes, is_signer: false, is_writable: true },
-          { pubkey: s_pda, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
-        ],
-        data: data
-      )
-
-      signature = client.send_and_confirm(tx.serialize_base64)
+      # See enter_contest — same first-entry UserAccount propagation race.
+      signature = with_account_init_retry do
+        tx = build_tx(admin)
+        tx.add_signer(user_keypair)  # OPSEC-004: server co-signs as the managed user
+        tx.add_instruction(
+          program_id: @program_id,
+          accounts: [
+            { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+            { pubkey: wallet_bytes, is_signer: true, is_writable: false },
+            { pubkey: vault_pda, is_signer: false, is_writable: false },
+            { pubkey: user_pda, is_signer: false, is_writable: true },
+            { pubkey: c_pda, is_signer: false, is_writable: true },
+            { pubkey: e_pda, is_signer: false, is_writable: true },
+            { pubkey: token_pda_bytes, is_signer: false, is_writable: true },
+            { pubkey: s_pda, is_signer: false, is_writable: false },
+            { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          ],
+          data: data
+        )
+        client.send_and_confirm(tx.serialize_base64)
+      end
       invalidate_entry_tokens_cache(wallet_address)
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
@@ -1006,6 +1011,26 @@ module Solana
       tx.set_recent_blockhash(blockhash)
       tx.add_signer(signer)
       tx
+    end
+
+    # Anchor error 3012 (AccountNotInitialized — "custom program error: 0xbc4")
+    # surfaces transiently when a just-created PDA — e.g. a first-time entrant's
+    # UserAccount — hasn't reached the RPC node running the next transaction's
+    # preflight simulation. Retry with backoff; it clears within seconds once
+    # the account is cluster-visible. The block rebuilds the TX each attempt so
+    # it picks up a fresh blockhash.
+    def with_account_init_retry(attempts: 4)
+      tries = 0
+      begin
+        tries += 1
+        yield
+      rescue => e
+        msg = e.message.to_s
+        transient = msg.include?("0xbc4") || msg.include?("AccountNotInitialized")
+        raise unless transient && tries < attempts
+        sleep(tries * 2)
+        retry
+      end
     end
 
     def b(str)

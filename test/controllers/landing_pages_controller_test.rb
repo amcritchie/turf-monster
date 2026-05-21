@@ -71,6 +71,14 @@ class LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select ".lp-bg", count: 0
   end
 
+  test "renders the circles background when the page selects it" do
+    @active.update!(background_style: "circles")
+    get landing_page_path(@active)
+    assert_response :success
+    assert_select ".lp-circles"
+    assert_select ".lp-bg", count: 0
+  end
+
   test "renders the badge when set" do
     @active.update!(badge: "Alpha Test")
     get landing_page_path(@active)

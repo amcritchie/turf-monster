@@ -1,0 +1,45 @@
+<%# Pulsing-circles splash background — adapted from a CodePen.
+    A dark splash: white text on the brand-green gradient. %>
+<style>
+  @keyframes lp-circle-pulse {
+    0%   { transform: scale(1); }
+    100% { transform: scale(1.1); }
+  }
+  .lp-circles {
+    position: fixed; inset: 0; z-index: 0;
+    background: linear-gradient(135deg, #4BAF50 0%, #357b38 100%);
+    overflow: hidden;
+  }
+  .lp-circle {
+    position: absolute;
+    background: #fff;
+    border-radius: 50%;
+    animation: lp-circle-pulse 3s cubic-bezier(0.6, 0, 0.4, 1) infinite alternate;
+  }
+  .lp-circle-1 { width: 300px;  height: 300px;  left: -150px; top: calc(50% - 150px);  opacity: 0.40; animation-delay: 0s;   }
+  .lp-circle-2 { width: 600px;  height: 600px;  left: -300px; top: calc(50% - 300px);  opacity: 0.30; animation-delay: 0.3s; }
+  .lp-circle-3 { width: 900px;  height: 900px;  left: -450px; top: calc(50% - 450px);  opacity: 0.20; animation-delay: 0.6s; }
+  .lp-circle-4 { width: 1200px; height: 1200px; left: -600px; top: calc(50% - 600px);  opacity: 0.10; animation-delay: 0.9s; }
+  .lp-circle-5 { width: 1500px; height: 1500px; left: -750px; top: calc(50% - 750px);  opacity: 0.05; animation-delay: 1.2s; }
+  /* Deep-green wash so the white text reads on the brand green. */
+  .lp-circle-scrim { position: fixed; inset: 0; z-index: 0; background: rgba(8, 35, 14, 0.38); }
+  .lp-splash { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45); }
+  .lp-splash .text-heading   { color: #ffffff !important; }
+  .lp-splash .text-body      { color: rgba(255, 255, 255, 0.92) !important; }
+  .lp-splash .text-secondary { color: rgba(255, 255, 255, 0.86) !important; }
+  .lp-splash .text-muted     { color: rgba(255, 255, 255, 0.72) !important; }
+  .lp-splash .card { box-shadow: 0 24px 55px -15px rgba(0, 0, 0, 0.6); }
+  @media (prefers-reduced-motion: reduce) {
+    .lp-circle { animation: none; }
+  }
+</style>
+
+<%# Concentric circles emanate from the left edge — largest (faintest) behind. %>
+<div class="lp-circles" aria-hidden="true">
+  <div class="lp-circle lp-circle-5"></div>
+  <div class="lp-circle lp-circle-4"></div>
+  <div class="lp-circle lp-circle-3"></div>
+  <div class="lp-circle lp-circle-2"></div>
+  <div class="lp-circle lp-circle-1"></div>
+</div>
+<div class="lp-circle-scrim" aria-hidden="true"></div>

@@ -5,8 +5,9 @@ class UserMailer < ApplicationMailer
   # users.email_verified_at. Tokens are scoped to the email they were
   # issued for; if the user changes email before verifying, the old token
   # no longer verifies.
-  def email_verification(user, token)
+  def email_verification(user, token, contest: nil)
     @user = user
+    @contest = contest
     @verify_url = email_verifications_verify_url(token: token)
     mail(to: user.email, subject: "Verify your Turf Monster email")
   end

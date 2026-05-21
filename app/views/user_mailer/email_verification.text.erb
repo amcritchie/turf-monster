@@ -1,7 +1,11 @@
 Hi <%= @user.display_name %>,
 
+<% if @contest %>
+You're almost in <%= @contest.name %>! Confirm your email by visiting this link —
+you'll land right back on the contest to finish your entry:
+<% else %>
 Verify your Turf Monster email by visiting this link:
-
+<% end %>
 <%= @verify_url %>
 
 This link expires in 24 hours. If you didn't request this, you can safely ignore this message.

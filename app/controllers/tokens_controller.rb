@@ -24,6 +24,9 @@ class TokensController < ApplicationController
     end
 
     price_cents = StripePurchase.pack_price_cents(quantity)
+    # Optional contest context — when present, checkout returns the buyer to
+    # that contest (lineup preserved) instead of the generic token page.
+    contest = Contest.find_by(slug: params[:contest].presence)
 
     rescue_and_log(target: current_user) do
       session_params = {
@@ -37,13 +40,16 @@ class TokensController < ApplicationController
           quantity: 1
         }],
         mode: "payment",
-        success_url: "#{tokens_processing_url}?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url:  "#{tokens_buy_url}?purchase=cancelled",
+        success_url: contest ?
+          "#{tokens_processing_url}?session_id={CHECKOUT_SESSION_ID}&contest=#{contest.slug}" :
+          "#{tokens_processing_url}?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url:  contest ? contest_url(contest) : "#{tokens_buy_url}?purchase=cancelled",
         metadata: {
           kind: "tokens",
           user_id: current_user.id,
           quantity: quantity,
-          wallet_address: current_user.solana_address
+          wallet_address: current_user.solana_address,
+          contest_slug: contest&.slug
         }
       }
       # Pre-fill the email field if we have one. Stripe rejects the request if
@@ -62,6 +68,8 @@ class TokensController < ApplicationController
   def processing
     @session_id = params[:session_id].to_s
     redirect_to tokens_buy_path and return if @session_id.blank?
+    # When checkout carried a contest, return the buyer there once tokens mint.
+    @contest = Contest.find_by(slug: params[:contest].presence)
   end
 
   def status

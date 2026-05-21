@@ -14,7 +14,7 @@ require "json"
 #   3. The token isn't expired by Google's clock
 #
 # Usage:
-#   result = GoogleOauthValidator.new(id_token: auth.credentials.id_token).validate!
+#   result = GoogleOauthValidator.new(id_token: auth.extra.id_token).validate!
 #   if result.ok?
 #     # safe to use result.email, result.email_verified
 #   else
