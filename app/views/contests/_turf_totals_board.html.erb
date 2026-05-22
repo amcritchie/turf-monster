@@ -105,12 +105,21 @@ window.selectionBoard = function() {
       // its processing page confirms the token mint it posts back here —
       // close the panel and finish the entry, all in this original tab.
       var board = this;
-      window.addEventListener('message', function (e) {
+      window.addEventListener('message', async function (e) {
         if (e.origin !== window.location.origin) return;
         if (!e.data || e.data.source !== 'tt-tokens' || e.data.status !== 'minted') return;
         board.tokensWaiting = false;
         board.tokensPanel = false;
-        board.confirmEntry();
+        await board.confirmEntry();
+        // Deferred email-verification nudge — an email-signup user who just
+        // bought tokens gets the "check your email" panel after the entry
+        // confirms (set in submitInlineSignup).
+        try {
+          if (sessionStorage.getItem('pendingCheckEmail') === board.contestId) {
+            sessionStorage.removeItem('pendingCheckEmail');
+            board.sendVerificationEmail();
+          }
+        } catch (_) {}
       });
 
       // Reopen the post-signup step after submitProfile()'s reload —
@@ -338,13 +347,22 @@ window.selectionBoard = function() {
           this.signupSubmitting = false;
           return;
         }
-        // Account created + logged in. New users have no username yet —
-        // open the inline complete-profile modal; the lineup auto-submits
-        // once a username is saved. Email signup is a web2 (managed) session.
+        // Account created + logged in — username auto-assigned at signup.
+        // Persist the cart, then reload; init() opens the "Get Entry Tokens"
+        // panel first. After the entry confirms (post-tokens-mint), the
+        // pendingCheckEmail flag triggers the email-verification nudge — so
+        // the user buys tokens BEFORE the email-confirmation step.
         var sess = Alpine.store('session');
         if (sess) { sess.loggedIn = true; sess.mode = 'web2'; }
-        this.signupSubmitting = false;
-        this.openProfileModal('email');
+        await this.replaySelectionsToServer();
+        try {
+          sessionStorage.setItem('pendingAuthStep', JSON.stringify({
+            contestSlug: this.contestId,
+            step: 'tokens'
+          }));
+          sessionStorage.setItem('pendingCheckEmail', this.contestId);
+        } catch (e) { /* sessionStorage unavailable */ }
+        window.location.reload();
       } catch (e) {
         this.signupError = 'Network error. Try again.';
         this.signupSubmitting = false;
@@ -472,14 +490,11 @@ window.selectionBoard = function() {
         if (e.data.status === 'success') {
           var gSess = Alpine.store('session');
           if (gSess) { gSess.loggedIn = true; gSess.mode = 'web2'; }
-          if (e.data.needs_profile_completion) {
-            self.openProfileModal('google');
-          } else {
-            // Returning user — reload so the navbar + logged-in UI refresh;
-            // the cart is restored and the entry auto-submits (see init()).
-            self.saveCartForRedirect(true);
-            window.location.reload();
-          }
+          // Username is auto-assigned at signup — no profile step. Reload so
+          // the navbar + logged-in UI refresh; the cart is restored and the
+          // entry auto-submits (see init()).
+          self.saveCartForRedirect(true);
+          window.location.reload();
         } else {
           self.googleError = e.data.error || 'Google sign-in failed.';
         }
@@ -510,62 +525,6 @@ window.selectionBoard = function() {
       form.appendChild(csrf);
       document.body.appendChild(form);
       form.submit();
-    },
-
-    // Inline "Complete Your Profile" — shown after a fresh signup (Google or
-    // email) since new users have no username yet. Saving the username
-    // resumes the entry without ever leaving the contest page.
-    openProfileModal(method) {
-      this.signupMethod = method || 'email';
-      this.loginModal = false;
-      this.profileError = '';
-      this.profileSubmitting = false;
-      this.profileUsername = '';
-      this.profileModal = true;
-    },
-
-    async submitProfile() {
-      if (this.profileSubmitting) return;
-      this.profileError = '';
-      var username = (this.profileUsername || '').trim();
-      if (!username) {
-        this.profileError = 'Please choose a username.';
-        return;
-      }
-      this.profileSubmitting = true;
-      try {
-        var resp = await fetch('/account/save_profile', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': this.csrfToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ user: { username: username } })
-        });
-        var data = await resp.json();
-        if (!resp.ok || !data.success) {
-          this.profileError = data.error || 'Could not save username.';
-          this.profileSubmitting = false;
-          return;
-        }
-        // Username saved. Persist the cart so the 6 picks survive, then
-        // reload — the reload refreshes the navbar + server-rendered
-        // logged-in UI, and init() reopens the right next step on the fresh
-        // page: Google users (email already verified) → buy entry tokens;
-        // email users → confirm their address.
-        await this.replaySelectionsToServer();
-        try {
-          sessionStorage.setItem('pendingAuthStep', JSON.stringify({
-            contestSlug: this.contestId,
-            step: this.signupMethod === 'google' ? 'tokens' : 'checkEmail'
-          }));
-        } catch (e) { /* sessionStorage unavailable — panel just won't reopen */ }
-        window.location.reload();
-      } catch (e) {
-        this.profileError = 'Network error. Try again.';
-        this.profileSubmitting = false;
-      }
     },
 
     // Replay the in-memory guest cart to the server as a persisted cart
@@ -1226,38 +1185,6 @@ window.selectionBoard = function() {
             </span>
           </template>
         </p>
-      </div>
-    </div>
-  </template>
-
-  <!-- Complete-profile modal — shown after a fresh signup (Google or email).
-       New users must pick a username before the lineup submits, so there's no
-       dismiss control (mirrors the server-side complete_profile gate). Saving
-       the username resumes the entry in place. -->
-  <template x-if="profileModal">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6)">
-      <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
-           x-transition:enter="transition ease-out duration-200"
-           x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-        <h3 class="text-lg font-bold text-heading mb-1">Complete Your Profile</h3>
-        <p class="text-xs text-secondary mb-4">Pick a username to submit your lineup.</p>
-
-        <form @submit.prevent="submitProfile()" novalidate>
-          <div class="mb-2">
-            <label class="block text-xs text-secondary mb-1 font-medium">Username</label>
-            <input type="text" x-model="profileUsername" autocomplete="username"
-                   class="input-field" placeholder="Choose a username"
-                   :disabled="profileSubmitting" x-init="$nextTick(() => $el.focus())">
-          </div>
-          <p class="text-xs text-muted mb-3">3–30 characters. Letters, numbers, hyphens, and underscores.</p>
-          <template x-if="profileError">
-            <p class="text-red-400 text-xs mb-3" x-text="profileError"></p>
-          </template>
-          <button type="submit" :disabled="profileSubmitting"
-                  class="btn btn-primary btn-lg w-full disabled:cursor-wait">
-            <span x-text="profileSubmitting ? 'Saving…' : 'Save &amp; Continue'"></span>
-          </button>
-        </form>
       </div>
     </div>
   </template>
