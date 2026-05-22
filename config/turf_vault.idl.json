@@ -2,7 +2,7 @@
   "address": "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.13.0",
+    "version": "0.14.0",
     "spec": "0.1.0",
     "description": "Solana escrow program for contest entry fees and prize distribution"
   },
@@ -322,6 +322,15 @@
         {
           "name": "wallet",
           "type": "pubkey"
+        },
+        {
+          "name": "username",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1339,6 +1348,57 @@
       ]
     },
     {
+      "name": "set_username",
+      "discriminator": [
+        103,
+        131,
+        39,
+        36,
+        30,
+        228,
+        75,
+        132
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "signer": true
+        },
+        {
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "username",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "settle_contest",
       "discriminator": [
         79,
@@ -2003,6 +2063,15 @@
           {
             "name": "seeds",
             "type": "u64"
+          },
+          {
+            "name": "username",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "bump",

@@ -1,4 +1,5 @@
 require "test_helper"
+require "minitest/mock"
 
 class AccountsControllerTest < ActionDispatch::IntegrationTest
   setup do
@@ -10,17 +11,31 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to login_path
   end
 
-  test "save_profile redirects first-time username setters to tokens buy" do
-    user = User.create!(email: "newbie@mcritchie.studio", password: "password")
-    log_in_as user
-    post save_profile_account_path, params: { user: { username: "newbie" } }
-    assert_redirected_to tokens_buy_path
+  test "save_profile saves and redirects to root" do
+    log_in_as @alex
+    post save_profile_account_path, params: { user: { name: "ignored" } }
+    assert_redirected_to root_path
   end
 
-  test "save_profile redirects subsequent username updates to root" do
+  test "update_username rejects a taken username" do
     log_in_as @alex
-    post save_profile_account_path, params: { user: { username: "alex_renamed" } }
-    assert_redirected_to root_path
+    post update_username_account_path, params: { username: users(:jordan).username }, as: :json
+    assert_response :unprocessable_entity
+    assert_not JSON.parse(response.body)["success"]
+  end
+
+  test "update_username (custodial) saves via a server-signed set_username" do
+    user = User.create!(email: "renamer@mcritchie.studio", password: "password") # managed wallet
+    log_in_as user
+    fake_vault = Object.new
+    def fake_vault.set_username(*, **)
+      { signature: "sig_test" }
+    end
+    Solana::Vault.stub :new, fake_vault do
+      post update_username_account_path, params: { username: "renamed-fox" }, as: :json
+    end
+    assert_response :success
+    assert_equal "renamed-fox", user.reload.username
   end
 
   test "show renders for logged in user" do

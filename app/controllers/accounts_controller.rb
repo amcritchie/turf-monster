@@ -18,11 +18,8 @@ class AccountsController < ApplicationController
     rescue_and_log(target: @user) do
       @user.update!(profile_params)
 
-      # First-time username sets up an entry-tokens upsell.
-      # An explicit return_to (e.g. mid-checkout) still wins.
-      first_username = @user.saved_change_to_username&.first.nil?
-      target = session.delete(:return_to)
-      target ||= first_username ? tokens_buy_path : root_path
+      # Usernames are auto-assigned at signup — this form just saves the avatar.
+      target = session.delete(:return_to) || root_path
 
       respond_to do |format|
         format.html { redirect_to target, notice: "Profile updated!" }
@@ -156,6 +153,69 @@ class AccountsController < ApplicationController
     render :show, status: :unprocessable_entity
   end
 
+  # On-chain username edit. Custodial (managed) wallets: the server co-signs
+  # set_username immediately. Phantom wallets: returns a partial TX for the
+  # wallet to co-sign, confirmed via #confirm_username.
+  def update_username
+    @user = current_user
+    new_username = params[:username].to_s.strip
+    @user.username = new_username
+
+    unless @user.valid?
+      return render json: { success: false, error: @user.errors.full_messages.first }, status: :unprocessable_entity
+    end
+    unless @user.solana_connected?
+      return render json: { success: false, error: "No wallet on this account." }, status: :unprocessable_entity
+    end
+
+    if @user.phantom_wallet?
+      # Phantom: hand the client a partial set_username TX to co-sign.
+      result = Solana::Vault.new.build_set_username(@user.solana_address, new_username)
+      render json: {
+        needs_signature: true,
+        serialized_tx: result[:serialized_tx],
+        token: sign_username_payload(new_username)
+      }
+    else
+      # Custodial: the server co-signs with the managed keypair, then mirrors to the DB.
+      rescue_and_log(target: @user) do
+        Solana::Vault.new.set_username(@user.solana_address, new_username, user_keypair: @user.solana_keypair)
+        @user.save!
+        render json: { success: true, username: @user.username }
+      end
+    end
+  rescue StandardError => e
+    render json: { success: false, error: e.message }, status: :unprocessable_entity
+  end
+
+  # Phantom username edit, step 2: the wallet co-signed + broadcast the
+  # set_username TX; verify it on-chain (OPSEC-010), then mirror to the DB.
+  def confirm_username
+    @user = current_user
+    payload = verify_username_payload(params[:token])
+    raise "Token issued for a different account" unless payload[:user_id] == @user.id
+    new_username = payload[:username]
+
+    user_pda_b58 = Solana::Keypair.encode_base58(
+      Solana::Vault.new.user_account_pda(@user.solana_address).first
+    )
+    Solana::TxVerifier.verify!(
+      signature: params[:tx_signature],
+      instruction_name: "set_username",
+      signer_pubkey: @user.solana_address,
+      writable_pubkey: user_pda_b58
+    )
+
+    rescue_and_log(target: @user) do
+      @user.update!(username: new_username)
+      render json: { success: true, username: @user.username }
+    end
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    render json: { success: false, error: "Rename expired — please try again." }, status: :unprocessable_entity
+  rescue StandardError => e
+    render json: { success: false, error: e.message }, status: :unprocessable_entity
+  end
+
   private
 
   def account_params
@@ -163,7 +223,19 @@ class AccountsController < ApplicationController
   end
 
   def profile_params
-    params.require(:user).permit(:username, :avatar)
+    params.require(:user).permit(:avatar)
+  end
+
+  # Signed round-trip token so the username can't be swapped between the
+  # prepare (#update_username) and confirm (#confirm_username) steps.
+  def sign_username_payload(username)
+    Rails.application.message_verifier(:account_username_change)
+         .generate({ user_id: current_user.id, username: username }, expires_in: 10.minutes)
+  end
+
+  def verify_username_payload(token)
+    Rails.application.message_verifier(:account_username_change)
+         .verify(token).with_indifferent_access
   end
 
   # Friendly (title, message) for a profile-save failure. A username

@@ -209,13 +209,22 @@
         </div>
         <h3 class="text-heading font-bold text-lg mb-2" x-text="$store.solanaModal.title"></h3>
         <p class="text-red-400 text-sm mb-4" x-text="$store.solanaModal.errorMessage"></p>
-        <div class="flex flex-col gap-2 items-center">
-          <template x-if="$store.solanaModal.recoveryLabel">
+        <div class="flex flex-col gap-3 items-center">
+          <%# Phantom-branded recovery button — opt in via setRecovery(label, fn, { phantom: true }) %>
+          <template x-if="$store.solanaModal.recoveryLabel && $store.solanaModal.recoveryPhantom">
+            <button @click="$store.solanaModal._triggerRecovery()"
+                    class="btn btn-secondary btn-lg w-full gap-3">
+              <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
+              <span x-text="$store.solanaModal.recoveryLabel"></span>
+            </button>
+          </template>
+          <template x-if="$store.solanaModal.recoveryLabel && !$store.solanaModal.recoveryPhantom">
             <button @click="$store.solanaModal._triggerRecovery()"
                     x-text="$store.solanaModal.recoveryLabel"
                     class="btn btn-primary btn-sm"></button>
           </template>
-          <button @click="$store.solanaModal.close()" class="btn btn-outline btn-sm">Close</button>
+          <button @click="$store.solanaModal.close()"
+                  class="text-secondary hover:text-heading text-sm underline underline-offset-2 cursor-pointer">Close</button>
         </div>
       </div>
     </template>

@@ -100,17 +100,6 @@
       <%# Avatar cropper %>
       <%= render "components/avatar_cropper", form_field_name: "user[avatar]" %>
 
-      <%# Username %>
-      <div>
-        <label class="label-upper mb-2 block">Username</label>
-        <input type="text" name="user[username]" value="<%= current_user.username %>"
-               class="input-field" placeholder="Choose a username"
-               required minlength="3" maxlength="30"
-               pattern="[a-zA-Z0-9_-]+"
-               title="Letters, numbers, hyphens, and underscores only">
-        <p class="text-xs text-muted mt-1">3-30 characters. Letters, numbers, hyphens, and underscores.</p>
-      </div>
-
       <%# Submit %>
       <button type="submit" class="btn btn-primary btn-lg w-full"
               :disabled="$store.profileModal.saving">

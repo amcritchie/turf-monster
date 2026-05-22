@@ -170,6 +170,7 @@
             lobbyUrl: null,
             recoveryLabel: null,
             recoveryHandler: null,
+            recoveryPhantom: false,
             show: function(title, message) {
               this.visible = true;
               this.state = 'processing';
@@ -185,11 +186,13 @@
               this.lobbyUrl = null;
               this.recoveryLabel = null;
               this.recoveryHandler = null;
+              this.recoveryPhantom = false;
               this._clearCountdown();
             },
-            setRecovery: function(label, handler) {
+            setRecovery: function(label, handler, options) {
               this.recoveryLabel = label;
               this.recoveryHandler = handler;
+              this.recoveryPhantom = !!(options && options.phantom);
             },
             _triggerRecovery: function() {
               if (this.recoveryHandler) this.recoveryHandler();
@@ -230,6 +233,7 @@
               this.seedsLevel = 0;
               this.recoveryLabel = null;
               this.recoveryHandler = null;
+              this.recoveryPhantom = false;
               if (cb) cb();
               this.onClose = null;
             },

@@ -10,10 +10,11 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_difference "User.count", 1 do
       post signup_path, params: { user: { email: "new@mcritchie.studio", password: "password", password_confirmation: "password" } }
     end
-    # New users without username get redirected to complete_profile
-    assert_redirected_to root_path
-    follow_redirect!
-    assert_redirected_to complete_profile_account_path
+    # Signup auto-assigns a username; new signups land on the token upsell.
+    assert_redirected_to tokens_buy_path
+    user = User.find_by(email: "new@mcritchie.studio")
+    assert user.username.present?, "signup should auto-assign a username"
+    assert_equal user.id, session[:turf_user_id]
   end
 
   test "signup with mismatched password" do

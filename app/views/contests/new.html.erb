@@ -323,7 +323,8 @@
         function showWalletRequiredModal() {
           var modal = Alpine.store('solanaModal');
           modal.show('Phantom Wallet Required', '');
-          modal.error('Contest creation is a web3 transaction — connect a Phantom wallet on your Account page first, then come back.', 'Phantom Wallet Required');
+          modal.error('Contest creation is a web3 transaction — log in with a Phantom wallet to create a contest.', 'Phantom Wallet Required');
+          modal.setRecovery('Log in with Phantom', function() { window.location.href = '/login'; }, { phantom: true });
         }
 
         function showInsufficientUsdcModal(prizeNeeded, balanceHave) {

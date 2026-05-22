@@ -126,6 +126,78 @@
     <% end %>
   </div>
 
+  <%# -- Username (on-chain master record) -- %>
+  <div class="card shadow p-6 mb-6" x-data="usernameEditor('<%= j current_user.username %>')">
+    <h2 class="text-lg font-bold text-heading mb-1">Username</h2>
+    <p class="text-sm text-muted mb-4">
+      Your username is stored on-chain.
+      <%= current_user.phantom_wallet? ? "Changing it opens your Phantom wallet to sign." : "Changes are saved via your managed wallet." %>
+    </p>
+
+    <template x-if="error">
+      <p class="text-red-400 text-sm mb-3" x-text="error"></p>
+    </template>
+
+    <form @submit.prevent="save()" class="flex items-start gap-3">
+      <input type="text" x-model="username" class="input-field flex-1"
+             placeholder="username" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_-]+"
+             title="3-30 characters — letters, numbers, hyphens, and underscores">
+      <button type="submit" class="btn btn-primary" :disabled="saving || !changed">
+        <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
+        <span x-show="saving">Saving…</span>
+      </button>
+    </form>
+
+    <script>
+      function usernameEditor(initial) {
+        return {
+          username: initial,
+          initial: initial,
+          saving: false,
+          error: null,
+          get changed() { return this.username && this.username !== this.initial; },
+          async save() {
+            if (!this.changed || this.saving) return;
+            this.saving = true; this.error = null;
+            var csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            var json = function(r) { return r.json(); };
+            try {
+              var data = await fetch('<%= update_username_account_path %>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+                body: JSON.stringify({ username: this.username })
+              }).then(json);
+              if (data.error) throw new Error(data.error);
+              if (data.success) { window.location.reload(); return; }
+
+              if (data.needs_signature) {
+                var provider = window.walletProvider && window.walletProvider.detect();
+                if (!provider) throw new Error('Connect your Phantom wallet to rename.');
+                await provider.connect();
+                var txBytes = Uint8Array.from(atob(data.serialized_tx), function(c) { return c.charCodeAt(0); });
+                var tx = solanaWeb3.Transaction.from(txBytes);
+                var signed = await provider.signTransaction(tx);
+                var conn = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+                var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
+                await conn.confirmTransaction(sig, 'confirmed');
+                var cdata = await fetch('<%= confirm_username_account_path %>', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+                  body: JSON.stringify({ token: data.token, tx_signature: sig })
+                }).then(json);
+                if (cdata.error) throw new Error(cdata.error);
+                window.location.reload();
+              }
+            } catch (e) {
+              this.error = (e && e.code === 4001) ? 'Signature rejected' : (e.message || 'Could not save username');
+              this.saving = false;
+            }
+          }
+        };
+      }
+    </script>
+  </div>
+
   <%# -- Entry Tokens -- %>
   <div class="card shadow p-6 mb-6">
     <div class="flex items-center justify-between">

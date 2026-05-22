@@ -14,7 +14,7 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
       get "/auth/google_oauth2/callback"
     end
 
-    assert_redirected_to root_path
+    assert_redirected_to tokens_buy_path
     assert_equal User.find_by(email: "googleuser@example.com").id, session[:turf_user_id]
   end
 
@@ -54,6 +54,51 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
 
   test "failure redirects to login" do
     get "/auth/failure"
+    assert_redirected_to login_path
+  end
+
+  # ── Feature 1: Google sign-in colliding with a wallet-secured account ──────
+
+  test "google callback on a wallet account routes to the wallet-login view" do
+    sam = users(:sam) # fixture: has a web3 wallet, email unverified
+    OmniAuth.config.mock_auth[:google_oauth2] = OmniAuth::AuthHash.new(
+      provider: "google_oauth2", uid: "g-#{SecureRandom.hex(4)}",
+      info: { email: sam.email, name: "Sam" }
+    )
+
+    assert_no_difference "User.count" do
+      get "/auth/google_oauth2/callback"
+    end
+
+    assert_redirected_to link_wallet_path
+    assert_nil session[:turf_user_id], "should not be logged in until the wallet login completes"
+
+    follow_redirect!
+    assert_response :success
+    assert_select "h1", text: /Login with Your Wallet/
+  end
+
+  test "wallet login completes the stashed Google link" do
+    sam = users(:sam)
+    google_uid = "g-#{SecureRandom.hex(4)}"
+    OmniAuth.config.mock_auth[:google_oauth2] = OmniAuth::AuthHash.new(
+      provider: "google_oauth2", uid: google_uid,
+      info: { email: sam.email, name: "Sam" }
+    )
+    get "/auth/google_oauth2/callback"
+    assert_redirected_to link_wallet_path
+
+    # A real wallet login consumes the stash and links Google (both factors proven).
+    log_in_as_onchain(sam)
+
+    sam.reload
+    assert_equal "google_oauth2", sam.provider
+    assert_equal google_uid, sam.uid
+    assert_equal sam.id, session[:turf_user_id]
+  end
+
+  test "GET /login/wallet without a pending link redirects to login" do
+    get link_wallet_path
     assert_redirected_to login_path
   end
 end

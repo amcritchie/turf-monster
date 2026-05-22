@@ -72,6 +72,10 @@ Rails.application.routes.draw do
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"
   post "auth/solana/verify", to: "solana_sessions#verify"
 
+  # Wallet-login landing for a Google sign-in that collided with a wallet
+  # account — see OmniauthCallbacksController#create.
+  get  "login/wallet",       to: "solana_sessions#link_wallet", as: :link_wallet
+
   # Google OAuth popup entrypoint — sets a popup-mode session flag, then
   # hands off to OmniAuth. The callback renders a window-closer page.
   get "auth/google_popup", to: "omniauth_callbacks#popup"
@@ -100,6 +104,8 @@ Rails.application.routes.draw do
     post :unlink_google
     post :change_password
     patch :set_inviter
+    post :update_username   # on-chain username edit (custodial server-signs / Phantom co-signs)
+    post :confirm_username  # Phantom: confirm the co-signed set_username TX
     # OPSEC-007: removed `patch :update_level` — client-supplied seeds_total.
   end
 

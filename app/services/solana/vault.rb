@@ -242,17 +242,18 @@ module Solana
       return :not_found unless info&.dig("value")
 
       data = Base64.decode64(info["value"]["data"][0])
-      expected_len = 81 # 8 discriminator + 73 UserAccount fields (v0.5.0+)
+      expected_len = 113 # 8 discriminator + 105 UserAccount fields (v0.14.0+: adds username[32])
       data.length == expected_len ? :ok : :needs_migration
     end
 
-    # Ensure user's onchain account exists and is current, create or migrate as needed
-    def ensure_user_account(wallet_address)
+    # Ensure user's onchain account exists and is current, create or migrate as needed.
+    # `username` is used only on the create path (new account).
+    def ensure_user_account(wallet_address, username: nil)
       status = check_user_account_status(wallet_address)
       case status
       when :ok then nil
       when :needs_migration then migrate_user_account(wallet_address)
-      when :not_found then create_user_account(wallet_address)
+      when :not_found then create_user_account(wallet_address, username: username)
       end
     end
 
@@ -282,14 +283,16 @@ module Solana
       { signature: signature, pda: Keypair.encode_base58(user_pda) }
     end
 
-    # Create a UserAccount PDA for a wallet (admin pays rent)
-    def create_user_account(wallet_address)
+    # Create a UserAccount PDA for a wallet (admin pays rent).
+    # `username` is stored on-chain (turf-vault v0.14.0+) — UTF-8, padded to 32 bytes.
+    def create_user_account(wallet_address, username: nil)
       admin = Keypair.admin
       user_pda, _bump = user_account_pda(wallet_address)
       wallet_bytes = Keypair.decode_base58(wallet_address)
 
       data = Transaction.anchor_discriminator("create_user_account") +
-             Borsh.encode_pubkey(wallet_bytes)
+             Borsh.encode_pubkey(wallet_bytes) +
+             username_bytes32(username)
 
       tx = build_tx(admin)
       tx.add_instruction(
@@ -304,6 +307,54 @@ module Solana
 
       signature = client.send_and_confirm(tx.serialize_base64)
       { signature: signature, pda: Keypair.encode_base58(user_pda) }
+    end
+
+    # Set the username on a wallet's UserAccount — server-signed, for custodial
+    # (managed) wallets. `user_keypair` is the managed wallet's keypair; the
+    # server co-signs as the account owner. turf-vault v0.14.0+.
+    def set_username(wallet_address, username, user_keypair:)
+      raise "user_keypair required for a server-signed set_username" unless user_keypair
+      admin = Keypair.admin
+      user_pda, _ = user_account_pda(wallet_address)
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+
+      data = Transaction.anchor_discriminator("set_username") + username_bytes32(username)
+
+      tx = build_tx(admin)         # admin pays the fee
+      tx.add_signer(user_keypair)  # the account owner authorizes the rename
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: wallet_bytes, is_signer: true,  is_writable: false },
+          { pubkey: user_pda,     is_signer: false, is_writable: true }
+        ],
+        data: data
+      )
+      signature = client.send_and_confirm(tx.serialize_base64)
+      { signature: signature }
+    end
+
+    # Build a partially-signed set_username transaction for a Phantom user to
+    # co-sign. Admin signs (pays the fee); the wallet's signature slot is left
+    # empty for the client. Returns base64 serialized TX. turf-vault v0.14.0+.
+    def build_set_username(wallet_address, username)
+      admin = Keypair.admin
+      user_pda, _ = user_account_pda(wallet_address)
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+
+      data = Transaction.anchor_discriminator("set_username") + username_bytes32(username)
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: wallet_bytes, is_signer: true,  is_writable: false },
+          { pubkey: user_pda,     is_signer: false, is_writable: true }
+        ],
+        data: data
+      )
+      serialized = tx.serialize_partial_base64(additional_signers: [wallet_bytes])
+      { serialized_tx: serialized }
     end
 
     # Fund a user's wallet ATA with USDC.
@@ -795,11 +846,16 @@ module Solana
       total_won, offset = Borsh.decode_u64(account_data, offset)
 
       # Seeds field added in v0.5.0 — old accounts (73 bytes) don't have it
-      seeds = if account_data.length >= 81
-        val, _ = Borsh.decode_u64(account_data, offset)
-        val
-      else
-        0
+      seeds = 0
+      if account_data.length >= 81
+        seeds, offset = Borsh.decode_u64(account_data, offset)
+      end
+
+      # Username added in v0.14.0 — 32-byte zero-padded UTF-8 array after seeds.
+      username = nil
+      if account_data.length >= 113
+        raw = account_data[offset, 32].to_s
+        username = raw.bytes.take_while { |byte| byte != 0 }.pack("C*").force_encoding("UTF-8").presence
       end
 
       {
@@ -808,6 +864,7 @@ module Solana
         total_withdrawn: total_withdrawn,
         total_won: total_won,
         seeds: seeds,
+        username: username,
         balance_dollars: Config.lamports_to_dollars(balance)
       }
     end
@@ -1035,6 +1092,14 @@ module Solana
 
     def b(str)
       str.b
+    end
+
+    # A username encoded as a 32-byte zero-padded UTF-8 array — matches the
+    # on-chain `username: [u8; 32]` field on UserAccount (turf-vault v0.14.0+).
+    def username_bytes32(username)
+      bytes = username.to_s.b.bytes.first(32)
+      bytes += [0] * (32 - bytes.length)
+      bytes.pack("C*")
     end
 
     # Decode a single Season account from getProgramAccounts / getAccountInfo result.
