@@ -88,7 +88,7 @@ module Webhooks
       if kind == "tokens"
         TokenPurchaseJob.perform_later(
           user_id: user_id,
-          quantity: session.metadata["quantity"].to_i,
+          pack_id: session.metadata["pack_id"],
           wallet_address: wallet_address,
           stripe_session_id: stripe_session_id
         )

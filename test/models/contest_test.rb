@@ -1,4 +1,5 @@
 require "test_helper"
+require "minitest/mock"
 
 class ContestTest < ActiveSupport::TestCase
   setup do
@@ -51,5 +52,30 @@ class ContestTest < ActiveSupport::TestCase
 
   test "onchain_params includes season_id (OPSEC-023)" do
     assert @contest.onchain_params.key?(:season_id)
+  end
+
+  # ── Test-scaffolding "micro" tier ($1 entry) — see AppFlags.test_scaffolding? ──
+
+  test "micro tier is $1 entry, 9 max entries, $5/$1/$1 payouts" do
+    config = Contest::FORMATS.fetch("micro")
+    assert_equal 1_00, config[:entry_fee_cents]
+    assert_equal 9,    config[:max_entries]
+    assert_equal({ 1 => 5_00, 2 => 1_00, 3 => 1_00 }, config[:payouts])
+  end
+
+  test "a micro contest reports a $7 guaranteed prize" do
+    contest = Contest.new(contest_type: "micro")
+    assert_equal 7_00, contest.guaranteed_prize_cents
+    assert_equal({ 1 => 5_00, 2 => 1_00, 3 => 1_00 }, contest.payouts)
+  end
+
+  test "selectable_formats hides the micro tier unless test scaffolding is on" do
+    AppFlags.stub :test_scaffolding?, false do
+      assert_not Contest.selectable_formats.key?("micro")
+      assert Contest.selectable_formats.key?("standard")
+    end
+    AppFlags.stub :test_scaffolding?, true do
+      assert Contest.selectable_formats.key?("micro")
+    end
   end
 end

@@ -1281,23 +1281,23 @@ window.selectionBoard = function() {
         <div x-show="!tokensWaiting">
           <p class="text-xs text-secondary mb-4">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
           <div class="space-y-3">
-            <% StripePurchase::PACKS.each do |qty, cents| %>
-              <% per = StripePurchase.per_token_cents(qty) %>
-              <% save_pct = (100 - (per * 100 / 1900)).round %>
+            <% StripePurchase.available_packs.each do |pack_id, pack| %>
+              <% per = StripePurchase.per_token_cents(pack_id) %>
+              <% save_pct = (100 - (per * 100 / StripePurchase.per_token_cents("single"))).round %>
               <%= button_to tokens_stripe_checkout_path, method: :post,
-                  params: { quantity: qty, contest: @contest.slug },
+                  params: { pack: pack_id, contest: @contest.slug },
                   form: { target: "_blank", data: { turbo: false } },
                   "x-on:click": "tokensWaiting = true",
                   class: "block w-full p-4 rounded-xl border-2 border-primary/40 hover:border-primary bg-primary/5 transition text-left" do %>
                 <div class="flex items-center gap-4">
                   <div class="w-10 text-center">
-                    <div class="text-3xl font-extrabold font-mono text-heading leading-none"><%= qty %></div>
-                    <div class="text-[10px] uppercase tracking-widest text-muted mt-1"><%= qty == 1 ? "Entry" : "Entries" %></div>
+                    <div class="text-3xl font-extrabold font-mono text-heading leading-none"><%= pack[:quantity] %></div>
+                    <div class="text-[10px] uppercase tracking-widest text-muted mt-1"><%= pack[:quantity] == 1 ? "Entry" : "Entries" %></div>
                   </div>
                   <div class="flex-1 border-l border-strong pl-4">
-                    <div class="text-xl font-bold font-mono text-heading">$<%= cents / 100 %></div>
+                    <div class="text-xl font-bold font-mono text-heading">$<%= pack[:price_cents] / 100 %></div>
                     <div class="text-xs text-secondary mt-0.5">
-                      <% if qty > 1 %>
+                      <% if pack[:quantity] > 1 %>
                         $<%= per / 100 %>.<%= format("%02d", per % 100) %> each
                         <span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-primary text-white text-[10px] font-extrabold uppercase">Save <%= save_pct %>%</span>
                       <% else %>

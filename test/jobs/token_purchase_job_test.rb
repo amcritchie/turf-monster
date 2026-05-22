@@ -44,7 +44,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
   test "happy path mints all N tokens and writes a minted StripePurchase + TransactionLog" do
     vault = FakeVault.new
     Solana::Vault.stub :new, vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet, stripe_session_id: @sid)
     end
 
     purchase = StripePurchase.for_session(@sid).first
@@ -69,7 +69,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     )
     vault = FakeVault.new(starting_sequence: 2)
     Solana::Vault.stub :new, vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet, stripe_session_id: @sid)
     end
 
     # Only the 3rd iteration should have hit the chain on this retry.
@@ -90,7 +90,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     # Don't assert on raise behaviour — ActiveJob's retry_on may swallow. The
     # contract we care about is the end-state: failed status + persisted sigs.
     Solana::Vault.stub :new, vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid) rescue nil
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet, stripe_session_id: @sid) rescue nil
     end
     purchase = StripePurchase.for_session(@sid).first
     assert_equal "failed", purchase.status
@@ -102,7 +102,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     # First run: vault fails on the 3rd mint. Verifies partial persistence.
     crashing_vault = FakeVault.new(fail_after: 2)
     Solana::Vault.stub :new, crashing_vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid) rescue nil
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet, stripe_session_id: @sid) rescue nil
     end
 
     purchase = StripePurchase.for_session(@sid).first
@@ -115,7 +115,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     # from already_minted == 2 and mint only the third token.
     retry_vault = FakeVault.new(starting_sequence: 2)
     Solana::Vault.stub :new, retry_vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet, stripe_session_id: @sid)
     end
 
     purchase.reload
@@ -142,7 +142,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     )
     vault = FakeVault.new
     Solana::Vault.stub :new, vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 3, wallet_address: @wallet, stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet, stripe_session_id: @sid)
     end
 
     assert_equal 0, vault.mint_calls.length, "minted purchase must not trigger any on-chain calls"
@@ -155,7 +155,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     StripePurchase.create!(user: @user, stripe_session_id: @sid, quantity: 1, price_cents: 19_00, status: "minted")
     vault = FakeVault.new
     Solana::Vault.stub :new, vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 1, wallet_address: @wallet, stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet, stripe_session_id: @sid)
     end
     assert_equal 0, vault.mint_calls.length, "should not attempt any mint on already-minted session"
   end
@@ -164,7 +164,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     StripePurchase.create!(user: @user, stripe_session_id: @sid, quantity: 1, price_cents: 19_00, status: "failed")
     vault = FakeVault.new
     Solana::Vault.stub :new, vault do
-      TokenPurchaseJob.perform_now(user_id: @user.id, quantity: 1, wallet_address: @wallet, stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet, stripe_session_id: @sid)
     end
     purchase = StripePurchase.for_session(@sid).first
     assert_equal "minted", purchase.status
@@ -173,7 +173,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
 
   test "bails on unknown user_id without creating a row" do
     Solana::Vault.stub :new, FakeVault.new do
-      TokenPurchaseJob.perform_now(user_id: 999_999, quantity: 1, wallet_address: "x", stripe_session_id: @sid)
+      TokenPurchaseJob.perform_now(user_id: 999_999, pack_id: "single", wallet_address: "x", stripe_session_id: @sid)
     end
     assert_nil StripePurchase.for_session(@sid).first
   end

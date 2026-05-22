@@ -27,28 +27,28 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
     skip "Refactored: dev_mint now mints on-chain via Solana::Vault. Needs RPC mock."
   end
 
-  test "dev_mint rejects unknown pack quantity (kept — pure controller logic)" do
+  test "dev_mint rejects an unknown pack (kept — pure controller logic)" do
     log_in_as @alex
-    post tokens_dev_mint_path, params: { quantity: 7 }
+    post tokens_dev_mint_path, params: { pack: "bogus" }
     assert_redirected_to tokens_buy_path
   end
 
   test "stripe_checkout requires login" do
-    post tokens_stripe_checkout_path, params: { quantity: 1 }
+    post tokens_stripe_checkout_path, params: { pack: "single" }
     assert_redirected_to login_path
   end
 
-  test "stripe_checkout rejects unknown pack quantity" do
+  test "stripe_checkout rejects an unknown pack" do
     log_in_as @jordan
     @jordan.update!(web2_solana_address: "TestWalletAddr123", encrypted_web2_solana_private_key: "x")
-    post tokens_stripe_checkout_path, params: { quantity: 7 }
+    post tokens_stripe_checkout_path, params: { pack: "bogus" }
     assert_redirected_to tokens_buy_path
-    assert_match(/Unknown pack/, flash[:alert])
+    assert_match(/Unknown or unavailable/, flash[:alert])
   end
 
   test "stripe_checkout requires connected wallet" do
     log_in_as @jordan
-    post tokens_stripe_checkout_path, params: { quantity: 1 }
+    post tokens_stripe_checkout_path, params: { pack: "single" }
     assert_redirected_to tokens_buy_path
     assert_match(/Connect a wallet/, flash[:alert])
   end
@@ -59,7 +59,7 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
     fake_session = Struct.new(:url).new("https://stripe.example/cs_test_xyz")
     with_stripe_enabled do
       Stripe::Checkout::Session.stub :create, fake_session do
-        post tokens_stripe_checkout_path, params: { quantity: 3 }
+        post tokens_stripe_checkout_path, params: { pack: "trio" }
       end
     end
     assert_redirected_to "https://stripe.example/cs_test_xyz"
@@ -69,7 +69,7 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
     log_in_as @jordan
     @jordan.update!(web2_solana_address: "TestWalletAddr123", encrypted_web2_solana_private_key: "x")
     with_stripe_disabled do
-      post tokens_stripe_checkout_path, params: { quantity: 1 }
+      post tokens_stripe_checkout_path, params: { pack: "single" }
     end
     assert_redirected_to tokens_buy_path
     assert_match(/Card checkout isn't configured/, flash[:alert])
@@ -83,7 +83,7 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
       payment_risk_flag: true
     )
     with_stripe_enabled do
-      post tokens_stripe_checkout_path, params: { quantity: 1 }
+      post tokens_stripe_checkout_path, params: { pack: "single" }
     end
     assert_redirected_to tokens_buy_path
     assert_match(/disabled on this account/, flash[:alert])

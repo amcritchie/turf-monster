@@ -23,7 +23,7 @@ class ContestsController < ApplicationController
     # Pre-fill from query params (used by the contest generator matrix at /contests/generator).
     # Validates contest_type against FORMATS so an invalid query string can't poison the form.
     requested_type = params[:contest_type].presence
-    contest_type = Contest::FORMATS.key?(requested_type) ? requested_type : "medium"
+    contest_type = Contest.selectable_formats.key?(requested_type) ? requested_type : "medium"
 
     @contest = Contest.new(contest_type: contest_type)
     if params[:slate_id].present? && (prefilled_slate = Slate.find_by(id: params[:slate_id]))
@@ -69,6 +69,9 @@ class ContestsController < ApplicationController
     return render_create_error("Phantom wallet required to create contests") unless current_user.phantom_wallet?
 
     contest = build_unpersisted_contest_from_params
+    unless Contest.selectable_formats.key?(contest.contest_type)
+      return render_create_error("Unknown or unavailable contest format")
+    end
     if (err = onchain_create_precheck(contest, current_user))
       return render_create_error(err)
     end

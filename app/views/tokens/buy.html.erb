@@ -38,9 +38,10 @@
   <p class="text-secondary mb-8">1 token = 1 contest entry (any tier).</p>
 
   <% format_price = ->(cents) { cents % 100 == 0 ? "$#{cents / 100}" : dollars(cents / 100.0) } %>
-  <% per_token = ->(q) { StripePurchase.per_token_cents(q) } %>
-  <% subtitle = ->(q) { q > 1 ? "#{format_price.call(per_token.call(q))} each" : "Single contest entry" } %>
-  <% savings_pct = ->(q) { (100 - (per_token.call(q) * 100 / 1900)).round } %>
+  <% per_token = ->(pack_id) { StripePurchase.per_token_cents(pack_id) } %>
+  <% subtitle = ->(pack_id) { StripePurchase.pack_quantity(pack_id) > 1 ? "#{format_price.call(per_token.call(pack_id))} each" : "Single contest entry" } %>
+  <% single_per_token = StripePurchase.per_token_cents("single") %>
+  <% savings_pct = ->(pack_id) { (100 - (per_token.call(pack_id) * 100 / single_per_token)).round } %>
   <% stripe_on = Rails.application.config.x.stripe_enabled %>
 
   <% if !stripe_on && current_user&.admin? %>
@@ -50,9 +51,9 @@
   <% end %>
 
   <div class="space-y-3 mb-8">
-    <% @packs.each do |quantity, price_cents| %>
-      <% clusters = quantity == 1 ? [:r] : [:l, :c, :r] %>
-      <%= button_to tokens_stripe_checkout_path(quantity: quantity), method: :post,
+    <% @packs.each do |pack_id, pack| %>
+      <% clusters = pack[:quantity] == 1 ? [:r] : [:l, :c, :r] %>
+      <%= button_to tokens_stripe_checkout_path(pack: pack_id), method: :post,
           form: { class: "w-full", data: { turbo: false } }, disabled: !stripe_on,
           class: "glow-pair-btn glow-brand group block w-full text-left p-6 rounded-xl border-2 border-primary/40 hover:border-primary bg-primary/5 transition" do %>
         <% clusters.each do |pos| %>
@@ -61,14 +62,14 @@
         <% end %>
         <div class="glow-content flex items-center gap-6">
           <div class="w-16 text-center">
-            <div class="text-5xl font-extrabold text-white leading-none font-mono"><%= quantity %></div>
-            <div class="text-[10px] uppercase tracking-widest text-white/70 mt-1"><%= quantity == 1 ? 'Entry' : 'Entries' %></div>
+            <div class="text-5xl font-extrabold text-white leading-none font-mono"><%= pack[:quantity] %></div>
+            <div class="text-[10px] uppercase tracking-widest text-white/70 mt-1"><%= pack[:quantity] == 1 ? 'Entry' : 'Entries' %></div>
           </div>
           <div class="flex-1 border-l border-strong pl-6 text-right">
-            <div class="text-3xl font-bold text-heading font-mono"><%= format_price.call(price_cents) %></div>
+            <div class="text-3xl font-bold text-heading font-mono"><%= format_price.call(pack[:price_cents]) %></div>
             <div class="text-xs text-secondary mt-1">
-              <%= subtitle.call(quantity) %>
-              <% if quantity > 1 %><span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-primary text-white text-[10px] font-extrabold tracking-wider uppercase">Save <%= savings_pct.call(quantity) %>%</span><% end %>
+              <%= subtitle.call(pack_id) %>
+              <% if pack[:quantity] > 1 %><span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-primary text-white text-[10px] font-extrabold tracking-wider uppercase">Save <%= savings_pct.call(pack_id) %>%</span><% end %>
             </div>
           </div>
         </div>
@@ -79,8 +80,8 @@
   <% if current_user&.admin? && Solana::Config.devnet? %>
     <div class="space-y-2 mb-6">
       <p class="text-[10px] uppercase tracking-widest text-muted">Dev (admin · devnet)</p>
-      <% @packs.each do |quantity, _| %>
-        <%= button_to "Mint #{quantity} free (dev)", tokens_dev_mint_path(quantity: quantity), method: :post,
+      <% @packs.each do |pack_id, pack| %>
+        <%= button_to "Mint #{pack[:quantity]} free (dev)", tokens_dev_mint_path(pack: pack_id), method: :post,
           form: { data: { turbo: false } },
           class: "btn btn-outline w-full text-xs" %>
       <% end %>
