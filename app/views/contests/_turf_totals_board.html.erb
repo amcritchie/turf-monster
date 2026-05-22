@@ -105,28 +105,32 @@ window.selectionBoard = function() {
 
     init() {
       // Stripe checkout runs in a NEW TAB (see the buy-tokens panel). When
-      // Stripe returns the buyer to /tokens/processing, that page posts the
-      // session_id back here and closes itself — the entire "Confirming
-      // your purchase…" + success UI lives in this modal so the buyer
-      // never leaves the contest tab.
+      // Stripe returns the buyer to /tokens/processing, that page signals
+      // back here — the entire "Confirming your purchase…" + success UI
+      // lives in this modal so the buyer never visually leaves the contest.
+      //
+      // We listen on TWO channels because browsers may have dropped
+      // window.opener on the new tab (implicit noopener on target=_blank
+      // forms): a BroadcastChannel (modern, opener-independent) and the
+      // classic window message event (legacy fallback).
       var board = this;
-      window.addEventListener('message', async function (e) {
-        if (e.origin !== window.location.origin) return;
-        if (!e.data || e.data.source !== 'tt-tokens') return;
+      var handleTokenSignal = async function (data) {
+        if (!data || data.source !== 'tt-tokens') return;
 
-        if (e.data.status === 'returned' && e.data.sessionId) {
-          // New tab handed back; flip the modal to the confirming state
-          // and poll /tokens/status until the webhook + mint complete.
+        if (data.status === 'returned' && data.sessionId) {
+          // De-dupe: both channels may deliver the same signal.
+          if (board.tokensConfirming || board.tokensMinted) return;
           board.tokensWaiting = false;
           board.tokensError = '';
           board.tokensConfirming = true;
-          board.pollTokenStatus(e.data.sessionId);
+          board.tokensPanel = true; // ensure modal is open if it was closed
+          board.pollTokenStatus(data.sessionId);
           return;
         }
 
-        if (e.data.status === 'minted') {
+        if (data.status === 'minted') {
           // Legacy / fallback path — the new tab fully completed the mint
-          // itself (e.g. opener was closed mid-flow). Skip the in-modal
+          // (e.g. opener AND broadcast both unreachable). Skip the
           // confirming UI and finish the entry.
           board.tokensWaiting = false;
           board.tokensConfirming = false;
@@ -140,7 +144,19 @@ window.selectionBoard = function() {
             }
           } catch (_) {}
         }
+      };
+
+      window.addEventListener('message', function (e) {
+        if (e.origin !== window.location.origin) return;
+        handleTokenSignal(e.data);
       });
+
+      try {
+        if ('BroadcastChannel' in window) {
+          board._tokensChannel = new BroadcastChannel('tt-tokens');
+          board._tokensChannel.onmessage = function (e) { handleTokenSignal(e.data); };
+        }
+      } catch (_) {}
 
       // Reopen the post-signup step after submitProfile()'s reload —
       // Google → buy entry tokens; email → check your email.

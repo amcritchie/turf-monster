@@ -75,21 +75,46 @@
         if (!sessionId) { this.errored = true; return; }
 
         // Canonical flow — the contest tab opened this in a new tab. Hand
-        // the session_id back and close; the modal in the original tab
-        // runs the "Confirming your purchase…" + success UI from here.
-        if (window.opener && !window.opener.closed) {
-          try {
+        // the session_id back so the contest tab's modal runs the
+        // "Confirming your purchase…" + success UI. We signal on TWO
+        // channels because browsers may have dropped window.opener
+        // (implicit noopener on target=_blank forms is common):
+        //   1. BroadcastChannel — same-origin, opener-independent
+        //   2. window.opener.postMessage — legacy fallback
+        var delivered = false;
+
+        try {
+          if ('BroadcastChannel' in window) {
+            var ch = new BroadcastChannel('tt-tokens');
+            ch.postMessage({ source: 'tt-tokens', status: 'returned', sessionId: sessionId });
+            ch.close();
+            delivered = true;
+          }
+        } catch (e) {}
+
+        try {
+          if (window.opener && !window.opener.closed) {
             window.opener.postMessage(
               { source: 'tt-tokens', status: 'returned', sessionId: sessionId },
               window.location.origin
             );
-          } catch (e) {}
-          // Tiny delay so the postMessage queues before the tab closes.
+            delivered = true;
+          }
+        } catch (e) {}
+
+        if (delivered) {
+          // Try to close (works only for script-opened tabs); if we can't,
+          // navigate back to the contest so the user isn't stranded on a
+          // dangling processing page. Either way the contest tab's modal
+          // is handling the actual UX.
           setTimeout(function () { window.close(); }, 80);
+          setTimeout(function () {
+            if (contestUrl) window.location.href = contestUrl;
+          }, 400);
           return;
         }
 
-        // Fallback — no opener. Poll and show the standalone success card.
+        // No opener AND no BroadcastChannel — run the standalone polling UI.
         this._ticker = setInterval(() => { this.elapsed += 1 }, 1000);
         this.poll();
         this._timer = setInterval(() => this.poll(), 1500);
