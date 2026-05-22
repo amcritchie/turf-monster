@@ -1,5 +1,22 @@
-<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : "" %>')" x-init="start()">
-  <div class="card shadow p-8 text-center">
+<% if @contest %>
+  <%# When the buyer came from a specific contest, render it behind the
+      success card so this new tab feels like a continuation of the contest
+      tab — the same darkened-backdrop pattern as the "Get Entry Tokens"
+      modal. The iframe is non-interactive (pointer-events: none); the app
+      navbar (z-30, sticky) overlaps the iframe's identical navbar at top:0,
+      so only one navbar is visible. %>
+  <iframe src="<%= contest_path(@contest) %>"
+          class="fixed inset-0 w-screen h-screen border-0 pointer-events-none z-0"
+          aria-hidden="true"
+          tabindex="-1"
+          loading="eager"></iframe>
+  <div class="fixed inset-0 bg-black/70 backdrop-blur-sm pointer-events-none z-10"></div>
+<% end %>
+
+<div class="<%= @contest ? 'fixed inset-0 flex items-center justify-center p-4 z-20' : 'max-w-md mx-auto mt-12' %>"
+     x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : '' %>')"
+     x-init="start()">
+  <div class="card shadow<%= '-2xl' if @contest %> p-8 text-center<%= ' max-w-md w-full pointer-events-auto' if @contest %>">
     <%# Loading state %>
     <template x-if="!ready && !errored">
       <div>
