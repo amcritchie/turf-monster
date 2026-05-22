@@ -1,26 +1,15 @@
-<% if @contest %>
-  <%# When the buyer came from a specific contest, render it behind the
-      success card so this new tab feels like a continuation of the contest
-      tab — the same darkened-backdrop pattern as the "Get Entry Tokens"
-      modal. The iframe is non-interactive (pointer-events: none); the app
-      navbar (z-30, sticky) overlaps the iframe's identical navbar at top:0,
-      so only one navbar is visible. %>
-  <%# #board fragment auto-scrolls the iframe to the matchup grid past the
-      hero + contest info; the wrapper has matching scroll-margin-top so the
-      board lands below the sticky navbar, not hidden behind it. %>
-  <iframe src="<%= contest_path(@contest) %>#board"
-          class="fixed inset-0 w-screen h-screen border-0 pointer-events-none z-0"
-          aria-hidden="true"
-          tabindex="-1"
-          loading="eager"></iframe>
-  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm pointer-events-none z-10"></div>
-<% end %>
+<%# Stripe-checkout return page. The canonical flow is:
+    contest tab opens checkout in a new tab → Stripe → /tokens/processing
+    posts the session_id back here and closes; the contest tab's modal
+    shows the "Confirming your purchase…" + success states inline so the
+    buyer never visually leaves the contest.
 
-<div class="<%= @contest ? 'fixed inset-0 flex items-center justify-center p-4 z-20' : 'max-w-md mx-auto mt-12' %>"
-     x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : '' %>')"
-     x-init="start()">
-  <div class="card shadow<%= '-2xl' if @contest %> p-8 text-center<%= ' max-w-md w-full pointer-events-auto' if @contest %>">
-    <%# Loading state %>
+    Fallback — if there's no opener (user navigated directly, or the
+    opener tab was closed mid-flow), poll /tokens/status here and show
+    the standalone success card. %>
+<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : '' %>')" x-init="start()">
+  <div class="card shadow p-8 text-center">
+    <%# Loading state — also covers the moment after hand-off, before window.close() %>
     <template x-if="!ready && !errored">
       <div>
         <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-6"></div>
@@ -32,7 +21,7 @@
       </div>
     </template>
 
-    <%# Success state %>
+    <%# Success state (fallback path) %>
     <template x-if="ready">
       <div>
         <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-6">
@@ -84,6 +73,23 @@
 
       start() {
         if (!sessionId) { this.errored = true; return; }
+
+        // Canonical flow — the contest tab opened this in a new tab. Hand
+        // the session_id back and close; the modal in the original tab
+        // runs the "Confirming your purchase…" + success UI from here.
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage(
+              { source: 'tt-tokens', status: 'returned', sessionId: sessionId },
+              window.location.origin
+            );
+          } catch (e) {}
+          // Tiny delay so the postMessage queues before the tab closes.
+          setTimeout(function () { window.close(); }, 80);
+          return;
+        }
+
+        // Fallback — no opener. Poll and show the standalone success card.
         this._ticker = setInterval(() => { this.elapsed += 1 }, 1000);
         this.poll();
         this._timer = setInterval(() => this.poll(), 1500);
@@ -110,18 +116,7 @@
             this.balance = d.balance;
             this.ready = true;
             this.stop();
-            if (window.opener && !window.opener.closed) {
-              // Opened in a new tab from the contest — hand control back
-              // there (it finishes the entry) and close this tab.
-              try {
-                window.opener.postMessage(
-                  { source: 'tt-tokens', status: 'minted', contestUrl: contestUrl },
-                  window.location.origin
-                );
-              } catch (e) {}
-              setTimeout(function () { window.close(); }, 1500);
-            } else if (contestUrl) {
-              // Same-tab checkout — return to the contest to finish.
+            if (contestUrl) {
               setTimeout(function () { window.location.href = contestUrl; }, 1800);
             }
           }
