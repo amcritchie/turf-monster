@@ -5,12 +5,15 @@
       modal. The iframe is non-interactive (pointer-events: none); the app
       navbar (z-30, sticky) overlaps the iframe's identical navbar at top:0,
       so only one navbar is visible. %>
-  <iframe src="<%= contest_path(@contest) %>"
+  <%# #board fragment auto-scrolls the iframe to the matchup grid past the
+      hero + contest info; the wrapper has matching scroll-margin-top so the
+      board lands below the sticky navbar, not hidden behind it. %>
+  <iframe src="<%= contest_path(@contest) %>#board"
           class="fixed inset-0 w-screen h-screen border-0 pointer-events-none z-0"
           aria-hidden="true"
           tabindex="-1"
           loading="eager"></iframe>
-  <div class="fixed inset-0 bg-black/70 backdrop-blur-sm pointer-events-none z-10"></div>
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm pointer-events-none z-10"></div>
 <% end %>
 
 <div class="<%= @contest ? 'fixed inset-0 flex items-center justify-center p-4 z-20' : 'max-w-md mx-auto mt-12' %>"

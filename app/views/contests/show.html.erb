@@ -108,12 +108,15 @@
 <% end %>
 
 <!-- Section 4: Board — Turf Totals matchups, or the World Cup Survivor board -->
+<%# id + scroll-margin-top let /tokens/processing iframe this page with
+    `#board` and land on the matchup grid (skipping the hero/info above),
+    clearing the sticky navbar height set by the studio-engine head. %>
 <% if @contest.world_cup_survivor? %>
-  <div class="mb-8">
+  <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/world_cup_survivor_board" %>
   </div>
 <% elsif @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
-  <div class="mb-8">
+  <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/turf_totals_board" %>
   </div>
 <% end %>
