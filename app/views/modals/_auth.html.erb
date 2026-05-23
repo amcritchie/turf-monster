@@ -55,7 +55,16 @@
 <div x-data="{
        email: '',
        password: '',
-       get props() { return $store.modals.current().props; },
+       // Hardened against a transient null current() during modal
+       // open/close transitions — Alpine catches exceptions in x-if
+       // expressions and treats them as falsy. Without this guard a
+       // single null-deref took down every inner template and we
+       // rendered an empty modal shell (image 31). Return {} so every
+       // binding below evaluates cleanly until current() is real again.
+       get props() {
+         var c = $store.modals.current();
+         return (c && c.props) || {};
+       },
        get isCredentialsStep() {
          var s = this.props.step;
          if (!s) return true;
