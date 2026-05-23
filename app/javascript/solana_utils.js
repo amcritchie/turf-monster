@@ -54,6 +54,10 @@ export function updateNavTokens(balance) {
   if (badge) {
     if (n > 0) badge.classList.remove('hidden');
     else       badge.classList.add('hidden');
+    // Keep data-token-count in sync so the click-to-show popover (Alpine
+    // x-data in _user_nav.html.erb) reads the live count on each open
+    // instead of the server-rendered snapshot from page load.
+    badge.dataset.tokenCount = n;
   }
   // Balance link visibility — match the server-side rule.
   document.querySelectorAll('[data-balance-display]').forEach(function(el) {

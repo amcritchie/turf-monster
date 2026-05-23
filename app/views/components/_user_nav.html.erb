@@ -44,15 +44,40 @@
         <%# 🎟️ free-entry indicator — present when the user has any
             unconsumed entry tokens. window.animateFreeEntryBadge()
             adds .free-entry-punch right after a token-funded entry
-            confirms (server returns token_consumed: true). %>
-        <%= link_to root_path,
-              title: "#{free_entries} unconsumed entry token#{'s' if free_entries != 1} — click to enter a contest",
-              class: "free-entry-badge inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 border border-primary/40 text-primary font-bold leading-none whitespace-nowrap hover:bg-primary/25 transition #{'hidden' unless free_entries.positive?}",
-              style: "font-size: 13px; line-height: 1;",
-              data: { free_entry_badge: true } do %>
-          <span style="font-size: 16px; line-height: 1;">🎟️</span>
-          <span>Entry</span>
-        <% end %>
+            confirms (server returns token_consumed: true).
+            Clicking opens a small Alpine popover showing the count
+            instead of navigating — the badge is informational only. %>
+        <%# The `hidden` class lives on the button (not the wrapper) so
+            updateNavTokens() / refreshBalance() in solana_utils.js — which
+            target [data-free-entry-badge] directly — can surface the
+            badge after a mint without a reload. %>
+        <%# count lives in data-token-count so updateNavTokens() in
+            solana_utils.js can keep it in sync after a mint/consume
+            without a page reload. Alpine re-reads it on each open. %>
+        <div class="relative leading-none"
+             x-data="{ open: false, count: <%= free_entries %>, timer: null, toggle() { this.count = parseInt(this.$refs.badge.dataset.tokenCount, 10) || 0; this.open = !this.open; clearTimeout(this.timer); if (this.open) this.timer = setTimeout(() => this.open = false, 2000); }, close() { this.open = false; clearTimeout(this.timer); } }">
+          <button type="button"
+                  x-ref="badge"
+                  @click="toggle()"
+                  title="<%= free_entries %> unconsumed entry token<%= 's' if free_entries != 1 %>"
+                  class="free-entry-badge inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 border border-primary/40 text-primary font-bold leading-none whitespace-nowrap hover:bg-primary/25 transition cursor-pointer <%= 'hidden' unless free_entries.positive? %>"
+                  style="font-size: 13px; line-height: 1;"
+                  data-free-entry-badge="true"
+                  data-token-count="<%= free_entries %>">
+            <span style="font-size: 16px; line-height: 1;">🎟️</span>
+            <span>Entry</span>
+          </button>
+          <div x-show="open" @click.outside="close()"
+               x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-500" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+               class="absolute left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-surface border border-primary/40 rounded-lg shadow-lg z-50 whitespace-nowrap"
+               style="display: none;">
+            <div class="flex items-center gap-1.5 text-primary font-bold text-sm leading-none">
+              <span style="font-size: 16px;">🎟️</span>
+              <span><span x-text="count"></span> Entry Token<span x-show="count !== 1">s</span></span>
+            </div>
+          </div>
+        </div>
         <% account_link = defined?(account_path) ? account_path : "#" %>
         <span class="hidden md:flex items-center gap-2 ml-auto">
           <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>
