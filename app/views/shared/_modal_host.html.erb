@@ -5,6 +5,28 @@
   body.modal-open { overflow: hidden; }
 </style>
 
+<script>
+  // Close any leftover modal when the page comes out of bfcache OR when
+  // Turbo Drive is about to snapshot it. Without this, a buyer who lands
+  // on the 'tokens-submitted' card and then navigates away (or refreshes
+  // and gets a restored snapshot) sees the celebration modal again on
+  // their next visit — confusing because their entry is already locked
+  // in. Idempotent: closeAll() on an empty stack is a no-op.
+  (function() {
+    function closeAllModals() {
+      if (window.Alpine && Alpine.store) {
+        var m = Alpine.store('modals');
+        if (m && typeof m.closeAll === 'function') m.closeAll();
+      }
+    }
+    // Back-forward cache restore (Chrome / Safari).
+    window.addEventListener('pageshow', function(e) { if (e.persisted) closeAllModals(); });
+    // Turbo Drive's snapshot is taken right before this fires — clear
+    // the modal so the cached HTML doesn't carry the open dialog.
+    document.addEventListener('turbo:before-cache', closeAllModals);
+  })();
+</script>
+
 <%#
   Modal host — single shared shell for any modal that opens through
   Alpine.store('modals'). Owns the backdrop, scroll lock (via
