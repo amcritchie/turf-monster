@@ -1,0 +1,270 @@
+<%#
+  Auth wizard — the canonical post-signup-to-entry flow, rendered inside
+  shared/_modal_host through Alpine.store('modals').open('auth', { step, ... }).
+  One modal id, internal step machine on $store.modals.current().props.step.
+
+  Steps (in flow order — but the modal can be opened at any step):
+    credentials       — signup/login forms + OAuth/Phantom buttons
+    tokens-picker     — Stripe pack picker (orb-glow cards)
+    tokens-waiting    — Stripe checkout open in new tab; awaiting return
+    tokens-confirming — Stripe returned; polling /tokens/status for the mint
+    tokens-minted     — tokens credited; in-modal Hold to Confirm Entry
+    tokens-submitted  — entry confirmed; explorer link + leaderboard CTA
+    tokens-error      — poll timed out / submission failed
+    redirect          — countdown auto-redirect (entry blocked, geo, etc.)
+
+  State split:
+    - Form fields (email, password) live in this partial's own x-data —
+      they're local to user input and don't need to outlive the modal.
+    - Display state (mintedCount, errorText, redirect copy, etc.) lives
+      on the store entry's props, mutated by the selectionBoard methods.
+    - Submitting/error flags for each auth attempt live on props too,
+      so the board's async methods can flip them.
+
+  Cross-scope actions: every button dispatches a window event the
+  selectionBoard listens for (see x-data attribute on the board root).
+  We don't reach into board scope from here; the wizard partial is
+  rendered at layout level, outside the board's x-data.
+%>
+<div x-data="{
+       email: '',
+       password: '',
+       get props() { return $store.modals.current().props; }
+     }"
+     class="relative">
+
+  <%# === CREDENTIALS STEP =================================================== %>
+  <template x-if="props.step === 'credentials'">
+    <div>
+      <div class="flex items-start justify-between mb-1">
+        <h3 class="text-lg font-bold text-heading"
+            x-text="props.mode === 'signup' ? 'Create Your Account' : 'Log in to enter'"></h3>
+        <button @click="$store.modals.close()"
+                class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
+      </div>
+      <p class="text-xs text-secondary mb-4"
+         x-text="props.mode === 'signup' ? 'Create your account to submit your lineup' : 'Your 6 picks are saved.'"></p>
+
+      <!-- Primary CTA: Phantom (matches on-chain contest flow) -->
+      <button @click="$dispatch('auth-phantom-click')"
+              :disabled="props.submitting"
+              class="btn btn-secondary btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
+        <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
+        <span x-text="props.submitting === 'phantom' ? 'Connecting…' :
+                       (props.mode === 'signup' ? 'Sign up with Phantom' : 'Sign in with Phantom')"></span>
+      </button>
+      <template x-if="props.phantomError">
+        <p class="text-red-400 text-xs -mt-2 mb-3" x-text="props.phantomError"></p>
+      </template>
+
+      <!-- Google OAuth — opens a popup; the closer page postMessages the result -->
+      <button @click="$dispatch('auth-google-click')"
+              :disabled="props.submitting"
+              class="btn btn-google btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
+        <%= render "components/google_logo" %>
+        <span x-text="props.submitting === 'google' ? 'Waiting for Google…' :
+                       (props.mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google')"></span>
+      </button>
+      <template x-if="props.googleError">
+        <p class="text-red-400 text-xs -mt-2 mb-3" x-text="props.googleError"></p>
+      </template>
+
+      <div class="relative my-4">
+        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-strong"></div></div>
+        <div class="relative flex justify-center text-sm"><span class="bg-surface px-3 text-secondary">or</span></div>
+      </div>
+
+      <!-- Email/password form — same fields drive both signup and login -->
+      <form @submit.prevent="props.mode === 'signup'
+                              ? $dispatch('auth-signup-submit', { email: email, password: password })
+                              : $dispatch('auth-login-submit',  { email: email, password: password })"
+            novalidate>
+        <div class="mb-3">
+          <label class="block text-xs text-secondary mb-1 font-medium">Email</label>
+          <input type="email" x-model="email" autocomplete="email"
+                 class="input-field" placeholder="you@example.com"
+                 :disabled="props.submitting">
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs text-secondary mb-1 font-medium">Password</label>
+          <input type="password" x-model="password"
+                 :autocomplete="props.mode === 'signup' ? 'new-password' : 'current-password'"
+                 class="input-field"
+                 :placeholder="props.mode === 'signup' ? 'Choose a password (min 6)' : 'Your password'"
+                 :disabled="props.submitting">
+        </div>
+        <template x-if="props.formError">
+          <p class="text-red-400 text-xs mb-3" x-text="props.formError"></p>
+        </template>
+        <button type="submit" :disabled="props.submitting"
+                class="btn btn-primary btn-lg w-full disabled:cursor-wait">
+          <span x-text="props.submitting === 'signup' ? 'Creating account…' :
+                         props.submitting === 'login'  ? 'Logging in…' :
+                         (props.mode === 'signup' ? 'Create Account' : 'Log In')"></span>
+        </button>
+      </form>
+
+      <!-- Mode toggle — switches the modal in place, no redirect -->
+      <p class="text-center text-secondary text-xs mt-4">
+        <template x-if="props.mode === 'signup'">
+          <span>Already have an account?
+            <button @click.prevent="props.mode = 'login'; props.formError = ''; props.phantomError = ''; props.googleError = ''"
+                    class="text-primary hover:text-primary-300 font-medium underline underline-offset-2">Log in</button>
+          </span>
+        </template>
+        <template x-if="props.mode === 'login'">
+          <span>Don't have an account?
+            <button @click.prevent="props.mode = 'signup'; props.formError = ''; props.phantomError = ''; props.googleError = ''"
+                    class="text-primary hover:text-primary-300 font-medium underline underline-offset-2">Create one</button>
+          </span>
+        </template>
+      </p>
+    </div>
+  </template>
+
+  <%# === TOKENS STEPS ======================================================= %>
+  <%# Shared header for the tokens flow — title varies by step. %>
+  <template x-if="props.step && props.step.indexOf('tokens-') === 0">
+    <div>
+      <div class="relative mb-1 min-h-[1.75rem]">
+        <button @click="$store.modals.close()"
+                class="absolute top-0 right-0 text-secondary hover:text-heading text-xl leading-none z-10">&times;</button>
+        <h3 x-show="props.step === 'tokens-picker' || props.step === 'tokens-waiting' || props.step === 'tokens-error'"
+            class="text-lg font-bold text-heading text-center">Get Entry Tokens</h3>
+        <h3 x-show="props.step === 'tokens-confirming'"
+            class="text-lg font-bold text-heading text-center">Confirming Purchase</h3>
+        <h3 x-show="props.step === 'tokens-minted'"
+            class="text-lg font-bold text-heading text-center"
+            x-text="(props.mintedCount === 1 ? 'Entry Token Minted' : 'Entry Tokens Minted')"></h3>
+      </div>
+
+      <!-- Pack picker -->
+      <template x-if="props.step === 'tokens-picker'">
+        <div>
+          <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
+          <div class="space-y-3">
+            <% StripePurchase.available_packs.each do |pack_id, pack| %>
+              <%# Pack click sets step → 'tokens-waiting' on the modal props
+                  (instead of mutating a board boolean). target_blank +
+                  data-turbo=false (from the partial) preserve the new-tab
+                  Stripe checkout flow. %>
+              <%= render "tokens/pack_button",
+                  pack_id:      pack_id,
+                  pack:         pack,
+                  extra_params: { contest: @contest&.slug },
+                  target_blank: true,
+                  on_click_js:  "$store.modals.current().props.step = 'tokens-waiting'" %>
+            <% end %>
+          </div>
+          <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+        </div>
+      </template>
+
+      <!-- Waiting — Stripe checkout open, no callback yet -->
+      <template x-if="props.step === 'tokens-waiting'">
+        <div class="text-center py-4">
+          <div class="mx-auto w-10 h-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-4"></div>
+          <p class="text-sm text-heading font-semibold mb-1">Finish checkout in the new tab</p>
+          <p class="text-xs text-secondary mb-4">We'll bring you back here automatically once payment clears.</p>
+          <button @click="props.step = 'tokens-picker'"
+                  class="text-xs text-secondary hover:text-heading underline underline-offset-2">&larr; Back to packs</button>
+        </div>
+      </template>
+
+      <!-- Confirming — Stripe returned the buyer, mint pending -->
+      <template x-if="props.step === 'tokens-confirming'">
+        <div class="text-center py-6">
+          <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-5"></div>
+          <p class="text-base font-bold text-heading mb-1">Confirming your purchase…</p>
+          <p class="text-xs text-secondary">Crediting your entry tokens and topping up your wallet.</p>
+        </div>
+      </template>
+
+      <!-- Minted — payment cleared; user holds in-modal to submit -->
+      <template x-if="props.step === 'tokens-minted'">
+        <div class="text-center py-4">
+          <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <p class="text-base font-bold text-heading mb-1">
+            <span x-text="props.mintedCount"></span>
+            entry token<span x-show="props.mintedCount !== 1">s</span> added
+          </p>
+          <p class="text-xs text-secondary mb-5">
+            You now have <span class="font-bold text-primary font-mono" x-text="props.mintedBalance"></span> available. Hold to confirm your entry.
+          </p>
+          <%# In-modal Hold to Confirm. The hold_button partial wires
+              on_success → d.confirmEntry(); confirmEntry detects the
+              auth-modal/tokens-minted context via $store.modals and
+              stays in the modal on success → step 'tokens-submitted'. %>
+          <%= render 'shared/hold_button',
+              default_text: "Hold to Confirm Entry",
+              hold_text: "Almost there...",
+              success_text: "Submitting…",
+              duration: 2000,
+              hold_id: "tokens-modal" %>
+          <button @click="$store.modals.close()"
+                  class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
+            I'll confirm later
+          </button>
+        </div>
+      </template>
+
+      <!-- Submitted — entry confirmed; modal stays open with CTA -->
+      <template x-if="props.step === 'tokens-submitted'">
+        <div class="text-center py-6">
+          <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-4">
+            <svg class="w-7 h-7 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <p class="text-lg font-bold text-heading mb-1">Entry confirmed!</p>
+          <p class="text-xs text-secondary mb-4">Your lineup is locked in. Good luck.</p>
+          <div x-show="props.txSignature" class="mb-5">
+            <a :href="'https://explorer.solana.com/tx/' + props.txSignature + (typeof clusterParam !== 'undefined' ? clusterParam : '')"
+               target="_blank" rel="noopener"
+               class="inline-flex items-center gap-1.5 text-xs font-mono text-secondary hover:text-primary underline underline-offset-2">
+              <span x-text="props.txSignature ? (props.txSignature.slice(0, 8) + '…' + props.txSignature.slice(-4)) : ''"></span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+              </svg>
+            </a>
+          </div>
+          <a :href="props.redirectUrl || '/'" class="btn btn-primary w-full">View leaderboard</a>
+        </div>
+      </template>
+
+      <!-- Error — poll timed out OR entry submission failed -->
+      <template x-if="props.step === 'tokens-error'">
+        <div class="text-center py-6">
+          <div class="mx-auto w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center mb-4">
+            <span class="text-2xl">⏳</span>
+          </div>
+          <p class="text-sm text-heading font-semibold mb-2">Still processing</p>
+          <p class="text-xs text-secondary mb-4" x-text="props.errorText"></p>
+          <button @click="window.location.reload()" class="btn btn-outline btn-sm">Refresh</button>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <%# === REDIRECT STEP ====================================================== %>
+  <template x-if="props.step === 'redirect'">
+    <div class="text-center">
+      <div class="text-4xl mb-3" x-text="props.icon"></div>
+      <h3 class="text-lg font-bold text-heading mb-2" x-text="props.title"></h3>
+      <p class="text-sm text-secondary mb-4" x-text="props.message"></p>
+      <div class="w-full rounded-full overflow-hidden mb-2" style="height:6px;background:rgba(128,128,128,0.2)">
+        <div :style="'height:100%;border-radius:9999px;background:var(--color-cta);transition:width 1s linear;width:' + (props.countdown / (props.seconds || 5) * 100) + '%'"></div>
+      </div>
+      <p class="text-secondary text-xs mb-4">
+        Redirecting in <span class="text-primary font-mono font-bold" x-text="props.countdown"></span>…
+      </p>
+      <button @click="$dispatch('auth-go-now')"
+              class="btn btn-primary w-full"
+              x-text="props.cta || 'Go now'"></button>
+    </div>
+  </template>
+</div>

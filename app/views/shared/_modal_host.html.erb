@@ -42,6 +42,9 @@
       <template x-if="$store.modals.current().id === 'checkEmail'">
         <%= render "modals/check_email" %>
       </template>
+      <template x-if="$store.modals.current().id === 'auth'">
+        <%= render "modals/auth" %>
+      </template>
     </div>
   </div>
 </template>
