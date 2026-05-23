@@ -925,6 +925,13 @@ window.selectionBoard = function() {
           var data = await response.json();
 
           if (data.success) {
+            // 🎟️ navbar punch — fires when the server reports the entry
+            // was paid for by a token consume. Hooked here so both the
+            // tokens-modal and the non-modal hold-to-confirm paths get
+            // the same animation.
+            if (data.token_consumed) {
+              try { if (window.animateFreeEntryBadge) window.animateFreeEntryBadge(); } catch (_) {}
+            }
             if (data.tx_signature) {
               // If we're in the tokens modal flow, stay in it — don't
               // stack the solanaModal on top of the tokens modal. The

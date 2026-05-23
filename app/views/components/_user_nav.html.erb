@@ -14,6 +14,18 @@
   .username-cap { max-width: 5rem; }
   @media (min-width: 400px) { .username-cap { max-width: 6rem; } }
   @media (min-width: 768px) { .username-cap { max-width: 7rem; } }
+  /* Free-entry badge punch — fires when window.animateFreeEntryBadge()
+     adds .free-entry-punch (e.g. right after a token-funded entry
+     confirms). Slight scale + wobble; resets cleanly. */
+  .free-entry-badge { display: inline-block; transform-origin: center; }
+  .free-entry-punch { animation: free-entry-punch 0.65s cubic-bezier(.36,.07,.19,.97) both; }
+  @keyframes free-entry-punch {
+    0%   { transform: scale(1)   rotate(0deg); }
+    20%  { transform: scale(1.45) rotate(-15deg); }
+    40%  { transform: scale(1.2)  rotate(12deg); }
+    60%  { transform: scale(1.3)  rotate(-6deg); }
+    100% { transform: scale(1)   rotate(0deg); }
+  }
 </style>
 
 <div class="flex gap-2">
@@ -26,12 +38,15 @@
           <%= raw balance_html %>
         <% end %>
         <% free_entries = current_user.entry_token_balance rescue 0 %>
-        <% if free_entries.positive? %>
-          <%= link_to "FREE ENTRY", root_path,
-                title: "#{free_entries} unconsumed entry token#{'s' if free_entries != 1} — click to enter a contest",
-                class: "inline-block px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/40 font-bold leading-none whitespace-nowrap hover:bg-primary/25 transition",
-                style: "font-size: 9px;" %>
-        <% end %>
+        <%# 🎟️ free-entry indicator — present when the user has any
+            unconsumed entry tokens. window.animateFreeEntryBadge()
+            adds .free-entry-punch right after a token-funded entry
+            confirms (server returns token_consumed: true). %>
+        <%= link_to "🎟️", root_path,
+              title: "#{free_entries} unconsumed entry token#{'s' if free_entries != 1} — click to enter a contest",
+              class: "free-entry-badge px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/40 leading-none whitespace-nowrap hover:bg-primary/25 transition #{'hidden' unless free_entries.positive?}",
+              style: "font-size: 12px;",
+              data: { free_entry_badge: true } %>
         <% account_link = defined?(account_path) ? account_path : "#" %>
         <span class="hidden md:flex items-center gap-2 ml-auto">
           <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>

@@ -287,6 +287,10 @@ class ContestsController < ApplicationController
       raise "Wallet mismatch" unless params[:pubkey] == current_user.web3_solana_address
     end
 
+    # Declared here so the respond_to block below (outside the with_lock
+    # transaction) can reference it for the JSON payload.
+    token_consumed = false
+
     rescue_and_log(target: entry, parent: @contest) do
       @contest.with_lock do
         active_count = @contest.entries.where(status: [:active, :complete]).count
@@ -335,6 +339,7 @@ class ContestsController < ApplicationController
           )
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
+          token_consumed = true
         elsif @contest.onchain? && !onchain_session?
           # Offchain session entering onchain contest: blocking vault entry
           entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
@@ -356,7 +361,11 @@ class ContestsController < ApplicationController
           render json: {
             success: true,
             redirect: contest_path(@contest),
-            tx_signature: entry.onchain_tx_signature
+            tx_signature: entry.onchain_tx_signature,
+            # Flag for the client: true iff this entry was paid for by
+            # an on-chain EntryTokenAccount consumption. Drives the
+            # navbar 🎟️ punch animation (animateFreeEntryBadge).
+            token_consumed: token_consumed
           }
         }
       end
