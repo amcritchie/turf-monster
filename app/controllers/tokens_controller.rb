@@ -62,10 +62,22 @@ class TokensController < ApplicationController
 
       session = Stripe::Checkout::Session.create(session_params)
 
-      redirect_to session.url, allow_other_host: true
+      respond_to do |format|
+        # Same-tab HTML submit (e.g. /tokens/buy) → server-side redirect.
+        format.html { redirect_to session.url, allow_other_host: true }
+        # XHR / fetch from the in-modal pack button → return the URL
+        # as JSON so the client navigates the already-open tab itself.
+        # If we redirected here, fetch would follow the 302 to Stripe
+        # and consume the checkout session before the user got to it
+        # (Stripe shows "page not found" on second visit).
+        format.json { render json: { url: session.url } }
+      end
     end
   rescue StandardError => e
-    redirect_to tokens_buy_path, alert: "Checkout failed: #{e.message}"
+    respond_to do |format|
+      format.html { redirect_to tokens_buy_path, alert: "Checkout failed: #{e.message}" }
+      format.json { render json: { error: e.message }, status: :unprocessable_entity }
+    end
   end
 
   def processing

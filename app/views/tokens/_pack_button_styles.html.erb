@@ -16,16 +16,23 @@
         alert('Please allow popups for this site to complete checkout.');
         return;
       }
+      // Ask the controller for the Stripe URL as JSON. If we let fetch
+      // follow the 302 to Stripe instead, the background request
+      // consumes the checkout session and Stripe shows "page not
+      // found" when the actual tab tries to load the same URL.
       fetch(form.action, {
         method: 'POST',
         body: new FormData(form),
         credentials: 'same-origin',
-        redirect: 'follow'
+        headers: { 'Accept': 'application/json' }
       }).then(function(r) {
-        if (r && r.url) {
-          newTab.location.href = r.url;
+        return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+      }).then(function(res) {
+        if (res.ok && res.data && res.data.url) {
+          newTab.location.href = res.data.url;
         } else {
           newTab.close();
+          if (res.data && res.data.error) alert('Checkout failed: ' + res.data.error);
         }
       }).catch(function() {
         try { newTab.close(); } catch (_) {}
