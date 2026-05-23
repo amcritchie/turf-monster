@@ -158,7 +158,15 @@ window.selectionBoard = function() {
       // to the auth wizard's data, not the board's), so we route both
       // the in-board AND in-modal holds through this single channel.
       window.addEventListener('hold-confirm-entry', function () {
-        try { board.confirmEntry(); } catch (e) { console.warn('confirmEntry failed:', e); }
+        // Diagnostic: confirmEntry is async, so a synchronous try/catch
+        // doesn't catch a rejected promise. Log on entry + tail with a
+        // .catch so a failure in the entry submission surfaces in the
+        // console instead of silently freezing the hold button at
+        // 'Almost there…'.
+        console.log('[hold-confirm-entry] dispatch received → board.confirmEntry()');
+        Promise.resolve()
+          .then(function () { return board.confirmEntry(); })
+          .catch(function (e) { console.error('[hold-confirm-entry] confirmEntry rejected:', e); });
       });
 
       // Reopen the post-signup step after submitProfile()'s reload —
