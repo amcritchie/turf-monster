@@ -35,35 +35,16 @@ export function refreshBalanceDelayed(ms) {
   }, delay);
 }
 
-// Entry-token count navbar swap — called after a mint or a token-funded
-// entry submission so the navbar's token/USDC pair reflects the new count
-// without a page reload. The navbar (_navbar.html.erb, managed-wallet
-// branch) renders both links and hides one with the Tailwind `hidden`
-// class; this helper updates the count and flips the visibility.
-// Also shows/hides the 🎟️ free-entry badge in _user_nav based on count.
+// Toggle the navbar's 🎟️ free-entry badge based on the new token count.
+// Called after a mint (count increases) or a token-funded entry submit
+// (count decrements). The USDC balance link is unaffected — the badge
+// is a separate indicator next to it.
 export function updateNavTokens(balance) {
   var n = parseInt(balance, 10) || 0;
-
-  var span     = document.querySelector('[data-token-balance-display]');
-  var tokenLink = document.querySelector('[data-token-balance-link]');
-  var usdcLink = document.querySelector('[data-usdc-balance-link]');
-  if (span && tokenLink && usdcLink) {
-    span.textContent = n;
-    if (n > 0) {
-      tokenLink.classList.remove('hidden');
-      usdcLink.classList.add('hidden');
-    } else {
-      tokenLink.classList.add('hidden');
-      usdcLink.classList.remove('hidden');
-    }
-  }
-
-  // 🎟️ free-entry badge — same visibility rule (present iff count > 0).
   var badge = document.querySelector('[data-free-entry-badge]');
-  if (badge) {
-    if (n > 0) badge.classList.remove('hidden');
-    else       badge.classList.add('hidden');
-  }
+  if (!badge) return;
+  if (n > 0) badge.classList.remove('hidden');
+  else       badge.classList.add('hidden');
 }
 
 // Fires the .free-entry-punch CSS animation on the 🎟️ badge — wired

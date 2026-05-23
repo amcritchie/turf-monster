@@ -6,7 +6,7 @@
 <% show_user = local_assigns.fetch(:show_logged_in, logged_in?) %>
 <% is_preview = local_assigns.fetch(:preview, false) %>
 
-<header x-data="{ scrolled: false }" <%= '@scroll.window="scrolled = scrolled ? (window.scrollY > 5) : (window.scrollY > 60)"'.html_safe unless is_preview %>
+<header data-navbar-root x-data="{ scrolled: false }" <%= '@scroll.window="scrolled = scrolled ? (window.scrollY > 5) : (window.scrollY > 60)"'.html_safe unless is_preview %>
         class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[110] bg-page transition-shadow duration-300' %>"
         :class="scrolled && 'shadow-lg border-b border-subtle is-scrolled'">
   <% unless is_preview || Rails.env.production? %>
@@ -61,25 +61,21 @@
         <nav class="dm-teal hidden md:flex items-center gap-4">
           <%= link_to "Contests", contests_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
           <%= link_to "Rules", turf_totals_v1_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
+          <%= link_to "Reserves", proof_of_reserves_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
           <%= render "components/geo_badge" %>
         </nav>
       </div>
     </div>
     <%# Right side: user nav (matches sidebar width) %>
     <% balance_html = capture do %>
-      <% has_tokens = current_user.entry_token_balance > 0 %>
       <% if current_user.phantom_wallet? %>
         <%# Web3 (Phantom) user → MoonPay top-up flow on click %>
         <%= link_to topup_wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
       <% else %>
-        <%# Managed-wallet user — render BOTH the tokens link and the USDC
-            fallback; window.updateNavTokens(N) toggles visibility client-
-            side after a mint or token-funded entry so the navbar reflects
-            the new count without a page reload. %>
-        <%= link_to tokens_buy_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' unless has_tokens}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { token_balance_link: true } do %>
-          <span data-token-balance-display><%= current_user.entry_token_balance %></span><span class="text-xs font-normal text-secondary ml-1">tokens</span>
-        <% end %>
-        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if has_tokens}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true, usdc_balance_link: true } do %>$<%= display_balance.to_i %><% end %>
+        <%# Managed-wallet user — show USDC balance. Free-entry tokens
+            are surfaced by the 🎟️ badge in _user_nav (next to the
+            balance), not by a second balance-style link here. %>
+        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
       <% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
@@ -97,6 +93,7 @@
   <div class="dm-coral flex md:hidden items-center gap-3 px-4 py-1.5 border-t border-subtle bg-surface-alt">
     <%= link_to "Contests", contests_path, class: "text-secondary hover:text-primary text-xs font-medium transition whitespace-nowrap" %>
     <%= link_to "Rules", turf_totals_v1_path, class: "text-secondary hover:text-primary text-xs font-medium transition whitespace-nowrap" %>
+    <%= link_to "Reserves", proof_of_reserves_path, class: "text-secondary hover:text-primary text-xs font-medium transition whitespace-nowrap" %>
     <%= render "components/geo_badge" %>
     <span class="ml-auto flex items-center gap-3">
       <%= render "components/admin_dropdown" %>

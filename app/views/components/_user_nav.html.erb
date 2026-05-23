@@ -44,8 +44,8 @@
             confirms (server returns token_consumed: true). %>
         <%= link_to "🎟️", root_path,
               title: "#{free_entries} unconsumed entry token#{'s' if free_entries != 1} — click to enter a contest",
-              class: "free-entry-badge px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/40 leading-none whitespace-nowrap hover:bg-primary/25 transition #{'hidden' unless free_entries.positive?}",
-              style: "font-size: 12px;",
+              class: "free-entry-badge inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-primary/15 border border-primary/40 leading-none whitespace-nowrap hover:bg-primary/25 transition #{'hidden' unless free_entries.positive?}",
+              style: "font-size: 18px; line-height: 1;",
               data: { free_entry_badge: true } %>
         <% account_link = defined?(account_path) ? account_path : "#" %>
         <span class="hidden md:flex items-center gap-2 ml-auto">
