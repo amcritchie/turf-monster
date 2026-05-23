@@ -356,16 +356,39 @@ class ContestsController < ApplicationController
       end
 
       respond_to do |format|
-        format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
+        format.html { redirect_to contest_lobby_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
         format.json {
+          seeds_earned = 0
+          seeds_total = 0
+          seeds_level = 0
+          if entry.onchain_tx_signature.present? && entry.entry_number.present?
+            begin
+              seeds_earned = Solana::Vault.new.seeds_for_entry(entry.entry_number)
+            rescue => e
+              Rails.logger.warn "Failed to read seeds_for_entry: #{e.message}"
+            end
+            if current_user.solana_connected?
+              begin
+                onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
+                seeds_total = onchain&.dig(:seeds) || 0
+              rescue => e
+                Rails.logger.warn "Failed to read seeds after entry: #{e.message}"
+              end
+            end
+            seeds_level = User.level_for(seeds_total)
+          end
+
           render json: {
             success: true,
-            redirect: contest_path(@contest),
+            redirect: contest_lobby_path(@contest),
             tx_signature: entry.onchain_tx_signature,
             # Flag for the client: true iff this entry was paid for by
             # an on-chain EntryTokenAccount consumption. Drives the
             # navbar 🎟️ punch animation (animateFreeEntryBadge).
-            token_consumed: token_consumed
+            token_consumed: token_consumed,
+            seeds_earned: seeds_earned,
+            seeds_total: seeds_total,
+            seeds_level: seeds_level
           }
         }
       end
@@ -478,7 +501,7 @@ class ContestsController < ApplicationController
 
       render json: {
         success: true,
-        redirect: contest_path(@contest),
+        redirect: contest_lobby_path(@contest),
         tx_signature: params[:tx_signature],
         seeds_earned: seeds_earned,
         seeds_total: seeds_total,

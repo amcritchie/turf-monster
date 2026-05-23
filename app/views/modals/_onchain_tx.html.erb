@@ -48,125 +48,15 @@
   </template>
 
   <%# === SUCCESS ===========================================================
-      Composes the engine's _success_card (large title + boxed Solana
-      tx link + Contest Lobby CTA with drain-bar countdown). The seeds
-      bar + level-up celebration is turf-specific UI passed via the
-      partial's yield block. After step F, this card visually matches
-      the auth wizard's tokens-submitted card — both web2 and web3
-      success paths land on the same engine block. %>
+      Both web2 (entry-token-funded) and web3 (on-chain) entry success
+      now render the same semantic 'entry confirmed' card. Seeds bar +
+      level-up celebration mount automatically when seeds were awarded. %>
   <template x-if="$store.solanaModal.state === 'success'">
-    <%= render 'studio/modals/blocks/success_card',
-        title_key:             "$store.solanaModal.title",
-        message_key:           "$store.solanaModal.message",
-        icon_color:            'mint',
-        large_title:           true,
-        tx_signature_key:      "$store.solanaModal.txSignature",
-        tx_solana:             true,
-        cta_label:             "Contest Lobby ⚔️",
-        cta_href_key:          "$store.solanaModal.lobbyUrl || '#'",
-        cta_drain:             true,
-        auto_redirect_url_key: "$store.solanaModal.lobbyUrl",
-        auto_redirect_seconds: 5 do %>
-      <%# Seeds bar with rotating counter + level-up celebration —
-          turf-monster reward UI, injected via the success_card's
-          yield block so it renders below the CTA. %>
-      <template x-if="$store.solanaModal.seedsEarned > 0">
-        <div x-data="{
-               displaySeeds: 0,
-               displayLevel: 1,
-               levelingUp: false,
-               showFreeEntryBadge: false,
-               init() {
-                 var self = this;
-                 var modal = Alpine.store('solanaModal');
-                 var total = modal.seedsTotal || 0;
-                 var earned = modal.seedsEarned || 0;
-                 var seedsPerLevel = 100;
-                 var oldSeeds = Math.max(0, total - earned);
-                 var oldLevel = Math.floor(oldSeeds / seedsPerLevel) + 1;
-                 var newLevel = Math.floor(total / seedsPerLevel) + 1;
-                 var oldToward = oldSeeds % seedsPerLevel;
-                 var newToward = total % seedsPerLevel;
-
-                 self.displaySeeds = oldToward;
-                 self.displayLevel = oldLevel;
-
-                 setTimeout(function() {
-                   if (newLevel > oldLevel) {
-                     self.levelingUp = true;
-                     self.displaySeeds = 100;
-                     setTimeout(function() {
-                       self.displayLevel = newLevel;
-                       self.showFreeEntryBadge = true;
-                     }, 1900);
-                     setTimeout(function() { self.displaySeeds = 0; }, 3400);
-                     setTimeout(function() {
-                       self.displaySeeds = newToward;
-                       self.levelingUp = false;
-                     }, 3600);
-                   } else {
-                     self.displaySeeds = newToward;
-                   }
-                 }, 2000);
-
-                 // Shimmer cycle.
-                 var fireShimmer = function() {
-                   if (!self.$root || !self.$root.querySelectorAll) return;
-                   self.$root.querySelectorAll('.modal-shimmer').forEach(function(el) {
-                     el.style.animation = 'none';
-                     void el.offsetHeight;
-                     el.style.animation = 'seedsShimmer 1.8s ease-in-out forwards';
-                   });
-                 };
-                 for (var i = 1; i <= 5; i++) { setTimeout(fireShimmer, i * 9000); }
-                 setTimeout(function() { setInterval(fireShimmer, 9 * 60 * 1000); }, 5 * 9000);
-               }
-             }"
-             class="mx-auto" style="max-width: 100%;">
-          <template x-if="!showFreeEntryBadge">
-            <div class="relative">
-              <div class="seeds-bar-continuous flex gap-1.5"
-                   style="height: 22px; transition: --bar-progress 1.9s cubic-bezier(0.16, 1, 0.3, 1);"
-                   :style="{ '--bar-progress': displaySeeds }">
-                <template x-for="i in 5" :key="i">
-                  <div class="flex-1 relative overflow-hidden rounded-md"
-                       style="background: rgba(var(--color-primary-500-rgb), 0.22); border: 1.5px solid rgba(var(--color-primary-500-rgb), 0.6);">
-                    <div class="absolute inset-0 pointer-events-none"
-                         :style="{
-                           backgroundPosition: ((i - 1) * 25) + '% 0',
-                           clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
-                         }"
-                         style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
-                    <div class="modal-shimmer absolute top-0 bottom-0 pointer-events-none"
-                         :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
-                         style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%); transform: translateX(200%);"></div>
-                  </div>
-                </template>
-              </div>
-              <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
-                <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.7);">
-                  <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 2.6ch; line-height: 1.25em;">
-                    <span class="block"
-                          :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.9s cubic-bezier(0.16, 1, 0.3, 1)' }">
-                      <template x-for="n in 101" :key="n">
-                        <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
-                      </template>
-                    </span>
-                  </span>
-                  <span class="text-[10px] font-normal opacity-90">seeds</span>
-                </span>
-              </div>
-            </div>
-          </template>
-          <template x-if="showFreeEntryBadge">
-            <div class="level-up-pop inline-flex items-center justify-center w-full px-4 py-2.5 rounded-lg font-bold text-sm"
-                 style="background: transparent; color: var(--color-cta); border: 2px solid var(--color-cta);">
-              <span>Free Entry Earned 🎟️</span>
-            </div>
-          </template>
-        </div>
-      </template>
-    <% end %>
+    <%= render 'modals/blocks/entry_confirmed',
+        tx_signature_key: "$store.solanaModal.txSignature",
+        lobby_url_key:    "$store.solanaModal.lobbyUrl || '#'",
+        seeds_earned_key: "$store.solanaModal.seedsEarned",
+        seeds_total_key:  "$store.solanaModal.seedsTotal" %>
   </template>
 
   <%# === ERROR =============================================================

@@ -266,24 +266,15 @@
         </div>
       </template>
 
-      <!-- Submitted — entry confirmed. Same engine block + same options
-           as the onchain-tx success card so web2 and web3 entry success
-           visually match. Copy mirrors the Solana entry flow's vibe
-           (big "Good Luck" headline + small "Entry Confirmed" sub). -->
+      <!-- Submitted — entry confirmed. Renders the shared semantic
+           entry_confirmed card so web2 and web3 success match exactly,
+           including the seeds bar + level-up celebration. -->
       <template x-if="props.step === 'tokens-submitted'">
-        <%= render 'studio/modals/blocks/success_card',
-            title:                 "Good Luck",
-            message:               "Entry Confirmed",
-            icon_color:            'mint',
-            large_title:           true,
-            tx_signature_key:      "props.txSignature",
-            tx_solana:             true,
-            cta_label:             "Contest Lobby ⚔️",
-            cta_href_key:          "props.redirectUrl || '/'",
-            cta_drain:             true,
-            auto_redirect_url_key: "props.redirectUrl || '/'",
-            auto_redirect_seconds: 8,
-            confetti:              true %>
+        <%= render 'modals/blocks/entry_confirmed',
+            tx_signature_key: "props.txSignature",
+            lobby_url_key:    "props.redirectUrl || '/'",
+            seeds_earned_key: "props.seedsEarned",
+            seeds_total_key:  "props.seedsTotal" %>
       </template>
 
       <!-- Error — poll timed out OR entry submission failed -->

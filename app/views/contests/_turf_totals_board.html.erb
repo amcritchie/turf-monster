@@ -977,17 +977,22 @@ window.selectionBoard = function() {
                 // solanaModal on top.
                 p.mintedBalance = Math.max(0, (p.mintedBalance || 0) - 1);
                 try { if (window.updateNavTokens) window.updateNavTokens(p.mintedBalance); } catch (_) {}
-                p.txSignature = data.tx_signature;
-                p.redirectUrl = data.redirect || '/';
-                p.step        = 'tokens-submitted';
+                p.txSignature  = data.tx_signature;
+                p.redirectUrl  = data.redirect || '/';
+                p.seedsEarned  = data.seeds_earned || 0;
+                p.seedsTotal   = data.seeds_total  || 0;
+                p.step         = 'tokens-submitted';
                 refreshBalanceDelayed();
                 // Entry confirmation — burst from the modal card, not
                 // the badge (the user is looking at the modal here).
                 try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 100); } catch (_) {}
               } else {
-                Alpine.store('solanaModal').success(data.tx_signature, 'Entry submitted onchain');
+                var sm = Alpine.store('solanaModal');
+                sm.seedsEarned = data.seeds_earned || 0;
+                sm.seedsTotal  = data.seeds_total  || 0;
+                sm.lobbyUrl    = data.redirect || '/';
+                sm.success(data.tx_signature, 'Entry Confirmed');
                 refreshBalanceDelayed();
-                Alpine.store('solanaModal').onClose = function() { window.location.href = data.redirect || '/'; };
               }
             } else {
               if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
@@ -1006,8 +1011,10 @@ window.selectionBoard = function() {
                   Alpine.store('modals').close();
                   this.sendVerificationEmail();
                 } else {
-                  p.redirectUrl = data.redirect || '/';
-                  p.step        = 'tokens-submitted';
+                  p.redirectUrl  = data.redirect || '/';
+                  p.seedsEarned  = data.seeds_earned || 0;
+                  p.seedsTotal   = data.seeds_total  || 0;
+                  p.step         = 'tokens-submitted';
                   // Entry confirmation — burst from the modal card.
                   try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 100); } catch (_) {}
                   refreshBalanceDelayed();
