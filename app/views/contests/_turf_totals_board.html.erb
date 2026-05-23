@@ -104,8 +104,8 @@ window.selectionBoard = function() {
     tokensError: '',              // populated when tokensStep === 'error'
     tokensRedirect: '',           // populated when tokensStep === 'submitted' — leaderboard URL
     tokensTxSignature: '',        // populated when the entry submitted onchain
-    checkEmailPanel: false,
-    emailSendError: '',
+    // checkEmail modal now lives in the generic Alpine.store('modals') stack —
+    // opened via $store.modals.open('checkEmail', { email, sendError }).
 
     init() {
       // Stripe checkout runs in a NEW TAB (see the buy-tokens panel). When
@@ -627,7 +627,9 @@ window.selectionBoard = function() {
     showTokensPanel() {
       this.loginModal = false;
       this.profileModal = false;
-      this.checkEmailPanel = false;
+      // checkEmail lives in $store.modals now; clear any stack-managed
+      // modal so the tokens panel isn't sandwiched under one.
+      Alpine.store('modals').closeAll();
       this.tokensStep = 'picker';
       this.tokensError = '';
       this.tokensMintedCount = 0;
@@ -694,9 +696,12 @@ window.selectionBoard = function() {
     },
 
     // Email signup — request a verification email (its link returns the
-    // user to this contest) and show the "check your email" panel.
+    // user to this contest) and open the "check your email" modal through
+    // the generic Alpine.store('modals') stack. Resend is handled by the
+    // @modal-resend-verification listener on the selectionBoard root, so
+    // the modal partial doesn't need this scope to dispatch back here.
     async sendVerificationEmail() {
-      this.emailSendError = '';
+      var sendError = '';
       try {
         var resp = await fetch('/email_verification', {
           method: 'POST',
@@ -709,12 +714,15 @@ window.selectionBoard = function() {
         });
         var data = await resp.json();
         if (!resp.ok || !data.success) {
-          this.emailSendError = data.error || 'Could not send the confirmation email.';
+          sendError = data.error || 'Could not send the confirmation email.';
         }
       } catch (e) {
-        this.emailSendError = 'Network error sending the email.';
+        sendError = 'Network error sending the email.';
       }
-      this.checkEmailPanel = true;
+      Alpine.store('modals').open('checkEmail', {
+        email:     this.userEmail,
+        sendError: sendError
+      }, { replace: Alpine.store('modals').isOpen('checkEmail') });
     },
 
     // After a reload-based login (see init()), push the guest cart to the
@@ -1057,7 +1065,8 @@ window.selectionBoard = function() {
 };
 </script>
 
-<div x-data="selectionBoard()" x-cloak>
+<div x-data="selectionBoard()" x-cloak
+     @modal-resend-verification.window="sendVerificationEmail()">
 
   <!-- Blur overlay (click to dismiss) -->
   <div x-show="selectionCount === <%= @contest.picks_required %> && !blurDismissed"
@@ -1544,30 +1553,10 @@ window.selectionBoard = function() {
     </div>
   </template>
 
-  <!-- Check-your-email panel — shown after an email (manual) signup. The
-       confirmation email's link verifies the address and returns the user
-       to this contest to finish the entry. -->
-  <template x-if="checkEmailPanel">
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6)">
-      <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full text-center"
-           x-transition:enter="transition ease-out duration-200"
-           x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-        <div class="flex justify-end -mt-2 -mr-2">
-          <button @click="checkEmailPanel = false" class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
-        </div>
-        <div class="text-4xl mb-3">&#128236;</div>
-        <h3 class="text-lg font-bold text-heading mb-1">Check your email</h3>
-        <p class="text-sm text-secondary mb-4">
-          We sent a confirmation link to <span class="text-heading font-medium" x-text="userEmail"></span>.
-          Click it to verify your email and finish entering.
-        </p>
-        <template x-if="emailSendError">
-          <p class="text-red-400 text-xs mb-3" x-text="emailSendError"></p>
-        </template>
-        <button @click="sendVerificationEmail()" class="btn btn-outline w-full">Resend email</button>
-      </div>
-    </div>
-  </template>
+  <%# checkEmail modal moved to app/views/modals/_check_email.html.erb,
+      rendered through shared/_modal_host via Alpine.store('modals').
+      The Resend button there dispatches 'modal-resend-verification' which
+      the selectionBoard root listens for (see x-data attribute below). %>
 
   <!-- Redirect modal -->
   <template x-if="redirectModal">

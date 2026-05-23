@@ -242,6 +242,56 @@
               return 'https://explorer.solana.com/tx/' + this.txSignature + clusterParam;
             }
           });
+
+          // Generic modal stack. ANY modal that wants the shared shell
+          // (backdrop, scroll lock, escape, click-outside, transitions)
+          // opens through this store; the host partial in shared/_modal_host
+          // renders whichever id is on top. Use opts.replace to swap the
+          // current modal in place (e.g. signup-modal → tokens-modal hand-off)
+          // instead of stacking on top.
+          //
+          // API:
+          //   $store.modals.open(id, props = {}, opts = {})
+          //   $store.modals.close()                   // pop top
+          //   $store.modals.closeAll()
+          //   $store.modals.isOpen(id) / .current()
+          Alpine.store('modals', {
+            stack: [],
+            open(id, props, opts) {
+              props = props || {};
+              opts  = opts  || {};
+              if (opts.replace && this.stack.length > 0) {
+                this.stack[this.stack.length - 1] = { id: id, props: props };
+              } else {
+                this.stack.push({ id: id, props: props });
+              }
+              this._sync();
+            },
+            close() {
+              this.stack.pop();
+              this._sync();
+            },
+            closeAll() {
+              this.stack = [];
+              this._sync();
+            },
+            isOpen(id) {
+              for (var i = 0; i < this.stack.length; i++) {
+                if (this.stack[i].id === id) return true;
+              }
+              return false;
+            },
+            current() {
+              return this.stack.length ? this.stack[this.stack.length - 1] : null;
+            },
+            _sync() {
+              if (this.stack.length) {
+                document.body.classList.add('modal-open');
+              } else {
+                document.body.classList.remove('modal-open');
+              }
+            }
+          });
         });
 
         // Re-seed the canonical session store on every Turbo navigation —
@@ -272,6 +322,9 @@
     <% if logged_in? %>
       <%= render "shared/profile_modal" %>
     <% end %>
+    <%# Generic modal host — backed by Alpine.store('modals'). Any modal
+        registered in _modal_host opens through this single shared shell. %>
+    <%= render "shared/modal_host" %>
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>

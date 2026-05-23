@@ -1,0 +1,47 @@
+<style>
+  /* Scroll lock applied by $store.modals._sync() when the stack is non-empty.
+     Combined with the fixed backdrop on the host below, this keeps the page
+     beneath any modal from scrolling on wheel / touch / spacebar. */
+  body.modal-open { overflow: hidden; }
+</style>
+
+<%#
+  Modal host — single shared shell for any modal that opens through
+  Alpine.store('modals'). Owns the backdrop, scroll lock (via
+  .modal-open on <body>), escape key, click-outside, transitions,
+  and ARIA dialog role. Each modal id below renders just its CONTENT;
+  the shared card chrome (rounded panel, padding, max-width) lives
+  here so no consumer has to know about it.
+
+  See application.html.erb for the store API ($store.modals.open(id, props, opts)).
+  See app/views/modals/_*.html.erb for the content partials.
+
+  z-[120] sits above the navbar (z-[110]) and below toasts (z-60... wait —
+  toasts are z-60 which is BELOW this; that's intentional, we want
+  blocking dialogs over non-blocking toasts).
+%>
+<template x-if="$store.modals.current()">
+  <div class="fixed inset-0 z-[120] flex items-center justify-center p-4"
+       style="background:rgba(0,0,0,0.6)"
+       role="dialog"
+       aria-modal="true"
+       @keydown.escape.window="$store.modals.close()"
+       @click.self="$store.modals.close()"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100">
+      <%# Register modal content partials here. Each <template x-if> reads
+          $store.modals.current().id; props live on .current().props. %>
+      <template x-if="$store.modals.current().id === 'checkEmail'">
+        <%= render "modals/check_email" %>
+      </template>
+    </div>
+  </div>
+</template>
