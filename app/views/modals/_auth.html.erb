@@ -75,6 +75,16 @@
      }"
      class="relative">
 
+  <%# TEMPORARY DEBUG MARKER — visible only if the auth partial is
+      actually being rendered into the modal host card. If you see
+      "AUTH MODAL MOUNTED" in red the partial is loaded and the empty
+      space below is a sub-template visibility issue; if you DON'T see
+      this text the outer modal-host x-if isn't matching id==='auth'.
+      Remove once debugging is done. %>
+  <div style="background:#dc2626; color:white; padding:8px; font-weight:bold; text-align:center; border-radius:4px; margin-bottom:8px;">
+    AUTH MODAL MOUNTED — step:<span x-text="JSON.stringify(props.step)"></span> — credentials:<span x-text="isCredentialsStep"></span>
+  </div>
+
   <%# === CREDENTIALS STEP =================================================== %>
   <%# x-show (not x-if) so the form is ALWAYS in the DOM — only hidden
       via display:none when a tokens-* / redirect step is active. The
