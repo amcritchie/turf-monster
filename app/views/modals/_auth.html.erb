@@ -55,16 +55,25 @@
 <div x-data="{
        email: '',
        password: '',
-       get props() { return $store.modals.current().props; }
+       get props() { return $store.modals.current().props; },
+       get isCredentialsStep() {
+         var s = this.props.step;
+         if (!s) return true;
+         if (s === 'redirect') return false;
+         if (s.indexOf && s.indexOf('tokens-') === 0) return false;
+         return true;
+       }
      }"
      class="relative">
 
   <%# === CREDENTIALS STEP =================================================== %>
-  <%# Credentials is the DEFAULT step — renders when step is 'credentials'
-      OR anything not explicitly handled by another template below. This
-      catches the empty-card render bug we hit when something opened the
-      auth modal without setting props.step. %>
-  <template x-if="!['tokens-picker','tokens-waiting','tokens-confirming','tokens-minted','tokens-submitted','tokens-error','redirect'].includes(props.step)">
+  <%# Credentials is the DEFAULT — renders when step is 'credentials',
+      missing, or anything not explicitly tokens-* / redirect. Logic
+      lives in the isCredentialsStep getter above so the x-if is short
+      and Alpine's expression parser has nothing tricky to chew on
+      (previous attempt with !['a','b','c'].includes(props.step) was
+      apparently being mis-evaluated, leaving the modal empty). %>
+  <template x-if="isCredentialsStep">
     <div>
       <div class="flex items-start justify-between mb-1">
         <h3 class="text-lg font-bold text-heading"
