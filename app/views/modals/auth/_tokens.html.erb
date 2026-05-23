@@ -1,0 +1,127 @@
+<%#
+  Token-purchase sub-flow of the auth modal. Rendered by modals/_auth
+  as an inner branch when props.step starts with 'tokens-'. Lives in
+  its own file so the auth modal partial isn't 300+ lines straddling
+  two distinct concerns (auth credentials vs. post-auth token flow).
+
+  Steps handled here (state machine on $store.modals.current().props.step):
+    tokens-picker     — Stripe pack picker (orb-glow cards)
+    tokens-waiting    — Stripe checkout open in new tab; awaiting return
+    tokens-confirming — Stripe returned; polling /tokens/status for the mint
+    tokens-minted     — tokens credited; in-modal Hold to Confirm Entry
+    tokens-submitted  — entry confirmed; explorer link + leaderboard CTA
+    tokens-error      — poll timed out / submission failed
+
+  Display state lives on the modal entry's props (mintedCount, mintedBalance,
+  txSignature, redirectUrl, errorText, seedsEarned, seedsTotal), mutated
+  by the selectionBoard's network methods. Same x-data scope as the
+  parent partial, so `props` and `isCredentialsStep` are in scope.
+%>
+<template x-if="props.step && props.step.indexOf('tokens-') === 0">
+  <div>
+    <%# Shared header — title varies by step. %>
+    <div class="relative mb-1 min-h-[1.75rem]">
+      <button @click="$store.modals.close()"
+              class="absolute top-0 right-0 text-secondary hover:text-heading text-xl leading-none z-10">&times;</button>
+      <h3 x-show="props.step === 'tokens-picker' || props.step === 'tokens-waiting' || props.step === 'tokens-error'"
+          class="text-lg font-bold text-heading text-center">Get Entry Tokens</h3>
+      <h3 x-show="props.step === 'tokens-confirming'"
+          class="text-lg font-bold text-heading text-center">Confirming Purchase</h3>
+      <h3 x-show="props.step === 'tokens-minted'"
+          class="text-lg font-bold text-heading text-center"
+          x-text="(props.mintedCount === 1 ? 'Entry Token Minted' : 'Entry Tokens Minted')"></h3>
+    </div>
+
+    <!-- Pack picker -->
+    <template x-if="props.step === 'tokens-picker'">
+      <div>
+        <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
+        <div class="space-y-3">
+          <% StripePurchase.available_packs.each do |pack_id, pack| %>
+            <%# Pack click sets step → 'tokens-waiting' on the modal props
+                (instead of mutating a board boolean). target_blank +
+                data-turbo=false (from the partial) preserve the new-tab
+                Stripe checkout flow. %>
+            <%= render "tokens/pack_button",
+                pack_id:      pack_id,
+                pack:         pack,
+                extra_params: { contest: @contest&.slug },
+                target_blank: true,
+                on_click_js:  "$store.modals.current().props.step = 'tokens-waiting'" %>
+          <% end %>
+        </div>
+        <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+      </div>
+    </template>
+
+    <!-- Waiting — Stripe checkout open, no callback yet -->
+    <template x-if="props.step === 'tokens-waiting'">
+      <div class="text-center py-4">
+        <div class="mx-auto w-10 h-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-4"></div>
+        <p class="text-sm text-heading font-semibold mb-1">Finish checkout in the new tab</p>
+        <p class="text-xs text-secondary mb-4">We'll bring you back here automatically once payment clears.</p>
+        <button @click="props.step = 'tokens-picker'"
+                class="text-xs text-secondary hover:text-heading underline underline-offset-2">&larr; Back to packs</button>
+      </div>
+    </template>
+
+    <!-- Confirming — Stripe returned the buyer, mint pending -->
+    <template x-if="props.step === 'tokens-confirming'">
+      <%= render 'studio/modals/blocks/processing_card',
+          title:   "Confirming your purchase…",
+          message: "Crediting your entry tokens and topping up your wallet." %>
+    </template>
+
+    <!-- Minted — payment cleared; user holds in-modal to submit -->
+    <template x-if="props.step === 'tokens-minted'">
+      <div class="text-center py-4">
+        <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <%# Headline ("Entry Token Minted") is already in the modal
+            header — the body just needs the balance + next action. %>
+        <p class="text-xs text-secondary mb-5">
+          You now have <span class="font-bold text-primary font-mono" x-text="props.mintedBalance"></span> available. Hold to confirm your entry.
+        </p>
+        <%# In-modal Hold to Confirm. Dispatches the same hold-confirm-entry
+            window event as the board's hold buttons; selectionBoard's
+            listener calls confirmEntry(), which detects the
+            auth-modal/tokens-minted context via $store.modals and stays
+            in the modal on success → step 'tokens-submitted'. %>
+        <%= render 'shared/hold_button',
+            default_text: "Hold to Confirm Entry",
+            hold_text: "Almost there...",
+            success_text: "Submitting…",
+            duration: 2000,
+            hold_id: "tokens-modal",
+            on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))" %>
+        <button @click="$store.modals.close()"
+                class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
+          I'll confirm later
+        </button>
+      </div>
+    </template>
+
+    <!-- Submitted — entry confirmed. Renders the shared semantic
+         entry_confirmed card so web2 and web3 success match exactly,
+         including the seeds bar + level-up celebration. -->
+    <template x-if="props.step === 'tokens-submitted'">
+      <%= render 'modals/blocks/entry_confirmed',
+          tx_signature_key: "props.txSignature",
+          lobby_url_key:    "props.redirectUrl || '/'",
+          seeds_earned_key: "props.seedsEarned",
+          seeds_total_key:  "props.seedsTotal" %>
+    </template>
+
+    <!-- Error — poll timed out OR entry submission failed -->
+    <template x-if="props.step === 'tokens-error'">
+      <%= render 'studio/modals/blocks/error_card',
+          title:       "Still processing",
+          message_key: "props.errorText",
+          cta_label:   "Refresh",
+          cta_reload:  true %>
+    </template>
+  </div>
+</template>
