@@ -22,9 +22,12 @@
        x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
        class="absolute right-0 mt-2 w-48 bg-surface border border-subtle rounded-lg shadow-lg z-50 py-1" style="display: none;">
 
-    <%# Everyone sees Account at the top. %>
+    <%# Everyone sees Account + Proof of Reserves at the top. %>
     <% if defined?(account_path) %>
       <%= link_to "Account", account_path, class: link_class %>
+    <% end %>
+    <% if defined?(proof_of_reserves_path) %>
+      <%= link_to "Proof of Reserves", proof_of_reserves_path, class: link_class %>
     <% end %>
 
     <% if current_user.admin? %>
