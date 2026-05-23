@@ -26,6 +26,32 @@
   We don't reach into board scope from here; the wizard partial is
   rendered at layout level, outside the board's x-data.
 %>
+<style>
+  /* Submit-button text shimmer — applied while a network attempt is in
+     flight (props.submitting truthy). The text becomes the loader: a
+     bright gradient sweeps left-to-right across the label, no spinner
+     glyph needed. Uses background-clip:text so the underlying button
+     fill stays unchanged. */
+  .auth-text-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,0.55) 0%,
+      rgba(255,255,255,1)   50%,
+      rgba(255,255,255,0.55) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: auth-text-shimmer 1.4s linear infinite;
+  }
+  @keyframes auth-text-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+</style>
+
 <div x-data="{
        email: '',
        password: '',
@@ -98,7 +124,11 @@
         </template>
         <button type="submit" :disabled="props.submitting"
                 class="btn btn-primary btn-lg w-full disabled:cursor-wait">
-          <span x-text="props.submitting === 'signup' ? 'Creating account…' :
+          <%# Text doubles as the loader — while submitting, the label
+              gets a left-to-right gradient sweep via .auth-text-shimmer
+              (defined above). No separate spinner needed. %>
+          <span :class="props.submitting ? 'auth-text-shimmer' : ''"
+                x-text="props.submitting === 'signup' ? 'Creating account…' :
                          props.submitting === 'login'  ? 'Logging in…' :
                          (props.mode === 'signup' ? 'Create Account' : 'Log In')"></span>
         </button>
