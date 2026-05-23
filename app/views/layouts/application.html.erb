@@ -152,109 +152,119 @@
             catch (e) { console.warn('[session] context parse failed', e); }
           })();
 
-          var cluster = document.body ? (document.body.dataset.solanaCluster || 'devnet') : 'devnet';
-          var clusterParam = cluster === 'devnet' ? '?cluster=devnet' : '';
+          // solanaModal is a STATELESS proxy over Alpine.store('modals').
+          // Every field reads/writes props on the 'onchain-tx' modal entry
+          // in the shared stack — there's no duplicate state. The store
+          // exists to preserve the existing call-site API (show/success/
+          // error/close + field reads) while the underlying source of
+          // truth is the modal stack.
+          //
+          // The redundant auto-close countdown timer that used to live here
+          // is gone: modals/blocks/_entry_confirmed.html.erb drives the
+          // post-success redirect via the success_card's cta_drain. The
+          // onClose callback path is preserved for the world-cup-survivor
+          // flow that still relies on it.
+          var _txCluster = document.body ? (document.body.dataset.solanaCluster || 'devnet') : 'devnet';
+          var _txClusterParam = _txCluster === 'devnet' ? '?cluster=devnet' : '';
+          var _onCurrent = function() {
+            var c = Alpine.store('modals').current();
+            return (c && c.id === 'onchain-tx') ? c : null;
+          };
+          var _propRead = function(key, fallback) {
+            var c = _onCurrent();
+            return c ? (c.props[key] !== undefined ? c.props[key] : fallback) : fallback;
+          };
+          var _propWrite = function(key, value) {
+            var c = _onCurrent();
+            if (c) c.props[key] = value;
+          };
           Alpine.store('solanaModal', {
-            visible: false,
-            state: 'processing',
-            title: '',
-            message: '',
-            txSignature: null,
-            errorMessage: null,
-            onClose: null,
-            countdown: 0,
-            _countdownTimer: null,
-            seedsEarned: 0,
-            seedsTotal: 0,
-            seedsLevel: 0,
-            lobbyUrl: null,
-            recoveryLabel: null,
-            recoveryHandler: null,
-            recoveryPhantom: false,
+            _recoveryHandler: null,
+            _onCloseHandler:  null,
+
             show: function(title, message) {
-              this.visible = true;
-              this.state = 'processing';
-              this.title = title;
-              this.message = message;
-              this.txSignature = null;
-              this.errorMessage = null;
-              this.onClose = null;
-              this.countdown = 0;
-              this.seedsEarned = 0;
-              this.seedsTotal = 0;
-              this.seedsLevel = 0;
-              this.lobbyUrl = null;
-              this.recoveryLabel = null;
-              this.recoveryHandler = null;
-              this.recoveryPhantom = false;
-              this._clearCountdown();
-              // Open through the shared modal stack so the engine's
-              // host owns the backdrop / scroll lock / ARIA / z-stack.
-              // dismissible: false suppresses click-outside + escape
-              // while a Phantom signature / RPC confirm is pending —
-              // success()/error() flip it to true.
-              Alpine.store('modals').open('onchain-tx', { dismissible: false });
+              this._recoveryHandler = null;
+              this._onCloseHandler = null;
+              // dismissible: false suppresses click-outside + escape while
+              // a Phantom signature / RPC confirm is pending — success()/
+              // error() flip it to true.
+              Alpine.store('modals').open('onchain-tx', {
+                dismissible:     false,
+                state:           'processing',
+                title:           title,
+                message:         message,
+                txSignature:     null,
+                errorMessage:    null,
+                seedsEarned:     0,
+                seedsTotal:      0,
+                seedsLevel:      0,
+                lobbyUrl:        null,
+                recoveryLabel:   null,
+                recoveryPhantom: false
+              });
             },
-            setRecovery: function(label, handler, options) {
-              this.recoveryLabel = label;
-              this.recoveryHandler = handler;
-              this.recoveryPhantom = !!(options && options.phantom);
-            },
-            _triggerRecovery: function() {
-              if (this.recoveryHandler) this.recoveryHandler();
-            },
-            success: function(tx, message, autoCloseSeconds) {
-              this.state = 'success';
-              this.txSignature = tx;
-              if (message) this.message = message;
-              var seconds = autoCloseSeconds || 5;
-              this.countdown = seconds;
-              this._clearCountdown();
-              var self = this;
-              this._countdownTimer = setInterval(function() {
-                self.countdown--;
-                if (self.countdown <= 0) { self._clearCountdown(); self.close(); }
-              }, 1000);
-              // Allow dismissal now that the tx has resolved.
-              var cur = Alpine.store('modals').current();
-              if (cur && cur.id === 'onchain-tx') cur.props.dismissible = true;
-            },
-            _clearCountdown: function() {
-              if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
+            success: function(tx, message /*, autoCloseSeconds (ignored — entry_confirmed drives the countdown) */) {
+              var c = _onCurrent();
+              if (!c) return;
+              c.props.state = 'success';
+              c.props.txSignature = tx;
+              if (message) c.props.message = message;
+              c.props.dismissible = true;
             },
             error: function(msg, title) {
-              this.state = 'error';
-              this.errorMessage = msg;
-              if (title) this.title = title;
-              // Allow dismissal so the user can retry or close out.
-              var cur = Alpine.store('modals').current();
-              if (cur && cur.id === 'onchain-tx') cur.props.dismissible = true;
+              var c = _onCurrent();
+              if (!c) return;
+              c.props.state = 'error';
+              c.props.errorMessage = msg;
+              if (title) c.props.title = title;
+              c.props.dismissible = true;
             },
             close: function() {
-              this._clearCountdown();
-              var cb = this.onClose;
-              this.visible = false;
-              this.state = 'processing';
-              this.title = '';
-              this.message = '';
-              this.txSignature = null;
-              this.errorMessage = null;
-              this.countdown = 0;
-              this.seedsEarned = 0;
-              this.seedsTotal = 0;
-              this.seedsLevel = 0;
-              this.recoveryLabel = null;
-              this.recoveryHandler = null;
-              this.recoveryPhantom = false;
+              var cb = this._onCloseHandler;
+              this._recoveryHandler = null;
+              this._onCloseHandler = null;
+              if (_onCurrent()) Alpine.store('modals').close();
               if (cb) cb();
-              this.onClose = null;
-              // Close through the modal stack so the host shell unmounts.
-              var mc = Alpine.store('modals').current();
-              if (mc && mc.id === 'onchain-tx') Alpine.store('modals').close();
             },
+            setRecovery: function(label, handler, options) {
+              var c = _onCurrent();
+              if (!c) return;
+              c.props.recoveryLabel = label;
+              c.props.recoveryPhantom = !!(options && options.phantom);
+              this._recoveryHandler = handler;
+            },
+            _triggerRecovery: function() {
+              if (this._recoveryHandler) this._recoveryHandler();
+            },
+
+            // === Field accessors — read/write 'onchain-tx' props ===
+            get visible()         { return !!_onCurrent(); },
+            get state()           { return _propRead('state', null); },
+            get title()           { return _propRead('title', ''); },
+            set title(v)          { _propWrite('title', v); },
+            get message()         { return _propRead('message', ''); },
+            set message(v)        { _propWrite('message', v); },
+            get txSignature()     { return _propRead('txSignature', null); },
+            set txSignature(v)    { _propWrite('txSignature', v); },
+            get errorMessage()    { return _propRead('errorMessage', null); },
+            get seedsEarned()     { return _propRead('seedsEarned', 0); },
+            set seedsEarned(v)    { _propWrite('seedsEarned', v); },
+            get seedsTotal()      { return _propRead('seedsTotal', 0); },
+            set seedsTotal(v)     { _propWrite('seedsTotal', v); },
+            get seedsLevel()      { return _propRead('seedsLevel', 0); },
+            set seedsLevel(v)     { _propWrite('seedsLevel', v); },
+            get lobbyUrl()        { return _propRead('lobbyUrl', null); },
+            set lobbyUrl(v)       { _propWrite('lobbyUrl', v); },
+            get recoveryLabel()   { return _propRead('recoveryLabel', null); },
+            get recoveryPhantom() { return _propRead('recoveryPhantom', false); },
+
+            // onClose remains a settable callback (legacy survivor-board flow).
+            get onClose()         { return this._onCloseHandler; },
+            set onClose(fn)       { this._onCloseHandler = fn; },
+
             get explorerUrl() {
-              if (!this.txSignature) return null;
-              return 'https://explorer.solana.com/tx/' + this.txSignature + clusterParam;
+              var tx = this.txSignature;
+              return tx ? ('https://explorer.solana.com/tx/' + tx + _txClusterParam) : null;
             }
           });
 
