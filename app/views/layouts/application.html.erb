@@ -304,7 +304,7 @@
         escape / click-outside / ARIA / transitions, and renders this app's
         content partials by id (registered in the block below). %>
     <%= render "studio/modals/host" do %>
-      <template x-if="$store.modals.current().id === 'checkEmail'">
+      <template x-if="$store.modals.current().id === 'check-email'">
         <%= render "modals/check_email" %>
       </template>
       <template x-if="$store.modals.current().id === 'auth'">

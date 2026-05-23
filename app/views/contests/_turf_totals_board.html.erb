@@ -170,7 +170,7 @@ window.selectionBoard = function() {
           sessionStorage.removeItem('pendingAuthStep');
           if (step && step.contestSlug === this.contestId) {
             if (step.step === 'tokens') this.showTokensPanel();
-            if (step.step === 'checkEmail') this.sendVerificationEmail();
+            if (step.step === 'check-email') this.sendVerificationEmail();
           }
         }
       } catch (e) {
@@ -723,10 +723,10 @@ window.selectionBoard = function() {
       } catch (e) {
         sendError = 'Network error sending the email.';
       }
-      Alpine.store('modals').open('checkEmail', {
+      Alpine.store('modals').open('check-email', {
         email:     this.userEmail,
         sendError: sendError
-      }, { replace: Alpine.store('modals').isOpen('checkEmail') });
+      }, { replace: Alpine.store('modals').isOpen('check-email') });
     },
 
     // After a reload-based login (see init()), push the guest cart to the
