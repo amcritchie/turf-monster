@@ -97,12 +97,12 @@ window.selectionBoard = function() {
     signupMethod: '',
     tokensPanel: false,
     // Single state machine for the buy-tokens modal — guarantees the
-    // sub-panels are mutually exclusive (the previous boolean-soup let
-    // `waiting` and `minted` race-render together).
-    tokensStep: 'picker',         // 'picker' | 'waiting' | 'confirming' | 'minted' | 'error'
+    // sub-panels are mutually exclusive.
+    tokensStep: 'picker',         // 'picker' | 'waiting' | 'confirming' | 'minted' | 'submitted' | 'error'
     tokensMintedCount: 0,         // populated when tokensStep === 'minted'
     tokensMintedBalance: 0,       // populated when tokensStep === 'minted'
     tokensError: '',              // populated when tokensStep === 'error'
+    tokensRedirect: '',           // populated when tokensStep === 'submitted' — leaderboard URL
     checkEmailPanel: false,
     emailSendError: '',
 
@@ -590,8 +590,10 @@ window.selectionBoard = function() {
       this.tokensError = '';
       this.tokensMintedCount = 0;
       this.tokensMintedBalance = 0;
+      this.tokensRedirect = '';
       this.tokensPanel = true;
     },
+
 
     // Poll /tokens/status until the Stripe webhook + TokenPurchaseJob
     // finish minting. Drives the modal through confirming → minted →
@@ -615,14 +617,10 @@ window.selectionBoard = function() {
               self.tokensMintedCount = d.minted;
               self.tokensMintedBalance = d.balance;
               self.tokensStep = 'minted';
-              // Show the success state briefly, then close the modal so
-              // the user can do a fresh Hold to Confirm. Their lineup is
-              // still in the cart and the hold buttons are reset.
-              setTimeout(function () {
-                self.tokensPanel = false;
-                self.tokensStep = 'picker';
-                try { self.resetHoldButtons(); } catch (_) {}
-              }, 1800);
+              // The modal STAYS OPEN in the 'minted' step — it now renders
+              // an in-modal Hold to Confirm Entry button. The user holds
+              // it to submit the entry; on success → 'submitted' step.
+              // confirmEntryFromTokensModal handles the rest.
               return;
             }
           }
@@ -869,13 +867,28 @@ window.selectionBoard = function() {
               Alpine.store('solanaModal').onClose = function() { window.location.href = data.redirect || '/'; };
             } else {
               if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
-              // Deferred email-verification nudge — set during email
-              // signup, consumed when this entry confirms (used to fire
-              // post-mint inside the tokens modal; moved here so the
-              // user-initiated Hold to Confirm still triggers it).
+              // Deferred email-verification nudge — set during email signup,
+              // consumed when this entry confirms.
               var hasPendingEmail = false;
               try { hasPendingEmail = sessionStorage.getItem('pendingCheckEmail') === this.contestId; } catch (_) {}
-              if (hasPendingEmail) {
+
+              // Called from the tokens modal's in-modal Hold to Confirm
+              // (tokensPanel open + tokensStep === 'minted') → stay in
+              // the modal and transition to 'submitted' instead of
+              // redirecting; the modal's "View leaderboard" CTA handles
+              // navigation from there.
+              if (this.tokensPanel && this.tokensStep === 'minted') {
+                if (hasPendingEmail) {
+                  try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
+                  this.tokensPanel = false;
+                  this.tokensStep = 'picker';
+                  this.sendVerificationEmail();
+                } else {
+                  this.tokensRedirect = data.redirect || '/';
+                  this.tokensStep = 'submitted';
+                  refreshBalanceDelayed();
+                }
+              } else if (hasPendingEmail) {
                 try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
                 this.sendVerificationEmail();
               } else {
@@ -1345,9 +1358,9 @@ window.selectionBoard = function() {
           <p class="text-xs text-secondary">Crediting your entry tokens and topping up your wallet.</p>
         </div>
 
-        <!-- Minted state — brief success card before closing for fresh hold-to-confirm -->
-        <div x-show="tokensStep === 'minted'" class="text-center py-6">
-          <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-5">
+        <!-- Minted state — payment cleared; user holds in-modal to submit -->
+        <div x-show="tokensStep === 'minted'" class="text-center py-4">
+          <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-4">
             <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
             </svg>
@@ -1356,12 +1369,36 @@ window.selectionBoard = function() {
             <span x-text="tokensMintedCount"></span>
             entry token<span x-show="tokensMintedCount !== 1">s</span> added
           </p>
-          <p class="text-xs text-secondary">
-            You now have <span class="font-bold text-primary font-mono" x-text="tokensMintedBalance"></span> available. Hold to confirm your entry below.
+          <p class="text-xs text-secondary mb-5">
+            You now have <span class="font-bold text-primary font-mono" x-text="tokensMintedBalance"></span> available. Hold to confirm your entry.
           </p>
+          <%# In-modal hold-to-confirm — user submits the entry without
+              leaving the modal. The hold_button partial's IIFE wires
+              on_success ONCE (first render wins), so this instance ends
+              up calling confirmEntry(); confirmEntry detects the
+              tokens-modal context (tokensPanel + tokensStep==='minted')
+              and stays in the modal on success → 'submitted'. %>
+          <%= render 'shared/hold_button',
+              default_text: "Hold to Confirm Entry",
+              hold_text: "Almost there...",
+              success_text: "Submitting…",
+              duration: 2000,
+              hold_id: "tokens-modal" %>
         </div>
 
-        <!-- Error state — poll timed out -->
+        <!-- Submitted state — entry confirmed; modal stays open with CTA -->
+        <div x-show="tokensStep === 'submitted'" class="text-center py-6">
+          <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-5">
+            <svg class="w-7 h-7 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <p class="text-lg font-bold text-heading mb-1">Entry confirmed!</p>
+          <p class="text-xs text-secondary mb-5">Your lineup is locked in. Good luck.</p>
+          <a :href="tokensRedirect || '/'" class="btn btn-primary w-full">View leaderboard</a>
+        </div>
+
+        <!-- Error state — poll timed out OR entry submission failed -->
         <div x-show="tokensStep === 'error'" class="text-center py-6">
           <div class="mx-auto w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center mb-4">
             <span class="text-2xl">⏳</span>
