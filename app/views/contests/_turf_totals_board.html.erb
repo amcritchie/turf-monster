@@ -983,7 +983,9 @@ window.selectionBoard = function() {
                 p.redirectUrl = data.redirect || '/';
                 p.step        = 'tokens-submitted';
                 refreshBalanceDelayed();
-                try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 100); } catch (_) {}
+                // Entry confirmation — burst from the modal card, not
+                // the badge (the user is looking at the modal here).
+                try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 100); } catch (_) {}
               } else {
                 Alpine.store('solanaModal').success(data.tx_signature, 'Entry submitted onchain');
                 refreshBalanceDelayed();
@@ -1008,7 +1010,8 @@ window.selectionBoard = function() {
                 } else {
                   p.redirectUrl = data.redirect || '/';
                   p.step        = 'tokens-submitted';
-                  try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 100); } catch (_) {}
+                  // Entry confirmation — burst from the modal card.
+                  try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 100); } catch (_) {}
                   refreshBalanceDelayed();
                 }
               } else if (hasPendingEmail) {
