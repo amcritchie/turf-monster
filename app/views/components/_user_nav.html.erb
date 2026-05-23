@@ -16,8 +16,11 @@
   @media (min-width: 768px) { .username-cap { max-width: 7rem; } }
   /* Free-entry badge punch — fires when window.animateFreeEntryBadge()
      adds .free-entry-punch (e.g. right after a token-funded entry
-     confirms). Slight scale + wobble; resets cleanly. */
-  .free-entry-badge { display: inline-block; transform-origin: center; }
+     confirms). Slight scale + wobble; resets cleanly. We intentionally
+     do NOT set `display:` on .free-entry-badge — the element's own
+     `inline-flex` utility classes own that, and Tailwind's `hidden`
+     class needs to win for free_entries == 0 (no token = no badge). */
+  .free-entry-badge { transform-origin: center; }
   .free-entry-punch { animation: free-entry-punch 0.65s cubic-bezier(.36,.07,.19,.97) both; }
   @keyframes free-entry-punch {
     0%   { transform: scale(1)   rotate(0deg); }
