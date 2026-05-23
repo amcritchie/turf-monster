@@ -36,10 +36,13 @@
           You now have <span class="font-bold text-primary font-mono" x-text="balance"></span> available.
         </p>
         <p x-show="contestUrl" class="text-sm text-secondary">Returning to your contest…</p>
-        <div x-show="!contestUrl" class="flex gap-3 justify-center">
-          <%= link_to "Enter a contest", root_path, class: "btn btn-primary" %>
-          <%= link_to "Buy more", tokens_buy_path, class: "btn btn-outline" %>
-        </div>
+        <%# Standalone success path (no opener contest tab) — single CTA
+            to the current main contest (Contest.target). Falls through
+            to /contests if no live contest exists at all. %>
+        <% next_target = @next_contest ? contest_path(@next_contest) : contests_path %>
+        <%= link_to "Enter contest", next_target,
+            class: "btn btn-primary w-full",
+            "x-show": "!contestUrl" %>
       </div>
     </template>
 

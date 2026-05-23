@@ -85,6 +85,12 @@ class TokensController < ApplicationController
     redirect_to tokens_buy_path and return if @session_id.blank?
     # When checkout carried a contest, return the buyer there once tokens mint.
     @contest = Contest.find_by(slug: params[:contest].presence)
+    # Fallback CTA for the standalone success card: send the buyer to
+    # the current "main" open contest (lowest rank). Falls back to the
+    # most-recent contest, then to the contests index, all so the
+    # success card always has a working "Enter contest" link.
+    @next_contest = Contest.target ||
+                    Contest.where(status: :open).order(created_at: :desc).first
   end
 
   def status
