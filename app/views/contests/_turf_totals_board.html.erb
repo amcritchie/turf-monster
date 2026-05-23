@@ -673,7 +673,7 @@ window.selectionBoard = function() {
                 // the mint. A second confetti burst fires later when
                 // the entry actually confirms ('tokens-submitted').
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
-                try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
+                try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 100); } catch (_) {}
               }, remaining);
               // The modal STAYS OPEN in 'tokens-minted' — it renders the
               // in-modal Hold to Confirm Entry button. On success → step
@@ -979,7 +979,7 @@ window.selectionBoard = function() {
                 p.redirectUrl = data.redirect || '/';
                 p.step        = 'tokens-submitted';
                 refreshBalanceDelayed();
-                try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
+                try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 100); } catch (_) {}
               } else {
                 Alpine.store('solanaModal').success(data.tx_signature, 'Entry submitted onchain');
                 refreshBalanceDelayed();
@@ -1004,7 +1004,7 @@ window.selectionBoard = function() {
                 } else {
                   p.redirectUrl = data.redirect || '/';
                   p.step        = 'tokens-submitted';
-                  try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
+                  try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 100); } catch (_) {}
                   refreshBalanceDelayed();
                 }
               } else if (hasPendingEmail) {

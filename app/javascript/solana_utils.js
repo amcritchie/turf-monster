@@ -75,6 +75,32 @@ export function animateFreeEntryBadge() {
   setTimeout(function() { badge.classList.remove('free-entry-punch'); }, 700);
 }
 
+// Confetti burst that originates from the 🎟️ Entry badge in the navbar.
+// Used instead of the centered fireSuccessConfetti for token-flow
+// celebrations (mint + entry confirmed) so the streamers shoot out of
+// the badge the user just earned / consumed. Falls back to the top-
+// right of the viewport when the badge isn't on screen (e.g. after a
+// consume that dropped the count to 0 and hid the badge).
+export function fireConfettiFromBadge() {
+  if (typeof confetti === 'undefined') return;
+  var badge  = document.querySelector('[data-free-entry-badge]');
+  var rect   = badge && badge.getBoundingClientRect();
+  var hidden = !rect || (rect.width === 0 && rect.height === 0);
+  var origin = hidden
+    ? { x: 0.92, y: 0.08 } // approximate badge slot in the top-right nav
+    : {
+        x: (rect.left + rect.width  / 2) / window.innerWidth,
+        y: (rect.top  + rect.height / 2) / window.innerHeight
+      };
+  var colors = window.CONFETTI_COLORS || ['#4BAF50', '#8E82FE', '#06D6A0', '#FF7C47', '#FFD700', '#00BFFF', '#FF6B9D', '#C084FC'];
+  // Primary burst — wider spread fanning down + out from the badge.
+  confetti({ particleCount: 100, spread: 110, origin: origin, colors: colors, zIndex: 9999, startVelocity: 45, gravity: 0.85, ticks: 220, scalar: 1.0 });
+  // Tight follow-up so the burst has texture.
+  setTimeout(function() {
+    confetti({ particleCount: 60, spread: 70, origin: origin, colors: colors, zIndex: 9999, startVelocity: 35, gravity: 1.0, ticks: 180, scalar: 0.8 });
+  }, 120);
+}
+
 // Confetti color palette — shared across solana modal & seeds bar
 export const CONFETTI_COLORS = ['#4BAF50', '#8E82FE', '#06D6A0', '#FF7C47', '#FFD700', '#00BFFF', '#FF6B9D', '#C084FC'];
 
@@ -84,4 +110,5 @@ window.refreshBalance = refreshBalance;
 window.refreshBalanceDelayed = refreshBalanceDelayed;
 window.updateNavTokens = updateNavTokens;
 window.animateFreeEntryBadge = animateFreeEntryBadge;
+window.fireConfettiFromBadge = fireConfettiFromBadge;
 window.CONFETTI_COLORS = CONFETTI_COLORS;
