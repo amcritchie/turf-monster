@@ -49,6 +49,11 @@ Rails.application.routes.draw do
   get "turf-totals-v1", to: "pages#turf_totals_v1", as: :turf_totals_v1
   get "seeds_lab", to: "seeds_lab#index", as: :seeds_lab
 
+  # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
+  # vault USDC token account from the browser via Solana RPC, then displays
+  # them next to the Rails-reported figures.
+  get "proof-of-reserves", to: "proof_of_reserves#show", as: :proof_of_reserves
+
   # Public faucet page
   get  "faucet", to: "faucet#show", as: :faucet
   post "faucet", to: "faucet#claim"
