@@ -1,14 +1,3 @@
-PATH
-  remote: ../studio-engine
-  specs:
-    studio-engine (0.4.5)
-      aws-sdk-s3 (~> 1.218)
-      faker (>= 2.0)
-      mini_magick (~> 5.0)
-      rails (>= 7.0)
-      solid_queue
-      tailwindcss-rails (~> 2.7)
-
 GEM
   remote: https://rubygems.org/
   specs:
@@ -90,8 +79,8 @@ GEM
     amazing_print (2.0.0)
     ast (2.4.3)
     aws-eventstream (1.4.0)
-    aws-partitions (1.1252.0)
-    aws-sdk-core (3.247.0)
+    aws-partitions (1.1253.0)
+    aws-sdk-core (3.249.0)
       aws-eventstream (~> 1, >= 1.3.0)
       aws-partitions (~> 1, >= 1.992.0)
       aws-sigv4 (~> 1.9)
@@ -99,11 +88,11 @@ GEM
       bigdecimal
       jmespath (~> 1, >= 1.6.1)
       logger
-    aws-sdk-kms (1.127.0)
-      aws-sdk-core (~> 3, >= 3.247.0)
+    aws-sdk-kms (1.128.0)
+      aws-sdk-core (~> 3, >= 3.248.0)
       aws-sigv4 (~> 1.5)
-    aws-sdk-s3 (1.223.0)
-      aws-sdk-core (~> 3, >= 3.247.0)
+    aws-sdk-s3 (1.224.0)
+      aws-sdk-core (~> 3, >= 3.248.0)
       aws-sdk-kms (~> 1)
       aws-sigv4 (~> 1.5)
     aws-sigv4 (1.12.1)
@@ -426,6 +415,13 @@ GEM
     stripe (19.0.0)
       bigdecimal
       logger
+    studio-engine (0.4.5)
+      aws-sdk-s3 (~> 1.218)
+      faker (>= 2.0)
+      mini_magick (~> 5.0)
+      rails (>= 7.0)
+      solid_queue
+      tailwindcss-rails (~> 2.7)
     tailwindcss-rails (2.7.9-aarch64-linux)
       railties (>= 7.0.0)
     tailwindcss-rails (2.7.9-arm64-darwin)
@@ -500,7 +496,7 @@ DEPENDENCIES
   sprockets-rails
   stimulus-rails
   stripe
-  studio-engine!
+  studio-engine (~> 0.4.0)
   tailwindcss-rails (~> 2.7)
   turbo-rails
   tzinfo-data
