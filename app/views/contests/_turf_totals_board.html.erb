@@ -670,10 +670,14 @@ window.selectionBoard = function() {
                 p.mintedBalance = d.balance;
                 p.step          = 'tokens-minted';
                 // Push the new token count to the navbar + celebrate
-                // the mint. A second confetti burst fires later when
-                // the entry actually confirms ('tokens-submitted').
+                // the mint. The badge punches (scale+wobble) so the
+                // user catches the new 🎟️ in their peripheral vision,
+                // and the confetti burst is positioned to shoot out
+                // of it. A second burst fires later when the entry
+                // actually confirms ('tokens-submitted').
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
-                try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 100); } catch (_) {}
+                try { if (window.animateFreeEntryBadge) setTimeout(window.animateFreeEntryBadge, 60); } catch (_) {}
+                try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 180); } catch (_) {}
               }, remaining);
               // The modal STAYS OPEN in 'tokens-minted' — it renders the
               // in-modal Hold to Confirm Entry button. On success → step
