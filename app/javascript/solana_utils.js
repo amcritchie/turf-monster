@@ -18,8 +18,16 @@ export function refreshBalance() {
     .then(function(data) {
       if (!data) return;
       var formatted = '$' + Math.floor(parseFloat(data.balance));
+      var isZero = formatted === '$0';
+      var badge = document.querySelector('[data-free-entry-badge]');
+      var badgeVisible = badge && !badge.classList.contains('hidden');
       document.querySelectorAll('[data-balance-display]').forEach(function(el) {
         el.textContent = formatted;
+        // Same rule as server-side render: hide $0 when the user has
+        // at least one free-entry token. _user_nav's 🎟️ badge already
+        // signals their next-step affordance.
+        if (isZero && badgeVisible) el.classList.add('hidden');
+        else                        el.classList.remove('hidden');
       });
     })
     .catch(function() {});
@@ -37,14 +45,22 @@ export function refreshBalanceDelayed(ms) {
 
 // Toggle the navbar's 🎟️ free-entry badge based on the new token count.
 // Called after a mint (count increases) or a token-funded entry submit
-// (count decrements). The USDC balance link is unaffected — the badge
-// is a separate indicator next to it.
+// (count decrements). Also re-applies the "hide $0 balance when the
+// user has any free-entry tokens" rule so the live state matches the
+// server-side render.
 export function updateNavTokens(balance) {
   var n = parseInt(balance, 10) || 0;
   var badge = document.querySelector('[data-free-entry-badge]');
-  if (!badge) return;
-  if (n > 0) badge.classList.remove('hidden');
-  else       badge.classList.add('hidden');
+  if (badge) {
+    if (n > 0) badge.classList.remove('hidden');
+    else       badge.classList.add('hidden');
+  }
+  // Balance link visibility — match the server-side rule.
+  document.querySelectorAll('[data-balance-display]').forEach(function(el) {
+    var isZero = (el.textContent || '').trim() === '$0';
+    if (isZero && n > 0) el.classList.add('hidden');
+    else                 el.classList.remove('hidden');
+  });
 }
 
 // Fires the .free-entry-punch CSS animation on the 🎟️ badge — wired
