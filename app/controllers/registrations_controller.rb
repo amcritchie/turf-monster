@@ -17,6 +17,13 @@ class RegistrationsController < ApplicationController
       redirect_to tokens_buy_path, notice: Studio.welcome_message.call(@user)
     end
   rescue StandardError => e
+    # Surface validation failures via the standard toast system instead
+    # of an inline red box on the form — keeps the signup card visually
+    # clean and matches the rest of the app's error UX. flash.now (not
+    # flash) because we render-not-redirect on failure; flash would
+    # leak into the next request.
+    msgs = @user.errors.any? ? @user.errors.full_messages.join(", ") : e.message
+    flash.now[:alert] = msgs
     render :new, status: :unprocessable_entity
   end
 
