@@ -29,10 +29,8 @@
 <%# CRITICAL: this partial is rendered inside <template x-if="...id==='auth'">
     in shared/_modal_host.html.erb. Alpine requires the template's
     content to have a SINGLE root element — anything else mounts as a
-    silent no-op (every commit since the text-shimmer landed broke the
-    modal this way). Keep all rendered output inside the wizard's
-    outer <div>; the <style> block lives inside it for the same
-    reason (browsers happily parse <style> anywhere in <body>). %>
+    silent no-op. Keep all rendered output inside the wizard's outer
+    <div>; .auth-text-shimmer lives in application.tailwind.css. %>
 <div x-data="{
        email: '',
        password: '',
@@ -40,8 +38,8 @@
        // open/close transitions — Alpine catches exceptions in x-if
        // expressions and treats them as falsy. Without this guard a
        // single null-deref took down every inner template and we
-       // rendered an empty modal shell (image 31). Return {} so every
-       // binding below evaluates cleanly until current() is real again.
+       // rendered an empty modal shell. Return {} so every binding
+       // below evaluates cleanly until current() is real again.
        get props() {
          var c = $store.modals.current();
          return (c && c.props) || {};
@@ -55,34 +53,6 @@
        }
      }"
      class="relative">
-
-  <style>
-    /* Submit-button text shimmer — applied while a network attempt is
-       in flight (props.submitting truthy). The text becomes the
-       loader: a bright gradient sweeps left-to-right across the
-       label, no spinner glyph needed. Uses background-clip:text so
-       the underlying button fill stays unchanged. Lives inside the
-       wizard div so the partial has a SINGLE root element for the
-       modal_host's <template x-if> mount. */
-    .auth-text-shimmer {
-      background: linear-gradient(
-        90deg,
-        rgba(255,255,255,0.55) 0%,
-        rgba(255,255,255,1)   50%,
-        rgba(255,255,255,0.55) 100%
-      );
-      background-size: 200% 100%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      -webkit-text-fill-color: transparent;
-      animation: auth-text-shimmer 1.4s linear infinite;
-    }
-    @keyframes auth-text-shimmer {
-      0%   { background-position: 100% 0; }
-      100% { background-position: -100% 0; }
-    }
-  </style>
 
   <%# === CREDENTIALS STEP =================================================== %>
   <%# x-show (not x-if) so the form is ALWAYS in the DOM — only hidden
