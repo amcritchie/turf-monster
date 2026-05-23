@@ -31,8 +31,23 @@
   subtitle         = pack[:quantity] > 1 ? "#{format_price.call(per_token)} each" : "Single contest entry"
   clusters         = pack[:quantity] == 1 ? [:r] : [:l, :c, :r]
 
+  # Popup-blocker workaround for the modal flow: instead of relying on
+  # the form's target="_blank" (which Chrome silently swallowed in
+  # incognito), open a NAMED window synchronously from the click
+  # handler — guaranteed to count as a user gesture — and point the
+  # form's target at that same name so the POST response lands in the
+  # already-opened tab.
+  window_name = target_blank ? "tt_stripe_checkout" : nil
   form_opts = { class: "w-full", data: { turbo: false } }
-  form_opts[:target] = "_blank" if target_blank
+  form_opts[:target] = window_name if window_name
+
+  combined_click = nil
+  if window_name || on_click_js
+    parts = []
+    parts << "window.open('', '#{window_name}')" if window_name
+    parts << on_click_js if on_click_js
+    combined_click = parts.join('; ')
+  end
 
   btn_opts = {
     method:   :post,
@@ -40,7 +55,7 @@
     disabled: disabled,
     class:    "glow-pair-btn glow-brand group block w-full text-left p-6 rounded-xl border-2 border-primary/40 hover:border-primary bg-primary/5 transition"
   }
-  btn_opts["x-on:click".to_sym] = on_click_js if on_click_js
+  btn_opts["x-on:click".to_sym] = combined_click if combined_click
 %>
 <%= button_to tokens_stripe_checkout_path({ pack: pack_id }.merge(extra_params)), **btn_opts do %>
   <% clusters.each do |pos| %>
