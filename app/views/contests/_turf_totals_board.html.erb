@@ -151,6 +151,16 @@ window.selectionBoard = function() {
         }
       } catch (_) {}
 
+      // Hold-to-Confirm dispatch listener — the shared hold_button
+      // partial fires this window event regardless of which DOM scope
+      // it lives in. The auth-modal version of the button can't reach
+      // d.confirmEntry() through el.closest('[x-data]') (that resolves
+      // to the auth wizard's data, not the board's), so we route both
+      // the in-board AND in-modal holds through this single channel.
+      window.addEventListener('hold-confirm-entry', function () {
+        try { board.confirmEntry(); } catch (e) { console.warn('confirmEntry failed:', e); }
+      });
+
       // Reopen the post-signup step after submitProfile()'s reload —
       // Google → buy entry tokens; email → check your email.
       try {
@@ -1266,8 +1276,8 @@ window.selectionBoard = function() {
           guard: "data.selectionCount === #{@contest.picks_required}",
           validate: "d.runHoldValidations()",
           validate_at: 750,
-          on_success: "d.confirmEntry()",
-          early_action: "d.confirmEntry()",
+          on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
+          early_action: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
           early_action_at: 1500,
           early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
         </div>
@@ -1334,8 +1344,8 @@ window.selectionBoard = function() {
         guard: "data.selectionCount === #{@contest.picks_required}",
         validate: "d.runHoldValidations()",
         validate_at: 750,
-        on_success: "d.confirmEntry()",
-        early_action: "d.confirmEntry()",
+        on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
+        early_action: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
         early_action_at: 1500,
         early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
     </div>
