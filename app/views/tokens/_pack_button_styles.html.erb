@@ -1,6 +1,38 @@
-<%# Orb-glow CSS for tokens/_pack_button. Render once per page that uses
-    the partial, outside any x-if/x-show wrapper so the rules are in the
-    DOM before the button mounts. %>
+<%# Orb-glow CSS + JS helper for tokens/_pack_button. Render once per
+    page that uses the partial, outside any x-if/x-show wrapper so the
+    rules + helper are in the DOM before the button mounts. %>
+<script>
+  // Synchronous-user-gesture popup helper for the modal pack-purchase
+  // flow. Chrome (esp. in incognito) was silently dropping the new tab
+  // when we relied on the form's target attribute, even with a same-
+  // domain named target. Instead we open a blank tab FROM THE SUBMIT
+  // EVENT (still a user gesture → allowed), POST via fetch, then
+  // navigate the already-open tab to whatever the server redirects to
+  // (Stripe checkout URL).
+  if (!window.tokenCheckoutSubmit) {
+    window.tokenCheckoutSubmit = function(form) {
+      var newTab = window.open('', '_blank');
+      if (!newTab) {
+        alert('Please allow popups for this site to complete checkout.');
+        return;
+      }
+      fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        redirect: 'follow'
+      }).then(function(r) {
+        if (r && r.url) {
+          newTab.location.href = r.url;
+        } else {
+          newTab.close();
+        }
+      }).catch(function() {
+        try { newTab.close(); } catch (_) {}
+      });
+    };
+  }
+</script>
 <style>
   /* === Glow Pair: N orb clusters (1 cluster per pack quantity), orbital hover === */
   .glow-pair-btn { position: relative; overflow: hidden; transition: all 500ms ease; }
