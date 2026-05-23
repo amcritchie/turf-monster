@@ -153,14 +153,30 @@
     });
 
     window.holdBtnStart = function(el) {
+      var holdId = el.dataset.holdId || 'hold';
+      console.log('[hold:' + holdId + '] mousedown — holdBtnStart called');
       var scope = el.closest('[x-data]');
       if (scope) {
         try {
           var data = Alpine.$data(scope);
-          if (data && data.submitting) return;
+          if (data && data.submitting) {
+            console.log('[hold:' + holdId + '] ABORT — data.submitting is true (previous attempt still in flight)');
+            return;
+          }
           var guard = el.dataset.guard;
-          if (guard && !evalIn(scope, guard)) return;
-        } catch(e) {}
+          if (guard) {
+            var guardPass = evalIn(scope, guard);
+            console.log('[hold:' + holdId + '] guard `' + guard + '` →', guardPass);
+            if (!guardPass) {
+              console.log('[hold:' + holdId + '] ABORT — guard failed');
+              return;
+            }
+          }
+        } catch(e) {
+          console.warn('[hold:' + holdId + '] guard/submitting check threw:', e);
+        }
+      } else {
+        console.warn('[hold:' + holdId + '] no [x-data] ancestor — evalIn calls will be no-ops');
       }
 
       var id = el.dataset.holdId || 'hold';
@@ -171,6 +187,8 @@
       var earlyAction = el.dataset.earlyAction;
       var earlyActionAt = parseInt(el.dataset.earlyActionAt || '1500', 10);
       var earlyActionGuard = el.dataset.earlyActionGuard;
+
+      console.log('[hold:' + holdId + '] start — duration=' + duration + 'ms, onSuccess=' + JSON.stringify(onSuccess) + ', validate=' + JSON.stringify(validate));
 
       var circle = el.querySelector('svg.progress circle');
 
@@ -192,13 +210,21 @@
       el.classList.add('process');
 
       timers[id] = setTimeout(function() {
+        console.log('[hold:' + holdId + '] duration reached at ' + duration + 'ms — main timer fired');
         if (onSuccess) {
           // Stay in process state briefly while resolving
           setTimeout(function() {
+            console.log('[hold:' + holdId + '] firing on_success: ' + onSuccess);
             try {
               var s = el.closest('[x-data]');
-              if (s) { evalIn(s, onSuccess); }
+              if (!s) {
+                console.warn('[hold:' + holdId + '] on_success: no [x-data] ancestor at fire time');
+                return;
+              }
+              evalIn(s, onSuccess);
+              console.log('[hold:' + holdId + '] on_success evalIn returned without throwing');
             } catch(e) {
+              console.error('[hold:' + holdId + '] on_success threw:', e);
               el.classList.remove('process');
               el.classList.add('success');
             }
@@ -214,10 +240,16 @@
           var s = el.closest('[x-data]');
           if (s) {
             var passGuard = !earlyActionGuard || evalIn(s, earlyActionGuard);
+            console.log('[hold:' + holdId + '] early_action at ' + earlyActionAt + 'ms — guard `' + earlyActionGuard + '` →', passGuard);
             if (passGuard) {
               clearTimeout(timers[id]);
               delete timers[id];
-              try { evalIn(s, earlyAction); } catch(e) {}
+              try {
+                console.log('[hold:' + holdId + '] firing early_action: ' + earlyAction);
+                evalIn(s, earlyAction);
+              } catch(e) {
+                console.error('[hold:' + holdId + '] early_action threw:', e);
+              }
             }
           }
         }, earlyActionAt);
@@ -226,10 +258,16 @@
       if (validate) {
         timers[id + '_val'] = setTimeout(function() {
           var s = el.closest('[x-data]');
-          if (!s) return;
+          if (!s) {
+            console.warn('[hold:' + holdId + '] validate: no [x-data] ancestor');
+            return;
+          }
+          console.log('[hold:' + holdId + '] validate at ' + validateAt + 'ms — evaluating: ' + validate);
           try {
             Promise.resolve(evalIn(s, validate)).then(function(ok) {
+              console.log('[hold:' + holdId + '] validate resolved →', ok);
               if (!ok) {
+                console.log('[hold:' + holdId + '] ABORTING via validate (returned falsy)');
                 clearTimeout(timers[id]);
                 delete timers[id];
                 // Also clear the early_action timer — same hold, same abort.
@@ -247,7 +285,8 @@
                   c.style.transition = '';
                 }
               }
-            }, function(_err) {
+            }, function(err) {
+              console.error('[hold:' + holdId + '] validate Promise REJECTED — aborting:', err);
               // Promise rejected — same recovery as ok=false so a thrown
               // validate doesn't strand the user mid-hold.
               clearTimeout(timers[id]);
@@ -256,6 +295,7 @@
               el.classList.remove('process');
             });
           } catch(e) {
+            console.error('[hold:' + holdId + '] validate evalIn THREW — aborting:', e);
             // evalIn itself threw (bad expression / scope) — abort cleanly
             // so the user can retry instead of seeing a frozen button.
             clearTimeout(timers[id]);
@@ -268,7 +308,12 @@
     };
 
     window.holdBtnEnd = function(el) {
-      if (el.classList.contains('success') || el.classList.contains('error')) return;
+      var holdId = el.dataset.holdId || 'hold';
+      if (el.classList.contains('success') || el.classList.contains('error')) {
+        console.log('[hold:' + holdId + '] release ignored — already in success/error state');
+        return;
+      }
+      console.log('[hold:' + holdId + '] release / mouseleave — holdBtnEnd called');
       var id = el.dataset.holdId || 'hold';
 
       // Snap progress circle back to 0 instantly (no reverse animation)

@@ -834,7 +834,10 @@ window.selectionBoard = function() {
 
     async confirmEntry() {
       var sess = Alpine.store('session');
+      console.log('[confirmEntry] called — session:', sess ? { loggedIn: sess.loggedIn, mode: sess.mode, isGuest: sess.isGuest, isWeb3: sess.isWeb3 } : null,
+                  'selectionCount:', this.selectionCount, 'contestOnchain:', this.contestOnchain, 'submitting:', this.submitting);
       if (sess.isGuest) {
+        console.log('[confirmEntry] GUEST → opening login modal, no /enter POST');
         this.showLoginModal();
         return;
       }
@@ -842,6 +845,7 @@ window.selectionBoard = function() {
       // web3 = a Phantom-authenticated session — sign the entry directly.
       // web2 = managed wallet — POST /enter (server consumes an entry token).
       var useOnchainFlow = sess.isWeb3 && this.contestOnchain;
+      console.log('[confirmEntry] useOnchainFlow=' + useOnchainFlow + ' — taking ' + (useOnchainFlow ? 'web3-direct' : 'web2/managed') + ' branch');
 
       this.setHoldSuccess();
       this.submitting = true;
@@ -954,6 +958,7 @@ window.selectionBoard = function() {
           // don't want two stacked modals.
           var authProps      = this._authProps();
           var insideTokensModal = !!(authProps && authProps.step === 'tokens-minted');
+          console.log('[confirmEntry:web2] insideTokensModal=' + insideTokensModal + ' — POSTing /contests/' + this.contestId + '/enter');
           if (!insideTokensModal) {
             Alpine.store('solanaModal').show('Submitting Entry', 'Processing your entry...');
           }
@@ -963,7 +968,9 @@ window.selectionBoard = function() {
             headers: { 'X-CSRF-Token': this.csrfToken, 'Accept': 'application/json' }
           });
 
+          console.log('[confirmEntry:web2] /enter responded — status=' + response.status);
           var data = await response.json();
+          console.log('[confirmEntry:web2] /enter JSON:', data);
 
           if (data.success) {
             // 🎟️ navbar punch — fires when the server reports the entry
