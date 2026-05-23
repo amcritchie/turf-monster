@@ -76,14 +76,12 @@
      class="relative">
 
   <%# === CREDENTIALS STEP =================================================== %>
-  <%# Credentials is the DEFAULT — renders when step is 'credentials',
-      missing, or anything not explicitly tokens-* / redirect. Logic
-      lives in the isCredentialsStep getter above so the x-if is short
-      and Alpine's expression parser has nothing tricky to chew on
-      (previous attempt with !['a','b','c'].includes(props.step) was
-      apparently being mis-evaluated, leaving the modal empty). %>
-  <template x-if="isCredentialsStep">
-    <div>
+  <%# x-show (not x-if) so the form is ALWAYS in the DOM — only hidden
+      via display:none when a tokens-* / redirect step is active. The
+      previous x-if approach kept rendering empty in some condition I
+      couldn't repro remotely; x-show eliminates the variable since the
+      content is mounted unconditionally. %>
+  <div x-show="isCredentialsStep" x-cloak>
       <div class="flex items-start justify-between mb-1">
         <h3 class="text-lg font-bold text-heading"
             x-text="props.mode === 'signup' ? 'Create Your Account' : 'Log in to enter'"></h3>
@@ -171,8 +169,7 @@
           </span>
         </template>
       </p>
-    </div>
-  </template>
+  </div>
 
   <%# === TOKENS STEPS ======================================================= %>
   <%# Shared header for the tokens flow — title varies by step. %>
