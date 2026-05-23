@@ -258,6 +258,18 @@
             }
           });
 
+          // Auto-open the profile modal once after a new Phantom signup.
+          // The wallet verify path sets localStorage 'show_profile_modal'
+          // on result.new_user; consume it here and route through the
+          // shared modal stack. setTimeout defers past Alpine's own init
+          // pass so the store is fully wired when we call open().
+          if (localStorage.getItem('show_profile_modal') === 'true') {
+            localStorage.removeItem('show_profile_modal');
+            setTimeout(function() {
+              var m = Alpine.store('modals');
+              if (m) m.open('profile');
+            }, 300);
+          }
         });
         // Alpine.store('modals') + window.StudioModals.holdAtLeast both
         // live in studio-engine's studio/modals/host partial now — see
@@ -287,9 +299,6 @@
     </div>
 
     <%= render "shared/solana_errors" %>
-    <% if logged_in? %>
-      <%= render "shared/profile_modal" %>
-    <% end %>
     <%# Generic modal host from studio-engine. Owns Alpine.store('modals'),
         the StudioModals.holdAtLeast helper, the backdrop / scroll lock /
         escape / click-outside / ARIA / transitions, and renders this app's
@@ -307,6 +316,11 @@
       <template x-if="$store.modals.current().id === 'onchain-tx'">
         <%= render "modals/onchain_tx" %>
       </template>
+      <% if logged_in? %>
+        <template x-if="$store.modals.current().id === 'profile'">
+          <%= render "modals/profile" %>
+        </template>
+      <% end %>
     <% end %>
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
