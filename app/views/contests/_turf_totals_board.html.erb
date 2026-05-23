@@ -629,9 +629,11 @@ window.selectionBoard = function() {
                 self.tokensMintedCount = d.minted;
                 self.tokensMintedBalance = d.balance;
                 self.tokensStep = 'minted';
-                // Push the new token count to the navbar + celebrate.
+                // Push the new token count to the navbar. No confetti
+                // here — the celebratory burst is saved for entry
+                // confirmation ('submitted' step), so payment-only
+                // success doesn't pre-spend the moment.
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
-                try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
               }, remaining);
               // The modal STAYS OPEN in the 'minted' step — it renders an
               // in-modal Hold to Confirm Entry button. The user holds it
@@ -1324,13 +1326,18 @@ window.selectionBoard = function() {
       <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
            x-transition:enter="transition ease-out duration-200"
            x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-        <%# Header — title is hidden on success states ('minted' +
-            'submitted') so the celebration card reads cleanly; the X
-            stays as a floating close affordance. %>
-        <div class="flex items-start justify-between mb-1">
-          <h3 class="text-lg font-bold text-heading" x-show="tokensStep === 'picker' || tokensStep === 'waiting' || tokensStep === 'confirming' || tokensStep === 'error'">Get Entry Tokens</h3>
-          <span x-show="tokensStep === 'minted' || tokensStep === 'submitted'"></span>
-          <button @click="tokensPanel = false" class="text-secondary hover:text-heading text-xl leading-none ml-auto">&times;</button>
+        <%# Header — title varies by step. Picker/waiting/error keep the
+            left-aligned "Get Entry Tokens" so it lines up with the pack
+            buttons below; confirming + minted center their titles to
+            match the centered checkmark / spinner / copy in those
+            states. 'submitted' shows no title (clean celebration card).
+            The X is absolute top-right so it stays put regardless of
+            which title (if any) is rendered. %>
+        <div class="relative mb-1 min-h-[1.75rem]">
+          <button @click="tokensPanel = false" class="absolute top-0 right-0 text-secondary hover:text-heading text-xl leading-none z-10">&times;</button>
+          <h3 x-show="tokensStep === 'picker' || tokensStep === 'waiting' || tokensStep === 'error'" class="text-lg font-bold text-heading">Get Entry Tokens</h3>
+          <h3 x-show="tokensStep === 'confirming'" class="text-lg font-bold text-heading text-center">Confirming Purchase</h3>
+          <h3 x-show="tokensStep === 'minted'" class="text-lg font-bold text-heading text-center" x-text="tokensMintedCount === 1 ? 'Entry Token Minted' : 'Entry Tokens Minted'"></h3>
         </div>
 
         <!-- Pack picker — default state -->
