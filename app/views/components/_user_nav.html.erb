@@ -42,11 +42,14 @@
             unconsumed entry tokens. window.animateFreeEntryBadge()
             adds .free-entry-punch right after a token-funded entry
             confirms (server returns token_consumed: true). %>
-        <%= link_to "🎟️", root_path,
+        <%= link_to root_path,
               title: "#{free_entries} unconsumed entry token#{'s' if free_entries != 1} — click to enter a contest",
-              class: "free-entry-badge inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-primary/15 border border-primary/40 leading-none whitespace-nowrap hover:bg-primary/25 transition #{'hidden' unless free_entries.positive?}",
-              style: "font-size: 18px; line-height: 1;",
-              data: { free_entry_badge: true } %>
+              class: "free-entry-badge inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 border border-primary/40 text-primary font-bold leading-none whitespace-nowrap hover:bg-primary/25 transition #{'hidden' unless free_entries.positive?}",
+              style: "font-size: 13px; line-height: 1;",
+              data: { free_entry_badge: true } do %>
+          <span style="font-size: 16px; line-height: 1;">🎟️</span>
+          <span>Entry</span>
+        <% end %>
         <% account_link = defined?(account_path) ? account_path : "#" %>
         <span class="hidden md:flex items-center gap-2 ml-auto">
           <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>
