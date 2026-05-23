@@ -123,13 +123,18 @@ window.selectionBoard = function() {
         if (data.status === 'returned' && data.sessionId) {
           // De-dupe: both channels may deliver the same signal.
           if (board.tokensStep === 'confirming' || board.tokensStep === 'minted') return;
+          // Reset all step-scoped fields BEFORE flipping the step so the
+          // reactivity tick swaps cleanly with no carryover.
           board.tokensError = '';
-          board.tokensStep = 'confirming';
+          board.tokensMintedCount = 0;
+          board.tokensMintedBalance = 0;
+          board.tokensRedirect = '';
+          board.tokensPanel = true; // reopen if it was closed
           // Stamp the moment the spinner went on screen — pollTokenStatus
           // uses this to enforce a minimum visible duration before the
           // success swap (same pattern as studio-engine's nav spinner).
           board._tokensConfirmingStartedAt = Date.now();
-          board.tokensPanel = true; // reopen if it was closed
+          board.tokensStep = 'confirming'; // set LAST so x-if templates swap atomically
           board.pollTokenStatus(data.sessionId);
           return;
         }
@@ -1377,96 +1382,115 @@ window.selectionBoard = function() {
           <h3 x-show="tokensStep === 'minted'" class="text-lg font-bold text-heading text-center" x-text="tokensMintedCount === 1 ? 'Entry Token Minted' : 'Entry Tokens Minted'"></h3>
         </div>
 
+        <%# Sub-panels — converted to <template x-if> from x-show so each
+            step's body is MOUNTED/UNMOUNTED (rather than just hidden via
+            display:none). x-show was occasionally leaving two siblings
+            visible at the same time during fast transitions; x-if
+            guarantees only the matching step is in the DOM. %>
+
         <!-- Pack picker — default state -->
-        <div x-show="tokensStep === 'picker'">
-          <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
-          <div class="space-y-3">
-            <% StripePurchase.available_packs.each do |pack_id, pack| %>
-              <%# Shared partial with /tokens/buy — same orb-glow styling
-                  in both places. extra_params injects the contest slug
-                  so checkout's success_url returns here; target_blank +
-                  on_click_js advance the modal state machine. %>
-              <%= render "tokens/pack_button",
-                  pack_id:      pack_id,
-                  pack:         pack,
-                  extra_params: { contest: @contest.slug },
-                  target_blank: true,
-                  on_click_js:  "tokensStep = 'waiting'" %>
-            <% end %>
+        <template x-if="tokensStep === 'picker'">
+          <div>
+            <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
+            <div class="space-y-3">
+              <% StripePurchase.available_packs.each do |pack_id, pack| %>
+                <%# Shared partial with /tokens/buy — same orb-glow
+                    styling in both places. extra_params injects the
+                    contest slug so checkout's success_url returns here;
+                    target_blank + on_click_js advance the modal state
+                    machine. %>
+                <%= render "tokens/pack_button",
+                    pack_id:      pack_id,
+                    pack:         pack,
+                    extra_params: { contest: @contest.slug },
+                    target_blank: true,
+                    on_click_js:  "tokensStep = 'waiting'" %>
+              <% end %>
+            </div>
+            <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
           </div>
-          <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
-        </div>
+        </template>
 
         <!-- Waiting state — Stripe checkout open, no callback yet -->
-        <div x-show="tokensStep === 'waiting'" class="text-center py-4">
-          <div class="mx-auto w-10 h-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-4"></div>
-          <p class="text-sm text-heading font-semibold mb-1">Finish checkout in the new tab</p>
-          <p class="text-xs text-secondary mb-4">We'll bring you back here automatically once payment clears.</p>
-          <button @click="tokensStep = 'picker'" class="text-xs text-secondary hover:text-heading underline underline-offset-2">&larr; Back to packs</button>
-        </div>
+        <template x-if="tokensStep === 'waiting'">
+          <div class="text-center py-4">
+            <div class="mx-auto w-10 h-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-4"></div>
+            <p class="text-sm text-heading font-semibold mb-1">Finish checkout in the new tab</p>
+            <p class="text-xs text-secondary mb-4">We'll bring you back here automatically once payment clears.</p>
+            <button @click="tokensStep = 'picker'" class="text-xs text-secondary hover:text-heading underline underline-offset-2">&larr; Back to packs</button>
+          </div>
+        </template>
 
         <!-- Confirming state — Stripe returned the buyer, mint pending -->
-        <div x-show="tokensStep === 'confirming'" class="text-center py-6">
-          <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-5"></div>
-          <p class="text-base font-bold text-heading mb-1">Confirming your purchase…</p>
-          <p class="text-xs text-secondary">Crediting your entry tokens and topping up your wallet.</p>
-        </div>
+        <template x-if="tokensStep === 'confirming'">
+          <div class="text-center py-6">
+            <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-5"></div>
+            <p class="text-base font-bold text-heading mb-1">Confirming your purchase…</p>
+            <p class="text-xs text-secondary">Crediting your entry tokens and topping up your wallet.</p>
+          </div>
+        </template>
 
         <!-- Minted state — payment cleared; user holds in-modal to submit -->
-        <div x-show="tokensStep === 'minted'" class="text-center py-4">
-          <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-4">
-            <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-            </svg>
+        <template x-if="tokensStep === 'minted'">
+          <div class="text-center py-4">
+            <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-4">
+              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+              </svg>
+            </div>
+            <p class="text-base font-bold text-heading mb-1">
+              <span x-text="tokensMintedCount"></span>
+              entry token<span x-show="tokensMintedCount !== 1">s</span> added
+            </p>
+            <p class="text-xs text-secondary mb-5">
+              You now have <span class="font-bold text-primary font-mono" x-text="tokensMintedBalance"></span> available. Hold to confirm your entry.
+            </p>
+            <%# In-modal hold-to-confirm — user submits the entry without
+                leaving the modal. The hold_button partial's IIFE wires
+                on_success ONCE (first render wins), so this instance
+                ends up calling confirmEntry(); confirmEntry detects the
+                tokens-modal context (tokensPanel + tokensStep==='minted')
+                and stays in the modal on success → 'submitted'. %>
+            <%= render 'shared/hold_button',
+                default_text: "Hold to Confirm Entry",
+                hold_text: "Almost there...",
+                success_text: "Submitting…",
+                duration: 2000,
+                hold_id: "tokens-modal" %>
+            <%# Soft escape — user can dismiss; tokens are minted on-chain,
+                their picks stay in the cart, and the main Hold to Confirm
+                button below the matchup grid still works. %>
+            <button @click="tokensPanel = false" class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
+              I'll confirm later
+            </button>
           </div>
-          <p class="text-base font-bold text-heading mb-1">
-            <span x-text="tokensMintedCount"></span>
-            entry token<span x-show="tokensMintedCount !== 1">s</span> added
-          </p>
-          <p class="text-xs text-secondary mb-5">
-            You now have <span class="font-bold text-primary font-mono" x-text="tokensMintedBalance"></span> available. Hold to confirm your entry.
-          </p>
-          <%# In-modal hold-to-confirm — user submits the entry without
-              leaving the modal. The hold_button partial's IIFE wires
-              on_success ONCE (first render wins), so this instance ends
-              up calling confirmEntry(); confirmEntry detects the
-              tokens-modal context (tokensPanel + tokensStep==='minted')
-              and stays in the modal on success → 'submitted'. %>
-          <%= render 'shared/hold_button',
-              default_text: "Hold to Confirm Entry",
-              hold_text: "Almost there...",
-              success_text: "Submitting…",
-              duration: 2000,
-              hold_id: "tokens-modal" %>
-          <%# Soft escape — user can dismiss; tokens are minted on-chain,
-              their picks stay in the cart, and the main Hold to Confirm
-              button below the matchup grid still works. %>
-          <button @click="tokensPanel = false" class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
-            I'll confirm later
-          </button>
-        </div>
+        </template>
 
         <!-- Submitted state — entry confirmed; modal stays open with CTA -->
-        <div x-show="tokensStep === 'submitted'" class="text-center py-6">
-          <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-5">
-            <svg class="w-7 h-7 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-            </svg>
+        <template x-if="tokensStep === 'submitted'">
+          <div class="text-center py-6">
+            <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-5">
+              <svg class="w-7 h-7 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+              </svg>
+            </div>
+            <p class="text-lg font-bold text-heading mb-1">Entry confirmed!</p>
+            <p class="text-xs text-secondary mb-5">Your lineup is locked in. Good luck.</p>
+            <a :href="tokensRedirect || '/'" class="btn btn-primary w-full">View leaderboard</a>
           </div>
-          <p class="text-lg font-bold text-heading mb-1">Entry confirmed!</p>
-          <p class="text-xs text-secondary mb-5">Your lineup is locked in. Good luck.</p>
-          <a :href="tokensRedirect || '/'" class="btn btn-primary w-full">View leaderboard</a>
-        </div>
+        </template>
 
         <!-- Error state — poll timed out OR entry submission failed -->
-        <div x-show="tokensStep === 'error'" class="text-center py-6">
-          <div class="mx-auto w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center mb-4">
-            <span class="text-2xl">⏳</span>
+        <template x-if="tokensStep === 'error'">
+          <div class="text-center py-6">
+            <div class="mx-auto w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center mb-4">
+              <span class="text-2xl">⏳</span>
+            </div>
+            <p class="text-sm text-heading font-semibold mb-2">Still processing</p>
+            <p class="text-xs text-secondary mb-4" x-text="tokensError"></p>
+            <button @click="window.location.reload()" class="btn btn-outline btn-sm">Refresh</button>
           </div>
-          <p class="text-sm text-heading font-semibold mb-2">Still processing</p>
-          <p class="text-xs text-secondary mb-4" x-text="tokensError"></p>
-          <button @click="window.location.reload()" class="btn btn-outline btn-sm">Refresh</button>
-        </div>
+        </template>
       </div>
     </div>
   </template>
