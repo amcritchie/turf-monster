@@ -356,8 +356,12 @@ window.selectionBoard = function() {
       } catch (e) { /* sessionStorage unavailable — fall through */ }
     },
 
-    // Inline signup — creates the account, then opens the inline
-    // complete-profile modal (new users have no username yet).
+    // Inline signup — creates the account and transitions the page IN
+    // PLACE (no reload). The server returns the new session payload plus
+    // a freshly-rendered authenticated navbar; we hydrate $store.session,
+    // outerHTML-swap the <header data-navbar-root>, replay the cart so it
+    // survives a later Stripe detour, and open the buy-tokens modal —
+    // continuous DOM, no FOUC, no double-header flash.
     async submitInlineSignup() {
       if (this.signupSubmitting) return;
       this.signupError = '';
@@ -382,22 +386,49 @@ window.selectionBoard = function() {
           this.signupSubmitting = false;
           return;
         }
-        // Account created + logged in — username auto-assigned at signup.
-        // Persist the cart, then reload; init() opens the "Get Entry Tokens"
-        // panel first. After the entry confirms (post-tokens-mint), the
-        // pendingCheckEmail flag triggers the email-verification nudge — so
-        // the user buys tokens BEFORE the email-confirmation step.
+
+        // 1. Hydrate the canonical Alpine session store from the server
+        //    response — every component that reads $store.session.loggedIn /
+        //    .mode now flips reactively.
         var sess = Alpine.store('session');
-        if (sess) { sess.loggedIn = true; sess.mode = 'web2'; }
+        if (sess && data.session) { sess.hydrate(data.session); }
+
+        // 2. Swap the navbar root for its newly-rendered authed version.
+        //    We replace the element and re-init Alpine on the new subtree;
+        //    the old <header>'s x-data is discarded with it.
+        if (data.navbar_html) {
+          var oldNav = document.querySelector('header[data-navbar-root]');
+          if (oldNav) {
+            var tmp = document.createElement('div');
+            tmp.innerHTML = data.navbar_html.trim();
+            var newNav = tmp.firstElementChild;
+            if (newNav) {
+              oldNav.replaceWith(newNav);
+              if (window.Alpine && Alpine.initTree) { Alpine.initTree(newNav); }
+            }
+          }
+        }
+
+        // 3. Keep <body data-logged-in> in sync — read by the turbo:load
+        //    balance-refresh + invite-capture listeners on later navigations.
+        try { document.body.setAttribute('data-logged-in', 'true'); } catch (_) {}
+
+        // 4. Persist the cart server-side so it survives the Stripe detour
+        //    (new-tab checkout). Best-effort — failure here just means the
+        //    user re-confirms picks if they leave the tab.
         await this.replaySelectionsToServer();
-        try {
-          sessionStorage.setItem('pendingAuthStep', JSON.stringify({
-            contestSlug: this.contestId,
-            step: 'tokens'
-          }));
-          sessionStorage.setItem('pendingCheckEmail', this.contestId);
-        } catch (e) { /* sessionStorage unavailable */ }
-        window.location.reload();
+
+        // 5. Queue the "check your email" nudge to fire AFTER the entry is
+        //    confirmed (see confirmEntry — it reads pendingCheckEmail).
+        try { sessionStorage.setItem('pendingCheckEmail', this.contestId); }
+        catch (e) { /* sessionStorage unavailable */ }
+
+        // 6. Close the auth modal and open the buy-tokens panel directly.
+        //    No reload, no sessionStorage round-trip — same DOM, just a
+        //    state change.
+        this.signupSubmitting = false;
+        this.loginModal = false;
+        this.showTokensPanel();
       } catch (e) {
         this.signupError = 'Network error. Try again.';
         this.signupSubmitting = false;
@@ -1210,10 +1241,13 @@ window.selectionBoard = function() {
 
   <!-- Auth modal — dual-mode. Default view is "Create Your Account" (signup);
        the bottom link toggles in place to the "Log in to enter" view.
-       Replaces the old "Log In Required" redirect modal. The 6-pick cart is
-       saved to sessionStorage and every auth path ends in a page reload — the
-       cart is restored and the entry auto-submits on load (see init()), so the
-       navbar and server-rendered logged-in UI all reflect the new session. -->
+       Replaces the old "Log In Required" redirect modal.
+       Email signup: in-place transition — submitInlineSignup() hydrates
+         $store.session and outerHTML-swaps the navbar, then opens the
+         buy-tokens panel directly. No reload.
+       Email login + external OAuth (Google) + Phantom: still go through
+         the sessionStorage cart-save + page-reload path, because OAuth
+         actually leaves the tab. init() rehydrates the cart on return. -->
   <template x-if="loginModal">
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.6)"
          @keydown.escape.window="closeLoginModal()">
@@ -1316,6 +1350,12 @@ window.selectionBoard = function() {
     </div>
   </template>
 
+  <%# Orb-glow CSS for the in-modal pack buttons (shared with the
+      standalone /tokens/buy page via tokens/_pack_button). Rendered
+      outside the x-if so the rules are in the DOM before the modal
+      mounts the buttons on first open. %>
+  <%= render "tokens/pack_button_styles" %>
+
   <!-- Buy-tokens panel — shown after a Google signup, and on any "out of
        entry tokens" failure. Each pack opens Stripe checkout in a NEW TAB
        (target=_blank) so the contest tab keeps its place; the processing
@@ -1326,50 +1366,32 @@ window.selectionBoard = function() {
       <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
            x-transition:enter="transition ease-out duration-200"
            x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-        <%# Header — title varies by step. Picker/waiting/error keep the
-            left-aligned "Get Entry Tokens" so it lines up with the pack
-            buttons below; confirming + minted center their titles to
-            match the centered checkmark / spinner / copy in those
-            states. 'submitted' shows no title (clean celebration card).
-            The X is absolute top-right so it stays put regardless of
-            which title (if any) is rendered. %>
+        <%# Header — all step titles centered for visual consistency
+            across the modal flow. 'submitted' shows no title (clean
+            celebration card). The X is absolute top-right so it stays
+            put regardless of which title is rendered. %>
         <div class="relative mb-1 min-h-[1.75rem]">
           <button @click="tokensPanel = false" class="absolute top-0 right-0 text-secondary hover:text-heading text-xl leading-none z-10">&times;</button>
-          <h3 x-show="tokensStep === 'picker' || tokensStep === 'waiting' || tokensStep === 'error'" class="text-lg font-bold text-heading">Get Entry Tokens</h3>
+          <h3 x-show="tokensStep === 'picker' || tokensStep === 'waiting' || tokensStep === 'error'" class="text-lg font-bold text-heading text-center">Get Entry Tokens</h3>
           <h3 x-show="tokensStep === 'confirming'" class="text-lg font-bold text-heading text-center">Confirming Purchase</h3>
           <h3 x-show="tokensStep === 'minted'" class="text-lg font-bold text-heading text-center" x-text="tokensMintedCount === 1 ? 'Entry Token Minted' : 'Entry Tokens Minted'"></h3>
         </div>
 
         <!-- Pack picker — default state -->
         <div x-show="tokensStep === 'picker'">
-          <p class="text-xs text-secondary mb-4">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
+          <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved — pick a pack to finish.</p>
           <div class="space-y-3">
             <% StripePurchase.available_packs.each do |pack_id, pack| %>
-              <% per = StripePurchase.per_token_cents(pack_id) %>
-              <% save_pct = (100 - (per * 100 / StripePurchase.per_token_cents("single"))).round %>
-              <%= button_to tokens_stripe_checkout_path, method: :post,
-                  params: { pack: pack_id, contest: @contest.slug },
-                  form: { target: "_blank", data: { turbo: false } },
-                  "x-on:click": "tokensStep = 'waiting'",
-                  class: "block w-full p-4 rounded-xl border-2 border-primary/40 hover:border-primary bg-primary/5 transition text-left" do %>
-                <div class="flex items-center gap-4">
-                  <div class="w-10 text-center">
-                    <div class="text-3xl font-extrabold font-mono text-heading leading-none"><%= pack[:quantity] %></div>
-                    <div class="text-[10px] uppercase tracking-widest text-muted mt-1"><%= pack[:quantity] == 1 ? "Entry" : "Entries" %></div>
-                  </div>
-                  <div class="flex-1 border-l border-strong pl-4">
-                    <div class="text-xl font-bold font-mono text-heading">$<%= pack[:price_cents] / 100 %></div>
-                    <div class="text-xs text-secondary mt-0.5">
-                      <% if pack[:quantity] > 1 %>
-                        $<%= per / 100 %>.<%= format("%02d", per % 100) %> each
-                        <span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-primary text-white text-[10px] font-extrabold uppercase">Save <%= save_pct %>%</span>
-                      <% else %>
-                        Single contest entry
-                      <% end %>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
+              <%# Shared partial with /tokens/buy — same orb-glow styling
+                  in both places. extra_params injects the contest slug
+                  so checkout's success_url returns here; target_blank +
+                  on_click_js advance the modal state machine. %>
+              <%= render "tokens/pack_button",
+                  pack_id:      pack_id,
+                  pack:         pack,
+                  extra_params: { contest: @contest.slug },
+                  target_blank: true,
+                  on_click_js:  "tokensStep = 'waiting'" %>
             <% end %>
           </div>
           <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
