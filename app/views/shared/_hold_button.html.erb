@@ -185,24 +185,16 @@
 
     window.holdBtnStart = function(el) {
       var holdId = el.dataset.holdId || 'hold';
-      console.log('[hold:' + holdId + '] mousedown — holdBtnStart called');
       var scope = el.closest('[x-data]');
       if (scope) {
         try {
           var data = Alpine.$data(scope);
-          if (data && data.submitting) {
-            console.log('[hold:' + holdId + '] ABORT — data.submitting is true (previous attempt still in flight)');
-            return;
-          }
+          // submitting === true means the previous attempt's POST is
+          // still in flight. Refuse to start a second hold so we don't
+          // double-submit and so the spinning button stays visible.
+          if (data && data.submitting) return;
           var guard = el.dataset.guard;
-          if (guard) {
-            var guardPass = evalIn(scope, guard);
-            console.log('[hold:' + holdId + '] guard `' + guard + '` →', guardPass);
-            if (!guardPass) {
-              console.log('[hold:' + holdId + '] ABORT — guard failed');
-              return;
-            }
-          }
+          if (guard && !evalIn(scope, guard)) return;
         } catch(e) {
           console.warn('[hold:' + holdId + '] guard/submitting check threw:', e);
         }
@@ -218,8 +210,6 @@
       var earlyAction = el.dataset.earlyAction;
       var earlyActionAt = parseInt(el.dataset.earlyActionAt || '1500', 10);
       var earlyActionGuard = el.dataset.earlyActionGuard;
-
-      console.log('[hold:' + holdId + '] start — duration=' + duration + 'ms, onSuccess=' + JSON.stringify(onSuccess) + ', validate=' + JSON.stringify(validate));
 
       var circle = el.querySelector('svg.progress circle');
 
@@ -241,11 +231,9 @@
       el.classList.add('process');
 
       timers[id] = setTimeout(function() {
-        console.log('[hold:' + holdId + '] duration reached at ' + duration + 'ms — main timer fired');
         if (onSuccess) {
           // Stay in process state briefly while resolving
           setTimeout(function() {
-            console.log('[hold:' + holdId + '] firing on_success: ' + onSuccess);
             try {
               var s = el.closest('[x-data]');
               if (!s) {
@@ -253,7 +241,6 @@
                 return;
               }
               evalIn(s, onSuccess);
-              console.log('[hold:' + holdId + '] on_success evalIn returned without throwing');
             } catch(e) {
               console.error('[hold:' + holdId + '] on_success threw:', e);
               el.classList.remove('process');
@@ -270,17 +257,11 @@
         timers[id + '_early'] = setTimeout(function() {
           var s = el.closest('[x-data]');
           if (s) {
-            var passGuard = !earlyActionGuard || evalIn(s, earlyActionGuard);
-            console.log('[hold:' + holdId + '] early_action at ' + earlyActionAt + 'ms — guard `' + earlyActionGuard + '` →', passGuard);
-            if (passGuard) {
+            if (!earlyActionGuard || evalIn(s, earlyActionGuard)) {
               clearTimeout(timers[id]);
               delete timers[id];
-              try {
-                console.log('[hold:' + holdId + '] firing early_action: ' + earlyAction);
-                evalIn(s, earlyAction);
-              } catch(e) {
-                console.error('[hold:' + holdId + '] early_action threw:', e);
-              }
+              try { evalIn(s, earlyAction); }
+              catch(e) { console.error('[hold:' + holdId + '] early_action threw:', e); }
             }
           }
         }, earlyActionAt);
@@ -293,63 +274,36 @@
             console.warn('[hold:' + holdId + '] validate: no [x-data] ancestor');
             return;
           }
-          console.log('[hold:' + holdId + '] validate at ' + validateAt + 'ms — evaluating: ' + validate);
-          try {
-            // Use evalInAsync — Alpine.evaluate (sync) returns undefined
-            // for async expressions because the value arrives via callback
-            // after evaluate has already returned. evalInAsync wraps
-            // evaluateLater in a Promise so we get the actual resolved
-            // value (true/false from runHoldValidations).
-            evalInAsync(s, validate).then(function(ok) {
-              console.log('[hold:' + holdId + '] validate resolved →', ok);
-              if (!ok) {
-                console.log('[hold:' + holdId + '] ABORTING via validate (returned falsy)');
-                clearTimeout(timers[id]);
-                delete timers[id];
-                // Also clear the early_action timer — same hold, same abort.
-                if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
-                // Drop the .process class so the button doesn't freeze on
-                // "Almost there…" — caller's validate is responsible for
-                // any setHoldError() call if it wants an explicit error
-                // state. Without this, a guest user / geo-blocked user
-                // holds the button and the visual state never updates.
-                el.classList.remove('process');
-                var c = el.querySelector('svg.progress circle');
-                if (c) {
-                  c.style.transition = 'none';
-                  void c.offsetWidth;
-                  c.style.transition = '';
-                }
-              }
-            }, function(err) {
-              console.error('[hold:' + holdId + '] validate Promise REJECTED — aborting:', err);
-              // Promise rejected — same recovery as ok=false so a thrown
-              // validate doesn't strand the user mid-hold.
-              clearTimeout(timers[id]);
-              delete timers[id];
-              if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
-              el.classList.remove('process');
-            });
-          } catch(e) {
-            console.error('[hold:' + holdId + '] validate evalIn THREW — aborting:', e);
-            // evalIn itself threw (bad expression / scope) — abort cleanly
-            // so the user can retry instead of seeing a frozen button.
-            clearTimeout(timers[id]);
-            delete timers[id];
+          // Helper: abort the in-flight hold cleanly. Clears all timers
+          // for this id and drops the .process class so the user isn't
+          // stranded at "Almost there…" if validate rejects. Caller's
+          // validate is responsible for any setHoldError() if it wants
+          // an explicit error state (e.g. geo block).
+          var abort = function() {
+            clearTimeout(timers[id]); delete timers[id];
             if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
             el.classList.remove('process');
+            var c = el.querySelector('svg.progress circle');
+            if (c) { c.style.transition = 'none'; void c.offsetWidth; c.style.transition = ''; }
+          };
+          try {
+            evalInAsync(s, validate).then(
+              function(ok) { if (!ok) abort(); },
+              function(err) {
+                console.error('[hold:' + holdId + '] validate rejected:', err);
+                abort();
+              }
+            );
+          } catch(e) {
+            console.error('[hold:' + holdId + '] validate threw synchronously:', e);
+            abort();
           }
         }, validateAt);
       }
     };
 
     window.holdBtnEnd = function(el) {
-      var holdId = el.dataset.holdId || 'hold';
-      if (el.classList.contains('success') || el.classList.contains('error')) {
-        console.log('[hold:' + holdId + '] release ignored — already in success/error state');
-        return;
-      }
-      console.log('[hold:' + holdId + '] release / mouseleave — holdBtnEnd called');
+      if (el.classList.contains('success') || el.classList.contains('error')) return;
       var id = el.dataset.holdId || 'hold';
 
       // Snap progress circle back to 0 instantly (no reverse animation)
