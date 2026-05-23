@@ -231,11 +231,9 @@
 
       <!-- Confirming — Stripe returned the buyer, mint pending -->
       <template x-if="props.step === 'tokens-confirming'">
-        <div class="text-center py-6">
-          <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-5"></div>
-          <p class="text-base font-bold text-heading mb-1">Confirming your purchase…</p>
-          <p class="text-xs text-secondary">Crediting your entry tokens and topping up your wallet.</p>
-        </div>
+        <%= render 'modals/blocks/processing_card',
+            title:   "Confirming your purchase…",
+            message: "Crediting your entry tokens and topping up your wallet." %>
       </template>
 
       <!-- Minted — payment cleared; user holds in-modal to submit -->
@@ -268,56 +266,47 @@
         </div>
       </template>
 
-      <!-- Submitted — entry confirmed; modal stays open with CTA -->
+      <!-- Submitted — entry confirmed; modal stays open with CTA +
+           auto-redirect countdown + tx receipt + confetti. -->
       <template x-if="props.step === 'tokens-submitted'">
-        <div class="text-center py-6">
-          <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-4">
-            <svg class="w-7 h-7 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-            </svg>
-          </div>
-          <p class="text-lg font-bold text-heading mb-1">Entry confirmed!</p>
-          <p class="text-xs text-secondary mb-4">Your lineup is locked in. Good luck.</p>
-          <div x-show="props.txSignature" class="mb-5">
-            <a :href="'https://explorer.solana.com/tx/' + props.txSignature + (typeof clusterParam !== 'undefined' ? clusterParam : '')"
-               target="_blank" rel="noopener"
-               class="inline-flex items-center gap-1.5 text-xs font-mono text-secondary hover:text-primary underline underline-offset-2">
-              <span x-text="props.txSignature ? (props.txSignature.slice(0, 8) + '…' + props.txSignature.slice(-4)) : ''"></span>
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-              </svg>
-            </a>
-          </div>
-          <a :href="props.redirectUrl || '/'" class="btn btn-primary w-full">View leaderboard</a>
-        </div>
+        <%= render 'modals/blocks/success_card',
+            title:                 "Entry confirmed!",
+            message:               "Your lineup is locked in. Good luck.",
+            tx_signature_key:      "props.txSignature",
+            cta_label:             "View leaderboard",
+            cta_href_key:          "props.redirectUrl || '/'",
+            auto_redirect_url_key: "props.redirectUrl || '/'",
+            auto_redirect_seconds: 8,
+            confetti:              true %>
       </template>
 
       <!-- Error — poll timed out OR entry submission failed -->
       <template x-if="props.step === 'tokens-error'">
-        <div class="text-center py-6">
-          <div class="mx-auto w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center mb-4">
-            <span class="text-2xl">⏳</span>
-          </div>
-          <p class="text-sm text-heading font-semibold mb-2">Still processing</p>
-          <p class="text-xs text-secondary mb-4" x-text="props.errorText"></p>
-          <button @click="window.location.reload()" class="btn btn-outline btn-sm">Refresh</button>
-        </div>
+        <%= render 'modals/blocks/error_card',
+            title:       "Still processing",
+            message_key: "props.errorText",
+            cta_label:   "Refresh",
+            cta_reload:  true %>
       </template>
     </div>
   </template>
 
-  <%# === REDIRECT STEP ====================================================== %>
+  <%# === REDIRECT STEP ======================================================
+      The countdown here is driven by the board's setInterval (mutates
+      props.countdown), not by the success_card's self-owned timer, so
+      we compose the visual building blocks directly instead of using
+      _success_card. The progress bar reads props.countdown via the
+      shared _progress_countdown partial. %>
   <template x-if="props.step === 'redirect'">
-    <div class="text-center">
-      <div class="text-4xl mb-3" x-text="props.icon"></div>
+    <div class="text-center py-6">
+      <div class="text-5xl mb-4 leading-none" x-text="props.icon"></div>
       <h3 class="text-lg font-bold text-heading mb-2" x-text="props.title"></h3>
       <p class="text-sm text-secondary mb-4" x-text="props.message"></p>
-      <div class="w-full rounded-full overflow-hidden mb-2" style="height:6px;background:rgba(128,128,128,0.2)">
-        <div :style="'height:100%;border-radius:9999px;background:var(--color-cta);transition:width 1s linear;width:' + (props.countdown / (props.seconds || 5) * 100) + '%'"></div>
+      <div class="mb-4">
+        <%= render 'modals/blocks/progress_countdown',
+            current_key: 'props.countdown',
+            total_key:   'props.seconds || 5' %>
       </div>
-      <p class="text-secondary text-xs mb-4">
-        Redirecting in <span class="text-primary font-mono font-bold" x-text="props.countdown"></span>…
-      </p>
       <button @click="$dispatch('auth-go-now')"
               class="btn btn-primary w-full"
               x-text="props.cta || 'Go now'"></button>

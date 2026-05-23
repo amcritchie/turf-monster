@@ -1,0 +1,38 @@
+<%#
+  Standalone countdown bar + text. Visualization only — the actual
+  ticking state is owned by the caller (e.g. board's setInterval
+  mutating $store.modals.current().props.countdown). Reads its display
+  values from Alpine expressions passed via locals.
+
+  Locals:
+    current_key:  required. Alpine expression for the current count
+                  (e.g. "props.countdown").
+    total_key:    required. Alpine expression for the total / starting
+                  count (e.g. "props.seconds").
+    label:        optional template. Use {count} as the placeholder for
+                  the current value. Default: "Redirecting in {count}s…".
+                  Pass nil to suppress the text entirely.
+    height_px:    bar height in pixels. Default 6.
+%>
+<%
+  height        = local_assigns[:height_px] || 6
+  default_label = "Redirecting in {count}s…"
+  label_raw     = local_assigns.fetch(:label, default_label)
+  # Split around {count} so we can interpolate an x-text span without
+  # the placeholder ending up in the visible string when JS is off.
+  if label_raw
+    label_parts = label_raw.split('{count}', 2)
+    label_before = label_parts.first
+    label_after  = label_parts.length > 1 ? label_parts.last : ''
+  end
+%>
+<div>
+  <div class="w-full rounded-full overflow-hidden mb-2" style="height:<%= height %>px;background:rgba(128,128,128,0.2)">
+    <div :style="'height:100%;border-radius:9999px;background:var(--color-cta);transition:width 1s linear;width:' + ((<%= current_key %>) / ((<%= total_key %>) || 1) * 100) + '%'"></div>
+  </div>
+  <% if label_raw %>
+    <p class="text-secondary text-xs">
+      <%= label_before %><span class="text-primary font-mono font-bold" x-text="<%= current_key %>"></span><%= label_after %>
+    </p>
+  <% end %>
+</div>

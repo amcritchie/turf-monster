@@ -1,0 +1,32 @@
+<%#
+  Reusable processing / loading card. Spinner + title + optional message.
+  Pair with window.StudioModals.holdAtLeast(ms) on the caller side to
+  enforce a minimum visible duration — without that the spinner can
+  flash by when the operation finishes faster than ~1s and the user
+  registers "did anything happen?" instead of "ok, processing →
+  success".
+
+  Locals:
+    title:         required string ("Confirming your purchase…", etc.)
+    message:       optional supporting text
+    size:          spinner size — 'sm', 'md' (default), 'lg'
+    color:         color token for the spinner — 'primary' (default),
+                   'success', 'warning'
+%>
+<%
+  size   = local_assigns[:size]  || 'md'
+  color  = local_assigns[:color] || 'primary'
+  sizes  = {
+    'sm' => 'w-8 h-8 border-2',
+    'md' => 'w-12 h-12 border-4',
+    'lg' => 'w-16 h-16 border-4'
+  }
+  spinner_class = sizes[size] || sizes['md']
+%>
+<div class="text-center py-6">
+  <div class="mx-auto <%= spinner_class %> rounded-full border-<%= color %>/30 border-t-<%= color %> animate-spin mb-5"></div>
+  <p class="text-base font-bold text-heading mb-1"><%= title %></p>
+  <% if local_assigns[:message] %>
+    <p class="text-xs text-secondary"><%= message %></p>
+  <% end %>
+</div>

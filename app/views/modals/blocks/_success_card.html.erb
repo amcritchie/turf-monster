@@ -1,0 +1,141 @@
+<%#
+  Reusable success card — the green-check celebration screen used by
+  the auth wizard's tokens-submitted step, the solanaModal success
+  state, and any future "X confirmed!" modal. Composable building
+  block; the host shell (backdrop, p-6, max-w-sm) is provided by
+  shared/_modal_host so this partial only renders inside-the-card
+  content.
+
+  Locals — every one is optional EXCEPT title:
+
+    title:                 (required) headline. Bold, prominent.
+    message:               sub-headline. One sentence.
+
+    icon_emoji:            renders the given emoji as the icon instead
+                           of the default green check (e.g. "📍").
+    icon_color:            Tailwind color token for the default check;
+                           one of 'primary' (default), 'success', 'warning'.
+
+    tx_signature_key:      Alpine expression that resolves to a Solana
+                           tx signature (e.g. "props.txSignature"). When
+                           truthy, renders the truncated explorer link.
+                           Uses the global clusterParam set by the
+                           solanaModal init in application.html.erb.
+
+    cta_label:             primary CTA button text.
+    cta_href_key:          Alpine expression for the button's href
+                           (e.g. "props.redirectUrl || '/'"). Mutually
+                           exclusive with cta_event.
+    cta_event:             window event name to dispatch on click
+                           (e.g. "auth-go-now"). Mutually exclusive
+                           with cta_href_key.
+
+    secondary_label:       optional secondary action label.
+    secondary_event:       optional secondary action dispatch event.
+
+    auto_redirect_url_key: Alpine expression for the redirect URL. When
+                           set, an internal countdown ticks down and
+                           navigates when it hits zero. Renders the
+                           progress bar + "Redirecting in Xs…" text.
+    auto_redirect_seconds: total seconds for the countdown. Default 5.
+
+    confetti:              boolean. When true, fires
+                           window.fireSuccessConfetti() ~100ms after
+                           mount so the card is visible before the burst.
+%>
+<%
+  icon_color    = local_assigns[:icon_color] || 'primary'
+  redirect_secs = local_assigns[:auto_redirect_seconds] || 5
+  has_redirect  = !!local_assigns[:auto_redirect_url_key]
+  fire_confetti = !!local_assigns[:confetti]
+
+  data_attr = "{
+    _remaining: #{redirect_secs},
+    _total: #{redirect_secs},
+    _redirectTimer: null,
+    startCountdown(url) {
+      if (!url) return;
+      var self = this;
+      if (self._redirectTimer) clearInterval(self._redirectTimer);
+      self._redirectTimer = setInterval(function() {
+        self._remaining--;
+        if (self._remaining <= 0) {
+          clearInterval(self._redirectTimer);
+          self._redirectTimer = null;
+          window.location.href = url;
+        }
+      }, 1000);
+    },
+    fireConfetti() {
+      setTimeout(function() {
+        try { if (window.fireSuccessConfetti) window.fireSuccessConfetti(); } catch (_) {}
+      }, 100);
+    }
+  }".gsub(/\s+/, ' ').html_safe
+
+  init_calls = []
+  init_calls << "fireConfetti()" if fire_confetti
+  init_calls << "startCountdown(#{local_assigns[:auto_redirect_url_key]})" if has_redirect
+%>
+<div x-data="<%= data_attr %>"
+     <%= "x-init=\"#{init_calls.join('; ')}\"".html_safe if init_calls.any? %>
+     class="text-center py-6">
+
+  <%# Icon — emoji takes priority over the default circular green check %>
+  <% if local_assigns[:icon_emoji] %>
+    <div class="text-5xl mb-4 leading-none"><%= icon_emoji %></div>
+  <% else %>
+    <div class="mx-auto w-14 h-14 rounded-full bg-<%= icon_color %>/15 flex items-center justify-center mb-4">
+      <svg class="w-7 h-7 text-<%= icon_color %>" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+  <% end %>
+
+  <p class="text-lg font-bold text-heading mb-1"><%= title %></p>
+  <% if local_assigns[:message] %>
+    <p class="text-xs text-secondary mb-4"><%= message %></p>
+  <% end %>
+
+  <%# Explorer link — only rendered when the tx_signature_key expression
+      resolves to a truthy value (e.g. props.txSignature is set). %>
+  <% if local_assigns[:tx_signature_key] %>
+    <div x-show="<%= tx_signature_key %>" class="mb-5">
+      <a :href="'https://explorer.solana.com/tx/' + (<%= tx_signature_key %>) + (typeof clusterParam !== 'undefined' ? clusterParam : '')"
+         target="_blank" rel="noopener"
+         class="inline-flex items-center gap-1.5 text-xs font-mono text-secondary hover:text-primary underline underline-offset-2">
+        <span x-text="(<%= tx_signature_key %>) ? ((<%= tx_signature_key %>).slice(0, 8) + '…' + (<%= tx_signature_key %>).slice(-4)) : ''"></span>
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+        </svg>
+      </a>
+    </div>
+  <% end %>
+
+  <%# Auto-redirect countdown — bar + "Redirecting in Xs…" text. Reads
+      from the partial's own _remaining/_total (started by x-init above). %>
+  <% if has_redirect %>
+    <div class="w-full rounded-full overflow-hidden mb-2" style="height:6px;background:rgba(128,128,128,0.2)">
+      <div :style="'height:100%;border-radius:9999px;background:var(--color-cta);transition:width 1s linear;width:' + (_remaining / _total * 100) + '%'"></div>
+    </div>
+    <p class="text-secondary text-xs mb-4">
+      Redirecting in <span class="text-primary font-mono font-bold" x-text="_remaining"></span>s…
+    </p>
+  <% end %>
+
+  <%# Primary CTA — either an <a href=...> or a <button> dispatching an event. %>
+  <% if local_assigns[:cta_label] %>
+    <% if local_assigns[:cta_href_key] %>
+      <a :href="<%= cta_href_key %>" class="btn btn-primary w-full"><%= cta_label %></a>
+    <% elsif local_assigns[:cta_event] %>
+      <button @click="$dispatch('<%= cta_event %>')" class="btn btn-primary w-full"><%= cta_label %></button>
+    <% end %>
+  <% end %>
+
+  <% if local_assigns[:secondary_label] && local_assigns[:secondary_event] %>
+    <button @click="$dispatch('<%= secondary_event %>')"
+            class="block mx-auto mt-3 text-xs text-secondary hover:text-heading underline underline-offset-2">
+      <%= secondary_label %>
+    </button>
+  <% end %>
+</div>

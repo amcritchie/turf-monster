@@ -109,9 +109,9 @@ window.selectionBoard = function() {
           // De-dupe: both channels may deliver the same signal.
           if (curStep === 'tokens-confirming' || curStep === 'tokens-minted') return;
           // Stamp the moment the spinner went on screen — pollTokenStatus
-          // uses this to enforce a minimum visible duration before the
-          // success swap (same pattern as studio-engine's nav spinner).
-          board._tokensConfirmingStartedAt = Date.now();
+          // awaits this minimum before the success swap so the spinner
+          // doesn't flash by when the webhook beats the modal mounting.
+          board._confirmingHold = window.StudioModals.holdAtLeast(1500);
           var freshProps = {
             step:          'tokens-confirming',
             errorText:     '',
@@ -656,14 +656,12 @@ window.selectionBoard = function() {
           if (r.ok) {
             var d = await r.json();
             if (d.ready) {
-              // Enforce a minimum 'confirming' spinner duration so the
-              // success state doesn't flash by when the webhook + mint
-              // race ahead of the modal opening. Mirrors the
-              // _navSpinnerMinMs pattern in studio-engine/_head.html.erb.
-              var minMs = 1500;
-              var elapsed = Date.now() - (self._tokensConfirmingStartedAt || 0);
-              var remaining = Math.max(0, minMs - elapsed);
-              setTimeout(function () {
+              // The hold was started when the 'returned' signal arrived
+              // (window.StudioModals.holdAtLeast(1500) — see init's
+              // handleTokenSignal). Awaits the min-visible duration
+              // before swapping the spinner to the minted state.
+              var hold = self._confirmingHold || window.StudioModals.holdAtLeast(0);
+              hold.then(function () {
                 var p = self._authProps();
                 if (!p) return;  // user closed the modal mid-poll
                 p.mintedCount   = d.minted;
@@ -678,7 +676,7 @@ window.selectionBoard = function() {
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
                 try { if (window.animateFreeEntryBadge) setTimeout(window.animateFreeEntryBadge, 60); } catch (_) {}
                 try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 180); } catch (_) {}
-              }, remaining);
+              });
               // The modal STAYS OPEN in 'tokens-minted' — it renders the
               // in-modal Hold to Confirm Entry button. On success → step
               // 'tokens-submitted' (set in confirmEntry).
