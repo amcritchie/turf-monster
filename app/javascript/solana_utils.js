@@ -93,12 +93,15 @@ export function fireConfettiFromBadge() {
         y: (rect.top  + rect.height / 2) / window.innerHeight
       };
   var colors = window.CONFETTI_COLORS || ['#4BAF50', '#8E82FE', '#06D6A0', '#FF7C47', '#FFD700', '#00BFFF', '#FF6B9D', '#C084FC'];
-  // Primary burst — wider spread fanning down + out from the badge.
-  confetti({ particleCount: 100, spread: 110, origin: origin, colors: colors, zIndex: 9999, startVelocity: 45, gravity: 0.85, ticks: 220, scalar: 1.0 });
-  // Tight follow-up so the burst has texture.
+  // Radial pop from the badge center — spread:360 fires particles in
+  // every direction (up, down, sideways), low startVelocity + low
+  // gravity keep them clustered around the badge rather than blasting
+  // off-screen. Reads like an "out of the ticket" celebration.
+  confetti({ particleCount: 90, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 9999, startVelocity: 22, gravity: 0.55, ticks: 180, scalar: 0.9 });
+  // Smaller follow-up shell, even tighter, for layered texture.
   setTimeout(function() {
-    confetti({ particleCount: 60, spread: 70, origin: origin, colors: colors, zIndex: 9999, startVelocity: 35, gravity: 1.0, ticks: 180, scalar: 0.8 });
-  }, 120);
+    confetti({ particleCount: 45, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 9999, startVelocity: 14, gravity: 0.75, ticks: 140, scalar: 0.7 });
+  }, 160);
 }
 
 // Confetti color palette — shared across solana modal & seeds bar
