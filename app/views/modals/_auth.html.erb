@@ -249,16 +249,18 @@
           <p class="text-xs text-secondary mb-5">
             You now have <span class="font-bold text-primary font-mono" x-text="props.mintedBalance"></span> available. Hold to confirm your entry.
           </p>
-          <%# In-modal Hold to Confirm. The hold_button partial wires
-              on_success → d.confirmEntry(); confirmEntry detects the
-              auth-modal/tokens-minted context via $store.modals and
-              stays in the modal on success → step 'tokens-submitted'. %>
+          <%# In-modal Hold to Confirm. Dispatches the same hold-confirm-entry
+              window event as the board's hold buttons; selectionBoard's
+              listener calls confirmEntry(), which detects the
+              auth-modal/tokens-minted context via $store.modals and stays
+              in the modal on success → step 'tokens-submitted'. %>
           <%= render 'shared/hold_button',
               default_text: "Hold to Confirm Entry",
               hold_text: "Almost there...",
               success_text: "Submitting…",
               duration: 2000,
-              hold_id: "tokens-modal" %>
+              hold_id: "tokens-modal",
+              on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))" %>
           <button @click="$store.modals.close()"
                   class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
             I'll confirm later
