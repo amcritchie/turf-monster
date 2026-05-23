@@ -266,15 +266,21 @@
         </div>
       </template>
 
-      <!-- Submitted — entry confirmed; modal stays open with CTA +
-           auto-redirect countdown + tx receipt + confetti. -->
+      <!-- Submitted — entry confirmed. Same engine block + same options
+           as the onchain-tx success card so web2 and web3 entry success
+           visually match. Copy mirrors the Solana entry flow's vibe
+           (big "Good Luck" headline + small "Entry Confirmed" sub). -->
       <template x-if="props.step === 'tokens-submitted'">
         <%= render 'studio/modals/blocks/success_card',
-            title:                 "Entry confirmed!",
-            message:               "Your lineup is locked in. Good luck.",
+            title:                 "Good Luck",
+            message:               "Entry Confirmed",
+            icon_color:            'mint',
+            large_title:           true,
             tx_signature_key:      "props.txSignature",
-            cta_label:             "View leaderboard",
+            tx_solana:             true,
+            cta_label:             "Contest Lobby ⚔️",
             cta_href_key:          "props.redirectUrl || '/'",
+            cta_drain:             true,
             auto_redirect_url_key: "props.redirectUrl || '/'",
             auto_redirect_seconds: 8,
             confetti:              true %>
