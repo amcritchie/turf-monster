@@ -188,6 +188,12 @@
               this.recoveryHandler = null;
               this.recoveryPhantom = false;
               this._clearCountdown();
+              // Open through the shared modal stack so the engine's
+              // host owns the backdrop / scroll lock / ARIA / z-stack.
+              // dismissible: false suppresses click-outside + escape
+              // while a Phantom signature / RPC confirm is pending —
+              // success()/error() flip it to true.
+              Alpine.store('modals').open('onchain-tx', { dismissible: false });
             },
             setRecovery: function(label, handler, options) {
               this.recoveryLabel = label;
@@ -209,6 +215,9 @@
                 self.countdown--;
                 if (self.countdown <= 0) { self._clearCountdown(); self.close(); }
               }, 1000);
+              // Allow dismissal now that the tx has resolved.
+              var cur = Alpine.store('modals').current();
+              if (cur && cur.id === 'onchain-tx') cur.props.dismissible = true;
             },
             _clearCountdown: function() {
               if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
@@ -217,6 +226,9 @@
               this.state = 'error';
               this.errorMessage = msg;
               if (title) this.title = title;
+              // Allow dismissal so the user can retry or close out.
+              var cur = Alpine.store('modals').current();
+              if (cur && cur.id === 'onchain-tx') cur.props.dismissible = true;
             },
             close: function() {
               this._clearCountdown();
@@ -236,6 +248,9 @@
               this.recoveryPhantom = false;
               if (cb) cb();
               this.onClose = null;
+              // Close through the modal stack so the host shell unmounts.
+              var mc = Alpine.store('modals').current();
+              if (mc && mc.id === 'onchain-tx') Alpine.store('modals').close();
             },
             get explorerUrl() {
               if (!this.txSignature) return null;
@@ -272,7 +287,6 @@
     </div>
 
     <%= render "shared/solana_errors" %>
-    <%= render "shared/solana_modal" %>
     <% if logged_in? %>
       <%= render "shared/profile_modal" %>
     <% end %>
@@ -286,6 +300,12 @@
       </template>
       <template x-if="$store.modals.current().id === 'auth'">
         <%= render "modals/auth" %>
+      </template>
+      <%# On-chain TX modal (replaces shared/_solana_modal.html.erb).
+          State lives in Alpine.store('solanaModal') — show/success/
+          error/close on that store push/pop this id onto the stack. %>
+      <template x-if="$store.modals.current().id === 'onchain-tx'">
+        <%= render "modals/onchain_tx" %>
       </template>
     <% end %>
     <% if logged_in? && current_user.solana_connected? %>

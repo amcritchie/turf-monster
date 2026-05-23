@@ -1,0 +1,232 @@
+<%#
+  On-chain transaction modal — replaces shared/_solana_modal.html.erb.
+  Rendered inside studio-engine's modal host as modal id 'onchain-tx';
+  the host owns the backdrop / scroll lock / escape / aria / transitions.
+
+  Reads display state from $store.solanaModal (kept as the source of
+  truth so the existing 59 caller sites' API — show/success/error/close,
+  direct field reads like .visible / .txSignature / .seedsEarned, the
+  .onClose callback, .setRecovery() — all keep working unchanged).
+  The store's methods ALSO push/pop the modal stack so the host shell
+  renders this partial when the store opens.
+
+  Visual idiom stays Solana-canonical (large title, branded tx-link,
+  Contest Lobby drain CTA, seeds bar + level-up celebration). The
+  generic _processing_card and _error_card engine blocks cover the
+  non-Solana-specific states; the rich success state stays inline
+  here because the Solana mark + lobby drain + seeds animation are
+  turf-specific. Promoting them to the engine is step F.
+
+  Single root: this partial's content lives inside one <div> so
+  Alpine's <template x-if> clones it whole (see
+  [[feedback_alpine_template_single_root]]).
+%>
+<div x-data="{
+       init() {
+         var self = this;
+         // Confetti when the state flips to success — same trigger as
+         // before, just rewired to watch the store from inside the
+         // host-mounted content.
+         this.$watch('$store.solanaModal.state', function(val) {
+           if (val === 'success') {
+             setTimeout(function() {
+               try { if (window.fireSuccessConfetti) window.fireSuccessConfetti(); } catch (_) {}
+             }, 100);
+           }
+         });
+       }
+     }">
+
+  <%# === PROCESSING ========================================================
+      Pending Phantom signature, pending RPC confirmation, etc. The
+      generic engine block carries the same spinner + title + message
+      idiom the bespoke template used. %>
+  <template x-if="$store.solanaModal.state === 'processing'">
+    <%= render 'studio/modals/blocks/processing_card',
+        title_key:   '$store.solanaModal.title',
+        message_key: '$store.solanaModal.message' %>
+  </template>
+
+  <%# === SUCCESS ===========================================================
+      Stays inline — Solana-branded tx receipt + Contest Lobby drain
+      CTA + seeds celebration are turf-monster-specific UI that doesn't
+      belong in a Solana-agnostic engine block. Step F may promote
+      patterns from here. %>
+  <template x-if="$store.solanaModal.state === 'success'">
+    <div x-data="{ initialCountdown: 0 }"
+         x-init="initialCountdown = $store.solanaModal.countdown || 5"
+         class="text-center">
+      <div class="mx-auto w-12 h-12 mb-4 rounded-full bg-mint/20 flex items-center justify-center">
+        <svg class="w-6 h-6 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      <h3 class="text-heading font-bold text-3xl mb-2" x-text="$store.solanaModal.title"></h3>
+      <p class="text-secondary text-sm mb-3" x-text="$store.solanaModal.message"></p>
+
+      <%# Stylized Solana TX link — boxed, brand-gradient mark. %>
+      <template x-if="$store.solanaModal.txSignature">
+        <a :href="$store.solanaModal.explorerUrl" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-subtle hover:border-primary/50 transition mb-3 group"
+           style="background: rgba(var(--color-primary-500-rgb), 0.06);">
+          <svg width="14" height="11" viewBox="0 0 397 311" fill="none">
+            <defs>
+              <linearGradient id="solana-grad" x1="361" y1="-9" x2="153" y2="389" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#00FFA3"/>
+                <stop offset="1" stop-color="#DC1FFF"/>
+              </linearGradient>
+            </defs>
+            <path d="M65 234c2-2 6-4 9-4h317c6 0 9 7 5 11l-63 63c-2 2-6 4-9 4H6c-6 0-9-7-5-11l64-63z" fill="url(#solana-grad)"/>
+            <path d="M65 4c2-2 6-4 9-4h317c6 0 9 7 5 11l-63 63c-2 2-6 4-9 4H6c-6 0-9-7-5-11L65 4z" fill="url(#solana-grad)"/>
+            <path d="M333 119c-2-2-6-4-9-4H7c-6 0-9 7-5 11l63 63c2 2 6 4 9 4h317c6 0 9-7 5-11l-63-63z" fill="url(#solana-grad)"/>
+          </svg>
+          <span class="font-mono text-[11px] text-secondary group-hover:text-primary transition" x-text="$store.solanaModal.txSignature.substring(0, 16) + '…'"></span>
+          <svg class="w-3 h-3 text-muted group-hover:text-primary transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        </a>
+      </template>
+
+      <%# Contest Lobby CTA with drain-bar countdown overlay. %>
+      <a :href="$store.solanaModal.lobbyUrl || '#'"
+         @click="if (!$store.solanaModal.lobbyUrl) event.preventDefault(); $store.solanaModal.close();"
+         class="relative overflow-hidden block w-full px-4 py-2.5 rounded-lg font-bold text-sm text-white text-center transition no-underline mb-3"
+         style="background: var(--color-cta);">
+        <div class="absolute inset-0 pointer-events-none origin-left"
+             style="background: rgba(255,255,255,0.18);"
+             :style="{ animation: 'lobby-drain ' + initialCountdown + 's linear forwards' }"></div>
+        <span class="relative z-10">Contest Lobby ⚔️</span>
+      </a>
+
+      <%# Seeds bar with rotating counter + level-up celebration —
+          turf-monster-specific reward UI. %>
+      <template x-if="$store.solanaModal.seedsEarned > 0">
+        <div x-data="{
+               displaySeeds: 0,
+               displayLevel: 1,
+               levelingUp: false,
+               showFreeEntryBadge: false,
+               init() {
+                 var self = this;
+                 var modal = Alpine.store('solanaModal');
+                 var total = modal.seedsTotal || 0;
+                 var earned = modal.seedsEarned || 0;
+                 var seedsPerLevel = 100;
+                 var oldSeeds = Math.max(0, total - earned);
+                 var oldLevel = Math.floor(oldSeeds / seedsPerLevel) + 1;
+                 var newLevel = Math.floor(total / seedsPerLevel) + 1;
+                 var oldToward = oldSeeds % seedsPerLevel;
+                 var newToward = total % seedsPerLevel;
+
+                 self.displaySeeds = oldToward;
+                 self.displayLevel = oldLevel;
+
+                 setTimeout(function() {
+                   if (newLevel > oldLevel) {
+                     self.levelingUp = true;
+                     self.displaySeeds = 100;
+                     setTimeout(function() {
+                       self.displayLevel = newLevel;
+                       self.showFreeEntryBadge = true;
+                     }, 1900);
+                     setTimeout(function() { self.displaySeeds = 0; }, 3400);
+                     setTimeout(function() {
+                       self.displaySeeds = newToward;
+                       self.levelingUp = false;
+                     }, 3600);
+                   } else {
+                     self.displaySeeds = newToward;
+                   }
+                 }, 2000);
+
+                 // Shimmer cycle.
+                 var fireShimmer = function() {
+                   if (!self.$root || !self.$root.querySelectorAll) return;
+                   self.$root.querySelectorAll('.modal-shimmer').forEach(function(el) {
+                     el.style.animation = 'none';
+                     void el.offsetHeight;
+                     el.style.animation = 'seedsShimmer 1.8s ease-in-out forwards';
+                   });
+                 };
+                 for (var i = 1; i <= 5; i++) { setTimeout(fireShimmer, i * 9000); }
+                 setTimeout(function() { setInterval(fireShimmer, 9 * 60 * 1000); }, 5 * 9000);
+               }
+             }"
+             class="mx-auto" style="max-width: 100%;">
+          <template x-if="!showFreeEntryBadge">
+            <div class="relative">
+              <div class="seeds-bar-continuous flex gap-1.5"
+                   style="height: 22px; transition: --bar-progress 1.9s cubic-bezier(0.16, 1, 0.3, 1);"
+                   :style="{ '--bar-progress': displaySeeds }">
+                <template x-for="i in 5" :key="i">
+                  <div class="flex-1 relative overflow-hidden rounded-md"
+                       style="background: rgba(var(--color-primary-500-rgb), 0.22); border: 1.5px solid rgba(var(--color-primary-500-rgb), 0.6);">
+                    <div class="absolute inset-0 pointer-events-none"
+                         :style="{
+                           backgroundPosition: ((i - 1) * 25) + '% 0',
+                           clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
+                         }"
+                         style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
+                    <div class="modal-shimmer absolute top-0 bottom-0 pointer-events-none"
+                         :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+                         style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%); transform: translateX(200%);"></div>
+                  </div>
+                </template>
+              </div>
+              <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
+                <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.7);">
+                  <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 2.6ch; line-height: 1.25em;">
+                    <span class="block"
+                          :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.9s cubic-bezier(0.16, 1, 0.3, 1)' }">
+                      <template x-for="n in 101" :key="n">
+                        <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
+                      </template>
+                    </span>
+                  </span>
+                  <span class="text-[10px] font-normal opacity-90">seeds</span>
+                </span>
+              </div>
+            </div>
+          </template>
+          <template x-if="showFreeEntryBadge">
+            <div class="level-up-pop inline-flex items-center justify-center w-full px-4 py-2.5 rounded-lg font-bold text-sm"
+                 style="background: transparent; color: var(--color-cta); border: 2px solid var(--color-cta);">
+              <span>Free Entry Earned 🎟️</span>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <%# === ERROR =============================================================
+      Uses the engine error_card for the basic shape (icon + title +
+      message). The Phantom-branded recovery button stays inline because
+      "Phantom-branded recovery" is Solana-specific — promote to engine
+      in step F as a generic `recovery_icon:` option. %>
+  <template x-if="$store.solanaModal.state === 'error'">
+    <div class="text-center">
+      <div class="mx-auto w-12 h-12 mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+        <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </div>
+      <h3 class="text-heading font-bold text-lg mb-2" x-text="$store.solanaModal.title"></h3>
+      <p class="text-red-400 text-sm mb-4" x-text="$store.solanaModal.errorMessage"></p>
+      <div class="flex flex-col gap-3 items-center">
+        <template x-if="$store.solanaModal.recoveryLabel && $store.solanaModal.recoveryPhantom">
+          <button @click="$store.solanaModal._triggerRecovery()"
+                  class="btn btn-secondary btn-lg w-full gap-3">
+            <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
+            <span x-text="$store.solanaModal.recoveryLabel"></span>
+          </button>
+        </template>
+        <template x-if="$store.solanaModal.recoveryLabel && !$store.solanaModal.recoveryPhantom">
+          <button @click="$store.solanaModal._triggerRecovery()"
+                  x-text="$store.solanaModal.recoveryLabel"
+                  class="btn btn-primary btn-sm"></button>
+        </template>
+        <button @click="$store.solanaModal.close()"
+                class="text-secondary hover:text-heading text-sm underline underline-offset-2 cursor-pointer">Close</button>
+      </div>
+    </div>
+  </template>
+</div>
