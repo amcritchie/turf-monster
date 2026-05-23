@@ -74,21 +74,19 @@
       start() {
         if (!sessionId) { this.errored = true; return; }
 
-        // Canonical flow — the contest tab opened this in a new tab. Hand
-        // the session_id back so the contest tab's modal runs the
-        // "Confirming your purchase…" + success UI. We signal on TWO
+        // Best-effort notify any listening contest tab (the modal there
+        // mirrors the confirming → minted → submitted flow). Two
         // channels because browsers may have dropped window.opener
         // (implicit noopener on target=_blank forms is common):
         //   1. BroadcastChannel — same-origin, opener-independent
         //   2. window.opener.postMessage — legacy fallback
-        var delivered = false;
-
+        // Neither confirms delivery — postMessage returns void whether
+        // anyone is listening or not — so we ALSO poll below.
         try {
           if ('BroadcastChannel' in window) {
             var ch = new BroadcastChannel('tt-tokens');
             ch.postMessage({ source: 'tt-tokens', status: 'returned', sessionId: sessionId });
             ch.close();
-            delivered = true;
           }
         } catch (e) {}
 
@@ -98,23 +96,16 @@
               { source: 'tt-tokens', status: 'returned', sessionId: sessionId },
               window.location.origin
             );
-            delivered = true;
           }
         } catch (e) {}
 
-        if (delivered) {
-          // Try to close (works only for script-opened tabs); if we can't,
-          // navigate back to the contest so the user isn't stranded on a
-          // dangling processing page. Either way the contest tab's modal
-          // is handling the actual UX.
-          setTimeout(function () { window.close(); }, 80);
-          setTimeout(function () {
-            if (contestUrl) window.location.href = contestUrl;
-          }, 400);
-          return;
-        }
-
-        // No opener AND no BroadcastChannel — run the standalone polling UI.
+        // If a contest tab is listening it will pick up the broadcast
+        // above and run its own modal flow; that tab may later close
+        // OR redirect this one. Meanwhile we poll here as a fallback —
+        // covers the /tokens/buy direct-purchase case (no opener tab
+        // listening) AND the case where window.close() fails on a
+        // form-opened popup. Once ready, poll() either navigates to
+        // contestUrl OR shows the standalone success card.
         this._ticker = setInterval(() => { this.elapsed += 1 }, 1000);
         this.poll();
         this._timer = setInterval(() => this.poll(), 1500);
