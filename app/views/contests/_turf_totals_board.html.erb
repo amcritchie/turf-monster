@@ -74,38 +74,19 @@ window.selectionBoard = function() {
     sortDir: 'asc',
     filterText: '',
     pickUrgent: false,
-    redirectModal: null,
-    redirectCountdown: 0,
-    redirectInterval: null,
-    loginModal: false,
-    authMode: 'signup',
-    loginEmail: '',
-    loginPassword: '',
-    loginError: '',
-    loginSubmitting: false,
-    loginPhantomError: '',
-    signupEmail: '',
-    signupPassword: '',
-    signupError: '',
-    signupSubmitting: false,
-    googleError: '',
-    googleAuthPending: false,
+    // ALL of the auth/signup/tokens/redirect modal state has moved to
+    // Alpine.store('modals') under modal id 'auth'. The wizard partial
+    // (modals/_auth.html.erb) drives off props.step, and this board's
+    // network methods read/write props on $store.modals.current(). The
+    // form fields (email, password) live in the wizard partial's own
+    // x-data. Helper methods _wizardOpen / _wizardStep / _wizardProps
+    // below wrap the store access so call sites stay readable.
     profileModal: false,
     profileUsername: '',
     profileError: '',
     profileSubmitting: false,
     signupMethod: '',
-    tokensPanel: false,
-    // Single state machine for the buy-tokens modal — guarantees the
-    // sub-panels are mutually exclusive.
-    tokensStep: 'picker',         // 'picker' | 'waiting' | 'confirming' | 'minted' | 'submitted' | 'error'
-    tokensMintedCount: 0,         // populated when tokensStep === 'minted'
-    tokensMintedBalance: 0,       // populated when tokensStep === 'minted'
-    tokensError: '',              // populated when tokensStep === 'error'
-    tokensRedirect: '',           // populated when tokensStep === 'submitted' — leaderboard URL
-    tokensTxSignature: '',        // populated when the entry submitted onchain
-    // checkEmail modal now lives in the generic Alpine.store('modals') stack —
-    // opened via $store.modals.open('checkEmail', { email, sendError }).
+    _redirectInterval: null,      // setInterval handle for the redirect-step countdown
 
     init() {
       // Stripe checkout runs in a NEW TAB (see the buy-tokens panel). When
@@ -120,23 +101,30 @@ window.selectionBoard = function() {
       var board = this;
       var handleTokenSignal = function (data) {
         if (!data || data.source !== 'tt-tokens') return;
+        var modals = Alpine.store('modals');
+        var cur = modals.current();
+        var curStep = (cur && cur.id === 'auth') ? cur.props.step : null;
 
         if (data.status === 'returned' && data.sessionId) {
           // De-dupe: both channels may deliver the same signal.
-          if (board.tokensStep === 'confirming' || board.tokensStep === 'minted') return;
-          // Reset all step-scoped fields BEFORE flipping the step so the
-          // reactivity tick swaps cleanly with no carryover.
-          board.tokensError = '';
-          board.tokensMintedCount = 0;
-          board.tokensMintedBalance = 0;
-          board.tokensRedirect = '';
-          board.tokensTxSignature = '';
-          board.tokensPanel = true; // reopen if it was closed
+          if (curStep === 'tokens-confirming' || curStep === 'tokens-minted') return;
           // Stamp the moment the spinner went on screen — pollTokenStatus
           // uses this to enforce a minimum visible duration before the
           // success swap (same pattern as studio-engine's nav spinner).
           board._tokensConfirmingStartedAt = Date.now();
-          board.tokensStep = 'confirming'; // set LAST so x-if templates swap atomically
+          var freshProps = {
+            step:          'tokens-confirming',
+            errorText:     '',
+            mintedCount:   0,
+            mintedBalance: 0,
+            redirectUrl:   '',
+            txSignature:   ''
+          };
+          if (cur && cur.id === 'auth') {
+            Object.assign(cur.props, freshProps);
+          } else {
+            modals.open('auth', freshProps);
+          }
           board.pollTokenStatus(data.sessionId);
           return;
         }
@@ -146,8 +134,7 @@ window.selectionBoard = function() {
           // the modal and let the user do a fresh Hold to Confirm; we no
           // longer auto-submit the entry. (The pendingCheckEmail nudge
           // fires after the user's confirmEntry success path.)
-          board.tokensPanel = false;
-          board.tokensStep = 'picker';
+          if (cur && cur.id === 'auth') modals.close();
           try { board.resetHoldButtons(); } catch (_) {}
         }
       };
@@ -314,40 +301,22 @@ window.selectionBoard = function() {
       return this._shakeMatchupId === matchupId;
     },
 
+    // Open the auth wizard at the credentials step (signup mode default).
+    // The wizard partial's own x-data owns the email/password fields;
+    // submit/error state for the network attempts lives on props so the
+    // board's async methods can update them.
     showLoginModal() {
       // Drop any hold-button error state ("Entry Blocked") so the button is
       // back to its default while the user signs in.
       this.resetHoldButtons();
-      this.authMode = 'signup';
-      this.loginError = '';
-      this.loginPhantomError = '';
-      this.loginSubmitting = false;
-      this.signupError = '';
-      this.signupSubmitting = false;
-      this.googleError = '';
-      this.googleAuthPending = false;
-      this.loginModal = true;
-    },
-
-    closeLoginModal() {
-      this.loginModal = false;
-      this.loginError = '';
-      this.loginPhantomError = '';
-      this.loginSubmitting = false;
-      this.loginPassword = '';
-      this.signupError = '';
-      this.signupSubmitting = false;
-      this.signupPassword = '';
-      this.googleError = '';
-    },
-
-    // Toggle the auth modal between the default "Create Your Account"
-    // (signup) view and the "Log in to enter" (login) view, in place.
-    switchAuthMode(mode) {
-      this.authMode = mode;
-      this.loginError = '';
-      this.loginPhantomError = '';
-      this.signupError = '';
+      Alpine.store('modals').open('auth', {
+        step:          'credentials',
+        mode:          'signup',
+        submitting:    null,    // null | 'signup' | 'login' | 'phantom' | 'google'
+        formError:     '',
+        phantomError:  '',
+        googleError:   ''
+      });
     },
 
     // Persist current cart so it survives an external redirect (Google OAuth,
@@ -363,20 +332,29 @@ window.selectionBoard = function() {
       } catch (e) { /* sessionStorage unavailable — fall through */ }
     },
 
+    // Helper — read the auth wizard's props off the store, or null if the
+    // wizard isn't open. Used by every method that wants to mutate display
+    // state without leaving stale fields on the board.
+    _authProps() {
+      var c = Alpine.store('modals').current();
+      return (c && c.id === 'auth') ? c.props : null;
+    },
+
     // Inline signup — creates the account and transitions the page IN
-    // PLACE (no reload). The server returns the new session payload plus
-    // a freshly-rendered authenticated navbar; we hydrate $store.session,
-    // outerHTML-swap the <header data-navbar-root>, replay the cart so it
-    // survives a later Stripe detour, and open the buy-tokens modal —
-    // continuous DOM, no FOUC, no double-header flash.
-    async submitInlineSignup() {
-      if (this.signupSubmitting) return;
-      this.signupError = '';
-      if (!this.signupEmail || !this.signupPassword) {
-        this.signupError = 'Email and password are required.';
+    // PLACE (no reload). Hydrates $store.session, swaps the navbar HTML,
+    // replays the cart, then mutates the wizard's step to 'tokens-picker'
+    // so the user goes straight from "Creating account…" to the pack
+    // picker without any modal close/reopen flicker. Called from the
+    // wizard partial via the 'auth-signup-submit' dispatch.
+    async submitInlineSignup(email, password) {
+      var p = this._authProps();
+      if (!p || p.submitting) return;
+      p.formError = '';
+      if (!email || !password) {
+        p.formError = 'Email and password are required.';
         return;
       }
-      this.signupSubmitting = true;
+      p.submitting = 'signup';
       try {
         var resp = await fetch('/registrations/inline', {
           method: 'POST',
@@ -385,24 +363,18 @@ window.selectionBoard = function() {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ email: this.signupEmail, password: this.signupPassword })
+          body: JSON.stringify({ email: email, password: password })
         });
         var data = await resp.json();
         if (!resp.ok || !data.success) {
-          this.signupError = data.error || 'Could not create account.';
-          this.signupSubmitting = false;
+          p.formError = data.error || 'Could not create account.';
+          p.submitting = null;
           return;
         }
 
-        // 1. Hydrate the canonical Alpine session store from the server
-        //    response — every component that reads $store.session.loggedIn /
-        //    .mode now flips reactively.
+        // Hydrate session, swap navbar, sync body[data-logged-in].
         var sess = Alpine.store('session');
         if (sess && data.session) { sess.hydrate(data.session); }
-
-        // 2. Swap the navbar root for its newly-rendered authed version.
-        //    We replace the element and re-init Alpine on the new subtree;
-        //    the old <header>'s x-data is discarded with it.
         if (data.navbar_html) {
           var oldNav = document.querySelector('header[data-navbar-root]');
           if (oldNav) {
@@ -415,41 +387,44 @@ window.selectionBoard = function() {
             }
           }
         }
-
-        // 3. Keep <body data-logged-in> in sync — read by the turbo:load
-        //    balance-refresh + invite-capture listeners on later navigations.
         try { document.body.setAttribute('data-logged-in', 'true'); } catch (_) {}
 
-        // 4. Persist the cart server-side so it survives the Stripe detour
-        //    (new-tab checkout). Best-effort — failure here just means the
-        //    user re-confirms picks if they leave the tab.
+        // Persist the cart server-side so it survives the Stripe detour.
         await this.replaySelectionsToServer();
 
-        // 5. Queue the "check your email" nudge to fire AFTER the entry is
-        //    confirmed (see confirmEntry — it reads pendingCheckEmail).
+        // Queue the "check your email" nudge to fire AFTER the entry is
+        // confirmed (consumed in confirmEntry).
         try { sessionStorage.setItem('pendingCheckEmail', this.contestId); }
         catch (e) { /* sessionStorage unavailable */ }
 
-        // 6. Close the auth modal and open the buy-tokens panel directly.
-        //    No reload, no sessionStorage round-trip — same DOM, just a
-        //    state change.
-        this.signupSubmitting = false;
-        this.loginModal = false;
-        this.showTokensPanel();
+        // Transition the wizard step in place — same modal shell, just
+        // swap to the tokens-picker view. Reset the form-flow flags so
+        // tokens steps start clean.
+        p.submitting    = null;
+        p.formError     = '';
+        p.phantomError  = '';
+        p.googleError   = '';
+        p.step          = 'tokens-picker';
+        p.mintedCount   = 0;
+        p.mintedBalance = 0;
+        p.errorText     = '';
+        p.redirectUrl   = '';
+        p.txSignature   = '';
       } catch (e) {
-        this.signupError = 'Network error. Try again.';
-        this.signupSubmitting = false;
+        p.formError  = 'Network error. Try again.';
+        p.submitting = null;
       }
     },
 
-    async submitInlineLogin() {
-      if (this.loginSubmitting) return;
-      this.loginError = '';
-      if (!this.loginEmail || !this.loginPassword) {
-        this.loginError = 'Email and password are required.';
+    async submitInlineLogin(email, password) {
+      var p = this._authProps();
+      if (!p || p.submitting) return;
+      p.formError = '';
+      if (!email || !password) {
+        p.formError = 'Email and password are required.';
         return;
       }
-      this.loginSubmitting = true;
+      p.submitting = 'login';
       try {
         var resp = await fetch('/sessions/inline', {
           method: 'POST',
@@ -458,27 +433,28 @@ window.selectionBoard = function() {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ email: this.loginEmail, password: this.loginPassword })
+          body: JSON.stringify({ email: email, password: password })
         });
         var data = await resp.json();
         if (!resp.ok || !data.success) {
-          this.loginError = data.error || 'Login failed.';
-          this.loginSubmitting = false;
+          p.formError = data.error || 'Login failed.';
+          p.submitting = null;
           return;
         }
-        // Reload so the navbar and the board's server-rendered logged-in
-        // sections reflect the session. The cart is restored on load and the
-        // entry auto-submits (see init()).
+        // Reload so the navbar + server-rendered logged-in sections
+        // reflect the session. Cart is restored on load (see init()).
         this.saveCartForRedirect(true);
         window.location.reload();
       } catch (e) {
-        this.loginError = 'Network error. Try again.';
-        this.loginSubmitting = false;
+        p.formError  = 'Network error. Try again.';
+        p.submitting = null;
       }
     },
 
     async loginWithPhantom() {
-      this.loginPhantomError = '';
+      var p = this._authProps();
+      if (!p) return;
+      p.phantomError = '';
       if (!window.walletProvider || !window.walletProvider.isAvailable()) {
         if (window.walletProvider && window.walletProvider.isMobile()) {
           // Save cart, then deep-link to Phantom — user returns via callback
@@ -486,11 +462,11 @@ window.selectionBoard = function() {
           if (typeof startPhantomDeepLink === 'function') startPhantomDeepLink(false);
           return;
         }
-        this.loginPhantomError = 'Phantom not detected. Install the Phantom browser extension or open in the Phantom mobile app.';
+        p.phantomError = 'Phantom not detected. Install the Phantom browser extension or open in the Phantom mobile app.';
         return;
       }
 
-      this.loginSubmitting = true;
+      p.submitting = 'phantom';
       try {
         var provider = window.walletProvider.detect();
         var connectResp = await provider.connect();
@@ -521,24 +497,26 @@ window.selectionBoard = function() {
         }
 
         // Reload so the navbar + server-rendered logged-in UI reflect the
-        // wallet session. On reload cfg.phantomWallet is true (server-side),
-        // the cart is restored, and the entry auto-submits (see init()).
+        // wallet session. Cart is restored on load (see init()).
         this.saveCartForRedirect(true);
         window.location.reload();
       } catch (e) {
         var msg = e.message || 'Phantom sign-in failed.';
         if (typeof parseSolanaError === 'function') msg = parseSolanaError(msg);
-        this.loginPhantomError = msg;
-        this.loginSubmitting = false;
+        // Re-fetch props in case the modal closed during the await.
+        var p2 = this._authProps();
+        if (p2) { p2.phantomError = msg; p2.submitting = null; }
       }
     },
 
     // Google sign-in via a popup window so the contest page stays put.
-    // The popup hits /auth/google_popup (sets a popup-mode session flag),
-    // runs the OAuth round-trip, and the callback renders a closer page that
-    // postMessages the result back here and closes itself.
+    // The popup hits /auth/google_popup, runs the OAuth round-trip, and
+    // the callback renders a closer page that postMessages the result
+    // back here and closes itself.
     loginWithGoogle() {
-      this.googleError = '';
+      var p = this._authProps();
+      if (!p) return;
+      p.googleError = '';
       // window.open must run synchronously inside the click handler, or the
       // browser blocks it.
       var popup = window.open('/auth/google_popup', 'tt_google_oauth',
@@ -548,7 +526,7 @@ window.selectionBoard = function() {
         this.googleFullPageRedirect();
         return;
       }
-      this.googleAuthPending = true;
+      p.submitting = 'google';
       var self = this;
       var pollTimer = null;
 
@@ -557,19 +535,18 @@ window.selectionBoard = function() {
         if (!e.data || e.data.source !== 'tt-oauth') return;
         window.removeEventListener('message', onMessage);
         if (pollTimer) clearInterval(pollTimer);
-        self.googleAuthPending = false;
+        var p2 = self._authProps();
+        if (p2) p2.submitting = null;
         try { popup.close(); } catch (_) {}
 
         if (e.data.status === 'success') {
           var gSess = Alpine.store('session');
           if (gSess) { gSess.loggedIn = true; gSess.mode = 'web2'; }
-          // Username is auto-assigned at signup — no profile step. Reload so
-          // the navbar + logged-in UI refresh; the cart is restored and the
-          // entry auto-submits (see init()).
+          // Username is auto-assigned at signup — no profile step.
           self.saveCartForRedirect(true);
           window.location.reload();
-        } else {
-          self.googleError = e.data.error || 'Google sign-in failed.';
+        } else if (p2) {
+          p2.googleError = e.data.error || 'Google sign-in failed.';
         }
       };
       window.addEventListener('message', onMessage);
@@ -579,7 +556,8 @@ window.selectionBoard = function() {
         if (popup.closed) {
           clearInterval(pollTimer);
           window.removeEventListener('message', onMessage);
-          self.googleAuthPending = false;
+          var p3 = self._authProps();
+          if (p3) p3.submitting = null;
         }
       }, 500);
     },
@@ -622,29 +600,38 @@ window.selectionBoard = function() {
       return true;
     },
 
-    // Show the "buy entry tokens" panel — after a Google signup, and
-    // whenever an entry fails for lack of tokens.
+    // Open (or transition the wizard to) the buy-tokens picker step.
+    // Called after Google signup, after the "out of entry tokens" error,
+    // and from the pendingAuthStep restore in init(). If the auth wizard
+    // is already open (e.g. submitInlineSignup just finished), we mutate
+    // its props in place so the modal shell stays mounted and we get a
+    // flicker-free credentials → tokens-picker transition.
     showTokensPanel() {
-      this.loginModal = false;
       this.profileModal = false;
-      // checkEmail lives in $store.modals now; clear any stack-managed
-      // modal so the tokens panel isn't sandwiched under one.
-      Alpine.store('modals').closeAll();
-      this.tokensStep = 'picker';
-      this.tokensError = '';
-      this.tokensMintedCount = 0;
-      this.tokensMintedBalance = 0;
-      this.tokensRedirect = '';
-      this.tokensTxSignature = '';
-      this.tokensPanel = true;
+      var s = Alpine.store('modals');
+      var freshProps = {
+        step:          'tokens-picker',
+        mintedCount:   0,
+        mintedBalance: 0,
+        errorText:     '',
+        redirectUrl:   '',
+        txSignature:   ''
+      };
+      var cur = s.current();
+      if (cur && cur.id === 'auth') {
+        Object.assign(cur.props, freshProps);
+      } else {
+        s.open('auth', freshProps);
+      }
     },
 
 
     // Poll /tokens/status until the Stripe webhook + TokenPurchaseJob
-    // finish minting. Drives the modal through confirming → minted →
-    // (closed; user does a fresh Hold to Confirm). Called from the
-    // BroadcastChannel / window message listener when the new tab hands
-    // the session_id back.
+    // finish minting. Drives the wizard through tokens-confirming →
+    // tokens-minted. Called from the BroadcastChannel / window message
+    // listener when the new tab hands the session_id back. Mutates the
+    // auth wizard's props on the store; safely no-ops if the modal was
+    // closed mid-poll.
     pollTokenStatus(sessionId) {
       var self = this;
       var elapsedMs = 0;
@@ -667,18 +654,20 @@ window.selectionBoard = function() {
               var elapsed = Date.now() - (self._tokensConfirmingStartedAt || 0);
               var remaining = Math.max(0, minMs - elapsed);
               setTimeout(function () {
-                self.tokensMintedCount = d.minted;
-                self.tokensMintedBalance = d.balance;
-                self.tokensStep = 'minted';
-                // Push the new token count to the navbar. No confetti
-                // here — the celebratory burst is saved for entry
-                // confirmation ('submitted' step), so payment-only
-                // success doesn't pre-spend the moment.
+                var p = self._authProps();
+                if (!p) return;  // user closed the modal mid-poll
+                p.mintedCount   = d.minted;
+                p.mintedBalance = d.balance;
+                p.step          = 'tokens-minted';
+                // Push the new token count to the navbar + celebrate
+                // the mint. A second confetti burst fires later when
+                // the entry actually confirms ('tokens-submitted').
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
+                try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
               }, remaining);
-              // The modal STAYS OPEN in the 'minted' step — it renders an
-              // in-modal Hold to Confirm Entry button. The user holds it
-              // to submit the entry; on success → 'submitted' step.
+              // The modal STAYS OPEN in 'tokens-minted' — it renders the
+              // in-modal Hold to Confirm Entry button. On success → step
+              // 'tokens-submitted' (set in confirmEntry).
               return;
             }
           }
@@ -686,8 +675,11 @@ window.selectionBoard = function() {
 
         elapsedMs += intervalMs;
         if (elapsedMs >= timeoutMs) {
-          self.tokensError = "Payment cleared but the on-chain mint is still settling. Refresh in a moment to finish your entry.";
-          self.tokensStep = 'error';
+          var p2 = self._authProps();
+          if (p2) {
+            p2.errorText = "Payment cleared but the on-chain mint is still settling. Refresh in a moment to finish your entry.";
+            p2.step      = 'tokens-error';
+          }
           return;
         }
         setTimeout(tick, intervalMs);
@@ -735,25 +727,45 @@ window.selectionBoard = function() {
       }
     },
 
+    // Open the auth wizard at the redirect step. The countdown ticks
+    // through props.countdown; when it hits zero the page redirects.
+    // The setInterval handle lives on the board (this._redirectInterval)
+    // so we can clear it from goNow() or when the modal closes.
     showRedirectModal(title, message, icon, url, seconds, cta) {
-      this.redirectModal = { title: title, message: message, icon: icon, url: url, seconds: seconds, cta: cta };
-      this.redirectCountdown = seconds;
-      if (this.redirectInterval) clearInterval(this.redirectInterval);
+      var s = Alpine.store('modals');
+      s.open('auth', {
+        step:      'redirect',
+        title:     title,
+        message:   message,
+        icon:      icon,
+        url:       url,
+        seconds:   seconds,
+        cta:       cta,
+        countdown: seconds
+      });
+      if (this._redirectInterval) clearInterval(this._redirectInterval);
       var self = this;
-      this.redirectInterval = setInterval(function() {
-        self.redirectCountdown--;
-        if (self.redirectCountdown <= 0) {
-          clearInterval(self.redirectInterval);
-          self.redirectInterval = null;
+      this._redirectInterval = setInterval(function() {
+        var p = self._authProps();
+        if (!p || p.step !== 'redirect') {
+          clearInterval(self._redirectInterval);
+          self._redirectInterval = null;
+          return;
+        }
+        p.countdown--;
+        if (p.countdown <= 0) {
+          clearInterval(self._redirectInterval);
+          self._redirectInterval = null;
           window.location.href = url;
         }
       }, 1000);
     },
 
     goNow() {
-      if (this.redirectInterval) clearInterval(this.redirectInterval);
-      this.redirectInterval = null;
-      if (this.redirectModal) window.location.href = this.redirectModal.url;
+      if (this._redirectInterval) clearInterval(this._redirectInterval);
+      this._redirectInterval = null;
+      var p = this._authProps();
+      if (p && p.url) window.location.href = p.url;
     },
 
     setHoldSuccess() {
@@ -916,11 +928,12 @@ window.selectionBoard = function() {
 
         } else {
           // Suppress the solanaModal "Submitting Entry" overlay when
-          // we're already inside the tokens modal — that modal handles
-          // its own in-place feedback (hold button "Submitting…" → the
-          // 'submitted' celebration card) so we don't want two stacked
-          // modals.
-          var insideTokensModal = this.tokensPanel && this.tokensStep === 'minted';
+          // we're already inside the auth wizard at tokens-minted — that
+          // wizard handles its own in-place feedback (hold button
+          // "Submitting…" → 'tokens-submitted' celebration card) so we
+          // don't want two stacked modals.
+          var authProps      = this._authProps();
+          var insideTokensModal = !!(authProps && authProps.step === 'tokens-minted');
           if (!insideTokensModal) {
             Alpine.store('solanaModal').show('Submitting Entry', 'Processing your entry...');
           }
@@ -940,19 +953,21 @@ window.selectionBoard = function() {
             if (data.token_consumed) {
               try { if (window.animateFreeEntryBadge) window.animateFreeEntryBadge(); } catch (_) {}
             }
+            // Re-fetch the wizard props in case the entry submit took
+            // long enough for the modal to be dismissed.
+            var p = this._authProps();
+            var inTokensMinted = !!(p && p.step === 'tokens-minted');
+
             if (data.tx_signature) {
-              // If we're in the tokens modal flow, stay in it — don't
-              // stack the solanaModal on top of the tokens modal. The
-              // tokens modal's 'submitted' state shows the tx signature
-              // link and the "View leaderboard" CTA, replacing what the
-              // solanaModal would have shown.
-              if (this.tokensPanel && this.tokensStep === 'minted') {
-                var remaining = Math.max(0, (this.tokensMintedBalance || 0) - 1);
-                this.tokensMintedBalance = remaining;
-                try { if (window.updateNavTokens) window.updateNavTokens(remaining); } catch (_) {}
-                this.tokensTxSignature = data.tx_signature;
-                this.tokensRedirect = data.redirect || '/';
-                this.tokensStep = 'submitted';
+              if (inTokensMinted) {
+                // Stay in the wizard — show the on-chain receipt + CTA
+                // in the 'tokens-submitted' card instead of stacking the
+                // solanaModal on top.
+                p.mintedBalance = Math.max(0, (p.mintedBalance || 0) - 1);
+                try { if (window.updateNavTokens) window.updateNavTokens(p.mintedBalance); } catch (_) {}
+                p.txSignature = data.tx_signature;
+                p.redirectUrl = data.redirect || '/';
+                p.step        = 'tokens-submitted';
                 refreshBalanceDelayed();
                 try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
               } else {
@@ -967,25 +982,18 @@ window.selectionBoard = function() {
               var hasPendingEmail = false;
               try { hasPendingEmail = sessionStorage.getItem('pendingCheckEmail') === this.contestId; } catch (_) {}
 
-              // Called from the tokens modal's in-modal Hold to Confirm
-              // (tokensPanel open + tokensStep === 'minted') → stay in
-              // the modal and transition to 'submitted' instead of
-              // redirecting; the modal's "View leaderboard" CTA handles
-              // navigation from there.
-              if (this.tokensPanel && this.tokensStep === 'minted') {
+              if (inTokensMinted) {
                 // The entry just consumed one token — keep the navbar in
                 // sync (server-side decrement already happened).
-                var remaining = Math.max(0, (this.tokensMintedBalance || 0) - 1);
-                this.tokensMintedBalance = remaining;
-                try { if (window.updateNavTokens) window.updateNavTokens(remaining); } catch (_) {}
+                p.mintedBalance = Math.max(0, (p.mintedBalance || 0) - 1);
+                try { if (window.updateNavTokens) window.updateNavTokens(p.mintedBalance); } catch (_) {}
                 if (hasPendingEmail) {
                   try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
-                  this.tokensPanel = false;
-                  this.tokensStep = 'picker';
+                  Alpine.store('modals').close();
                   this.sendVerificationEmail();
                 } else {
-                  this.tokensRedirect = data.redirect || '/';
-                  this.tokensStep = 'submitted';
+                  p.redirectUrl = data.redirect || '/';
+                  p.step        = 'tokens-submitted';
                   try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
                   refreshBalanceDelayed();
                 }
@@ -1481,10 +1489,9 @@ window.selectionBoard = function() {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
               </svg>
             </div>
-            <p class="text-base font-bold text-heading mb-1">
-              <span x-text="tokensMintedCount"></span>
-              entry token<span x-show="tokensMintedCount !== 1">s</span> added
-            </p>
+            <%# Headline ("Entry Token Minted") is already in the
+                modal header — we don't repeat the count here. The
+                secondary line carries the balance + next action. %>
             <p class="text-xs text-secondary mb-5">
               You now have <span class="font-bold text-primary font-mono" x-text="tokensMintedBalance"></span> available. Hold to confirm your entry.
             </p>
