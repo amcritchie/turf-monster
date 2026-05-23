@@ -77,14 +77,12 @@
       start() {
         if (!sessionId) { this.errored = true; return; }
 
-        // Best-effort notify any listening contest tab (the modal there
-        // mirrors the confirming → minted → submitted flow). Two
-        // channels because browsers may have dropped window.opener
-        // (implicit noopener on target=_blank forms is common):
+        // Notify any listening contest tab (the modal there mirrors the
+        // confirming → minted → submitted flow). Two channels because
+        // browsers may have dropped window.opener (implicit noopener on
+        // target=_blank forms is common):
         //   1. BroadcastChannel — same-origin, opener-independent
         //   2. window.opener.postMessage — legacy fallback
-        // Neither confirms delivery — postMessage returns void whether
-        // anyone is listening or not — so we ALSO poll below.
         try {
           if ('BroadcastChannel' in window) {
             var ch = new BroadcastChannel('tt-tokens');
@@ -102,13 +100,27 @@
           }
         } catch (e) {}
 
-        // If a contest tab is listening it will pick up the broadcast
-        // above and run its own modal flow; that tab may later close
-        // OR redirect this one. Meanwhile we poll here as a fallback —
-        // covers the /tokens/buy direct-purchase case (no opener tab
-        // listening) AND the case where window.close() fails on a
-        // form-opened popup. Once ready, poll() either navigates to
-        // contestUrl OR shows the standalone success card.
+        // Contest-context flow: the buyer came from a contest tab
+        // (success_url carried ?contest=slug → controller set @contest →
+        // contestUrl is non-empty). The contest tab's modal owns the
+        // confirming → minted UI; this tab just hands off and gets out
+        // of the way. window.close() works for script-opened popups;
+        // the location-href fallback covers form-opened tabs that can't
+        // be closed. Either way the buyer never visually leaves the
+        // contest. We use contestUrl as a reliable proxy for "there's
+        // a listener" because postMessage/BroadcastChannel give no
+        // delivery confirmation — see commit 4890000 for the standalone
+        // case where contestUrl is empty and polling is the only path.
+        if (contestUrl) {
+          setTimeout(function () { window.close(); }, 80);
+          setTimeout(function () { window.location.href = contestUrl; }, 400);
+          return;
+        }
+
+        // Standalone flow: no contest context (e.g. /tokens/buy direct
+        // purchase, or webhook arrived during a server-down window).
+        // Poll /tokens/status until the mint completes, then show the
+        // standalone success card.
         this._ticker = setInterval(() => { this.elapsed += 1 }, 1000);
         this.poll();
         this._timer = setInterval(() => this.poll(), 1500);
