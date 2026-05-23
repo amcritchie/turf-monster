@@ -232,16 +232,37 @@
               if (!ok) {
                 clearTimeout(timers[id]);
                 delete timers[id];
+                // Also clear the early_action timer — same hold, same abort.
+                if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
+                // Drop the .process class so the button doesn't freeze on
+                // "Almost there…" — caller's validate is responsible for
+                // any setHoldError() call if it wants an explicit error
+                // state. Without this, a guest user / geo-blocked user
+                // holds the button and the visual state never updates.
+                el.classList.remove('process');
                 var c = el.querySelector('svg.progress circle');
                 if (c) {
                   c.style.transition = 'none';
                   void c.offsetWidth;
                   c.style.transition = '';
                 }
-                // Error state is set by the validate function itself (via setHoldError)
               }
+            }, function(_err) {
+              // Promise rejected — same recovery as ok=false so a thrown
+              // validate doesn't strand the user mid-hold.
+              clearTimeout(timers[id]);
+              delete timers[id];
+              if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
+              el.classList.remove('process');
             });
-          } catch(e) {}
+          } catch(e) {
+            // evalIn itself threw (bad expression / scope) — abort cleanly
+            // so the user can retry instead of seeing a frozen button.
+            clearTimeout(timers[id]);
+            delete timers[id];
+            if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
+            el.classList.remove('process');
+          }
         }, validateAt);
       }
     };
