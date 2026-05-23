@@ -77,7 +77,7 @@ gem "sidekiq-cron", "~> 1.12"
 gem "sentry-ruby"
 gem "sentry-rails"
 
-gem "studio-engine", "~> 0.4.0"
+gem "studio-engine", path: "../studio-engine"  # local dev — revert to "~> 0.4.0" after engine 0.4.5 push
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
 gem "solana-studio", "~> 0.4.0"

@@ -1,3 +1,14 @@
+PATH
+  remote: ../studio-engine
+  specs:
+    studio-engine (0.4.5)
+      aws-sdk-s3 (~> 1.218)
+      faker (>= 2.0)
+      mini_magick (~> 5.0)
+      rails (>= 7.0)
+      solid_queue
+      tailwindcss-rails (~> 2.7)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -415,13 +426,6 @@ GEM
     stripe (19.0.0)
       bigdecimal
       logger
-    studio-engine (0.4.4)
-      aws-sdk-s3 (~> 1.218)
-      faker (>= 2.0)
-      mini_magick (~> 5.0)
-      rails (>= 7.0)
-      solid_queue
-      tailwindcss-rails (~> 2.7)
     tailwindcss-rails (2.7.9-aarch64-linux)
       railties (>= 7.0.0)
     tailwindcss-rails (2.7.9-arm64-darwin)
@@ -496,7 +500,7 @@ DEPENDENCIES
   sprockets-rails
   stimulus-rails
   stripe
-  studio-engine (~> 0.4.0)
+  studio-engine!
   tailwindcss-rails (~> 2.7)
   turbo-rails
   tzinfo-data

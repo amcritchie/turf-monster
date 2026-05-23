@@ -231,7 +231,7 @@
 
       <!-- Confirming — Stripe returned the buyer, mint pending -->
       <template x-if="props.step === 'tokens-confirming'">
-        <%= render 'modals/blocks/processing_card',
+        <%= render 'studio/modals/blocks/processing_card',
             title:   "Confirming your purchase…",
             message: "Crediting your entry tokens and topping up your wallet." %>
       </template>
@@ -269,7 +269,7 @@
       <!-- Submitted — entry confirmed; modal stays open with CTA +
            auto-redirect countdown + tx receipt + confetti. -->
       <template x-if="props.step === 'tokens-submitted'">
-        <%= render 'modals/blocks/success_card',
+        <%= render 'studio/modals/blocks/success_card',
             title:                 "Entry confirmed!",
             message:               "Your lineup is locked in. Good luck.",
             tx_signature_key:      "props.txSignature",
@@ -282,7 +282,7 @@
 
       <!-- Error — poll timed out OR entry submission failed -->
       <template x-if="props.step === 'tokens-error'">
-        <%= render 'modals/blocks/error_card',
+        <%= render 'studio/modals/blocks/error_card',
             title:       "Still processing",
             message_key: "props.errorText",
             cta_label:   "Refresh",
@@ -303,7 +303,7 @@
       <h3 class="text-lg font-bold text-heading mb-2" x-text="props.title"></h3>
       <p class="text-sm text-secondary mb-4" x-text="props.message"></p>
       <div class="mb-4">
-        <%= render 'modals/blocks/progress_countdown',
+        <%= render 'studio/modals/blocks/progress_countdown',
             current_key: 'props.countdown',
             total_key:   'props.seconds || 5' %>
       </div>

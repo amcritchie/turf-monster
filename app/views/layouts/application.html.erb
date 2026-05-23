@@ -243,86 +243,10 @@
             }
           });
 
-          // StudioModals — small set of helpers that pair with the
-          // modal_blocks/_*.html.erb building blocks.
-          //
-          //   holdAtLeast(ms)
-          //     Stamps the moment a processing/loading view became
-          //     visible. Returns a `then(callback)` function that
-          //     awaits the minimum visible duration before calling
-          //     the callback — so the success swap doesn't flash by
-          //     when the operation finishes faster than the user can
-          //     register the spinner. Mirrors the _navSpinnerMinMs
-          //     pattern in studio-engine/_head.html.erb.
-          //
-          //     Usage:
-          //       var hold = window.StudioModals.holdAtLeast(1500);
-          //       var data = await fetchSomething();
-          //       hold.then(function() {
-          //         // transition modal to success step here
-          //       });
-          window.StudioModals = window.StudioModals || {};
-          window.StudioModals.holdAtLeast = function(minMs) {
-            var startedAt = Date.now();
-            return {
-              then: function(callback) {
-                var remaining = Math.max(0, minMs - (Date.now() - startedAt));
-                if (remaining === 0) { callback(); return; }
-                setTimeout(callback, remaining);
-              }
-            };
-          };
-
-          // Generic modal stack. ANY modal that wants the shared shell
-          // (backdrop, scroll lock, escape, click-outside, transitions)
-          // opens through this store; the host partial in shared/_modal_host
-          // renders whichever id is on top. Use opts.replace to swap the
-          // current modal in place (e.g. signup-modal → tokens-modal hand-off)
-          // instead of stacking on top.
-          //
-          // API:
-          //   $store.modals.open(id, props = {}, opts = {})
-          //   $store.modals.close()                   // pop top
-          //   $store.modals.closeAll()
-          //   $store.modals.isOpen(id) / .current()
-          Alpine.store('modals', {
-            stack: [],
-            open(id, props, opts) {
-              props = props || {};
-              opts  = opts  || {};
-              if (opts.replace && this.stack.length > 0) {
-                this.stack[this.stack.length - 1] = { id: id, props: props };
-              } else {
-                this.stack.push({ id: id, props: props });
-              }
-              this._sync();
-            },
-            close() {
-              this.stack.pop();
-              this._sync();
-            },
-            closeAll() {
-              this.stack = [];
-              this._sync();
-            },
-            isOpen(id) {
-              for (var i = 0; i < this.stack.length; i++) {
-                if (this.stack[i].id === id) return true;
-              }
-              return false;
-            },
-            current() {
-              return this.stack.length ? this.stack[this.stack.length - 1] : null;
-            },
-            _sync() {
-              if (this.stack.length) {
-                document.body.classList.add('modal-open');
-              } else {
-                document.body.classList.remove('modal-open');
-              }
-            }
-          });
         });
+        // Alpine.store('modals') + window.StudioModals.holdAtLeast both
+        // live in studio-engine's studio/modals/host partial now — see
+        // <%%= render "studio/modals/host" %> below.
 
         // Re-seed the canonical session store on every Turbo navigation —
         // auth state can change between page loads.
@@ -352,9 +276,18 @@
     <% if logged_in? %>
       <%= render "shared/profile_modal" %>
     <% end %>
-    <%# Generic modal host — backed by Alpine.store('modals'). Any modal
-        registered in _modal_host opens through this single shared shell. %>
-    <%= render "shared/modal_host" %>
+    <%# Generic modal host from studio-engine. Owns Alpine.store('modals'),
+        the StudioModals.holdAtLeast helper, the backdrop / scroll lock /
+        escape / click-outside / ARIA / transitions, and renders this app's
+        content partials by id (registered in the block below). %>
+    <%= render "studio/modals/host" do %>
+      <template x-if="$store.modals.current().id === 'checkEmail'">
+        <%= render "modals/check_email" %>
+      </template>
+      <template x-if="$store.modals.current().id === 'auth'">
+        <%= render "modals/auth" %>
+      </template>
+    <% end %>
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>
