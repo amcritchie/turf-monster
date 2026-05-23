@@ -79,9 +79,27 @@
     // Evaluate a JS expression string against an x-data scope. Both `d`
     // and `data` are aliased to the scope's reactive $data so call sites
     // can use either ("d.runHoldValidations()" or "data.selectionCount").
+    //
+    // Sync only. For async expressions (e.g. validate which calls an
+    // async method), Alpine.evaluate returns SYNCHRONOUSLY — it kicks
+    // the work off via evaluateLater + callback, and returns whatever
+    // is in `result` at return time (still undefined for async). Use
+    // evalInAsync for those.
     function evalIn(scope, expr) {
       var d = Alpine.$data(scope);
       return Alpine.evaluate(scope, expr, { scope: { d: d, data: d } });
+    }
+
+    // Async-aware version — returns a Promise that resolves to the
+    // expression's value. For sync expressions, resolves immediately.
+    // For async (a Promise-returning method like d.runHoldValidations()),
+    // Alpine's evaluateLater awaits the Promise internally and fires
+    // the receiver with the resolved value.
+    function evalInAsync(scope, expr) {
+      var d = Alpine.$data(scope);
+      return new Promise(function(resolve) {
+        Alpine.evaluateLater(scope, expr, { scope: { d: d, data: d } })(resolve);
+      });
     }
 
     function updateDebugRing(el, secondsLeft, totalSeconds) {
@@ -264,7 +282,12 @@
           }
           console.log('[hold:' + holdId + '] validate at ' + validateAt + 'ms — evaluating: ' + validate);
           try {
-            Promise.resolve(evalIn(s, validate)).then(function(ok) {
+            // Use evalInAsync — Alpine.evaluate (sync) returns undefined
+            // for async expressions because the value arrives via callback
+            // after evaluate has already returned. evalInAsync wraps
+            // evaluateLater in a Promise so we get the actual resolved
+            // value (true/false from runHoldValidations).
+            evalInAsync(s, validate).then(function(ok) {
               console.log('[hold:' + holdId + '] validate resolved →', ok);
               if (!ok) {
                 console.log('[hold:' + holdId + '] ABORTING via validate (returned falsy)');
