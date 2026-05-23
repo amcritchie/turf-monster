@@ -125,6 +125,10 @@ window.selectionBoard = function() {
           if (board.tokensStep === 'confirming' || board.tokensStep === 'minted') return;
           board.tokensError = '';
           board.tokensStep = 'confirming';
+          // Stamp the moment the spinner went on screen — pollTokenStatus
+          // uses this to enforce a minimum visible duration before the
+          // success swap (same pattern as studio-engine's nav spinner).
+          board._tokensConfirmingStartedAt = Date.now();
           board.tokensPanel = true; // reopen if it was closed
           board.pollTokenStatus(data.sessionId);
           return;
@@ -614,16 +618,24 @@ window.selectionBoard = function() {
           if (r.ok) {
             var d = await r.json();
             if (d.ready) {
-              self.tokensMintedCount = d.minted;
-              self.tokensMintedBalance = d.balance;
-              self.tokensStep = 'minted';
-              // Celebrate + push the new token count to the navbar so the
-              // user sees the indicator update without a reload.
-              try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
-              try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
-              // The modal STAYS OPEN in the 'minted' step — it now renders
-              // an in-modal Hold to Confirm Entry button. The user holds
-              // it to submit the entry; on success → 'submitted' step.
+              // Enforce a minimum 'confirming' spinner duration so the
+              // success state doesn't flash by when the webhook + mint
+              // race ahead of the modal opening. Mirrors the
+              // _navSpinnerMinMs pattern in studio-engine/_head.html.erb.
+              var minMs = 1500;
+              var elapsed = Date.now() - (self._tokensConfirmingStartedAt || 0);
+              var remaining = Math.max(0, minMs - elapsed);
+              setTimeout(function () {
+                self.tokensMintedCount = d.minted;
+                self.tokensMintedBalance = d.balance;
+                self.tokensStep = 'minted';
+                // Push the new token count to the navbar + celebrate.
+                try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
+                try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
+              }, remaining);
+              // The modal STAYS OPEN in the 'minted' step — it renders an
+              // in-modal Hold to Confirm Entry button. The user holds it
+              // to submit the entry; on success → 'submitted' step.
               return;
             }
           }
