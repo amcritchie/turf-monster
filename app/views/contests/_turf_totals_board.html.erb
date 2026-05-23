@@ -103,6 +103,7 @@ window.selectionBoard = function() {
     tokensMintedBalance: 0,       // populated when tokensStep === 'minted'
     tokensError: '',              // populated when tokensStep === 'error'
     tokensRedirect: '',           // populated when tokensStep === 'submitted' — leaderboard URL
+    tokensTxSignature: '',        // populated when the entry submitted onchain
     checkEmailPanel: false,
     emailSendError: '',
 
@@ -129,6 +130,7 @@ window.selectionBoard = function() {
           board.tokensMintedCount = 0;
           board.tokensMintedBalance = 0;
           board.tokensRedirect = '';
+          board.tokensTxSignature = '';
           board.tokensPanel = true; // reopen if it was closed
           // Stamp the moment the spinner went on screen — pollTokenStatus
           // uses this to enforce a minimum visible duration before the
@@ -631,6 +633,7 @@ window.selectionBoard = function() {
       this.tokensMintedCount = 0;
       this.tokensMintedBalance = 0;
       this.tokensRedirect = '';
+      this.tokensTxSignature = '';
       this.tokensPanel = true;
     },
 
@@ -904,7 +907,15 @@ window.selectionBoard = function() {
           refreshBalanceDelayed();
 
         } else {
-          Alpine.store('solanaModal').show('Submitting Entry', 'Processing your entry...');
+          // Suppress the solanaModal "Submitting Entry" overlay when
+          // we're already inside the tokens modal — that modal handles
+          // its own in-place feedback (hold button "Submitting…" → the
+          // 'submitted' celebration card) so we don't want two stacked
+          // modals.
+          var insideTokensModal = this.tokensPanel && this.tokensStep === 'minted';
+          if (!insideTokensModal) {
+            Alpine.store('solanaModal').show('Submitting Entry', 'Processing your entry...');
+          }
 
           var response = await fetch('/contests/' + this.contestId + '/enter', {
             method: 'POST',
@@ -915,9 +926,25 @@ window.selectionBoard = function() {
 
           if (data.success) {
             if (data.tx_signature) {
-              Alpine.store('solanaModal').success(data.tx_signature, 'Entry submitted onchain');
-              refreshBalanceDelayed();
-              Alpine.store('solanaModal').onClose = function() { window.location.href = data.redirect || '/'; };
+              // If we're in the tokens modal flow, stay in it — don't
+              // stack the solanaModal on top of the tokens modal. The
+              // tokens modal's 'submitted' state shows the tx signature
+              // link and the "View leaderboard" CTA, replacing what the
+              // solanaModal would have shown.
+              if (this.tokensPanel && this.tokensStep === 'minted') {
+                var remaining = Math.max(0, (this.tokensMintedBalance || 0) - 1);
+                this.tokensMintedBalance = remaining;
+                try { if (window.updateNavTokens) window.updateNavTokens(remaining); } catch (_) {}
+                this.tokensTxSignature = data.tx_signature;
+                this.tokensRedirect = data.redirect || '/';
+                this.tokensStep = 'submitted';
+                refreshBalanceDelayed();
+                try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
+              } else {
+                Alpine.store('solanaModal').success(data.tx_signature, 'Entry submitted onchain');
+                refreshBalanceDelayed();
+                Alpine.store('solanaModal').onClose = function() { window.location.href = data.redirect || '/'; };
+              }
             } else {
               if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
               // Deferred email-verification nudge — set during email signup,
@@ -1469,13 +1496,28 @@ window.selectionBoard = function() {
         <!-- Submitted state — entry confirmed; modal stays open with CTA -->
         <template x-if="tokensStep === 'submitted'">
           <div class="text-center py-6">
-            <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-5">
+            <div class="mx-auto w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mb-4">
               <svg class="w-7 h-7 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
               </svg>
             </div>
             <p class="text-lg font-bold text-heading mb-1">Entry confirmed!</p>
-            <p class="text-xs text-secondary mb-5">Your lineup is locked in. Good luck.</p>
+            <p class="text-xs text-secondary mb-4">Your lineup is locked in. Good luck.</p>
+            <%# On-chain tx receipt — same explorer link the solanaModal
+                used to provide, now inline so the user gets the proof
+                without a second stacked modal. devnet/mainnet cluster
+                param comes from the global clusterParam set in the
+                layout's solanaModal init script. %>
+            <div x-show="tokensTxSignature" class="mb-5">
+              <a :href="'https://explorer.solana.com/tx/' + tokensTxSignature + (typeof clusterParam !== 'undefined' ? clusterParam : '')"
+                 target="_blank" rel="noopener"
+                 class="inline-flex items-center gap-1.5 text-xs font-mono text-secondary hover:text-primary underline underline-offset-2">
+                <span x-text="tokensTxSignature.slice(0, 8) + '…' + tokensTxSignature.slice(-4)"></span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
+              </a>
+            </div>
             <a :href="tokensRedirect || '/'" class="btn btn-primary w-full">View leaderboard</a>
           </div>
         </template>
