@@ -170,7 +170,7 @@
               var s = el.closest('[x-data]');
               if (s) {
                 var d = Alpine.$data(s);
-                if (d) { <%= on_success %> }
+                if (d) { <%== on_success %> }
               }
             } catch(e) {
               el.classList.remove('process');
