@@ -60,7 +60,11 @@
      class="relative">
 
   <%# === CREDENTIALS STEP =================================================== %>
-  <template x-if="props.step === 'credentials'">
+  <%# Credentials is the DEFAULT step — renders when step is 'credentials'
+      OR anything not explicitly handled by another template below. This
+      catches the empty-card render bug we hit when something opened the
+      auth modal without setting props.step. %>
+  <template x-if="!['tokens-picker','tokens-waiting','tokens-confirming','tokens-minted','tokens-submitted','tokens-error','redirect'].includes(props.step)">
     <div>
       <div class="flex items-start justify-between mb-1">
         <h3 class="text-lg font-bold text-heading"
