@@ -92,14 +92,27 @@
 
     // Async-aware version — returns a Promise that resolves to the
     // expression's value. For sync expressions, resolves immediately.
-    // For async (a Promise-returning method like d.runHoldValidations()),
-    // Alpine's evaluateLater awaits the Promise internally and fires
-    // the receiver with the resolved value.
+    // For async ones (Promise-returning methods like
+    // d.runHoldValidations()), the AsyncFunction flattens the Promise
+    // so the resolved value bubbles up cleanly.
+    //
+    // We DON'T use Alpine.evaluateLater here. In Alpine 3.x the
+    // `extras` arg shape is version-dependent — passing
+    // { scope: { d, data } } silently fails to inject those vars in
+    // some builds (the user hit "d is not defined" when we tried
+    // that), and the working shape changes between minor versions.
+    // Compiling our own AsyncFunction with the named params we need
+    // is portable and doesn't depend on Alpine internals.
+    var _AsyncFn = Object.getPrototypeOf(async function() {}).constructor;
     function evalInAsync(scope, expr) {
       var d = Alpine.$data(scope);
-      return new Promise(function(resolve) {
-        Alpine.evaluateLater(scope, expr, { scope: { d: d, data: d } })(resolve);
-      });
+      try {
+        var fn = new _AsyncFn('d', 'data', 'Alpine', 'window',
+          '"use strict"; return (' + expr + ');');
+        return fn(d, d, Alpine, window);
+      } catch (e) {
+        return Promise.reject(e);
+      }
     }
 
     function updateDebugRing(el, secondsLeft, totalSeconds) {
