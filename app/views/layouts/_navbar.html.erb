@@ -67,17 +67,19 @@
     </div>
     <%# Right side: user nav (matches sidebar width) %>
     <% balance_html = capture do %>
-      <% if display_balance.to_f == 0 && current_user.entry_token_balance > 0 %>
-        <%# Managed-wallet user with tokens but no USDC → buy tokens %>
-        <%= link_to tokens_buy_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'" do %>
-          <%= current_user.entry_token_balance %><span class="text-xs font-normal text-secondary ml-1">tokens</span>
-        <% end %>
-      <% elsif current_user.phantom_wallet? %>
+      <% has_tokens = current_user.entry_token_balance > 0 %>
+      <% if current_user.phantom_wallet? %>
         <%# Web3 (Phantom) user → MoonPay top-up flow on click %>
         <%= link_to topup_wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
       <% else %>
-        <%# Managed-wallet fallback (has USDC, or new account) → wallet page %>
-        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
+        <%# Managed-wallet user — render BOTH the tokens link and the USDC
+            fallback; window.updateNavTokens(N) toggles visibility client-
+            side after a mint or token-funded entry so the navbar reflects
+            the new count without a page reload. %>
+        <%= link_to tokens_buy_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' unless has_tokens}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { token_balance_link: true } do %>
+          <span data-token-balance-display><%= current_user.entry_token_balance %></span><span class="text-xs font-normal text-secondary ml-1">tokens</span>
+        <% end %>
+        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if has_tokens}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true, usdc_balance_link: true } do %>$<%= display_balance.to_i %><% end %>
       <% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">

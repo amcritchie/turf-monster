@@ -617,10 +617,13 @@ window.selectionBoard = function() {
               self.tokensMintedCount = d.minted;
               self.tokensMintedBalance = d.balance;
               self.tokensStep = 'minted';
+              // Celebrate + push the new token count to the navbar so the
+              // user sees the indicator update without a reload.
+              try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
+              try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
               // The modal STAYS OPEN in the 'minted' step — it now renders
               // an in-modal Hold to Confirm Entry button. The user holds
               // it to submit the entry; on success → 'submitted' step.
-              // confirmEntryFromTokensModal handles the rest.
               return;
             }
           }
@@ -878,6 +881,11 @@ window.selectionBoard = function() {
               // redirecting; the modal's "View leaderboard" CTA handles
               // navigation from there.
               if (this.tokensPanel && this.tokensStep === 'minted') {
+                // The entry just consumed one token — keep the navbar in
+                // sync (server-side decrement already happened).
+                var remaining = Math.max(0, (this.tokensMintedBalance || 0) - 1);
+                this.tokensMintedBalance = remaining;
+                try { if (window.updateNavTokens) window.updateNavTokens(remaining); } catch (_) {}
                 if (hasPendingEmail) {
                   try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
                   this.tokensPanel = false;
@@ -886,6 +894,7 @@ window.selectionBoard = function() {
                 } else {
                   this.tokensRedirect = data.redirect || '/';
                   this.tokensStep = 'submitted';
+                  try { if (window.fireSuccessConfetti) setTimeout(window.fireSuccessConfetti, 100); } catch (_) {}
                   refreshBalanceDelayed();
                 }
               } else if (hasPendingEmail) {
@@ -1303,9 +1312,13 @@ window.selectionBoard = function() {
       <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
            x-transition:enter="transition ease-out duration-200"
            x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <%# Header — title is hidden on success states ('minted' +
+            'submitted') so the celebration card reads cleanly; the X
+            stays as a floating close affordance. %>
         <div class="flex items-start justify-between mb-1">
-          <h3 class="text-lg font-bold text-heading">Get Entry Tokens</h3>
-          <button @click="tokensPanel = false" class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
+          <h3 class="text-lg font-bold text-heading" x-show="tokensStep === 'picker' || tokensStep === 'waiting' || tokensStep === 'confirming' || tokensStep === 'error'">Get Entry Tokens</h3>
+          <span x-show="tokensStep === 'minted' || tokensStep === 'submitted'"></span>
+          <button @click="tokensPanel = false" class="text-secondary hover:text-heading text-xl leading-none ml-auto">&times;</button>
         </div>
 
         <!-- Pack picker — default state -->
@@ -1384,6 +1397,12 @@ window.selectionBoard = function() {
               success_text: "Submitting…",
               duration: 2000,
               hold_id: "tokens-modal" %>
+          <%# Soft escape — user can dismiss; tokens are minted on-chain,
+              their picks stay in the cart, and the main Hold to Confirm
+              button below the matchup grid still works. %>
+          <button @click="tokensPanel = false" class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
+            I'll confirm later
+          </button>
         </div>
 
         <!-- Submitted state — entry confirmed; modal stays open with CTA -->
