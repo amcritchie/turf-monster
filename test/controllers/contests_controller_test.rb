@@ -449,6 +449,75 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  # --- pendingRecoveryPtxSlug exposure on contest show ---
+  #
+  # The recovery flow only fires when load_contest_board_data populates
+  # @pending_recovery_ptx and the board partial echoes its slug into the
+  # board-config JSON block. These tests assert the server-to-client
+  # linkage for the four scope cases — present, wrong user, wrong contest,
+  # non-pending status.
+
+  def stranded_ptx_for(user:, contest:, status: "pending")
+    entry = contest.entries.find_or_create_by!(user: user, status: :cart)
+    PendingTransaction.create!(
+      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      status: status, target: entry,
+      initiator_address: user.web3_solana_address
+    )
+  end
+
+  test "contest show exposes pendingRecoveryPtxSlug when the current user has a pending PT here" do
+    @user.update!(web3_solana_address: "Web3Show#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_show")
+    log_in_as_onchain(@user)
+    ptx = stranded_ptx_for(user: @user, contest: @contest)
+
+    get contest_path(@contest)
+    assert_response :success
+    assert_match(/"pendingRecoveryPtxSlug":"#{ptx.slug}"/, response.body,
+                 "expected the board cfg to carry the stranded PT's slug")
+  end
+
+  test "contest show does NOT expose a PT belonging to another user" do
+    @user.update!(web3_solana_address: "Web3Mine#{SecureRandom.hex(4)}")
+    other = users(:jordan)
+    other.update!(web3_solana_address: "Web3Theirs#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_x")
+    log_in_as_onchain(@user)
+    stranded_ptx_for(user: other, contest: @contest)
+
+    get contest_path(@contest)
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
+                 "another user's stranded PT must not leak into my recovery flow")
+  end
+
+  test "contest show does NOT expose a PT for a different contest" do
+    @user.update!(web3_solana_address: "Web3Diff#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_a")
+    other_contest = Contest.create!(
+      name: "Other Onchain", contest_type: @contest.contest_type, slate: @contest.slate,
+      status: :open, onchain_contest_id: "onchain_b"
+    )
+    log_in_as_onchain(@user)
+    stranded_ptx_for(user: @user, contest: other_contest)
+
+    get contest_path(@contest)
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
+                 "a PT on a DIFFERENT contest must not surface as recovery on this one")
+  end
+
+  test "contest show does NOT expose a PT that has already resolved (confirmed/failed)" do
+    @user.update!(web3_solana_address: "Web3Done#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_done")
+    log_in_as_onchain(@user)
+    stranded_ptx_for(user: @user, contest: @contest, status: "confirmed")
+    stranded_ptx_for(user: @user, contest: @contest, status: "failed")
+
+    get contest_path(@contest)
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
+                 "only pending/submitted PTs are eligible for client-side recovery")
+  end
+
   # --- recover_pending_entry tests ---
 
   test "recover_pending_entry returns confirmed for an already-active entry" do
