@@ -2,11 +2,20 @@ class AccountsController < ApplicationController
   include UserMergeable
   include Solana::SessionAuth
 
-  skip_before_action :require_profile_completion, only: [:show, :complete_profile, :save_profile]
+  skip_before_action :require_profile_completion, only: [:show, :complete_profile, :save_profile, :session_state]
 
   def show
     @user = current_user
     load_solana_balances if @user.solana_connected?
+  end
+
+  # Lightweight session-state probe for client-side rehydration. Returns the
+  # canonical wallet_context plus a fresh CSRF token so a tab returning from
+  # background can detect server-side logout (verify_session_token gives 401)
+  # OR get the current truth (this action returns guest/web2/web3 state) and
+  # rotate its CSRF for the next POST. No DB writes; cheap to call.
+  def session_state
+    render json: wallet_context.to_h.merge(csrf: form_authenticity_token)
   end
 
   def complete_profile

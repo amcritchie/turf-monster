@@ -11,92 +11,7 @@
     <% end %>
 
     <%= form_with model: @contest, url: contests_path, method: :post, id: "contest-form" do |f| %>
-      <div x-data="{
-        sport: '<%= @default_sport.to_s %>',
-        lockDate: '',
-        lockTime: '',
-        calOpen: false,
-        viewYear: new Date().getFullYear(),
-        viewMonth: new Date().getMonth(),
-        tzAbbr: (function() { var s = new Date().toLocaleTimeString('en-US', {timeZoneName:'short'}); return s.split(' ').pop(); })(),
-        tzIana: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
-        days: ['Su','Mo','Tu','We','Th','Fr','Sa'],
-        sync() {
-          var hidden = document.getElementById('contest_starts_at');
-          var dateSnap = document.getElementById('locks_at_date_selected');
-          var timeSnap = document.getElementById('locks_at_time_selected');
-          var tzSnap = document.getElementById('locks_at_timezone_selected');
-          if (this.lockDate && this.lockTime) {
-            var local = new Date(this.lockDate + 'T' + this.lockTime);
-            var utc = local.toISOString().substring(0, 16);
-            hidden.value = utc;
-            dateSnap.value = this.lockDate;
-            timeSnap.value = this.lockTime;
-            tzSnap.value = this.tzIana;
-          } else {
-            hidden.value = '';
-            dateSnap.value = '';
-            timeSnap.value = '';
-            tzSnap.value = '';
-          }
-        },
-        selectFifa() {
-          this.sport = 'fifa';
-          this.lockDate = '2026-06-11';
-          this.lockTime = '13:00';
-          this.viewYear = 2026;
-          this.viewMonth = 5;
-          this.sync();
-        },
-        selectNfl() {
-          this.sport = 'nfl';
-          this.lockDate = '2026-09-09';
-          this.lockTime = '18:15';
-          this.viewYear = 2026;
-          this.viewMonth = 8;
-          this.sync();
-        },
-        get displayDate() {
-          if (!this.lockDate) return '';
-          var parts = this.lockDate.split('-');
-          return this.months[parseInt(parts[1])-1].substring(0,3) + ' ' + parseInt(parts[2]) + ', ' + parts[0];
-        },
-        prevMonth() { if (this.viewMonth === 0) { this.viewMonth = 11; this.viewYear--; } else { this.viewMonth--; } },
-        nextMonth() { if (this.viewMonth === 11) { this.viewMonth = 0; this.viewYear++; } else { this.viewMonth++; } },
-        calDays() {
-          var first = new Date(this.viewYear, this.viewMonth, 1).getDay();
-          var count = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
-          var cells = [];
-          for (var i = 0; i < first; i++) cells.push(null);
-          for (var d = 1; d <= count; d++) cells.push(d);
-          return cells;
-        },
-        pickDay(d) {
-          var m = String(this.viewMonth + 1).padStart(2, '0');
-          var dd = String(d).padStart(2, '0');
-          this.lockDate = this.viewYear + '-' + m + '-' + dd;
-          this.calOpen = false;
-          this.sync();
-        },
-        init() {
-          // Pre-select from server-side ?slate_id=… query: auto-fire the
-          // matching sport setup so the highlight, calendar view, and
-          // default lock date/time all materialize without a user click.
-          if (this.sport === 'fifa') this.selectFifa();
-          else if (this.sport === 'nfl') this.selectNfl();
-        },
-        isSelected(d) {
-          if (!this.lockDate) return false;
-          var m = String(this.viewMonth + 1).padStart(2, '0');
-          var dd = String(d).padStart(2, '0');
-          return this.lockDate === this.viewYear + '-' + m + '-' + dd;
-        },
-        isToday(d) {
-          var t = new Date();
-          return d === t.getDate() && this.viewMonth === t.getMonth() && this.viewYear === t.getFullYear();
-        }
-      }">
+      <div x-data="contestLockPicker({ sport: '<%= j @default_sport.to_s %>' })">
       <!-- Sport selector -->
       <div class="mb-6">
         <label class="block text-sm text-secondary mb-3 font-medium">Sport</label>
@@ -223,36 +138,7 @@
       </div>
       </div>
 
-      <div class="mb-6" x-data="{
-        fileName: '',
-        previewUrl: '',
-        dragging: false,
-        pickFile(e) {
-          var file = e.target.files[0];
-          if (file) this.setFile(file);
-        },
-        dropFile(e) {
-          this.dragging = false;
-          var file = e.dataTransfer.files[0];
-          if (file && file.type.startsWith('image/')) {
-            var input = this.$refs.fileInput;
-            var dt = new DataTransfer();
-            dt.items.add(file);
-            input.files = dt.files;
-            this.setFile(file);
-          }
-        },
-        setFile(file) {
-          this.fileName = file.name;
-          if (this.previewUrl) URL.revokeObjectURL(this.previewUrl);
-          this.previewUrl = URL.createObjectURL(file);
-        },
-        clear() {
-          this.fileName = '';
-          this.previewUrl = '';
-          this.$refs.fileInput.value = '';
-        }
-      }">
+      <div class="mb-6" x-data="imageDropzone()">
         <label class="block text-sm text-secondary mb-2 font-medium">Banner Image</label>
 
         <!-- Drop zone (no preview) -->

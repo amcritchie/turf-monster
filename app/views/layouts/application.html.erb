@@ -312,13 +312,58 @@
         // live in studio-engine's studio/modals/host partial now — see
         // <%%= render "studio/modals/host" %> below.
 
+        // Cross-tab session broadcast — same shape as the tt-tokens channel
+        // used by the token-purchase return path. Tabs broadcast on every
+        // rehydrate (cheap); peers compare userId + loggedIn against their
+        // local store and refetch /account/session_state only on mismatch.
+        // The per-tab _sessionTabId prevents a tab from reacting to its own
+        // broadcast, so there's no echo loop.
+        var _sessionTabId = Math.random().toString(36).slice(2);
+        var _sessionChannel = ('BroadcastChannel' in window)
+          ? new BroadcastChannel('tm-session') : null;
+
+        function fetchAndHydrateSession() {
+          return fetch('/account/session_state', {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            cache: 'no-store'
+          })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+              if (!data) return;
+              var store = window.Alpine && Alpine.store && Alpine.store('session');
+              if (store && store.hydrate) store.hydrate(data);
+              if (data.csrf) {
+                var meta = document.querySelector('meta[name="csrf-token"]');
+                if (meta) meta.setAttribute('content', data.csrf);
+              }
+            })
+            .catch(function() {});
+        }
+
+        if (_sessionChannel) {
+          _sessionChannel.addEventListener('message', function(e) {
+            var msg = e.data;
+            if (!msg || msg.tabId === _sessionTabId) return;
+            var store = window.Alpine && Alpine.store && Alpine.store('session');
+            if (!store) return;
+            var changed = (msg.userId || null) !== (store.userId || null) ||
+                          (!!msg.loggedIn) !== (!!store.loggedIn);
+            if (changed) fetchAndHydrateSession();
+          });
+        }
+
         // Re-seed the canonical session store on every Turbo navigation —
-        // auth state can change between page loads.
+        // auth state can change between page loads. Broadcasts the post-
+        // hydrate snapshot so other tabs holding stale state refetch.
         function rehydrateSession() {
           var store = (window.Alpine && Alpine.store) ? Alpine.store('session') : null;
           var el = document.getElementById('session-context');
           if (!store || !el) return;
           try { store.hydrate(JSON.parse(el.textContent)); } catch (e) {}
+          if (_sessionChannel) {
+            try { _sessionChannel.postMessage({ tabId: _sessionTabId, userId: store.userId, loggedIn: store.loggedIn, mode: store.mode }); } catch (e) {}
+          }
         }
         document.addEventListener('turbo:load', rehydrateSession);
         // bfcache restore (back/forward) doesn't fire turbo:load — the
@@ -329,6 +374,19 @@
         // pre-bfcache state, but re-running hydrate() at minimum re-fires
         // any reactive consumers and resets transient flags.
         window.addEventListener('pageshow', rehydrateSession);
+
+        // visibilitychange rehydrate — when the tab returns from background
+        // (>30s away), GET /account/session_state to detect server-side
+        // logout / cross-tab login changes and rotate CSRF. Avoids the
+        // failure mode where a stale Alpine.store('session') makes the user
+        // believe they're logged in until their next POST surfaces 401.
+        var _hiddenAt = null;
+        document.addEventListener('visibilitychange', function() {
+          if (document.hidden) { _hiddenAt = Date.now(); return; }
+          if (!_hiddenAt || (Date.now() - _hiddenAt) < 30000) return;
+          _hiddenAt = null;
+          fetchAndHydrateSession();
+        });
 
       </script>
     <% end %>
