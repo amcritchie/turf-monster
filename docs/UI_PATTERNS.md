@@ -151,8 +151,165 @@ Selection badges are fixed-width (`w-28`), sorted by game kickoff time, showing 
 ## Faucet Page (`/faucet`)
 Public marketing page with hero, "How It Works" cards, and USDC claim form. Mints SPL USDC tokens directly to user's Phantom wallet via `Vault#mint_spl(to: wallet)`. Three view states: wallet connected (amount picker + claim), logged in no wallet (connect CTA), logged out (login/signup CTAs). Preset amounts $10/$50/$100/$500, custom input $1-$500.
 
-## Solana Modal
-`shared/_solana_modal.html.erb` — Alpine.js store (`Alpine.store('solanaModal')`) for onchain operation feedback. Three states: processing (spinner), success (checkmark + TX link + confetti), error (red icon + message). Uses `canvas-confetti` CDN library (`confetti.browser.min.js`) — `fireSuccessConfetti()` fires 4 bursts (center, left cannon, right cannon, delayed shower) on success state via `$watch`.
+## Modal Host (studio-engine v0.4.5+)
+
+Modal lifecycle is owned by the studio-engine modal host — `Alpine.store('modals')` — a stack-based store registered in the shared `_modal_host.html.erb` partial. Local app code consumes it; do not reimplement.
+
+**Opening / closing**:
+
+```js
+$store.modals.open('id', { props })   // push { id, props } onto stack, lock body scroll
+$store.modals.close()                  // pop the top modal
+$store.modals.closeAll()               // empty the stack
+$store.modals.current()                // top modal { id, props } or null
+$store.modals.isOpen('id')             // membership check
+```
+
+The stack is LIFO — multiple modals can be open simultaneously and render as a Z-indexed stack. Each modal's `props` persists across re-renders, perfect for multi-step flows (tokens → confirm → success).
+
+**Dismissibility**: Modals are dismissible by default (Escape + click outside). For on-chain TX flows, set `dismissible: false` on the props so an accidental click can't orphan a signed-but-unconfirmed transaction. Close only via `$store.modals.close()`.
+
+**Defining a new modal partial**: Mount inside `<template x-if="$store.modals.current()?.id === 'your-id'">` in `shared/_modal_host.html.erb`. **Critical: single root element** — sibling `<style>` / `<script>` / structural tags are silently dropped during parsing (see § Alpine + ERB Constraints below).
+
+**Recovery**: The host auto-clears the stack on browser back navigation (bfcache `pageshow`) and Turbo navigation (`turbo:before-cache`). No app-side recovery code needed.
+
+**Slow-op smoothing**: `window.StudioModals.holdAtLeast(minMs)` returns a thenable enforcing a minimum spinner duration — pair with the processing card so the spinner doesn't flash past the user on fast operations.
+
+> The old `Alpine.store('solanaModal')` is now a thin compatibility proxy over `$store.modals`. New code should call `$store.modals` directly. `fireSuccessConfetti()` still lives in `solana_utils.js` (the old "in wallet_connect" claim was always wrong).
+
+## Auth Modal — 8-step state machine
+
+`/modals/_auth.html.erb` is a single Alpine component that branches on an 8-step state machine. State lives on `$store.modals.current().props.step`, mutated by the board's `selectionBoard` component.
+
+**Step sequence + transitions**:
+
+1. **credentials** — initial state. Phantom + Google + email/password forms. Local validation. Submits via `$dispatch('auth-*-submit')` / `$dispatch('auth-*-click')`.
+2. **tokens-picker** — Stripe pack grid (via `_tokens.html.erb`). Click opens Stripe Checkout in a new tab. Sets step → `tokens-waiting`.
+3. **tokens-waiting** — Spinner + "Finish checkout in the new tab" message. No countdown; user returns manually.
+4. **tokens-confirming** — Processing card (spinner + "Confirming…"). Waits for the polling loop on `/tokens/status` to mark the purchase `minted`.
+5. **tokens-minted** — Success card: "Entry Token Minted" + balance display + in-modal Hold-to-Confirm button. The hold fires `'hold-confirm-entry'`; the board's listener detects auth-modal context and stays in the modal → step `tokens-submitted`.
+6. **tokens-submitted** — `entry_confirmed` card (seeds bar + explorer link + leaderboard CTA). Auto-redirects to the contest or fallback.
+7. **tokens-error** — Poll timed out or entry submission failed. Error card with "Refresh" button.
+8. **redirect** — Geo-blocked / not logged in / insufficient funds. Countdown + CTA to the blocker's target page (e.g. `/wallet`). Driven by the board's `setInterval`.
+
+**Stripe integration**: Pack cards trigger `POST /tokens/stripe_checkout` → opens checkout in a new tab → buyer returns to `/tokens/processing?session_id=…` → page polls `GET /tokens/status` every 500ms until `ready: true`. Backend: webhook → `TokenPurchaseJob` → mints incrementally via `Vault#mint_entry_token`. Job is idempotent — tracks `already_minted` count, resumes from the next index on retry. See § Entry Tokens (Web2) below.
+
+**In-modal hold-to-confirm**: The button in the `tokens-minted` step dispatches `'hold-confirm-entry'`. The board's listener routes confirmation through `ContestsController#enter` with the token path (consumes one token via `Vault#enter_contest_with_token` — no USDC charge). On success the modal stays open and swaps to `tokens-submitted`.
+
+## Real-time Chat (ActionCable)
+
+Contest chat ships in `_chat_panel.html.erb` with **Turbo Streams over ActionCable**. The panel establishes a per-contest subscription via `<%= turbo_stream_from contest, :messages %>`. Posts and deletions broadcast directly from the `Message` model.
+
+**Broadcast wiring**:
+
+```ruby
+# app/models/message.rb (sketch)
+after_create_commit do
+  broadcast_prepend_to([contest, :messages],
+    target: "contest_#{contest_id}_messages",
+    partial: "messages/message",
+    locals:  { message: self })
+rescue => e
+  ErrorLog.capture!(e)   # best-effort — never fail a committed HTTP request
+end
+
+after_update_commit :broadcast_removal, if: :saved_change_to_hidden_at?
+```
+
+**Pinned composer, newest-first stream**: Form wrapper uses `flex flex-shrink-0` to stay pinned. Messages render in a flex column with newest at top. New messages prepend and animate via `@keyframes chat-message-in` (slide + fade, 0.34s cubic-bezier(0.22, 1, 0.36, 1)). A `MutationObserver` watches for new `#message_*` nodes and applies the animation class.
+
+**Permission gate**: Read is public. Post requires `logged_in? && contest.chat_enabled? && contest.chat_participant?(current_user)`. Server-side helpers control composer display (input vs "log in" vs "enter contest to chat"). `MessagesController#create` re-checks `chat_participant?` before persisting. Delete is admin-only.
+
+**Admin hide buttons**: The `.chat-admin-only` CSS class is `display: none` by default; revealed only when the root `.chat-admin` class is present (added server-side via `<%= 'chat-admin' if current_user&.admin? %>`). Hide buttons fire `hideChatMessage(btn)` which `DELETE`s the message via `data-message-url`, triggering broadcast removal.
+
+**"Live" indicator**: Radar-ping animation (`@keyframes chat-live-ping`) — a repeating scale+fade ring (1 → 2.6, opacity 0.6 → 0, 1.8s) layered behind a solid green dot.
+
+**Scroll fade**: Message list container uses `-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent)` to soften the bottom edge.
+
+## Entry Tokens (Web2 flow)
+
+Entry tokens are on-chain `EntryTokenAccount` PDAs minted via Stripe Checkout. The Web2 path lets users with no USDC enter contests by buying tokens with a card.
+
+**Full flow**:
+
+1. User picks a pack in the auth modal's `tokens-picker` step.
+2. `POST /tokens/stripe_checkout` creates a Stripe session (quantity / price / metadata with `user_id`, `wallet`, optional `contest` context).
+3. New tab opens Stripe Checkout → buyer completes payment.
+4. Stripe redirects to `/tokens/processing?session_id=…`.
+5. Page polls `GET /tokens/status` every 500ms. Initial response: `{ ready: false, minted: 0, balance: X }`.
+6. **Backend**: Stripe webhook → `TokenPurchaseJob.perform_later(...)`. Job mints one-by-one via `Vault#mint_entry_token`, persisting signatures to `StripePurchase.mint_tx_signatures` after each successful mint (incremental — crash recovery via resume point).
+7. Once all quantities minted, `purchase.mark_minted!(signatures)` flips status → `"minted"`. `TransactionLog` records the purchase.
+8. Poll detects `ready: true` → swaps the modal to `tokens-confirming` → user sees success card with balance + in-modal hold button.
+9. Hold completes → `ContestsController#enter` routes to the token path → `Vault#enter_contest_with_token` consumes one token → entry confirms (seeds awarded). Modal swaps to `tokens-submitted` and auto-redirects.
+
+**Job idempotency**: `TokenPurchaseJob` short-circuits if `status == "minted"` (already done). On retry it calculates `already_minted` from the persisted signature count and loops from there — exactly-once per token even with mid-job crashes.
+
+**Navbar badge**: `display_balance` helper checks `user.entry_token_balance`. When USDC is 0 but tokens > 0, the nav shows "🎟 N" (token count) instead of "$X". Flags that the user has entry-currency but no spending USDC.
+
+## $store.session — wallet-mode pattern
+
+Session state (guest / web2 / web3) is the canonical source of truth for what the user can do. **Always branch on `$store.session.mode === 'web3'`** — never on legacy `cfg.onchain_session`, never on `phantom_linked` alone.
+
+**Server-side**: `ApplicationController#wallet_context` builds a `SessionContext` (PORO at `app/models/session_context.rb`) from `current_user` + `@onchain_session` flag (true when the user authenticated via a live Phantom signature *this session* — separate from account-level `phantom_linked?`). Serialized to a JSON block on every page:
+
+```erb
+<script type="application/json" id="session-context">
+  <%= session_context.to_h.to_json.html_safe %>
+</script>
+```
+
+**Client-side**: Alpine registers the store on `alpine:init` by parsing `#session-context`. Re-seeded on every Turbo load:
+
+```js
+Alpine.store('session', JSON.parse(document.getElementById('session-context').textContent))
+```
+
+Store shape (camelCase): `{ loggedIn, mode, phantomLinked, userId, address }`.
+
+**Modes**:
+
+- **`:guest`** — not logged in. Use `$store.session.loggedIn === false` to gate (login button visibility, etc.).
+- **`:web2`** — logged in via email/Google OR Phantom-linked account that re-auth'd via email this session. CANNOT sign on-chain TXs. Stripe / faucet OK; Solana TX buttons disabled.
+- **`:web3`** — logged in AND authenticated via a fresh Phantom signature. CAN sign on-chain TXs (contest creation, treasury cosigns, on-chain entry).
+
+UI branching example:
+
+```html
+<button x-show="$store.session.mode === 'web3'" @click="signTx()">Sign on-chain</button>
+<a     x-show="!$store.session.loggedIn"        href="/login">Log in</a>
+<div   x-show="$store.session.mode === 'web2'">Connect Phantom to sign</div>
+```
+
+## Landing Pages (funnel + referral attribution)
+
+Landing pages are `LandingPage` records (name, headline, subheadline, badge, cta_label, background_style, contest_id, slug, active). Rendered at `/landing/:slug` by `LandingPagesController#show`. Page sections:
+
+1. Hero — brand logo + two-tone "Turf Totals" title (split-color rendering).
+2. Badge — optional `lp-badge` span (violet/20 background).
+3. Contest snapshot card — entry fee / guaranteed prizes / entries count / lock time / CTA → `/contests/:id`.
+4. "How it Works" — 4 numbered steps from `funnel_how_it_works(@contest)` helper, format-specific (Turf Totals vs World Cup Survivor copy).
+5. Footer — context-aware ("See how it works" vs "Help Center").
+
+**Background variants**: `background_partial` returns one of three animated partials (gradient / blobs / circles) based on `background_style` enum. Each is pure CSS — no JS.
+
+**Referral capture (`?ref=` + cookies)**: `ApplicationController#capture_reference` runs before every action and writes `?reference=` into `cookies[:reference]` (30-day, first-touch wins). On signup, `RegistrationsController#create` mirrors the cookie to `user.reference`. `LandingPagesController#show` ALSO sets the cookie to the landing page's slug if empty (landing page as referrer). `LandingPage#signup_count` returns `User.where(reference: slug).count` for analytics.
+
+**`/account/set_inviter`**: After signup, JS `POST /account/set_inviter?inviter_slug=…` (inviter's slug from landing context). `AccountsController#set_inviter` atomically sets `invited_by_id` (idempotent — 200 if already set). Builds the referral chain for leaderboard attribution.
+
+## Alpine + ERB Constraints (critical — silent failures)
+
+These are gotchas that produce **silent no-ops or phantom DOM** rather than errors. Every UI-touching change must respect them. The same list lives in `CLAUDE.md`'s "Known Gotchas" — kept in both because UI agents start here.
+
+1. **`<template x-if>` must have ONE root element.** Multiple siblings silently mount as a no-op; sibling `<style>` / `<script>` are dropped during parsing. Wrap content in a single outer `<div>`; move styles outside the template.
+2. **Never combine `@click.outside` with hold buttons.** Button-release fires AFTER `@click.outside`, so a hold that opens a modal via `@click.outside` will have the release click close the freshly-opened modal. Use `@click`, or delay the open via `setTimeout(500ms)`.
+3. **`<%# %>` ERB comments terminate at the FIRST `%>` anywhere in the body.** Comment bodies must contain ZERO `%` characters (including CSS `calc(... 100% ...)` snippets quoted inside). Use HTML `<!-- ... -->` for multi-line notes, or split into multiple `<%# %>` blocks.
+4. **Never mix `<!--` (HTML) with `%>` (ERB) comment closes.** Mismatched open/close triggers HTML parser recovery → phantom DOM elements with mangled attributes (`x-show="null"`) on unrelated siblings. Match the syntax.
+5. **HTML5 forbids `--` inside `<!-- ... -->`** — including CSS custom property refs (`--color-primary`) in dev notes. Parser recovery reparents downstream content into wrong containers. Use single hyphens or `−`, or move var refs to a `<style>` block.
+6. **`block_given?` inside a partial inherits the layout's `<%= yield %>`** — returns true even with no block passed. Calling `yield` then returns the entire enclosing view's HTML. In shared partials, check explicit locals BEFORE `block_given?`: `if locals[:block] || block_given?`.
+7. **`Alpine.evaluate` is synchronous** — returns `undefined` for async expressions. `evaluateLater`'s `extras` shape is version-dependent. For custom async logic, compile your own `AsyncFunction`: `new Function('return (async () => { ... })')().then(...)`.
+
+## Solana Modal (legacy alias)
+`shared/_solana_modal.html.erb` — Now a thin compatibility proxy over `$store.modals` (see § Modal Host above). The store name `Alpine.store('solanaModal')` is preserved for older callsites; new code should call `$store.modals` directly. Three logical states still apply (processing / success / error). `fireSuccessConfetti()` from `solana_utils.js` fires 4 confetti bursts (center, left cannon, right cannon, delayed shower) on the success state via `$watch`.
 
 ## Admin Dropdowns
 - **Soccer dropdown** (`components/_soccer_dropdown.html.erb`): Soccer ball emoji trigger, links to Teams and Games pages.

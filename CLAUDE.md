@@ -185,6 +185,28 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 - **TransactionLog** — admin onchain transaction audit
 - **ErrorLog** — polymorphic, from engine
 
+### Auth / session / audit
+
+- **Current** — `ActiveSupport::CurrentAttributes`. Attributes: `user`, `outbound_source`. Request- and Sidekiq-job-scoped (auto-resets). Set by `ApplicationController#set_current_context` and jobs/services to flow `user` + polymorphic domain object through the logging layers (especially `OutboundRequest`). No slug.
+- **SessionContext** — PORO (NOT ActiveRecord). Inputs: `user`, `@onchain_session` (boolean — true when authenticated via a live Phantom signature this session, separate from account-level `phantom_linked?`). MODES: `:guest` / `:web2` / `:web3`. Methods: `mode`, `guest?`, `web2?`, `web3?`, `logged_in?`, `phantom_linked?`, `user_id`, `address`, `to_h` (camelCase JSON), `as_json`. Canonical single source of truth for viewer's auth/wallet state — built per-request by `ApplicationController#wallet_context`, serialized into the `#session-context` JSON block, consumed by `$store.session` in Alpine. No slug.
+- **OutboundRequest** — `service` (string: `stripe` / `solana_rpc` / `moonpay`), `status_code`, `error_class`, `created_at` (manual, no `updated_at`). `belongs_to :source` (polymorphic, optional), `belongs_to :user` (optional). Scopes: `recent`, `for_service`, `failed`, `successful`. Predicates: `failed?`, `successful?`. Immutable audit log of every Stripe + Solana RPC call (set via `Stripe::Instrumentation` + prepended `Solana::ClientLogger`); retention sweeper trims 90d ok / 180d failed. No slug.
+
+### Web2 commerce + funnel
+
+- **StripePurchase** — `Sluggable` (randomized slug). `stripe_session_id` (unique), `quantity`, `price_cents`, `status` (enum: pending/minted/refunded/failed), `mint_tx_signatures` (JSON array — incremental persistence for crash recovery), `minted_at`, `refunded_at`, `refund_reason`, `pack_id`. `belongs_to :user`. `PACKS` constant: `single` (1 token, $19), `trio` (3 tokens, $49), `test_trio` (3 tokens, $5 — scaffold-gated by `ENABLE_TEST_SCAFFOLDING`). Methods: `mark_minted!(signatures)`, `mark_refunded!(reason:)`, `tx_signatures`, `StripePurchase.available_packs`. Audit log for Stripe token purchases — on-chain tokens themselves live as `EntryTokenAccount` PDAs in turf-vault.
+- **LandingPage** — `Sluggable` (`before_validation :set_slug`). `slug` (unique), `name`, `active` (boolean), `background_style` (enum: gradient/blobs/circles), `cta_label`, `contest_id` (FK, optional). `belongs_to :contest` (optional). Scope: `active`. Methods: `cta_label_display`, `background_partial`, `signup_count` (counts users via `?ref=` attribution). Marketing funnel splash pages with animated backgrounds; slug can be explicit (stable across name edits) or derived from name.
+
+### Real-time + game-day state
+
+- **Message** — `body` (max 500 chars), `hidden_at` (soft-delete timestamp), `hidden_by_id` (admin FK). `belongs_to :contest, :user`. Callbacks: `after_create_commit :broadcast_new_message` (Turbo Stream prepend via ActionCable), `after_update_commit :broadcast_removal` (on `hidden_at` change). Scope: `visible`. Methods: `hidden?`, `hide!(admin)`, `Message.recent_for(contest, limit:)`. Real-time contest chat — admin can soft-delete with `hidden_at` audit trail. No slug. See `docs/UI_PATTERNS.md` § ActionCable.
+- **Goal** — `Sluggable` (`after_create :update_slug_with_id`). `game_slug` (FK), `team_slug` (FK), `player_slug` (FK, optional). `belongs_to :game, :team, :player` (slug FKs). Callbacks: `after_create :refresh_game_scores`, `after_destroy :refresh_game_scores`. `name_slug` = `"goal-#{id}"`. Records individual team goals in a Game; triggers game score recompute on create/destroy.
+
+### Seasons + Survivor
+
+- **SeasonConfig** — `Sluggable` with hardcoded `name_slug = "season-config"`. `current_season_id` (int, ≥0). Class methods: `SeasonConfig.current`, `SeasonConfig.current_season_id`, `SeasonConfig.set_current!(season_id)`. Rails-side singleton pointer to the active on-chain `Season` PDA in turf-vault.
+- **SurvivorRound** — `Sluggable`. `number` (unique), `name`, `stage` (enum: group/knockout), `status` (enum: upcoming/locked/completed), `picks_lock_at` (nullable). `has_many :games` (dependent: nullify), `has_many :survivor_picks` (dependent: destroy). Scopes: `ordered`. Methods: `SurvivorRound.current` (earliest unlocked), `group_stage?`, `knockout?`, `picks_locked?`. World Cup Survivor tournament round tracker.
+- **SurvivorPick** — `Sluggable`. `result` (enum: pending/survived/eliminated), `entry_id` (FK), `survivor_round_id` (FK), `team_slug` (FK). `belongs_to :entry, :survivor_round, :team` (Team via slug FK). Validations: unique `[survivor_round_id, entry_id]` (one pick per entry per round) and unique `[team_slug, entry_id]` (can't reuse a team across rounds). `name_slug` = `"#{entry.slug}-round-#{survivor_round.number}"`. World Cup Survivor per-entry, per-round team pick.
+
 ## Error Logging
 
 Every write action MUST use `rescue_and_log` with target/parent context. See top-level `CLAUDE.md` for full pattern docs.
@@ -211,7 +233,17 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - `finalize` — Phantom-driven contest creation step 2 (collection route, no `:id`). See `ContestsController#create` + `#finalize`.
 - `prepare_onchain_contest`, `confirm_onchain_contest` — legacy Phantom-fund-existing-contest flow; still referenced by `e2e/onchain.spec.js`. Not used by the UI anymore.
 - `grade`, `fill`, `lock`, `jump`, `reset` — admin actions
+- `grade_round` — survivor admin action: scores the current SurvivorRound + marks picks survived/eliminated
 - `payout_entry` — individual entry payout
+
+### Contest Chat (ActionCable)
+- `POST /contests/:contest_id/messages` — create chat message (requires `chat_enabled? && chat_participant?(current_user)`)
+- `DELETE /contests/:contest_id/messages/:id` — admin soft-delete (sets `hidden_at`)
+- Per-contest WebSocket subscription via `turbo_stream_from contest, :messages`. See `docs/UI_PATTERNS.md` § ActionCable.
+
+### Landing Pages
+- `/landing/:slug` — public marketing funnel page (hero + contest snapshot + "How it Works")
+- `/admin/landing_pages` — admin CRUD (`resources :landing_pages`)
 
 ### Account & Auth
 - `/account` — profile, password, Google link/unlink. See `docs/AUTH.md`.
@@ -264,6 +296,18 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - **Selection count = 6**: Dynamic via `Contest#picks_required` — all views reference this method
 - **Tailwind class compilation**: New utility classes won't compile unless already used elsewhere. Use inline `style` for one-offs.
 - **Chart.js + Alpine.js**: Never store Chart.js instances as Alpine reactive properties (Proxy infinite loops). See `docs/FORMULAS.md`.
+
+### Alpine + ERB constraints (critical — silent failures)
+
+Violations of these produce silent no-ops or phantom DOM elements, not errors. Every UI-touching contributor (human + agent) MUST internalize these:
+
+- **`<template x-if>` must have ONE root element.** Multiple siblings silently mount as a no-op. Sibling `<style>` / `<script>` / structural tags are dropped during parsing. Wrap all content in a single outer `<div>`; move styles outside the template.
+- **Never combine `@click.outside` with hold buttons.** The button-release click that completes a hold fires AFTER the `@click.outside` listener. A hold that opens a modal via `@click.outside` will have the release click close the freshly-opened modal. Use `@click` instead, or delay the modal open via `setTimeout(500ms)`.
+- **`<%# %>` ERB comments terminate at the FIRST `%>` anywhere in the body.** Comment bodies must contain ZERO `%` characters (including CSS `calc()` expressions like `--var: calc(100% - 2rem)` quoted inside a comment). Use HTML `<!-- ... -->` for multi-line notes, or split into multiple `<%# %>` blocks.
+- **Never mix `<!--` (HTML) with `%>` (ERB) comment closes.** Mismatched open/close triggers HTML parser recovery and produces phantom DOM elements with mangled attributes (`x-show="null"`) on unrelated siblings. Match the syntax: `<!-- ... -->` for HTML, `<%# ... %>` for ERB.
+- **HTML5 forbids `--` inside `<!-- ... -->`** — including CSS custom property refs (`--color-primary`) in dev notes. Parser recovery reparents downstream content into wrong containers (e.g. a board ended up inside a modal card). Use single hyphens or `−`, or move var refs to a `<style>` block / data attributes.
+- **`block_given?` inside a partial inherits the layout's `<%= yield %>`** — returns true even when no `do...end` was passed. Calling `yield` then returns the entire enclosing view's HTML. In shared partials, check explicit locals BEFORE `block_given?`: `if locals[:block] || block_given?`.
+- **`Alpine.evaluate` is synchronous** — returns `undefined` for async expressions. `evaluateLater`'s `extras` shape is version-dependent. For custom async logic, compile your own `AsyncFunction`: `new Function('return (async () => { ... })')().then(...)`.
 - **Cross-component Alpine**: Use global functions/variables instead of `$dispatch`/`$store` for shared state.
 - **Navbar / sticky-nav scroll**: Bounce is prevented by `overflow-anchor: none` on `<body>` — shipped by studio-engine (≥0.4.4) from `layouts/studio/_head.html.erb` — which stops Chrome/Firefox scroll-anchoring from dragging `scrollY` when the sticky navbar resizes. The scroll handler is **unthrottled** (throttling drops the trailing event and strands the navbar collapsed); hysteresis is 5/60. Fixed elements below the navbar position off `var(--nav-h)` — a `ResizeObserver`-fed CSS var also shipped by the engine head — never hardcode the offset.
 
