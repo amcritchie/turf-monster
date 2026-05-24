@@ -2,6 +2,12 @@ class AccountsController < ApplicationController
   include UserMergeable
   include Solana::SessionAuth
 
+  # session_state is callable by guests on purpose — if a tab's session
+  # expired server-side, the client-side rehydrate (visibilitychange /
+  # cross-tab broadcast) needs to GET the guest shape back to flip the
+  # store. Otherwise auth-required would 302 → /login and the JS can't
+  # parse the response.
+  skip_before_action :require_authentication, only: [:session_state]
   skip_before_action :require_profile_completion, only: [:show, :complete_profile, :save_profile, :session_state]
 
   def show

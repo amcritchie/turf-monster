@@ -17,6 +17,57 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to root_path
   end
 
+  # --- session_state tests ---
+
+  test "session_state returns guest shape for unauthenticated callers" do
+    get session_state_account_path, as: :json
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "guest", body["mode"]
+    assert_equal false, body["loggedIn"]
+    assert_nil body["userId"]
+    assert_equal "", body["address"]
+    assert body["csrf"].present?, "expected a fresh CSRF token in the response"
+  end
+
+  test "session_state returns web2 shape for an email-logged-in user" do
+    log_in_as @alex
+    get session_state_account_path, as: :json
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "web2", body["mode"]
+    assert_equal true, body["loggedIn"]
+    assert_equal @alex.id, body["userId"]
+    assert body["csrf"].present?
+  end
+
+  test "session_state returns web3 shape after a Phantom login" do
+    user = User.create!(email: "phantom@mcritchie.studio", password: "password")
+    log_in_as_onchain(user)
+    get session_state_account_path, as: :json
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "web3", body["mode"]
+    assert_equal true, body["loggedIn"]
+    assert_equal user.id, body["userId"]
+    assert_equal user.reload.web3_solana_address, body["address"]
+  end
+
+  test "session_state skips require_profile_completion gate" do
+    user = User.create!(email: "incomplete@mcritchie.studio", password: "password")
+    # User with no username would normally hit require_profile_completion and
+    # get redirected; session_state must be reachable for the visibilitychange
+    # rehydrate hook to work even mid-onboarding.
+    user.update_column(:username, nil)
+    log_in_as user
+    get session_state_account_path, as: :json
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal true, body["loggedIn"]
+  end
+
+  # --- update_username tests ---
+
   test "update_username rejects a taken username" do
     log_in_as @alex
     post update_username_account_path, params: { username: users(:jordan).username }, as: :json

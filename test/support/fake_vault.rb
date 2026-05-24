@@ -85,6 +85,32 @@ class FakeVault
     { signature: "fake-enter-#{SecureRandom.hex(2)}", entry_pda: "epda-#{SecureRandom.hex(2)}" }
   end
 
+  # --- Build-only partial-signed TXs (Phantom co-sign flow) ---
+  #
+  # Used by ContestsController#prepare_entry. Returns the same envelope shape
+  # as the real Solana::Vault#build_enter_contest_direct: serialized_tx plus
+  # the predicted entry PDA the user's TX will create.
+  def build_enter_contest_direct(wallet_address, contest_slug, entry_num, season_id: nil)
+    @enter_calls << {
+      method: :build_enter_contest_direct,
+      wallet: wallet_address, slug: contest_slug,
+      entry_number: entry_num, season_id: season_id
+    }
+    {
+      serialized_tx: "FAKE_TX_#{contest_slug}_#{entry_num}",
+      entry_pda: "epda-#{contest_slug}-#{wallet_address[0, 4]}-#{entry_num}"
+    }
+  end
+
+  # Used by ContestsController#confirm_onchain_entry. Real Vault returns
+  # [pda_bytes, bump] and the controller passes pda_bytes through
+  # Solana::Keypair.encode_base58. For tests, return a tuple whose first
+  # element is already a string and stub Solana::Keypair.encode_base58 to
+  # identity when calling confirm_onchain_entry.
+  def entry_pda(contest_slug, wallet_address, entry_num)
+    ["epda-#{contest_slug}-#{wallet_address[0, 4]}-#{entry_num}", 255]
+  end
+
   # --- PDA / ATA bootstrapping (no-op stubs) ---
 
   def ensure_user_account(wallet)

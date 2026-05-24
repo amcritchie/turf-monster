@@ -253,6 +253,145 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, vault.enter_calls.length
   end
 
+  # --- prepare_entry tests (web3 single-signature flow) ---
+
+  test "prepare_entry builds the TX + creates a pending PT" do
+    @user.update!(web3_solana_address: "Web3PrepWallet#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_prep", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    assert_difference "PendingTransaction.count", 1 do
+      Solana::Vault.stub :new, vault do
+        post prepare_entry_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["success"]
+    assert body["serialized_tx"].start_with?("FAKE_TX_")
+    assert_equal entry.id, body["entry_id"]
+    assert body["entry_pda"].start_with?("epda-")
+    assert body["ptx_slug"].start_with?("ptx-")
+
+    ptx = PendingTransaction.find_by(slug: body["ptx_slug"])
+    assert_equal "pending", ptx.status
+    assert_equal "enter_contest_direct", ptx.tx_type
+    assert_equal entry, ptx.target
+    assert_equal @user.web3_solana_address, ptx.initiator_address
+  end
+
+  test "prepare_entry rejects when the session was not Phantom-authenticated" do
+    @user.update!(web3_solana_address: "Web3NotOnchain#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_x", season_id: 1)
+
+    log_in_as @user  # email/password login — no session[:onchain]
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    assert_no_difference "PendingTransaction.count" do
+      post prepare_entry_contest_path(@contest), as: :json
+    end
+
+    assert_response :forbidden
+    assert_match(/Phantom session required/, JSON.parse(response.body)["error"])
+  end
+
+  test "prepare_entry rejects when there is no cart entry" do
+    @user.update!(web3_solana_address: "Web3NoCart#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_y", season_id: 1)
+    log_in_as_onchain(@user)
+
+    post prepare_entry_contest_path(@contest), as: :json
+    assert_response :unprocessable_entity
+    assert_match(/No cart entry/, JSON.parse(response.body)["error"])
+  end
+
+  test "prepare_entry rejects when selections are incomplete" do
+    @user.update!(web3_solana_address: "Web3Incomp#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_z", season_id: 1)
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2].each { |m| entry.selections.create!(slate_matchup: m) }  # only 2 of 6
+
+    vault = FakeVault.new
+    assert_no_difference "PendingTransaction.count" do
+      Solana::Vault.stub :new, vault do
+        post prepare_entry_contest_path(@contest), as: :json
+      end
+    end
+    assert_response :unprocessable_entity
+    assert_match(/Exactly .* selections/, JSON.parse(response.body)["error"])
+  end
+
+  # --- confirm_onchain_entry tests ---
+
+  test "confirm_onchain_entry promotes entry to active + marks PT confirmed" do
+    @user.update!(web3_solana_address: "Web3Confirm#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conf", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      status: "submitted", tx_signature: "sig-confirm-1",
+      target: entry, initiator_address: @user.web3_solana_address,
+      metadata: { entry_pda: "epda-#{@contest.slug}-#{@user.web3_solana_address[0, 4]}-0" }.to_json
+    )
+
+    vault = FakeVault.new
+    expected_pda = "epda-#{@contest.slug}-#{@user.web3_solana_address[0, 4]}-0"
+
+    # encode_base58 here would normally turn pda bytes into a base58 string;
+    # FakeVault.entry_pda returns the string already, so stub encode_base58
+    # to pass it through unchanged.
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post confirm_onchain_entry_contest_path(@contest),
+            params: { tx_signature: "sig-confirm-1", entry_id: entry.id, entry_pda: expected_pda },
+            as: :json
+        end
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["success"]
+    assert_equal "sig-confirm-1", body["tx_signature"]
+    assert entry.reload.active?
+    assert_equal "sig-confirm-1", entry.onchain_tx_signature
+    assert_equal "confirmed", ptx.reload.status
+  end
+
+  test "confirm_onchain_entry rejects a mismatched client-supplied entry_pda" do
+    @user.update!(web3_solana_address: "Web3Mismatch#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_m", season_id: 1)
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        post confirm_onchain_entry_contest_path(@contest),
+          params: { tx_signature: "sig-attacker", entry_id: entry.id, entry_pda: "epda-attacker-fake" },
+          as: :json
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/Entry PDA mismatch/, JSON.parse(response.body)["error"])
+    assert entry.reload.cart?
+  end
+
   # --- stamp_entry_signature tests ---
 
   test "stamp_entry_signature flips a pending PT to submitted with the signature" do
