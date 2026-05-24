@@ -15,23 +15,32 @@
 //   seedsNavbar   → ambient state ({ level, toward_next, progress })
 //                   read for the "fill from 0" animation
 //
-// opts:
-//   initialToward: server-rendered toward_next (0-100)
-//   initialLevel:  server-rendered level (1+)
+// Initial values come from the root element's data attrs (NOT factory
+// args). This is the canonical Alpine.data() pattern — `x-data="seedsBar"`
+// resolves through Alpine's registered-data scope, which is reliable
+// across importmap-load timing. The previous `x-data="seedsBar({...})"`
+// shape relied on `window.seedsBar` existing at x-data parse time, which
+// fails because importmap modules load AFTER Alpine processes x-data.
+//
+// data attrs read on init:
+//   data-initial-toward — toward_next (0–100), default 0
+//   data-initial-level  — level (1+), default 1
 
-function seedsBar(opts) {
-  opts = opts || {};
-  var initialToward = parseInt(opts.initialToward, 10) || 0;
-  var initialLevel = parseInt(opts.initialLevel, 10) || 1;
-
+function seedsBar() {
   return {
-    displaySeeds: initialToward,
-    displayLevel: initialLevel,
+    displaySeeds: 0,
+    displayLevel: 1,
     levelingUp: false,
-    finalToward: initialToward,
+    finalToward: 0,
     _timers: [],
 
     init() {
+      var initialToward = parseInt(this.$root.dataset.initialToward, 10) || 0;
+      var initialLevel = parseInt(this.$root.dataset.initialLevel, 10) || 1;
+      this.displaySeeds = initialToward;
+      this.displayLevel = initialLevel;
+      this.finalToward = initialToward;
+
       var self = this;
       var raw = localStorage.getItem("seedsLevelUp");
       if (raw) {
@@ -165,12 +174,9 @@ function seedsBar(opts) {
   };
 }
 
+// Note: the live factory lives INLINE in app/views/components/_seeds_bar.html.erb
+// because importmap modules load AFTER Alpine processes x-data in this app's
+// setup (verified 2026-05-24). This module is kept as a unit-testable
+// duplicate and harmlessly re-assigns window.seedsBar after Alpine has
+// already used the inline copy.
 window.seedsBar = seedsBar;
-function registerSeedsBar() {
-  if (typeof Alpine === "undefined") return false;
-  Alpine.data("seedsBar", seedsBar);
-  return true;
-}
-if (!registerSeedsBar()) {
-  document.addEventListener("alpine:init", registerSeedsBar);
-}
