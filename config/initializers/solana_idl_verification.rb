@@ -20,7 +20,13 @@
 #   2. Commit the new IDL JSON
 #   3. Deploy
 # The whole point is that the env var should never be the kill switch.
-if Rails.env.production?
+#
+# Skip during Heroku slug compilation: `assets:precompile` loads the Rails
+# environment with SECRET_KEY_BASE_DUMMY=1, but Heroku's build phase does
+# NOT expose user-set config vars (BYPASS_IDL_CHECK, EXPECTED_IDL_HASH),
+# so the verifier would raise during build even when set correctly for
+# runtime. Verification still runs at release-phase + web-dyno boot.
+if Rails.env.production? && !ENV["SECRET_KEY_BASE_DUMMY"]
   if ENV["SKIP_IDL_VERIFICATION"].present?
     raise <<~MSG
       SKIP_IDL_VERIFICATION is set in production — refusing to boot.
