@@ -215,7 +215,6 @@ module Solana
     #
     # Returns { serialized_tx:, vault_pda: } — base64 partial TX + PDA b58.
     def build_initialize_vault(creator_pubkey:, signers:, threshold:)
-      admin = Keypair.admin
       creator_bytes = Keypair.decode_base58(creator_pubkey)
       vault_pda, _ = vault_state_pda
       usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
@@ -227,9 +226,7 @@ module Solana
              signers.map { |s| Borsh.encode_pubkey(Keypair.decode_base58(s)) }.join +
              Borsh.encode_u8(threshold)
 
-      tx = build_tx(admin)  # bot is fee payer (signs server-side)
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
           { pubkey: creator_bytes, is_signer: true, is_writable: true },  # admin = Phantom (INIT_AUTHORITY on mainnet)
           { pubkey: vault_pda, is_signer: false, is_writable: true },
@@ -241,10 +238,9 @@ module Solana
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false },
           { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
         ],
-        data: data
+        data: data,
+        additional_signers: [creator_bytes]
       )
-
-      serialized = tx.serialize_partial_base64(additional_signers: [creator_bytes])
       { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
@@ -292,7 +288,6 @@ module Solana
     #
     # Returns { serialized_tx: base64, vault_pda: b58 }.
     def build_pause_vault(cosigner_pubkey:, reason:)
-      admin = Keypair.admin
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
       vault_pda, _ = vault_state_pda
 
@@ -301,42 +296,35 @@ module Solana
 
       data = Transaction.anchor_discriminator("pause") + reason_bytes.pack("C*")
 
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: cosigner_bytes,         is_signer: true, is_writable: false },
-          { pubkey: vault_pda,              is_signer: false, is_writable: true }
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: cosigner_bytes,                 is_signer: true, is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: true }
         ],
-        data: data
+        data: data,
+        additional_signers: [cosigner_bytes]
       )
-
-      serialized = tx.serialize_partial_base64(additional_signers: [cosigner_bytes])
       { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
     # Build a partially-signed `unpause` transaction for Phantom to cosign.
     # Same 2-of-3 auth as pause; no reason arg.
     def build_unpause_vault(cosigner_pubkey:)
-      admin = Keypair.admin
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
       vault_pda, _ = vault_state_pda
 
       data = Transaction.anchor_discriminator("unpause")
 
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: cosigner_bytes,         is_signer: true, is_writable: false },
-          { pubkey: vault_pda,              is_signer: false, is_writable: true }
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: cosigner_bytes,                 is_signer: true, is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: true }
         ],
-        data: data
+        data: data,
+        additional_signers: [cosigner_bytes]
       )
-
-      serialized = tx.serialize_partial_base64(additional_signers: [cosigner_bytes])
       { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
@@ -474,22 +462,19 @@ module Solana
     # co-sign. Admin signs (pays the fee); the wallet's signature slot is left
     # empty for the client. Returns base64 serialized TX. turf-vault v0.14.0+.
     def build_set_username(wallet_address, username)
-      admin = Keypair.admin
       user_pda, _ = user_account_pda(wallet_address)
       wallet_bytes = Keypair.decode_base58(wallet_address)
 
       data = Transaction.anchor_discriminator("set_username") + username_bytes32(username)
 
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
           { pubkey: wallet_bytes, is_signer: true,  is_writable: false },
           { pubkey: user_pda,     is_signer: false, is_writable: true }
         ],
-        data: data
+        data: data,
+        additional_signers: [wallet_bytes]
       )
-      serialized = tx.serialize_partial_base64(additional_signers: [wallet_bytes])
       { serialized_tx: serialized }
     end
 
@@ -576,7 +561,6 @@ module Solana
     # Admin signs (pays PDA rent), creator must sign client-side (authorizes prizes USDC transfer).
     # Returns base64-encoded transaction for the creator to co-sign and submit.
     def build_create_contest(wallet_address, contest_slug, entry_fee:, max_entries:, payout_amounts:, prizes:, season_id: nil)
-      admin = Keypair.admin
       wallet_bytes = Keypair.decode_base58(wallet_address)
       contest_id = Digest::SHA256.digest(contest_slug)
       contest_pda_addr, _ = contest_pda(contest_slug)
@@ -597,11 +581,9 @@ module Solana
              Borsh.encode_vec(payout_amounts) { |amt| Borsh.encode_u64(amt) } +
              Borsh.encode_u64(prizes)
 
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
           { pubkey: wallet_bytes, is_signer: true, is_writable: true },              # creator (signs USDC transfer)
           { pubkey: vault_pda, is_signer: false, is_writable: false },               # vault_state
           { pubkey: contest_pda_addr, is_signer: false, is_writable: true },         # contest (init)
@@ -611,14 +593,11 @@ module Solana
           { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
-        data: data
+        data: data,
+        additional_signers: [wallet_bytes]
       )
 
-      # Partial sign: admin signs, creator's signature slot left as zeros
-      serialized = tx.serialize_partial_base64(additional_signers: [wallet_bytes])
-      contest_pda_b58 = Keypair.encode_base58(contest_pda_addr)
-
-      { serialized_tx: serialized, contest_pda: contest_pda_b58 }
+      { serialized_tx: serialized, contest_pda: Keypair.encode_base58(contest_pda_addr) }
     end
 
     # Server-funded `create_contest` — admin signs as BOTH payer AND creator.
@@ -781,7 +760,6 @@ module Solana
     # Admin signs (pays rent), user must sign client-side (authorizes USDC transfer).
     # Returns base64-encoded transaction for the client to co-sign and submit.
     def build_enter_contest_direct(wallet_address, contest_slug, entry_num, season_id: nil)
-      admin = Keypair.admin
       wallet_bytes = Keypair.decode_base58(wallet_address)
       user_pda, _ = user_account_pda(wallet_address)
       vault_pda, _ = vault_state_pda
@@ -799,11 +777,9 @@ module Solana
       data = Transaction.anchor_discriminator("enter_contest_direct") +
              Borsh.encode_u32(entry_num)
 
-      tx = build_tx(admin)  # admin is fee payer and first signer
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
           { pubkey: wallet_bytes, is_signer: true, is_writable: true },              # user (signs token transfer)
           { pubkey: user_pda, is_signer: false, is_writable: true },                 # user_account (seeds awarded)
           { pubkey: vault_pda, is_signer: false, is_writable: false },               # vault_state
@@ -816,14 +792,11 @@ module Solana
           { pubkey: s_pda, is_signer: false, is_writable: false },                   # season (seed_schedule)
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
-        data: data
+        data: data,
+        additional_signers: [wallet_bytes]
       )
 
-      # Partial sign: admin signs, user's signature slot left as zeros
-      serialized = tx.serialize_partial_base64(additional_signers: [wallet_bytes])
-      entry_pda_b58 = Keypair.encode_base58(e_pda)
-
-      { serialized_tx: serialized, entry_pda: entry_pda_b58 }
+      { serialized_tx: serialized, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
     # Settle contest — requires 2-of-3 multisig (admin + cosigner_keypair)
@@ -877,7 +850,6 @@ module Solana
     # Admin signs, cosigner_pubkey slot left empty for client-side signing.
     # Returns base64-encoded partially-signed TX.
     def build_settle_contest(contest_slug, settlements, cosigner_pubkey:)
-      admin = Keypair.admin
       c_pda, _ = contest_pda(contest_slug)
       vault_pda, _ = vault_state_pda
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
@@ -904,20 +876,16 @@ module Solana
         ]
       end
 
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
+      serialized = build_partial_signed(
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },
           { pubkey: cosigner_bytes, is_signer: true, is_writable: false },
           { pubkey: vault_pda, is_signer: false, is_writable: false },
           { pubkey: c_pda, is_signer: false, is_writable: true }
         ] + remaining,
-        data: data
+        data: data,
+        additional_signers: [cosigner_bytes]
       )
-
-      # Partial sign: admin signs, cosigner's signature slot left as zeros
-      serialized = tx.serialize_partial_base64(additional_signers: [cosigner_bytes])
       { serialized_tx: serialized, contest_slug: contest_slug }
     end
 
@@ -1227,6 +1195,20 @@ module Solana
       tx.set_recent_blockhash(blockhash)
       tx.add_signer(signer)
       tx
+    end
+
+    # Build + partially sign a single-instruction anchor TX. Admin bot is the
+    # fee payer and signs server-side; every pubkey in `additional_signers`
+    # gets its signature slot zero-filled for client-side Phantom cosign.
+    # Returns the base64-encoded TX, ready for cosignTransaction().
+    #
+    # Shared backbone for every `build_*` partial-sign builder — the
+    # fee-payer + signer-slot + serialization mechanics live here so a new
+    # cosign instruction only needs to declare its accounts + data.
+    def build_partial_signed(accounts:, data:, additional_signers:)
+      tx = build_tx(Keypair.admin)
+      tx.add_instruction(program_id: @program_id, accounts: accounts, data: data)
+      tx.serialize_partial_base64(additional_signers: additional_signers)
     end
 
     # Anchor error 3012 (AccountNotInitialized — "custom program error: 0xbc4")
