@@ -48,7 +48,7 @@
         <thead>
           <tr class="bg-surface-alt border-b border-subtle">
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-secondary">Slate</th>
-            <% Contest::FORMATS.each do |tier, config| %>
+            <% Contest.selectable_formats.each do |tier, config| %>
               <th class="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-secondary">
                 <div class="text-heading text-sm normal-case font-bold mb-0.5"><%= tier.capitalize %></div>
                 <div class="text-xs text-muted font-mono"><%= config[:max_entries] %> × <%= dollars(config[:entry_fee_cents] / 100.0) %></div>
@@ -65,7 +65,7 @@
                 <div class="text-xs text-secondary mt-0.5">locks <%= slate.starts_at.strftime("%b %-d, %Y · %H:%M %Z") %></div>
                 <div class="text-xs text-muted mt-0.5"><%= slate.slate_matchups.count %> matchups available</div>
               </td>
-              <% Contest::FORMATS.each do |tier, config| %>
+              <% Contest.selectable_formats.each do |tier, config| %>
                 <%
                   count = @contest_counts[[slate.id, tier]] || 0
                   existing = @contests_by_cell[[slate.id, tier]] || []

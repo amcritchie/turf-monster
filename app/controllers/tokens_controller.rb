@@ -3,13 +3,13 @@ class TokensController < ApplicationController
   before_action :require_dev_mint_allowed, only: [:dev_mint]
 
   def buy
-    @packs = StripePurchase::PACKS
+    @packs = StripePurchase.available_packs
   end
 
   def stripe_checkout
-    quantity = params[:quantity].to_i
-    unless StripePurchase::PACKS.key?(quantity)
-      return redirect_to tokens_buy_path, alert: "Unknown pack quantity"
+    pack_id = params[:pack].to_s
+    unless StripePurchase.available_packs.key?(pack_id)
+      return redirect_to tokens_buy_path, alert: "Unknown or unavailable token pack"
     end
     unless current_user.solana_connected?
       return redirect_to tokens_buy_path, alert: "Connect a wallet first."
@@ -23,7 +23,9 @@ class TokensController < ApplicationController
       return redirect_to tokens_buy_path, alert: "Card purchases are disabled on this account. Please contact support."
     end
 
-    price_cents = StripePurchase.pack_price_cents(quantity)
+    pack        = StripePurchase.pack(pack_id)
+    quantity    = pack[:quantity]
+    price_cents = pack[:price_cents]
     # Optional contest context — when present, checkout returns the buyer to
     # that contest (lineup preserved) instead of the generic token page.
     contest = Contest.find_by(slug: params[:contest].presence)
@@ -47,6 +49,7 @@ class TokensController < ApplicationController
         metadata: {
           kind: "tokens",
           user_id: current_user.id,
+          pack_id: pack_id,
           quantity: quantity,
           wallet_address: current_user.solana_address,
           contest_slug: contest&.slug
@@ -59,10 +62,22 @@ class TokensController < ApplicationController
 
       session = Stripe::Checkout::Session.create(session_params)
 
-      redirect_to session.url, allow_other_host: true
+      respond_to do |format|
+        # Same-tab HTML submit (e.g. /tokens/buy) → server-side redirect.
+        format.html { redirect_to session.url, allow_other_host: true }
+        # XHR / fetch from the in-modal pack button → return the URL
+        # as JSON so the client navigates the already-open tab itself.
+        # If we redirected here, fetch would follow the 302 to Stripe
+        # and consume the checkout session before the user got to it
+        # (Stripe shows "page not found" on second visit).
+        format.json { render json: { url: session.url } }
+      end
     end
   rescue StandardError => e
-    redirect_to tokens_buy_path, alert: "Checkout failed: #{e.message}"
+    respond_to do |format|
+      format.html { redirect_to tokens_buy_path, alert: "Checkout failed: #{e.message}" }
+      format.json { render json: { error: e.message }, status: :unprocessable_entity }
+    end
   end
 
   def processing
@@ -70,6 +85,12 @@ class TokensController < ApplicationController
     redirect_to tokens_buy_path and return if @session_id.blank?
     # When checkout carried a contest, return the buyer there once tokens mint.
     @contest = Contest.find_by(slug: params[:contest].presence)
+    # Fallback CTA for the standalone success card: send the buyer to
+    # the current "main" open contest (lowest rank). Falls back to the
+    # most-recent contest, then to the contests index, all so the
+    # success card always has a working "Enter contest" link.
+    @next_contest = Contest.target ||
+                    Contest.where(status: :open).order(created_at: :desc).first
   end
 
   def status
@@ -86,10 +107,11 @@ class TokensController < ApplicationController
 
   # Dev-only helper: mint tokens directly on-chain with source="dev" instead of going through Stripe.
   def dev_mint
-    quantity = params[:quantity].to_i
-    unless StripePurchase::PACKS.key?(quantity)
-      return redirect_to tokens_buy_path, alert: "Unknown pack quantity"
+    pack_id = params[:pack].to_s
+    unless StripePurchase.available_packs.key?(pack_id)
+      return redirect_to tokens_buy_path, alert: "Unknown or unavailable token pack"
     end
+    quantity = StripePurchase.pack_quantity(pack_id)
 
     rescue_and_log(target: current_user) do
       vault = Solana::Vault.new

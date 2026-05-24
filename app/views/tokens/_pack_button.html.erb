@@ -1,0 +1,72 @@
+<%#
+  Single-pack purchase button — orb-glow style. Shared between the
+  standalone /tokens/buy page and the in-contest "Get Entry Tokens"
+  modal. Render `tokens/_pack_button_styles.html.erb` once on the
+  consuming page (outside any x-if/x-show wrapper) so the `.glow-*`
+  CSS is in the DOM before the button is interactive.
+
+  Locals:
+    pack_id       - Required. StripePurchase pack key (e.g. "single").
+    pack          - Required. Hash with :quantity and :price_cents.
+    extra_params  - Optional Hash, merged into the checkout URL params
+                    (e.g. { contest: @contest.slug } for the modal flow).
+    target_blank  - Optional Bool. true → opens checkout in a new tab.
+                    Default false (same-tab navigation, used by /tokens/buy).
+    on_click_js   - Optional String. Alpine `x-on:click` expression
+                    (e.g. "tokensStep = 'waiting'" to advance the modal
+                    state machine when the user clicks a pack).
+    disabled      - Optional Bool. Greys the button out and prevents
+                    submission when Stripe isn't configured.
+%>
+<%
+  extra_params ||= {}
+  target_blank ||= false
+  on_click_js  ||= nil
+  disabled     ||= false
+
+  format_price = ->(cents) { cents % 100 == 0 ? "$#{cents / 100}" : dollars(cents / 100.0) }
+  per_token        = StripePurchase.per_token_cents(pack_id)
+  single_per_token = StripePurchase.per_token_cents("single")
+  savings_pct      = (100 - (per_token * 100 / single_per_token)).round
+  subtitle         = pack[:quantity] > 1 ? "#{format_price.call(per_token)} each" : "Single contest entry"
+  clusters         = pack[:quantity] == 1 ? [:r] : [:l, :c, :r]
+
+  # Popup-blocker workaround for the modal flow: hijack the form's
+  # submit event, open a tab synchronously (user gesture → allowed),
+  # POST via fetch, and navigate the open tab to the redirected URL.
+  # See tokens/_pack_button_styles.html.erb for window.tokenCheckoutSubmit.
+  form_opts = { class: "w-full", data: { turbo: false } }
+
+  if target_blank
+    submit_parts = []
+    submit_parts << on_click_js if on_click_js
+    submit_parts << "tokenCheckoutSubmit($el)"
+    form_opts["x-on:submit.prevent".to_sym] = submit_parts.join('; ')
+  end
+
+  btn_opts = {
+    method:   :post,
+    form:     form_opts,
+    disabled: disabled,
+    class:    "glow-pair-btn glow-brand group block w-full text-left p-6 rounded-xl border-2 border-primary/40 hover:border-primary bg-primary/5 transition"
+  }
+%>
+<%= button_to tokens_stripe_checkout_path({ pack: pack_id }.merge(extra_params)), **btn_opts do %>
+  <% clusters.each do |pos| %>
+    <span class="orb orb-<%= pos %> orb-small"></span>
+    <span class="orb orb-<%= pos %> orb-big"></span>
+  <% end %>
+  <div class="glow-content flex items-center gap-6">
+    <div class="w-16 text-center">
+      <div class="text-5xl font-extrabold text-white leading-none font-mono"><%= pack[:quantity] %></div>
+      <div class="text-[10px] uppercase tracking-widest text-white/70 mt-1"><%= pack[:quantity] == 1 ? 'Entry' : 'Entries' %></div>
+    </div>
+    <div class="flex-1 border-l border-strong pl-6 text-right">
+      <div class="text-3xl font-bold text-heading font-mono"><%= format_price.call(pack[:price_cents]) %></div>
+      <div class="text-xs text-secondary mt-1">
+        <%= subtitle %>
+        <% if pack[:quantity] > 1 %><span class="ml-1 inline-block px-1.5 py-0.5 rounded bg-primary text-white text-[10px] font-extrabold tracking-wider uppercase">Save <%= savings_pct %>%</span><% end %>
+      </div>
+    </div>
+  </div>
+<% end %>

@@ -6,8 +6,23 @@
 <% show_user = local_assigns.fetch(:show_logged_in, logged_in?) %>
 <% is_preview = local_assigns.fetch(:preview, false) %>
 
-<header x-data="{ scrolled: false }" <%= '@scroll.window="scrolled = scrolled ? (window.scrollY > 5) : (window.scrollY > 60)"'.html_safe unless is_preview %>
-        class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[110] bg-page transition-shadow duration-300' %>"
+<%# z-[125] sits ABOVE the modal host's z-[120] backdrop so the navbar
+    (and especially the 🎟️ Entry badge) stays bright during a token-
+    mint celebration instead of being dimmed by the modal overlay.
+    The modal's escape key + X button still close it; clicking the
+    navbar no longer counts as "click outside" — acceptable trade. %>
+
+<%# Toast z-index override — studio-engine's _flash.html.erb sets
+    #toast-container { z-index: 60 } inline, which gets buried under
+    this navbar (z-[125]). !important beats the engine's inline style.
+    Toast lives ABOVE navbar so error/success messages surface over
+    everything, including the sticky nav and any open modal card. %>
+<style>
+  #toast-container { z-index: 200 !important; }
+  .toast-page-blur { z-index: 199 !important; }
+</style>
+<header data-navbar-root x-data="{ scrolled: false }" <%= '@scroll.window="scrolled = scrolled ? (window.scrollY > 5) : (window.scrollY > 60)"'.html_safe unless is_preview %>
+        class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[125] bg-page transition-shadow duration-300' %>"
         :class="scrolled && 'shadow-lg border-b border-subtle is-scrolled'">
   <% unless is_preview || Rails.env.production? %>
     <%# Env banner — rides inside the sticky header so it stays visible and
@@ -61,23 +76,29 @@
         <nav class="dm-teal hidden md:flex items-center gap-4">
           <%= link_to "Contests", contests_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
           <%= link_to "Rules", turf_totals_v1_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
+          <%= link_to "Reserves", proof_of_reserves_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
           <%= render "components/geo_badge" %>
         </nav>
       </div>
     </div>
     <%# Right side: user nav (matches sidebar width) %>
     <% balance_html = capture do %>
-      <% if display_balance.to_f == 0 && current_user.entry_token_balance > 0 %>
-        <%# Managed-wallet user with tokens but no USDC → buy tokens %>
-        <%= link_to tokens_buy_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'" do %>
-          <%= current_user.entry_token_balance %><span class="text-xs font-normal text-secondary ml-1">tokens</span>
-        <% end %>
-      <% elsif current_user.phantom_wallet? %>
+      <%# Hide the $X balance link when it's $0 AND the user already has
+          a free-entry token to show — the 🎟️ badge in _user_nav is
+          enough; a redundant "$0" just clutters the navbar. The
+          equivalent rule re-applies live via updateNavTokens /
+          refreshBalance after mints + consumes. %>
+      <% balance_zero = display_balance.to_f.zero? %>
+      <% has_tokens   = (current_user.entry_token_balance rescue 0).positive? %>
+      <% hide_balance = balance_zero && has_tokens %>
+      <% if current_user.phantom_wallet? %>
         <%# Web3 (Phantom) user → MoonPay top-up flow on click %>
-        <%= link_to topup_wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
+        <%= link_to topup_wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
       <% else %>
-        <%# Managed-wallet fallback (has USDC, or new account) → wallet page %>
-        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
+        <%# Managed-wallet user — show USDC balance. Free-entry tokens
+            are surfaced by the 🎟️ badge in _user_nav (next to the
+            balance), not by a second balance-style link here. %>
+        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= display_balance.to_i %><% end %>
       <% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
@@ -86,7 +107,11 @@
       <% else %>
         <div class="flex items-center justify-end gap-3">
           <span class="hidden md:flex"><%= render "components/theme_toggle_morph" %></span>
-          <%= link_to "Log in", login_path, class: "btn btn-primary" %>
+          <%# Default CTA is Sign up (not Log in) — the signup card has
+              "Already have an account? Log in" inline, so existing users
+              still have a one-click path while net-new visitors land on
+              the conversion-positive path. %>
+          <%= link_to "Sign up", signup_path, class: "btn btn-primary" %>
         </div>
       <% end %>
     </div>
@@ -95,6 +120,7 @@
   <div class="dm-coral flex md:hidden items-center gap-3 px-4 py-1.5 border-t border-subtle bg-surface-alt">
     <%= link_to "Contests", contests_path, class: "text-secondary hover:text-primary text-xs font-medium transition whitespace-nowrap" %>
     <%= link_to "Rules", turf_totals_v1_path, class: "text-secondary hover:text-primary text-xs font-medium transition whitespace-nowrap" %>
+    <%= link_to "Reserves", proof_of_reserves_path, class: "text-secondary hover:text-primary text-xs font-medium transition whitespace-nowrap" %>
     <%= render "components/geo_badge" %>
     <span class="ml-auto flex items-center gap-3">
       <%= render "components/admin_dropdown" %>

@@ -1,0 +1,437 @@
+<% content_for :title, "Proof of Reserves — Turf Monster" %>
+<% content_for :head do %>
+  <meta property="og:title" content="Turf Monster — Proof of Reserves">
+  <meta property="og:description" content="Every contest's prize pool is a USDC vault on Solana. See it live, from chain.">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="<%= request.base_url %>/logo.png">
+<% end %>
+
+<script type="application/json" id="proof-of-reserves-config">
+<%= @page_config.to_json.html_safe %>
+</script>
+
+<script>
+  // Inline Alpine factory — the layout's `defer` script fires alpine:init
+  // before importmap modules execute, so any function used in x-data must
+  // be defined inline (see CLAUDE.md "Inline JS that MUST stay inline").
+  window.proofOfReserves = function () {
+    var CFG_EL_ID = "proof-of-reserves-config";
+    var STATUS_NAMES = ["Open", "Locked", "Settled"];
+    var USDC_DECIMALS = 6;
+    // 8-byte Anchor discriminator + 32-byte contest_id at the start of every Contest account.
+    var CONTEST_FIELDS_OFFSET = 8 + 32;
+    // Half a USDC cent of slack on the solvency check (covers Borsh→float rounding).
+    var SOLVENCY_FLOAT_SLACK = 0.005;
+
+    function readConfig() {
+      var el = document.getElementById(CFG_EL_ID);
+      if (!el) throw new Error("missing #" + CFG_EL_ID);
+      return JSON.parse(el.textContent);
+    }
+
+    function asView(data) {
+      var offset = data.byteOffset || 0;
+      var length = data.byteLength != null ? data.byteLength : data.length;
+      return new DataView(data.buffer, offset, length);
+    }
+
+    function readU32LE(dv, offset) { return dv.getUint32(offset, true); }
+
+    function readU64LE(dv, offset) {
+      var lo = BigInt(dv.getUint32(offset, true));
+      var hi = BigInt(dv.getUint32(offset + 4, true));
+      return (hi << 32n) | lo;
+    }
+
+    function lamportsToUsd(big) {
+      return Number(big) / Math.pow(10, USDC_DECIMALS);
+    }
+
+    // Layout (post 8-byte Anchor discriminator), from turf-vault Contest struct:
+    //   contest_id [u8;32] | prizes u64 | entry_fee u64 | entry_fees u64
+    //   max_entries u32 | current_entries u32 | status u8 (enum)
+    //   payout_amounts Vec<u64> (u32 len + len*u64)
+    //   admin pk(32) | creator pk(32) | season_id u32 | bump u8
+    function decodeContest(data) {
+      var dv = asView(data);
+      var o = CONTEST_FIELDS_OFFSET;
+      var prizes = readU64LE(dv, o); o += 8;
+      var entryFee = readU64LE(dv, o); o += 8;
+      var entryFees = readU64LE(dv, o); o += 8;
+      var maxEntries = readU32LE(dv, o); o += 4;
+      var currentEntries = readU32LE(dv, o); o += 4;
+      var statusByte = dv.getUint8(o); o += 1;
+      var payoutLen = readU32LE(dv, o); o += 4;
+      var payoutAmounts = [];
+      for (var i = 0; i < payoutLen; i++) {
+        payoutAmounts.push(readU64LE(dv, o));
+        o += 8;
+      }
+      o += 32 + 32; // skip admin + creator pubkeys
+      var seasonId = readU32LE(dv, o); o += 4;
+      return {
+        // Lamports kept only where the solvency math needs BigInt precision.
+        entryFeesLamports: entryFees,
+        prizesLamports: prizes,
+        maxEntries: maxEntries,
+        currentEntries: currentEntries,
+        status: STATUS_NAMES[statusByte] || "Unknown",
+        prizesUsd: lamportsToUsd(prizes),
+        entryFeeUsd: lamportsToUsd(entryFee),
+        payoutAmountsUsd: payoutAmounts.map(lamportsToUsd),
+        reservedUsd: lamportsToUsd(prizes + entryFees),
+        seasonId: seasonId
+      };
+    }
+
+    async function fetchContestAccount(conn, pdaB58) {
+      var pubkey = new solanaWeb3.PublicKey(pdaB58);
+      var info = await conn.getAccountInfo(pubkey, "confirmed");
+      if (!info) return null;
+      return decodeContest(info.data);
+    }
+
+    async function fetchVaultUsdcBalance(conn, pubkeyB58) {
+      var pubkey = new solanaWeb3.PublicKey(pubkeyB58);
+      var resp = await conn.getTokenAccountBalance(pubkey, "confirmed");
+      return {
+        amountLamports: BigInt(resp.value.amount),
+        amountUsd: Number(resp.value.uiAmount || 0)
+      };
+    }
+
+    var cfg = readConfig();
+    var connection = new solanaWeb3.Connection(cfg.rpc_url, "confirmed");
+
+    return {
+      cfg: cfg,
+      contests: cfg.contests.map(function (c) {
+        return Object.assign({}, c, { onchain: null, error: null, loading: true });
+      }),
+      vaultBalanceUsd: null,
+      obligationsUsd: null,
+      bannerLoading: true,
+      bannerError: null,
+      lastFetchedAt: null,
+      refreshing: false,
+
+      explorer: function (kind, value) {
+        var q = this.cfg.network === "mainnet-beta" ? "" : "?cluster=" + this.cfg.network;
+        return "https://explorer.solana.com/" + kind + "/" + value + q;
+      },
+
+      fmtUsd: function (n) {
+        if (n === null || n === undefined) return "—";
+        return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      },
+
+      shortPubkey: function (pk) {
+        if (!pk) return "";
+        return pk.slice(0, 4) + "…" + pk.slice(-4);
+      },
+
+      statusTone: function (c) {
+        if (!c.onchain) return "muted";
+        if (c.onchain.status === "Open") return "ok";
+        if (c.onchain.status === "Locked") return "warn";
+        return "muted";
+      },
+
+      ordinal: function (n) {
+        var s = ["th", "st", "nd", "rd"];
+        var v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+      },
+
+      solvencyLabel: function () {
+        if (this.bannerLoading) return "Checking…";
+        if (this.bannerError) return "Error";
+        if (this.vaultBalanceUsd === null || this.obligationsUsd === null) return "Unknown";
+        return this.vaultBalanceUsd + SOLVENCY_FLOAT_SLACK >= this.obligationsUsd ? "Solvent" : "Undercollateralized";
+      },
+
+      solvencyTone: function () {
+        var l = this.solvencyLabel();
+        if (l === "Solvent") return "ok";
+        if (l === "Undercollateralized") return "warn";
+        return "muted";
+      },
+
+      fetchedAtLabel: function () {
+        if (!this.lastFetchedAt) return "";
+        return this.lastFetchedAt.toLocaleTimeString();
+      },
+
+      refresh: async function () {
+        var self = this;
+        self.refreshing = true;
+        self.bannerLoading = true;
+        self.bannerError = null;
+
+        var contestPromises = self.contests.map(async function (row, idx) {
+          self.contests[idx].loading = true;
+          self.contests[idx].error = null;
+          try {
+            var decoded = await fetchContestAccount(connection, row.contest_pda);
+            self.contests[idx].onchain = decoded;
+            if (!decoded) self.contests[idx].error = "Account not found";
+          } catch (e) {
+            self.contests[idx].error = e.message || String(e);
+          } finally {
+            self.contests[idx].loading = false;
+          }
+        });
+
+        var vaultPromise = (async function () {
+          try {
+            var bal = await fetchVaultUsdcBalance(connection, self.cfg.vault_usdc_pubkey);
+            self.vaultBalanceUsd = bal.amountUsd;
+          } catch (e) {
+            self.bannerError = e.message || String(e);
+          }
+        })();
+
+        await Promise.all(contestPromises.concat([vaultPromise]));
+
+        var totalLamports = 0n;
+        for (var i = 0; i < self.contests.length; i++) {
+          var c = self.contests[i];
+          if (!c.onchain) continue;
+          if (c.onchain.status === "Settled") continue;
+          totalLamports += c.onchain.prizesLamports + c.onchain.entryFeesLamports;
+        }
+        self.obligationsUsd = lamportsToUsd(totalLamports);
+        self.lastFetchedAt = new Date();
+        self.bannerLoading = false;
+        self.refreshing = false;
+      },
+
+      init: function () {
+        this.refresh();
+      }
+    };
+  };
+</script>
+
+<div class="max-w-4xl mx-auto py-8 px-2" x-data="proofOfReserves()" x-init="init()">
+
+  <!-- ========== HERO ========== -->
+  <section class="text-center mb-10">
+    <div class="mb-4 flex items-center justify-center gap-3">
+      <span class="px-3 py-1 bg-primary-900/30 text-primary text-xs font-bold uppercase tracking-widest rounded-full border border-primary-700">
+        Live · <span x-text="cfg.network"></span>
+      </span>
+    </div>
+    <h1 class="text-4xl md:text-5xl font-extrabold text-heading mb-3">
+      Proof of <span class="text-primary">Reserves</span>
+    </h1>
+    <p class="text-secondary text-lg max-w-xl mx-auto">
+      Every contest's prize pool is held in a USDC vault on Solana. This page reads the program's accounts
+      <span class="text-heading font-semibold">directly from your browser</span> — no Turf Monster server in the middle.
+    </p>
+  </section>
+
+  <!-- ========== SOLVENCY BANNER ========== -->
+  <section class="mb-10">
+    <div class="card border-2 p-6 shadow-lg"
+         :class="{ 'border-mint/60 shadow-mint/10': solvencyTone() === 'ok',
+                   'border-rose/60 shadow-rose/10': solvencyTone() === 'warn',
+                   'border-subtle': solvencyTone() === 'muted' }">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p class="text-xs uppercase tracking-widest text-muted mb-2">Vault solvency</p>
+          <p class="text-3xl md:text-4xl font-extrabold"
+             :class="{ 'text-mint': solvencyTone() === 'ok',
+                       'text-rose': solvencyTone() === 'warn',
+                       'text-heading': solvencyTone() === 'muted' }"
+             x-text="solvencyLabel()"></p>
+        </div>
+        <button @click="refresh()" :disabled="refreshing" class="btn btn-secondary text-sm">
+          <span x-show="!refreshing">Refresh</span>
+          <span x-show="refreshing">Refreshing…</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div class="bg-surface-alt rounded-xl p-4 border border-subtle">
+          <p class="text-xs text-muted uppercase tracking-wider mb-1">USDC in shared vault</p>
+          <p class="font-mono text-2xl text-heading" x-text="fmtUsd(vaultBalanceUsd)"></p>
+          <a :href="explorer('address', cfg.vault_usdc_pubkey)" target="_blank" rel="noopener"
+             class="text-xs font-mono text-violet hover:underline mt-1 inline-flex items-center gap-1.5">
+            <span x-text="shortPubkey(cfg.vault_usdc_pubkey)"></span>
+            <img src="/solana-mark.svg" alt="" class="w-3 h-3">
+          </a>
+        </div>
+        <div class="bg-surface-alt rounded-xl p-4 border border-subtle">
+          <p class="text-xs text-muted uppercase tracking-wider mb-1">Open obligations (prizes + entry fees)</p>
+          <p class="font-mono text-2xl text-heading" x-text="fmtUsd(obligationsUsd)"></p>
+          <p class="text-xs text-muted mt-1">Across all open & locked contests</p>
+        </div>
+      </div>
+
+      <p class="text-xs text-muted mt-4" x-show="lastFetchedAt">
+        Last refreshed <span x-text="fetchedAtLabel()"></span>
+      </p>
+      <p class="text-xs text-rose mt-4" x-show="bannerError" x-text="'Vault read failed: ' + bannerError"></p>
+    </div>
+  </section>
+
+  <!-- ========== HOW IT WORKS ========== -->
+  <section class="mb-10">
+    <p class="text-primary font-mono text-sm mb-2">How it works</p>
+    <div class="card border border-subtle p-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div>
+          <p class="text-heading font-semibold mb-1">1. Program ID</p>
+          <a :href="explorer('address', cfg.program_id)" target="_blank" rel="noopener"
+             class="font-mono text-xs text-violet break-all hover:underline" x-text="cfg.program_id"></a>
+        </div>
+        <div>
+          <p class="text-heading font-semibold mb-1">2. USDC mint</p>
+          <a :href="explorer('address', cfg.usdc_mint)" target="_blank" rel="noopener"
+             class="font-mono text-xs text-violet break-all hover:underline" x-text="cfg.usdc_mint"></a>
+        </div>
+        <div>
+          <p class="text-heading font-semibold mb-1">3. Shared vault PDA</p>
+          <a :href="explorer('address', cfg.vault_usdc_pubkey)" target="_blank" rel="noopener"
+             class="font-mono text-xs text-violet break-all hover:underline" x-text="cfg.vault_usdc_pubkey"></a>
+          <p class="text-[10px] text-muted mt-1 font-mono">seeds = [b"vault_usdc"]</p>
+        </div>
+      </div>
+      <p class="text-muted text-xs mt-5 leading-relaxed">
+        Your browser opens an RPC connection to <span class="font-mono text-secondary" x-text="cfg.rpc_url"></span>,
+        reads each Contest PDA (seeds: <span class="font-mono text-secondary">[b"contest", sha256(slug)]</span>),
+        and Borsh-decodes the prize pool, entry count, and status. The shared vault USDC token
+        account's balance is read separately and shown above.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========== PER-CONTEST TABLE ========== -->
+  <section class="mb-10">
+    <p class="text-primary font-mono text-sm mb-2">Contests on-chain</p>
+    <p class="text-secondary text-base mb-5">
+      <span x-text="contests.length"></span> active contest<span x-show="contests.length !== 1">s</span>.
+      Each card shows the prize pool USDC currently reserved by the program, alongside Solana Explorer links for the contest, creator, admin, and create transaction.
+    </p>
+
+    <template x-if="contests.length === 0">
+      <div class="card border border-subtle p-8 text-center">
+        <p class="text-muted">No on-chain contests right now. Check back after the next one opens.</p>
+      </div>
+    </template>
+
+    <div class="space-y-4">
+      <template x-for="c in contests" :key="c.slug">
+        <div class="card border border-subtle p-5">
+          <!-- Header row -->
+          <div class="flex items-start justify-between gap-4 flex-wrap mb-5">
+            <div class="flex-1 min-w-0">
+              <p class="text-heading font-bold text-lg truncate" x-text="c.name"></p>
+              <p class="text-muted text-xs mt-0.5" x-show="c.onchain">
+                Season <span class="font-mono" x-text="c.onchain && c.onchain.seasonId"></span>
+              </p>
+            </div>
+            <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+                  :class="{ 'bg-mint/20 text-mint border border-mint/30': statusTone(c) === 'ok',
+                            'bg-violet/20 text-violet border border-violet/30': statusTone(c) === 'warn',
+                            'bg-muted/20 text-muted border border-subtle': statusTone(c) === 'muted' }"
+                  x-text="c.onchain ? c.onchain.status : (c.loading ? 'Loading…' : (c.error ? 'Error' : '—'))"></span>
+          </div>
+
+          <!-- Loading state -->
+          <template x-if="c.loading">
+            <div class="text-muted text-sm font-mono">Reading account…</div>
+          </template>
+
+          <!-- Error state -->
+          <template x-if="c.error">
+            <div class="text-rose text-sm" x-text="c.error"></div>
+          </template>
+
+          <!-- Decoded state -->
+          <template x-if="c.onchain && !c.error">
+            <div>
+              <!-- Headline stats -->
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-5">
+                <div class="bg-surface-alt rounded-lg p-3 border border-mint/30">
+                  <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Reserved USDC</p>
+                  <div class="flex items-center gap-1.5">
+                    <img src="/usdc-mark.svg" alt="USDC" class="w-5 h-5 flex-shrink-0">
+                    <p class="font-mono text-mint text-lg font-bold" x-text="fmtUsd(c.onchain.reservedUsd)"></p>
+                  </div>
+                  <p class="text-[10px] text-muted mt-0.5">prizes + entry fees</p>
+                </div>
+                <div class="bg-surface-alt rounded-lg p-3 border border-subtle">
+                  <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Guaranteed prize</p>
+                  <p class="font-mono text-primary text-lg font-bold" x-text="fmtUsd(c.onchain.prizesUsd)"></p>
+                </div>
+                <div class="bg-surface-alt rounded-lg p-3 border border-subtle">
+                  <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Entries</p>
+                  <p class="font-mono text-heading text-lg font-bold">
+                    <span x-text="c.onchain.currentEntries"></span>
+                    <span class="text-muted">/</span>
+                    <span x-text="c.onchain.maxEntries"></span>
+                  </p>
+                </div>
+                <div class="bg-surface-alt rounded-lg p-3 border border-subtle">
+                  <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Entry fee</p>
+                  <p class="font-mono text-heading text-lg font-bold" x-text="fmtUsd(c.onchain.entryFeeUsd)"></p>
+                </div>
+              </div>
+
+              <!-- Payout breakdown -->
+              <div class="mb-5" x-show="c.onchain.payoutAmountsUsd.length > 0">
+                <p class="text-[10px] text-muted uppercase tracking-wider mb-2">Payouts</p>
+                <div class="flex flex-wrap gap-2">
+                  <template x-for="(amt, idx) in c.onchain.payoutAmountsUsd" :key="idx">
+                    <div class="bg-surface-alt rounded-lg px-3 py-1.5 border border-subtle text-xs">
+                      <span class="text-muted" x-text="ordinal(idx + 1)"></span>
+                      <span class="font-mono text-heading font-semibold ml-1" x-text="fmtUsd(amt)"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Solana links -->
+              <div>
+                <p class="text-[10px] text-muted uppercase tracking-wider mb-2">On-chain</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
+                  <a :href="explorer('address', c.contest_pda)" target="_blank" rel="noopener"
+                     class="flex items-center justify-between bg-surface-alt rounded px-3 py-2 border border-subtle hover:border-violet/50 group">
+                    <span class="text-muted">Contest PDA</span>
+                    <span class="font-mono text-violet group-hover:underline inline-flex items-center gap-1.5">
+                      <span x-text="shortPubkey(c.contest_pda)"></span>
+                      <img src="/solana-mark.svg" alt="" class="w-3 h-3">
+                    </span>
+                  </a>
+                  <a x-show="c.create_tx_signature" :href="explorer('tx', c.create_tx_signature)" target="_blank" rel="noopener"
+                     class="flex items-center justify-between bg-surface-alt rounded px-3 py-2 border border-subtle hover:border-violet/50 group">
+                    <span class="text-muted">Created <span x-text="c.created_label"></span></span>
+                    <span class="font-mono text-violet group-hover:underline inline-flex items-center gap-1.5">
+                      <span x-text="shortPubkey(c.create_tx_signature)"></span>
+                      <img src="/solana-mark.svg" alt="" class="w-3 h-3">
+                    </span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <hr class="border-subtle my-10">
+
+  <!-- ========== FOOTNOTE ========== -->
+  <section class="text-center py-4">
+    <p class="text-muted text-xs max-w-xl mx-auto leading-relaxed">
+      Reserves are held in a shared USDC vault (<span class="font-mono">seeds = [b"vault_usdc"]</span>) owned by the
+      turf-vault program. Per-contest balances live in the program's internal counters
+      (<span class="font-mono">prizes</span> + <span class="font-mono">entry_fees</span> on each Contest PDA), not in separate token accounts.
+      Token-funded entries don't increment <span class="font-mono">entry_fees</span> on-chain — operator subsidizes the prize pool.
+    </p>
+  </section>
+
+</div>

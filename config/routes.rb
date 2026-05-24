@@ -49,6 +49,11 @@ Rails.application.routes.draw do
   get "turf-totals-v1", to: "pages#turf_totals_v1", as: :turf_totals_v1
   get "seeds_lab", to: "seeds_lab#index", as: :seeds_lab
 
+  # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
+  # vault USDC token account from the browser via Solana RPC, then displays
+  # them next to the Rails-reported figures.
+  get "proof-of-reserves", to: "proof_of_reserves#show", as: :proof_of_reserves
+
   # Public faucet page
   get  "faucet", to: "faucet#show", as: :faucet
   post "faucet", to: "faucet#claim"
@@ -71,6 +76,10 @@ Rails.application.routes.draw do
   # Solana wallet auth
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"
   post "auth/solana/verify", to: "solana_sessions#verify"
+
+  # Wallet-login landing for a Google sign-in that collided with a wallet
+  # account — see OmniauthCallbacksController#create.
+  get  "login/wallet",       to: "solana_sessions#link_wallet", as: :link_wallet
 
   # Google OAuth popup entrypoint — sets a popup-mode session flag, then
   # hands off to OmniAuth. The callback renders a window-closer page.
@@ -100,6 +109,8 @@ Rails.application.routes.draw do
     post :unlink_google
     post :change_password
     patch :set_inviter
+    post :update_username   # on-chain username edit (custodial server-signs / Phantom co-signs)
+    post :confirm_username  # Phantom: confirm the co-signed set_username TX
     # OPSEC-007: removed `patch :update_level` — client-supplied seeds_total.
   end
 

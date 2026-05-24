@@ -2,7 +2,7 @@ Studio.configure do |config|
   config.app_name = "Turf Monster"
   config.session_key = :turf_user_id
   config.welcome_message = ->(user) { "Welcome to Turf Monster, #{user.display_name}!" }
-  config.registration_params = [:username, :email, :password, :password_confirmation, :reference]
+  config.registration_params = [:email, :password, :password_confirmation, :reference]
   config.configure_new_user = ->(user) { }
   config.configure_sso_user = ->(user) { }
 

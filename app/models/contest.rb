@@ -99,8 +99,24 @@ class Contest < ApplicationRecord
     # World Cup Survivor — single guaranteed prize, 59 entrants, one entry per user.
     # Paid margin (full): $1,121 gross - $1,000 payout = $121. Free contest is a loss-leader.
     "survivor_wc_paid" => { entry_fee_cents: 19_00, max_entries: 59, payouts: { 1 => 1000_00 } },
-    "survivor_wc_free" => { entry_fee_cents: 0,     max_entries: 59, payouts: { 1 => 200_00 } }
+    "survivor_wc_free" => { entry_fee_cents: 0,     max_entries: 59, payouts: { 1 => 200_00 } },
+
+    # Test scaffolding — $1 entry, gated behind ENABLE_TEST_SCAFFOLDING (AppFlags.test_scaffolding?).
+    # A low-stakes end-to-end rehearsal tier: 9 entries → $9 gross / $7 payout / $2 margin (22%).
+    # Hidden from the create UIs unless the flag is on; DISABLE before the public launch.
+    # FORMATS still lists it always so an existing micro contest resolves config + grades correctly.
+    "micro"            => { entry_fee_cents: 1_00, max_entries: 9, payouts: { 1 => 5_00, 2 => 1_00, 3 => 1_00 } }
   }.freeze
+
+  # Format keys hidden from the contest-create UIs unless ENABLE_TEST_SCAFFOLDING is on.
+  TEST_FORMAT_KEYS = %w[micro].freeze
+
+  # Formats an operator may pick in the create UIs (new-contest form + generator
+  # matrix). FORMATS itself always contains every format so #format_config and
+  # grading keep working for a contest created while the flag was on.
+  def self.selectable_formats
+    AppFlags.test_scaffolding? ? FORMATS : FORMATS.except(*TEST_FORMAT_KEYS)
+  end
 
   def format_config
     FORMATS[contest_type] || FORMATS["standard"]

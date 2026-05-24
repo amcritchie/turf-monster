@@ -1,4 +1,4 @@
-<%# locals: (seeds_data:, compact: false, label: nil, title: nil) %>
+<%# locals: (seeds_data:, compact: false, label: nil, title: nil, shimmer_interval: nil) %>
 <%#
   Renders the 5-section seeds bar.
   - seeds_data: { seeds:, level:, toward_next:, progress:, seeds_to_next: } from controllers/load_seeds_data helper
@@ -6,11 +6,13 @@
   -          false → card variant (22px tall, level badge + rotating counter, confetti on level-up)
   - label:   optional text shown on the left of the bar (compact variant only — typically current_user.truncated_solana)
   - title:   optional heading shown left of the level badge (card variant only)
+  - shimmer_interval: seconds to wait before the one-shot shimmer sweep fires (nil = fire immediately on load)
 %>
 <% lvl = seeds_data[:level].to_i %>
 <% lvl = 1 if lvl < 1 %>
 <% toward_next = seeds_data[:toward_next].to_i %>
 <% pct = seeds_data[:progress].to_i %>
+<% shimmer_anim = "seedsShimmer 2.5s ease-in-out #{shimmer_interval.to_f}s 1 both" %>
 
 <div x-data="{
   displaySeeds: <%= toward_next %>,
@@ -48,27 +50,37 @@
     } catch(e) { return null; }
   },
 
+  // Shared 4-phase animation driving displaySeeds + displayLevel.
+  //   Phase 1 @ 300ms:  fill to 100 (kicks the CSS --bar-progress transition)
+  //   Phase 2 @ 1500ms: bump level number + spawn confetti (card variant only)
+  //   Phase 3 @ 2800ms: drain to 0
+  //   Phase 4 @ 3000ms: refill to leftover progress in the new level
+  // Callers manage their own `levelingUp` flag timing — replay() toggles it mid-sequence so the
+  // bounce CSS animation fires when the level number actually changes.
+  playLevelUpFill(opts) {
+    var self = this;
+    self.displaySeeds = opts.oldPct || 0;
+    setTimeout(function() { self.displaySeeds = 100; }, 300);
+    setTimeout(function() {
+      if (opts.newLevel !== undefined && opts.newLevel !== null) self.displayLevel = opts.newLevel;
+      if (opts.fireConfetti) self.spawnFirework();
+    }, 1500);
+    setTimeout(function() { self.displaySeeds = 0; }, 2800);
+    setTimeout(function() { self.displaySeeds = opts.finalProgress; }, 3000);
+  },
+
   runLevelUpSequence(lu) {
     var self = this;
     self.levelingUp = true;
     self.displayLevel = lu.oldLevel;
-    self.displaySeeds = lu.oldToward || 0;
-
-    // Phase 1: fill to 100 (kicks the CSS --bar-progress transition)
-    setTimeout(function() { self.displaySeeds = 100; }, 300);
-    // Phase 2: bump level number + spawn confetti (if card variant has a confettiZone ref)
-    setTimeout(function() {
-      self.displayLevel = lu.newLevel;
-      self.spawnFirework();
-    }, 1500);
-    // Phase 3: drain to 0
-    setTimeout(function() { self.displaySeeds = 0; }, 2800);
-    // Phase 4: refill to leftover progress in the new level
-    setTimeout(function() {
-      var data = self.readNavData();
-      self.displaySeeds = data ? data.toward_next : 0;
-      self.levelingUp = false;
-    }, 3000);
+    var data = self.readNavData();
+    self.playLevelUpFill({
+      oldPct: lu.oldToward,
+      newLevel: lu.newLevel,
+      finalProgress: data ? data.toward_next : 0,
+      fireConfetti: true
+    });
+    setTimeout(function() { self.levelingUp = false; }, 3000);
   },
 
   spawnFirework() {
@@ -100,11 +112,15 @@
   replay() {
     var self = this;
     self.displayLevel = Math.max(1, self.displayLevel - 1);
-    self.displaySeeds = 60;
-    setTimeout(function() { self.displaySeeds = 100; }, 300);
-    setTimeout(function() { self.displayLevel = self.displayLevel + 1; self.levelingUp = true; }, 1500);
-    setTimeout(function() { self.displaySeeds = 0; self.levelingUp = false; }, 2800);
-    setTimeout(function() { self.displaySeeds = self.finalToward; }, 3000);
+    self.playLevelUpFill({
+      oldPct: 60,
+      newLevel: self.displayLevel + 1,
+      finalProgress: self.finalToward,
+      fireConfetti: false
+    });
+    // Bounce class is gated to the moment the level number actually changes.
+    setTimeout(function() { self.levelingUp = true; }, 1500);
+    setTimeout(function() { self.levelingUp = false; }, 2800);
   },
 
   handleSeedsUpdate(d) {
@@ -112,15 +128,14 @@
     if (d.levelUp) {
       // Defensive: only overwrite displayLevel if oldLevel is actually provided
       if (d.oldLevel !== undefined && d.oldLevel !== null) self.displayLevel = d.oldLevel;
-      self.displaySeeds = d.oldPct || 0;
       self.levelingUp = true;
-      setTimeout(function() { self.displaySeeds = 100; }, 300);
-      setTimeout(function() {
-        if (d.newLevel !== undefined && d.newLevel !== null) self.displayLevel = d.newLevel;
-        self.spawnFirework();
-      }, 1500);
-      setTimeout(function() { self.displaySeeds = 0; }, 2800);
-      setTimeout(function() { self.displaySeeds = d.progress; self.levelingUp = false; }, 3000);
+      self.playLevelUpFill({
+        oldPct: d.oldPct,
+        newLevel: d.newLevel,
+        finalProgress: d.progress,
+        fireConfetti: true
+      });
+      setTimeout(function() { self.levelingUp = false; }, 3000);
     } else {
       if (d.level !== undefined && d.level !== null) self.displayLevel = d.level;
       self.displaySeeds = d.progress;
@@ -145,10 +160,13 @@
                    clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
                  }"
                  style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
-            <%# Per-section shimmer — sized to whole bar so all 5 share one continuous wave %>
-            <div class="absolute top-0 bottom-0 pointer-events-none"
-                 :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
-                 style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%); animation: seedsShimmer 2.5s ease-in-out 1 both;"></div>
+            <%# Per-section shimmer — sized to whole bar so all 5 share one continuous wave.
+                Skipped when the bar is nearly empty (toward_next < 9) — a shimmer on a blank bar reads as noise. %>
+            <% if toward_next >= 9 %>
+              <div class="absolute top-0 bottom-0 pointer-events-none"
+                   :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+                   style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%); animation: <%= shimmer_anim %>;"></div>
+            <% end %>
           </div>
         </template>
       </div>
@@ -208,9 +226,11 @@
                  clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
                }"
                style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
-          <div class="absolute top-0 bottom-0 pointer-events-none"
-               :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
-               style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%); animation: seedsShimmer 2.5s ease-in-out 1 both;"></div>
+          <% if toward_next >= 9 %>
+            <div class="absolute top-0 bottom-0 pointer-events-none"
+                 :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+                 style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%); animation: <%= shimmer_anim %>;"></div>
+          <% end %>
         </div>
       </template>
     </div>

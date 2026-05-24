@@ -1,21 +1,37 @@
-<%# Navbar gear — admin-only quick-access dropdown.
-    A curated shortlist promoted from the full Link Hub
-    (app/views/admin/hub.html.erb). %>
-<% if current_user&.admin? %>
-  <% link_class   = "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
-  <% header_class = "label-upper font-bold px-4 py-1" %>
-  <div x-data="{ open: false }" class="relative leading-none">
-    <button @click="open = !open" class="flex text-secondary hover:text-heading transition" title="Admin">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-      </svg>
-    </button>
+<%# Navbar gear — settings dropdown.
+    Logged-out: not rendered (this partial is only included from
+    _user_nav, which itself guards on logged_in?).
+    Non-admin: short user menu (Account / Log out).
+    Admin: full admin menu (curated shortlist of admin/hub.html.erb). %>
+<% return unless current_user %>
 
-    <div x-show="open" @click.outside="open = false"
-         x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-         x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
-         class="absolute right-0 mt-2 w-48 bg-surface border border-subtle rounded-lg shadow-lg z-50 py-1" style="display: none;">
+<% link_class   = "block px-4 py-2 text-sm text-primary hover:text-primary-300 hover:bg-surface-alt transition font-medium" %>
+<% muted_class  = "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
+<% header_class = "label-upper font-bold px-4 py-1" %>
+
+<div x-data="{ open: false }" class="relative leading-none">
+  <button @click="open = !open" class="flex text-secondary hover:text-heading transition" title="<%= current_user.admin? ? 'Admin' : 'Settings' %>">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+    </svg>
+  </button>
+
+  <div x-show="open" @click.outside="open = false"
+       x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+       x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+       class="absolute right-0 mt-2 w-48 bg-surface border border-subtle rounded-lg shadow-lg z-50 py-1" style="display: none;">
+
+    <%# Everyone sees Account + Proof of Reserves at the top. %>
+    <% if defined?(account_path) %>
+      <%= link_to "Account", account_path, class: link_class %>
+    <% end %>
+    <% if defined?(proof_of_reserves_path) %>
+      <%= link_to "Proof of Reserves", proof_of_reserves_path, class: link_class %>
+    <% end %>
+
+    <% if current_user.admin? %>
+      <%# === Admin shortcuts (curated from admin/hub.html.erb) === %>
       <%= link_to "Contests", contests_path, class: link_class %>
       <%= link_to "Seasons", admin_seasons_path, class: link_class %>
 
@@ -45,7 +61,12 @@
       <%= link_to "Jobs", "/admin/jobs", class: link_class %>
 
       <div class="border-t border-subtle my-1"></div>
-      <%= link_to "Link Hub", admin_hub_path, class: "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
-    </div>
+      <%= link_to "Link Hub", admin_hub_path, class: muted_class %>
+    <% end %>
+
+    <%# Log out — everyone, last item. Studio-engine ships /logout as
+        a GET (sessions#destroy) so a plain link is correct here. %>
+    <div class="border-t border-subtle my-1"></div>
+    <%= link_to "Log out", logout_path, class: muted_class, data: { turbo: false } %>
   </div>
-<% end %>
+</div>

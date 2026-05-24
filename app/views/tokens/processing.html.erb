@@ -1,6 +1,15 @@
-<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : "" %>')" x-init="start()">
+<%# Stripe-checkout return page. The canonical flow is:
+    contest tab opens checkout in a new tab → Stripe → /tokens/processing
+    posts the session_id back here and closes; the contest tab's modal
+    shows the "Confirming your purchase…" + success states inline so the
+    buyer never visually leaves the contest.
+
+    Fallback — if there's no opener (user navigated directly, or the
+    opener tab was closed mid-flow), poll /tokens/status here and show
+    the standalone success card. %>
+<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : '' %>')" x-init="start()">
   <div class="card shadow p-8 text-center">
-    <%# Loading state %>
+    <%# Loading state — also covers the moment after hand-off, before window.close() %>
     <template x-if="!ready && !errored">
       <div>
         <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-6"></div>
@@ -12,7 +21,7 @@
       </div>
     </template>
 
-    <%# Success state %>
+    <%# Success state (fallback path) %>
     <template x-if="ready">
       <div>
         <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-6">
@@ -27,10 +36,13 @@
           You now have <span class="font-bold text-primary font-mono" x-text="balance"></span> available.
         </p>
         <p x-show="contestUrl" class="text-sm text-secondary">Returning to your contest…</p>
-        <div x-show="!contestUrl" class="flex gap-3 justify-center">
-          <%= link_to "Enter a contest", root_path, class: "btn btn-primary" %>
-          <%= link_to "Buy more", tokens_buy_path, class: "btn btn-outline" %>
-        </div>
+        <%# Standalone success path (no opener contest tab) — single CTA
+            to the current main contest (Contest.target). Falls through
+            to /contests if no live contest exists at all. %>
+        <% next_target = @next_contest ? contest_path(@next_contest) : contests_path %>
+        <%= link_to "Enter contest", next_target,
+            class: "btn btn-primary w-full",
+            "x-show": "!contestUrl" %>
       </div>
     </template>
 
@@ -64,6 +76,51 @@
 
       start() {
         if (!sessionId) { this.errored = true; return; }
+
+        // Notify any listening contest tab (the modal there mirrors the
+        // confirming → minted → submitted flow). Two channels because
+        // browsers may have dropped window.opener (implicit noopener on
+        // target=_blank forms is common):
+        //   1. BroadcastChannel — same-origin, opener-independent
+        //   2. window.opener.postMessage — legacy fallback
+        try {
+          if ('BroadcastChannel' in window) {
+            var ch = new BroadcastChannel('tt-tokens');
+            ch.postMessage({ source: 'tt-tokens', status: 'returned', sessionId: sessionId });
+            ch.close();
+          }
+        } catch (e) {}
+
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(
+              { source: 'tt-tokens', status: 'returned', sessionId: sessionId },
+              window.location.origin
+            );
+          }
+        } catch (e) {}
+
+        // Contest-context flow: the buyer came from a contest tab
+        // (success_url carried ?contest=slug → controller set @contest →
+        // contestUrl is non-empty). The contest tab's modal owns the
+        // confirming → minted UI; this tab just hands off and gets out
+        // of the way. window.close() works for script-opened popups;
+        // the location-href fallback covers form-opened tabs that can't
+        // be closed. Either way the buyer never visually leaves the
+        // contest. We use contestUrl as a reliable proxy for "there's
+        // a listener" because postMessage/BroadcastChannel give no
+        // delivery confirmation — see commit 4890000 for the standalone
+        // case where contestUrl is empty and polling is the only path.
+        if (contestUrl) {
+          setTimeout(function () { window.close(); }, 80);
+          setTimeout(function () { window.location.href = contestUrl; }, 400);
+          return;
+        }
+
+        // Standalone flow: no contest context (e.g. /tokens/buy direct
+        // purchase, or webhook arrived during a server-down window).
+        // Poll /tokens/status until the mint completes, then show the
+        // standalone success card.
         this._ticker = setInterval(() => { this.elapsed += 1 }, 1000);
         this.poll();
         this._timer = setInterval(() => this.poll(), 1500);
@@ -90,18 +147,7 @@
             this.balance = d.balance;
             this.ready = true;
             this.stop();
-            if (window.opener && !window.opener.closed) {
-              // Opened in a new tab from the contest — hand control back
-              // there (it finishes the entry) and close this tab.
-              try {
-                window.opener.postMessage(
-                  { source: 'tt-tokens', status: 'minted', contestUrl: contestUrl },
-                  window.location.origin
-                );
-              } catch (e) {}
-              setTimeout(function () { window.close(); }, 1500);
-            } else if (contestUrl) {
-              // Same-tab checkout — return to the contest to finish.
+            if (contestUrl) {
               setTimeout(function () { window.location.href = contestUrl; }, 1800);
             }
           }

@@ -17,9 +17,14 @@ class User < ApplicationRecord
   validates :password, confirmation: true, if: -> { password_confirmation.present? }
   validate :has_authentication_method
 
+  before_validation :ensure_username, on: :create
   before_save :set_name_parts, if: -> { name_changed? }
   before_create :set_initial_session_token  # OPSEC-045
   after_create :generate_managed_wallet!
+  # The username's master record lives on-chain — create the UserAccount PDA
+  # (with the username) right after signup. after_commit so the managed wallet
+  # + username are committed before the job runs.
+  after_commit :enqueue_onchain_account_setup, on: :create
 
   # --- Class methods ---
 
@@ -267,6 +272,17 @@ class User < ApplicationRecord
   end
 
   private
+
+  # Every account gets an auto-generated username — signup never has a
+  # "pick a username" step (the username's master record is on-chain).
+  def ensure_username
+    self.username ||= Studio::UsernameGenerator.generate
+  end
+
+  # Eager on-chain UserAccount creation at signup — see CreateOnchainUserAccountJob.
+  def enqueue_onchain_account_setup
+    CreateOnchainUserAccountJob.perform_later(id)
+  end
 
   def has_authentication_method
     return if email.present? || web3_solana_address.present? || (provider.present? && uid.present?)

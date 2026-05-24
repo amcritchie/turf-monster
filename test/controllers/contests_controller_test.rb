@@ -114,7 +114,9 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     post enter_contest_path(contest)
 
     assert_response :redirect
-    assert_redirected_to contest_path(contest)
+    # ContestsController#enter redirects to /c/:id/lobby (see contest_lobby_path),
+    # not /contests/:id. Updated 2026-05-23 to match current behavior.
+    assert_redirected_to contest_lobby_path(contest)
   end
 
   # --- onchain session entry tests ---

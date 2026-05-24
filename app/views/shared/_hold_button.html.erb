@@ -1,18 +1,26 @@
 <%#
   Reusable hold-to-confirm button module.
 
+  Per-instance config travels with the button as data-* attributes
+  and is evaluated against the surrounding x-data scope at runtime
+  via Alpine.evaluate (with `d` aliased to the scope's $data). This
+  lets a single page host multiple hold buttons with different
+  callbacks — the previous baked-in-ERB approach put callbacks on
+  a window-level handler that the FIRST rendered button populated,
+  silently forcing every later button to inherit those callbacks.
+
   Locals:
-    default_text     - Button label in idle state (default: "Hold to Confirm")
-    hold_text        - Text shown while holding (default: "Almost there...")
-    success_text     - Text shown on completion (default: "Confirmed!")
-    duration         - Hold duration in ms (default: 2000)
-    hold_id          - Unique ID for this button instance (default: "hold")
-    guard            - JS expression that must be truthy to allow hold (default: "true")
-    on_success       - JS to execute on successful hold (default: none)
-    validate         - JS expression returning Promise<boolean>, called at validate_at ms (default: none)
-    validate_at      - ms delay before running validation (default: 750)
-    early_action     - JS to execute early (for Web3 users) (default: none)
-    early_action_at  - ms delay before firing early action (default: 1500)
+    default_text       - Button label in idle state (default: "Hold to Confirm")
+    hold_text          - Text shown while holding (default: "Almost there...")
+    success_text       - Text shown on completion (default: "Confirmed!")
+    duration           - Hold duration in ms (default: 2000)
+    hold_id            - Unique ID for this button instance (default: "hold")
+    guard              - JS expression that must be truthy to allow hold (default: none = always allow)
+    on_success         - JS expression executed on successful hold (default: none)
+    validate           - JS expression returning Promise<boolean>, called at validate_at ms (default: none)
+    validate_at        - ms delay before running validation (default: 750)
+    early_action       - JS expression executed early (for Web3 users) (default: none)
+    early_action_at    - ms delay before firing early action (default: 1500)
     early_action_guard - JS expression that must be truthy for early action (default: none)
 %>
 <% default_text       ||= "Hold to Confirm" %>
@@ -21,7 +29,7 @@
 <% error_text         ||= "Entry Blocked" %>
 <% duration           ||= 2000 %>
 <% hold_id            ||= "hold" %>
-<% guard              ||= "true" %>
+<% guard              ||= nil %>
 <% on_success         ||= nil %>
 <% validate           ||= nil %>
 <% validate_at        ||= 750 %>
@@ -29,7 +37,15 @@
 <% early_action_at    ||= 1500 %>
 <% early_action_guard ||= nil %>
 
-<button class="hold-btn" data-hold-id="<%= hold_id %>" style="--duration: <%= duration %>ms"
+<button class="hold-btn"
+        data-hold-id="<%= hold_id %>"
+        data-duration="<%= duration %>"
+        <% if guard              %>data-guard="<%= guard %>"<% end %>
+        <% if on_success         %>data-on-success="<%= on_success %>"<% end %>
+        <% if validate           %>data-validate="<%= validate %>" data-validate-at="<%= validate_at %>"<% end %>
+        <% if early_action       %>data-early-action="<%= early_action %>" data-early-action-at="<%= early_action_at %>"<% end %>
+        <% if early_action_guard %>data-early-action-guard="<%= early_action_guard %>"<% end %>
+        style="--duration: <%= duration %>ms"
         @mousedown="holdBtnStart($el)" @mouseup="holdBtnEnd($el)" @mouseleave="holdBtnEnd($el)"
         @touchstart.prevent="holdBtnStart($el)" @touchend="holdBtnEnd($el)" @touchcancel="holdBtnEnd($el)">
   <div class="hold-icon">
@@ -58,8 +74,46 @@
 
     var timers = {};
     var nudgeTimers = {};
-    var duration = <%= duration %>;
     var CIRCUMFERENCE = 2 * Math.PI * 9; // ~56.55, matches r=9
+
+    // Evaluate a JS expression string against an x-data scope. Both `d`
+    // and `data` are aliased to the scope's reactive $data so call sites
+    // can use either ("d.runHoldValidations()" or "data.selectionCount").
+    //
+    // Sync only. For async expressions (e.g. validate which calls an
+    // async method), Alpine.evaluate returns SYNCHRONOUSLY — it kicks
+    // the work off via evaluateLater + callback, and returns whatever
+    // is in `result` at return time (still undefined for async). Use
+    // evalInAsync for those.
+    function evalIn(scope, expr) {
+      var d = Alpine.$data(scope);
+      return Alpine.evaluate(scope, expr, { scope: { d: d, data: d } });
+    }
+
+    // Async-aware version — returns a Promise that resolves to the
+    // expression's value. For sync expressions, resolves immediately.
+    // For async ones (Promise-returning methods like
+    // d.runHoldValidations()), the AsyncFunction flattens the Promise
+    // so the resolved value bubbles up cleanly.
+    //
+    // We DON'T use Alpine.evaluateLater here. In Alpine 3.x the
+    // `extras` arg shape is version-dependent — passing
+    // { scope: { d, data } } silently fails to inject those vars in
+    // some builds (the user hit "d is not defined" when we tried
+    // that), and the working shape changes between minor versions.
+    // Compiling our own AsyncFunction with the named params we need
+    // is portable and doesn't depend on Alpine internals.
+    var _AsyncFn = Object.getPrototypeOf(async function() {}).constructor;
+    function evalInAsync(scope, expr) {
+      var d = Alpine.$data(scope);
+      try {
+        var fn = new _AsyncFn('d', 'data', 'Alpine', 'window',
+          '"use strict"; return (' + expr + ');');
+        return fn(d, d, Alpine, window);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
 
     function updateDebugRing(el, secondsLeft, totalSeconds) {
       var debug = el.querySelector('.nudge-debug');
@@ -130,19 +184,33 @@
     });
 
     window.holdBtnStart = function(el) {
+      var holdId = el.dataset.holdId || 'hold';
       var scope = el.closest('[x-data]');
-      var guard = true;
       if (scope) {
         try {
           var data = Alpine.$data(scope);
+          // submitting === true means the previous attempt's POST is
+          // still in flight. Refuse to start a second hold so we don't
+          // double-submit and so the spinning button stays visible.
           if (data && data.submitting) return;
-          <% if guard != "true" %>
-            if (!(data && (<%== guard %>))) return;
-          <% end %>
-        } catch(e) {}
+          var guard = el.dataset.guard;
+          if (guard && !evalIn(scope, guard)) return;
+        } catch(e) {
+          console.warn('[hold:' + holdId + '] guard/submitting check threw:', e);
+        }
+      } else {
+        console.warn('[hold:' + holdId + '] no [x-data] ancestor — evalIn calls will be no-ops');
       }
 
       var id = el.dataset.holdId || 'hold';
+      var duration = parseInt(el.dataset.duration || '2000', 10);
+      var onSuccess = el.dataset.onSuccess;
+      var validate = el.dataset.validate;
+      var validateAt = parseInt(el.dataset.validateAt || '750', 10);
+      var earlyAction = el.dataset.earlyAction;
+      var earlyActionAt = parseInt(el.dataset.earlyActionAt || '1500', 10);
+      var earlyActionGuard = el.dataset.earlyActionGuard;
+
       var circle = el.querySelector('svg.progress circle');
 
       // Restart nudge cycle from hold start (suppressed visually by .process)
@@ -163,66 +231,75 @@
       el.classList.add('process');
 
       timers[id] = setTimeout(function() {
-        <% if on_success %>
+        if (onSuccess) {
           // Stay in process state briefly while resolving
           setTimeout(function() {
             try {
               var s = el.closest('[x-data]');
-              if (s) {
-                var d = Alpine.$data(s);
-                if (d) { <%= on_success %> }
+              if (!s) {
+                console.warn('[hold:' + holdId + '] on_success: no [x-data] ancestor at fire time');
+                return;
               }
+              evalIn(s, onSuccess);
             } catch(e) {
+              console.error('[hold:' + holdId + '] on_success threw:', e);
               el.classList.remove('process');
               el.classList.add('success');
             }
           }, 500);
-        <% else %>
+        } else {
           el.classList.remove('process');
           el.classList.add('success');
-        <% end %>
+        }
       }, duration);
 
-      <% if early_action %>
-      // Early action for Web3 users
-      timers[id + '_early'] = setTimeout(function() {
-        var s = el.closest('[x-data]');
-        if (s) {
-          var d = Alpine.$data(s);
-          if (d && (<%== early_action_guard || "true" %>)) {
-            clearTimeout(timers[id]);
-            delete timers[id];
-            try { <%== early_action %> } catch(e) {}
+      if (earlyAction) {
+        timers[id + '_early'] = setTimeout(function() {
+          var s = el.closest('[x-data]');
+          if (s) {
+            if (!earlyActionGuard || evalIn(s, earlyActionGuard)) {
+              clearTimeout(timers[id]);
+              delete timers[id];
+              try { evalIn(s, earlyAction); }
+              catch(e) { console.error('[hold:' + holdId + '] early_action threw:', e); }
+            }
           }
-        }
-      }, <%= early_action_at %>);
-      <% end %>
+        }, earlyActionAt);
+      }
 
-      <% if validate %>
-      // Mid-hold validation check
-      timers[id + '_val'] = setTimeout(function() {
-        var s = el.closest('[x-data]');
-        if (s) {
-          var d = Alpine.$data(s);
-          if (d) {
-            Promise.resolve(<%== validate %>).then(function(ok) {
-              if (!ok) {
-                // Abort the hold
-                clearTimeout(timers[id]);
-                delete timers[id];
-                var circle = el.querySelector('svg.progress circle');
-                if (circle) {
-                  circle.style.transition = 'none';
-                  void circle.offsetWidth;
-                  circle.style.transition = '';
-                }
-                // Error state is set by the validate function itself (via setHoldError)
-              }
-            });
+      if (validate) {
+        timers[id + '_val'] = setTimeout(function() {
+          var s = el.closest('[x-data]');
+          if (!s) {
+            console.warn('[hold:' + holdId + '] validate: no [x-data] ancestor');
+            return;
           }
-        }
-      }, <%= validate_at %>);
-      <% end %>
+          // Helper: abort the in-flight hold cleanly. Clears all timers
+          // for this id and drops the .process class so the user isn't
+          // stranded at "Almost there…" if validate rejects. Caller's
+          // validate is responsible for any setHoldError() if it wants
+          // an explicit error state (e.g. geo block).
+          var abort = function() {
+            clearTimeout(timers[id]); delete timers[id];
+            if (timers[id + '_early']) { clearTimeout(timers[id + '_early']); delete timers[id + '_early']; }
+            el.classList.remove('process');
+            var c = el.querySelector('svg.progress circle');
+            if (c) { c.style.transition = 'none'; void c.offsetWidth; c.style.transition = ''; }
+          };
+          try {
+            evalInAsync(s, validate).then(
+              function(ok) { if (!ok) abort(); },
+              function(err) {
+                console.error('[hold:' + holdId + '] validate rejected:', err);
+                abort();
+              }
+            );
+          } catch(e) {
+            console.error('[hold:' + holdId + '] validate threw synchronously:', e);
+            abort();
+          }
+        }, validateAt);
+      }
     };
 
     window.holdBtnEnd = function(el) {

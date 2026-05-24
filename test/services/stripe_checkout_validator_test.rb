@@ -13,7 +13,7 @@ class StripeCheckoutValidatorTest < ActiveSupport::TestCase
       payment_status: "paid",
       livemode: false,
       amount_total: 1900,
-      metadata: { "kind" => "tokens", "quantity" => "1", "user_id" => @alex.id.to_s, "wallet_address" => "TestWallet" }
+      metadata: { "kind" => "tokens", "pack_id" => "single", "quantity" => "1", "user_id" => @alex.id.to_s, "wallet_address" => "TestWallet" }
     }
     OpenStruct.new(defaults.merge(overrides))
   end
@@ -64,9 +64,9 @@ class StripeCheckoutValidatorTest < ActiveSupport::TestCase
     end
   end
 
-  test "fails on unknown pack quantity" do
-    Stripe::Checkout::Session.stub :retrieve, session_double(metadata: { "kind" => "tokens", "quantity" => "7", "user_id" => @alex.id.to_s }) do
-      result = StripeCheckoutValidator.new("cs_bad_qty", kind: "tokens").call
+  test "fails on an unknown pack id" do
+    Stripe::Checkout::Session.stub :retrieve, session_double(metadata: { "kind" => "tokens", "pack_id" => "bogus", "user_id" => @alex.id.to_s }) do
+      result = StripeCheckoutValidator.new("cs_bad_pack", kind: "tokens").call
       assert_equal :amount_mismatch, result.reason
     end
   end

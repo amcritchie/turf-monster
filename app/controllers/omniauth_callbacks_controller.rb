@@ -68,6 +68,25 @@ class OmniauthCallbacksController < ApplicationController
         return finish_oauth(login_path, success: false,
                             alert: "Google sign-in rejected: your email is not verified by Google.")
       when :requires_verification
+        existing = User.find_by(email: auth.info.email)
+        # A wallet-secured account can't prove email ownership via password —
+        # route the user to a wallet login that completes the Google link once
+        # they sign. The Google identity is already GoogleOauthValidator-checked
+        # above, so stashing it for the post-wallet-login step is safe.
+        if existing&.phantom_wallet?
+          session[:pending_google_link] = {
+            "user_id"  => existing.id,
+            "provider" => auth.provider,
+            "uid"      => auth.uid,
+            "email"    => auth.info.email,
+            "at"       => Time.current.to_i
+          }
+          if @oauth_popup
+            return finish_oauth(login_path, success: false,
+                                alert: "#{auth.info.email} is a wallet account — log in with your Solana wallet to link Google.")
+          end
+          return redirect_to link_wallet_path
+        end
         return finish_oauth(login_path, success: false,
                             alert: "An account already exists for #{auth.info.email}. Sign in with your password and verify your email before linking Google.")
       end
@@ -80,7 +99,9 @@ class OmniauthCallbacksController < ApplicationController
 
       rescue_and_log(target: result) do
         set_app_session(result)
-        finish_oauth(root_path, success: true,
+        # New signups land on the entry-tokens page (post-signup upsell);
+        # returning Google users go to the app root.
+        finish_oauth(new_signup ? tokens_buy_path : root_path, success: true,
                      needs_profile: !result.profile_complete?,
                      notice: "Signed in with Google!")
       end

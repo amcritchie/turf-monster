@@ -6,9 +6,21 @@ class UserTest < ActiveSupport::TestCase
     assert_equal "alex_test", user.display_name
   end
 
-  test "display_name returns capitalized email prefix when name is blank" do
+  test "display_name falls back to capitalized email prefix when username and name are blank" do
     user = User.create!(email: "newplayer@mcritchie.studio", password: "password")
+    user.update_column(:username, nil) # usernames auto-generate; clear it to exercise the fallback
     assert_equal "Newplayer", user.display_name
+  end
+
+  test "every new account is auto-assigned a username" do
+    user = User.create!(email: "auto@mcritchie.studio", password: "password")
+    assert user.username.present?, "signup should auto-generate a username"
+    assert_match(/\A[a-zA-Z0-9_-]+\z/, user.username)
+  end
+
+  test "an explicitly provided username is kept" do
+    user = User.create!(email: "explicit@mcritchie.studio", password: "password", username: "chosen-name")
+    assert_equal "chosen-name", user.username
   end
 
   test "authenticate with correct password" do

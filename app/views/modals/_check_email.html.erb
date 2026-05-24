@@ -1,0 +1,28 @@
+<%#
+  Content fragment for the 'check-email' modal — opened via
+  $store.modals.open('check-email', { email, sendError }).
+  Rendered inside shared/_modal_host, which provides the backdrop,
+  card chrome, scroll lock, escape key, and click-outside.
+
+  "Resend email" dispatches a window event the contest board listens for
+  (selectionBoard's @modal-resend-verification.window), so the modal
+  partial doesn't need to know about the board's Alpine scope.
+%>
+<div class="text-center">
+  <div class="flex justify-end -mt-2 -mr-2">
+    <button @click="$store.modals.close()"
+            class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
+  </div>
+  <div class="text-4xl mb-3">&#128236;</div>
+  <h3 class="text-lg font-bold text-heading mb-1">Check your email</h3>
+  <p class="text-sm text-secondary mb-4">
+    We sent a confirmation link to
+    <span class="text-heading font-medium" x-text="$store.modals.current().props.email"></span>.
+    Click it to verify your email and finish entering.
+  </p>
+  <template x-if="$store.modals.current().props.sendError">
+    <p class="text-red-400 text-xs mb-3" x-text="$store.modals.current().props.sendError"></p>
+  </template>
+  <button @click="$dispatch('modal-resend-verification')"
+          class="btn btn-outline w-full">Resend email</button>
+</div>

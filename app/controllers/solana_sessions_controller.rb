@@ -12,6 +12,16 @@ class SolanaSessionsController < ApplicationController
     # Client-side only — JS handles decryption and verify POST
   end
 
+  # Landing page for a Google sign-in that collided with a wallet account
+  # (OmniauthCallbacksController#create stashed the Google identity). Explains
+  # the situation and prompts a wallet login; #verify then completes the link.
+  def link_wallet
+    pending = session[:pending_google_link]
+    return redirect_to login_path unless pending
+
+    @pending_email = pending["email"]
+  end
+
   def verify
     pubkey_b58 = verify_solana_signature!(
       message: params[:message],
@@ -26,7 +36,6 @@ class SolanaSessionsController < ApplicationController
 
     user ||= User.new(
       name: "anon",
-      username: Studio::UsernameGenerator.generate,
       web3_solana_address: pubkey_b58,
       password: SecureRandom.hex(16),
       reference: cookies[:reference].presence&.first(64) # first-touch funnel attribution
@@ -37,11 +46,39 @@ class SolanaSessionsController < ApplicationController
       cookies.delete(:reference) if is_new
       set_app_session(user)
       session[:onchain] = true
-      render json: { success: true, redirect: "/", new_user: is_new }
+      linked = apply_pending_google_link!(user)
+      # New signups land on the entry-tokens page (post-signup upsell);
+      # a completed Google link goes to /account; everyone else to the root.
+      redirect = linked ? account_path : (is_new ? tokens_buy_path : "/")
+      render json: { success: true, redirect: redirect, new_user: is_new }
     end
   rescue Solana::AuthVerifier::VerificationError => e
     render json: { error: e.message }, status: :unauthorized
   rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
+  end
+
+  private
+
+  # A Google sign-in that collided with this wallet account stashed its
+  # (already GoogleOauthValidator-checked) identity in the session. Now that
+  # the user has proven wallet ownership by signature, BOTH factors are proven
+  # for the same account — so complete the Google link. One-shot, 15-minute
+  # TTL, and only for the exact account the stash named.
+  def apply_pending_google_link!(user)
+    pending = session.delete(:pending_google_link)
+    return false unless pending
+    return false unless pending["user_id"] == user.id
+    return false if pending["at"].to_i < 15.minutes.ago.to_i
+
+    user.update!(
+      provider: pending["provider"],
+      uid: pending["uid"],
+      email_verified_at: user.email_verified_at || Time.current
+    )
+    flash[:notice] = "Google account linked — you can sign in with your wallet or Google."
+    true
+  rescue ActiveRecord::RecordNotUnique
+    false
   end
 end

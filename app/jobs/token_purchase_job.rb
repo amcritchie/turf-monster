@@ -16,9 +16,12 @@
 class TokenPurchaseJob < ApplicationJob
   queue_as :default
 
-  def perform(user_id:, quantity:, wallet_address:, stripe_session_id:)
-    sid_short = stripe_session_id[0, 24]
-    Rails.logger.info "[tokens] job.start user=#{user_id} qty=#{quantity} wallet=#{wallet_address[0,12]}... sid=#{sid_short}..."
+  def perform(user_id:, pack_id:, wallet_address:, stripe_session_id:)
+    sid_short        = stripe_session_id[0, 24]
+    pack             = StripePurchase.pack(pack_id)
+    quantity         = pack[:quantity]
+    pack_price_cents = pack[:price_cents]
+    Rails.logger.info "[tokens] job.start user=#{user_id} pack=#{pack_id} qty=#{quantity} wallet=#{wallet_address[0,12]}... sid=#{sid_short}..."
 
     purchase = StripePurchase.for_session(stripe_session_id).first
     if purchase&.status == "minted"
@@ -32,7 +35,6 @@ class TokenPurchaseJob < ApplicationJob
       return
     end
 
-    pack_price_cents = StripePurchase.pack_price_cents(quantity)
     purchase ||= StripePurchase.create!(
       user: user,
       stripe_session_id: stripe_session_id,

@@ -352,6 +352,29 @@
   from { transform: scaleX(1); }
   to   { transform: scaleX(0); }
 }
+/* Auth wizard submit-button text shimmer — applied while a network attempt
+   is in flight (props.submitting truthy). The text becomes the loader: a
+   bright gradient sweeps left-to-right across the label, no spinner glyph
+   needed. Uses background-clip:text so the underlying button fill stays
+   unchanged. */
+.auth-text-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.55) 0%,
+    rgba(255,255,255,1)   50%,
+    rgba(255,255,255,0.55) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: auth-text-shimmer 1.4s linear infinite;
+}
+@keyframes auth-text-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
 /* Registered custom property — makes --bar-progress interpolatable so a single transition drives all 5 segment widths in lockstep (one ease curve, not 5 chained). */
 @property --bar-progress {
   syntax: '<number>';

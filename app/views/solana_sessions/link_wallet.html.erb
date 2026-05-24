@@ -1,0 +1,26 @@
+<% content_for :title, "Login with Your Wallet" %>
+
+<div class="min-h-[70vh] flex items-center justify-center">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <img src="/logo.png" alt="Turf Monster" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
+      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Login with Your Wallet</h1>
+    </div>
+
+    <div class="card shadow p-8">
+      <div class="mb-6 p-4 rounded-lg bg-surface-alt border border-subtle text-sm">
+        <p class="text-heading font-semibold mb-1">This account is secured by a Solana wallet</p>
+        <p class="text-secondary">
+          <span class="text-heading font-medium"><%= @pending_email %></span> belongs to a wallet,
+          please log in to connect to Google.
+        </p>
+      </div>
+
+      <%= render "shared/solana_wallet_connect" %>
+
+      <p class="text-center text-secondary text-sm mt-6">
+        <%= link_to "Back to log in", login_path, class: "text-primary hover:text-primary-300 font-medium underline underline-offset-2" %>
+      </p>
+    </div>
+  </div>
+</div>

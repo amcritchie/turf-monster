@@ -1,0 +1,143 @@
+<%#
+  Entry-confirmed success card. The canonical celebration for a
+  successful contest entry — used by BOTH web3 (on-chain Solana
+  entry) and web2 (entry-token-funded) flows so the user sees the
+  same UX regardless of payment method.
+
+  Composes studio-engine's _success_card (large "Good Luck" title,
+  branded Solana tx link, "Contest Lobby" CTA with drain countdown,
+  confetti) and injects the seeds bar + level-up celebration as the
+  card's yield block. The seeds bar mounts only when seeds_earned
+  is positive, so flows that don't award seeds fall back to the
+  plain success card.
+
+  All data is passed in as Alpine expression strings so the partial
+  works against any backing store/scope. Callers wire:
+    web3: $store.solanaModal.{txSignature,lobbyUrl,seedsEarned,seedsTotal}
+    web2: props.{txSignature,lobbyUrl,seedsEarned,seedsTotal}
+
+  Locals (all Alpine expressions, all required):
+    tx_signature_key   — expression returning the Solana tx hash
+    lobby_url_key      — expression returning the lobby URL (CTA href
+                         + auto-redirect destination)
+    seeds_earned_key   — expression returning seeds awarded this entry
+    seeds_total_key    — expression returning user's total seeds
+%>
+<%
+  tx_signature_key = local_assigns.fetch(:tx_signature_key)
+  lobby_url_key    = local_assigns.fetch(:lobby_url_key)
+  seeds_earned_key = local_assigns.fetch(:seeds_earned_key)
+  seeds_total_key  = local_assigns.fetch(:seeds_total_key)
+%>
+<%= render 'studio/modals/blocks/success_card',
+    title:                 "Good Luck",
+    message:               "Entry Confirmed",
+    icon_color:            'mint',
+    large_title:           true,
+    tx_signature_key:      tx_signature_key,
+    tx_solana:             true,
+    cta_label:             "Contest Lobby ⚔️",
+    cta_href_key:          lobby_url_key,
+    cta_drain:             true,
+    auto_redirect_url_key: lobby_url_key,
+    auto_redirect_seconds: 5,
+    confetti:              true do %>
+  <%# Seeds bar + level-up celebration. Mounts only when this entry
+      awarded seeds. The animation walks the bar from the user's
+      previous toward-next value up to the new one (or through 100→0
+      with a level-up flourish if they crossed a level threshold). %>
+  <template x-if="(<%= seeds_earned_key %>) > 0">
+    <div x-data="{
+           displaySeeds: 0,
+           displayLevel: 1,
+           levelingUp: false,
+           showFreeEntryBadge: false,
+           init() {
+             var self = this;
+             var total = (<%= seeds_total_key %>) || 0;
+             var earned = (<%= seeds_earned_key %>) || 0;
+             var seedsPerLevel = 100;
+             var oldSeeds = Math.max(0, total - earned);
+             var oldLevel = Math.floor(oldSeeds / seedsPerLevel) + 1;
+             var newLevel = Math.floor(total / seedsPerLevel) + 1;
+             var oldToward = oldSeeds % seedsPerLevel;
+             var newToward = total % seedsPerLevel;
+
+             self.displaySeeds = oldToward;
+             self.displayLevel = oldLevel;
+
+             setTimeout(function() {
+               if (newLevel > oldLevel) {
+                 self.levelingUp = true;
+                 self.displaySeeds = 100;
+                 setTimeout(function() {
+                   self.displayLevel = newLevel;
+                   self.showFreeEntryBadge = true;
+                 }, 1900);
+                 setTimeout(function() { self.displaySeeds = 0; }, 3400);
+                 setTimeout(function() {
+                   self.displaySeeds = newToward;
+                   self.levelingUp = false;
+                 }, 3600);
+               } else {
+                 self.displaySeeds = newToward;
+               }
+             }, 2000);
+
+             var fireShimmer = function() {
+               if (!self.$root || !self.$root.querySelectorAll) return;
+               self.$root.querySelectorAll('.modal-shimmer').forEach(function(el) {
+                 el.style.animation = 'none';
+                 void el.offsetHeight;
+                 el.style.animation = 'seedsShimmer 1.8s ease-in-out forwards';
+               });
+             };
+             for (var i = 1; i <= 5; i++) { setTimeout(fireShimmer, i * 9000); }
+             setTimeout(function() { setInterval(fireShimmer, 9 * 60 * 1000); }, 5 * 9000);
+           }
+         }"
+         class="mx-auto" style="max-width: 100%;">
+      <template x-if="!showFreeEntryBadge">
+        <div class="relative">
+          <div class="seeds-bar-continuous flex gap-1.5"
+               style="height: 22px; transition: --bar-progress 1.9s cubic-bezier(0.16, 1, 0.3, 1);"
+               :style="{ '--bar-progress': displaySeeds }">
+            <template x-for="i in 5" :key="i">
+              <div class="flex-1 relative overflow-hidden rounded-md"
+                   style="background: rgba(var(--color-primary-500-rgb), 0.22); border: 1.5px solid rgba(var(--color-primary-500-rgb), 0.6);">
+                <div class="absolute inset-0 pointer-events-none"
+                     :style="{
+                       backgroundPosition: ((i - 1) * 25) + '% 0',
+                       clipPath: 'inset(0 calc(100% - clamp(0%, calc((var(--bar-progress) - ' + ((i - 1) * 20) + ') * 5%), 100%)) 0 0)'
+                     }"
+                     style="background-image: linear-gradient(90deg, color-mix(in srgb, var(--color-cta) 30%, transparent), color-mix(in srgb, var(--color-cta) 60%, transparent)); background-size: 500% 100%; background-repeat: no-repeat;"></div>
+                <div class="modal-shimmer absolute top-0 bottom-0 pointer-events-none"
+                     :style="{ left: -(i - 1) * 100 + '%', width: '500%' }"
+                     style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%); transform: translateX(200%);"></div>
+              </div>
+            </template>
+          </div>
+          <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
+            <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.7);">
+              <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 2.6ch; line-height: 1.25em;">
+                <span class="block"
+                      :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.9s cubic-bezier(0.16, 1, 0.3, 1)' }">
+                  <template x-for="n in 101" :key="n">
+                    <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
+                  </template>
+                </span>
+              </span>
+              <span class="text-[10px] font-normal opacity-90">seeds</span>
+            </span>
+          </div>
+        </div>
+      </template>
+      <template x-if="showFreeEntryBadge">
+        <div class="level-up-pop inline-flex items-center justify-center w-full px-4 py-2.5 rounded-lg font-bold text-sm"
+             style="background: transparent; color: var(--color-cta); border: 2px solid var(--color-cta);">
+          <span>Free Entry Earned 🎟️</span>
+        </div>
+      </template>
+    </div>
+  </template>
+<% end %>

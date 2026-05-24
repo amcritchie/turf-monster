@@ -134,7 +134,7 @@
         <%= f.hidden_field :contest_type, "x-model": "format" %>
 
         <div class="grid grid-cols-2 gap-3">
-          <% Contest::FORMATS.each do |key, config| %>
+          <% Contest.selectable_formats.each do |key, config| %>
             <div @click="format = '<%= key %>'"
                  :class="format === '<%= key %>' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-subtle hover:border-strong'"
                  class="cursor-pointer rounded-lg border p-4 transition">
@@ -306,8 +306,8 @@
         csrfToken:  form_authenticity_token,
         finalizePath: finalize_contests_path,
         usdcBalance: display_balance.to_f,
-        tierPrizes:  Contest::FORMATS.transform_values { |c| c[:payouts].values.sum / 100.0 },
-        tierEntryFees: Contest::FORMATS.transform_values { |c| c[:entry_fee_cents] / 100.0 }
+        tierPrizes:  Contest.selectable_formats.transform_values { |c| c[:payouts].values.sum / 100.0 },
+        tierEntryFees: Contest.selectable_formats.transform_values { |c| c[:entry_fee_cents] / 100.0 }
       }.to_json.html_safe %>
     </script>
     <script>
@@ -323,7 +323,8 @@
         function showWalletRequiredModal() {
           var modal = Alpine.store('solanaModal');
           modal.show('Phantom Wallet Required', '');
-          modal.error('Contest creation is a web3 transaction — connect a Phantom wallet on your Account page first, then come back.', 'Phantom Wallet Required');
+          modal.error('Contest creation is a web3 transaction — log in with a Phantom wallet to create a contest.', 'Phantom Wallet Required');
+          modal.setRecovery('Log in with Phantom', function() { window.location.href = '/login'; }, { phantom: true });
         }
 
         function showInsufficientUsdcModal(prizeNeeded, balanceHave) {

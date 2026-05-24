@@ -66,7 +66,7 @@ class StripeCheckoutValidator
       return fail!(:kind_mismatch, session)
     end
     unless amount_matches?(session)
-      Rails.logger.warn "[tokens] validator.fail amount_mismatch session_amount=#{session.amount_total} quantity=#{session.metadata["quantity"]}"
+      Rails.logger.warn "[tokens] validator.fail amount_mismatch session_amount=#{session.amount_total} pack=#{session.metadata["pack_id"]}"
       return fail!(:amount_mismatch, session)
     end
 
@@ -89,8 +89,8 @@ class StripeCheckoutValidator
   def amount_matches?(session)
     case @kind
     when "tokens"
-      quantity = session.metadata["quantity"].to_i
-      expected = StripePurchase.pack_price_cents(quantity)
+      pack_id  = session.metadata["pack_id"]
+      expected = StripePurchase.pack_price_cents(pack_id)
       session.amount_total == expected
     else
       # OPSEC-008: deposits have a variable amount, but metadata.amount_cents
