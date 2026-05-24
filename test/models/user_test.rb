@@ -28,6 +28,31 @@ class UserTest < ActiveSupport::TestCase
     assert user.authenticate("password")
   end
 
+  # H1 (Stage 2 audit): DB-level uniqueness on LOWER(username) closes the
+  # signup TOCTOU window. Rails' validation runs in Ruby — two concurrent
+  # signups can both pass and both INSERT with the same username. The
+  # partial unique index on LOWER(username) makes the second INSERT fail.
+  test "username DB unique index rejects case-insensitive duplicate (bypassing Rails validations)" do
+    User.create!(email: "h1a@example.com", password: "password", username: "RaceWinner")
+
+    err = assert_raises(ActiveRecord::RecordNotUnique) do
+      # Skip validations to simulate a race: pretend two threads both passed
+      # the Ruby-level uniqueness check and tried to INSERT at the same time.
+      dup = User.new(email: "h1b@example.com", password: "password", username: "racewinner")
+      dup.save(validate: false)
+    end
+    assert_match(/index_users_on_lower_username/, err.message)
+  end
+
+  test "username DB index permits multiple NULLs (partial WHERE username IS NOT NULL)" do
+    # Wallet-only / pre-profile-completion users have nil usernames; the
+    # partial WHERE clause must let many of them coexist.
+    u1 = User.new(email: "h1c@example.com", password: "password", username: nil)
+    u2 = User.new(email: "h1d@example.com", password: "password", username: nil)
+    assert u1.save(validate: false)
+    assert u2.save(validate: false)
+  end
+
   test "authenticate with wrong password" do
     user = users(:alex)
     assert_not user.authenticate("wrong")

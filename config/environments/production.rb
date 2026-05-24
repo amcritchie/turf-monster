@@ -71,9 +71,12 @@ Rails.application.configure do
   # In-memory cache for contest show page caching
   config.cache_store = :memory_store, { size: 64.megabytes }
 
-  # Background jobs via solid_queue (requires worker dyno).
-  # Keep :async to run jobs in web process threads until worker dyno is added.
-  config.active_job.queue_adapter = :async
+  # Background jobs via Sidekiq (worker dyno + Heroku Redis).
+  # NB1 (audit 2026-05-23): was :async, which ran jobs in the web dyno's
+  # thread pool. Jobs were lost on dyno restart (Heroku restarts daily) and
+  # slow Solana RPC jobs starved Puma worker threads. The Sidekiq worker dyno
+  # in the Procfile was sitting idle except for the cron sweeper.
+  config.active_job.queue_adapter = :sidekiq
 
   # Disable caching for Action Mailer templates even if Action Controller
   # caching is enabled.
