@@ -68,6 +68,8 @@ solana program deploy target/deploy/turf_vault.so \
 - [ ] Deploy succeeds (~3-5 SOL spent from Alex Bot mainnet wallet).
 - [ ] `solana program show MAINNET_PROGRAM_ID --url mainnet-beta` shows the Squads vault PDA as upgrade authority.
 
+> **After this initial deploy**, all future program upgrades require 2-of-3 cosign via `turf-vault/scripts/squad-upgrade.js`. `anchor deploy` will fail silently once the Squads vault is the authority. See `turf-vault/CLAUDE.md` § "Deploying an upgrade" for the cosign flow.
+
 ---
 
 ## 3. Initialize the vault (Alex's Phantom signs)

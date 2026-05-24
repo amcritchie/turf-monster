@@ -17,14 +17,14 @@ has_secure_password validations: false  # wallet users have no password
 has_one_attached :avatar
 validates :email, uniqueness: true, allow_nil: true
 validates :username, uniqueness: { case_sensitive: false }, allow_nil: true
-validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_]+\z/ }, allow_nil: true
+validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/ }, allow_nil: true
 validates :password, length: { minimum: 6 }, if: -> { password.present? }
 validates :password, confirmation: true, if: -> { password_confirmation.present? }
 validate :has_authentication_method  # must have email, solana_address, or provider+uid
 ```
 
 - `email` is **nullable** — wallet-only users have no email
-- `username` — 3-30 chars, alphanumeric + underscore, case-insensitive uniqueness, nullable
+- `username` — 3-30 chars, alphanumeric + underscore + hyphen, case-insensitive uniqueness, nullable
 - `password_digest` keeps `null: false, default: ""` (has_secure_password needs it)
 - Predicate helpers: `google_connected?`, `has_password?`, `has_email?`, `profile_complete?` (username present)
 - `display_name` fallback chain: username → name → email prefix → truncated_solana → "anon"
@@ -86,7 +86,9 @@ The instruction itself (`set_username`) is in turf-vault — the username is pad
 
 ## SSO Satellite Role
 
-This app receives one-way SSO from McRitchie Studio (the hub). Login page shows "Continue as [name]" button (from engine's `_sso_continue.html.erb` partial) when user is logged into Studio. `GET /sso_login` (the hub's nav-link target) redirects to this app's login page; sign-in itself goes through the CSRF-protected `POST /sso_continue` button there (OPSEC-016 — the GET no longer mutates the session). Logout only clears this app's session. Wallet-only users (no email) cannot SSO. Hub logo at `public/studio-logo.svg`. Requires shared `SECRET_KEY_BASE`.
+> **Effective status: SSO is DISABLED in turf-monster.** The engine's `_sso_continue.html.erb` partial is intentionally NOT overridden here, and the layout never renders the "Continue as X" button — so even though the routes are mounted, the cross-app SSO UX is off. To re-enable: override the partial locally and render it in `sessions/new.html.erb`. The full mechanics below are kept as reference for when SSO comes back.
+
+This app receives one-way SSO from McRitchie Studio (the hub). Login page would show "Continue as [name]" button (from engine's `_sso_continue.html.erb` partial) when user is logged into Studio. `GET /sso_login` (the hub's nav-link target) redirects to this app's login page; sign-in itself goes through the CSRF-protected `POST /sso_continue` button there (OPSEC-016 — the GET no longer mutates the session). Logout only clears this app's session. Wallet-only users (no email) cannot SSO. Hub logo at `public/studio-logo.svg`. Requires shared `SECRET_KEY_BASE`.
 
 ## Solana Auth Security
 

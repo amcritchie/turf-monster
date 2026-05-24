@@ -117,6 +117,10 @@ Seeds are awarded on-chain per the active **Season**'s `seed_schedule` (TurfVaul
 - `solana:reconcile` — reconcile all user balances
 - `solana:reconcile_contest` — reconcile specific contest
 
+## Public faucet endpoint
+
+`/faucet` is a public route — GET renders a marketing page; POST mints test USDC to the requester's wallet via `Vault#mint_spl(amount_lamports, mint: Solana::Config::USDC_MINT, to: wallet)`. Used by the "Mint $500 Test USDC" recovery button inside the insufficient-USDC modal during the Phantom-driven contest creation flow. Production-disabled per OPSEC-020.
+
 ## Solana Auth Security
 
 - **Nonce replay prevention**: Solana nonces include timestamp, enforced 5-minute expiry window. Nonce is deleted from session before verification (delete-before-verify pattern) to prevent replay attacks.

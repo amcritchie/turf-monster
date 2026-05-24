@@ -1,5 +1,7 @@
 # Devnet Integration Tests (Audit Tier 3 #21)
 
+> **Status (2026-05-23): PARTIALLY CLOSED.** `e2e/devnet-smoke.spec.js` (~890 lines) ships a comprehensive devnet smoke suite covering the Rails ↔ program contract end-to-end: vault round-trip, contest create/enter/settle, entry tokens, settlement with cosign. The nightly CI workflow may or may not be live — verify before depending on it. Remaining work below is mostly edge cases + the nightly CI plumbing.
+
 The 2026-05-17 ecosystem audit recommended a small Playwright suite (10-15 cases) tagged `@devnet` that hits the **deployed devnet** `turf-vault` program from the turf-monster Rails layer. This catches integration drift between the program and the Rails service classes — the existing `turf-vault/tests/turf-vault.ts` covers the program against localnet but not the Rails ↔ program contract.
 
 The nightly CI workflow at `.github/workflows/devnet-nightly.yml` is already in place (audit Tier 2 #13) and will run any tests tagged `@devnet`. This file lists the tests to write.

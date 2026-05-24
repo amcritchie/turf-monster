@@ -1,8 +1,12 @@
-# Bot API Design
+# Bot API — Planned (design only)
 
-REST API for headless bot agents to interact with Turf Monster programmatically. Bots can join contests, make selections, and submit entries without a browser.
+REST API for headless bot agents to interact with Turf Monster programmatically. Bots would join contests, make selections, and submit entries without a browser.
 
-**Status: Design only — not yet implemented.**
+> **Status (2026-05-23): DESIGN ONLY — NOT IMPLEMENTED. No `/api/v1/*` routes exist in `config/routes.rb` and no controllers under `app/controllers/api/v1/`. This doc describes a future surface.**
+>
+> **For bot integration today**, use the existing browser-shaped flow: `/auth/solana/nonce` + `/auth/solana/verify` (the same Solana auth used by Phantom), then standard Rails contest endpoints (`POST /contests/:id/toggle_selection`, `POST /contests/:id/enter`, etc.) with the resulting session cookie. The Ed25519 signature is verified via `Solana::AuthVerifier` (in the `solana-studio` gem) with the canonical host-bound message prefix (OPSEC-018).
+>
+> Building this API at a `/api/v1/*` namespace requires: a controller hierarchy under `app/controllers/api/v1/`, token-based session auth (replacing or complementing the Rails cookie), JSON-only renderers, and rate-limiting via `rack-attack`. Revisit when there's a real bot integration demand — until then, prefer the browser-shaped flow + a thin wrapper client.
 
 ---
 

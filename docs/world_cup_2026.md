@@ -78,3 +78,41 @@ Each matchday produces **48 offensive matchups** (one per team). For Turf Totals
 - Offensive matchup 2: Serbia's offense vs USA's defense
 
 These are ranked by expected scoring output. Strong offenses against weak defenses rank high (low multiplier). Weak offenses against strong defenses rank low (high multiplier).
+
+## World Cup Survivor (parallel contest format)
+
+Single-elimination survivor pick. Players pick ONE team per `SurvivorRound`; that team must win to advance. A wrong pick eliminates the entry permanently. Last survivor(s) take the prize.
+
+### Format
+
+- **Max entries per contest**: 59
+- **Max entries per user per contest**: 1 (vs 3 for Turf Totals)
+- **Picks required at entry confirm**: 0 — picks happen per-round, not up front
+- **Team reuse**: not allowed across rounds within a single entry (enforced by unique index on `[team_slug, entry_id]` on `SurvivorPick`)
+
+| Tier | Entry fee | Max entries | Winner takeall |
+|------|----------:|------------:|---------------:|
+| `survivor_wc_paid` | $19 | 59 | $1,000 |
+| `survivor_wc_free` | $0  | 59 | $200 |
+
+Both formats are defined in `Contest::FORMATS` alongside the Turf Totals tiers. Contest model exposes `game_type: :world_cup_survivor` for branching.
+
+### Round structure
+
+`SurvivorRound` is its own model: `number` (unique, ordered), `name`, `stage` (group/knockout), `status` (upcoming/locked/completed), `picks_lock_at` (nullable). Rounds align with the tournament's natural advancement gates — typically one round per matchday in the group stage, then per knockout fixture.
+
+- Group stage rounds let players pick from any team playing in that round.
+- Knockout rounds narrow to the surviving teams in the bracket.
+- `SurvivorRound.current` returns the earliest unlocked round; `picks_locked?` predicates the cutoff.
+
+### Lifecycle
+
+Survivor contests share the standard `pending → open → locked → settled` lifecycle from Turf Totals, plus a per-round `grade_round` admin action that scores the current `SurvivorRound`, marks each `SurvivorPick.result` as `survived` or `eliminated`, and transitions the round to `completed`. The contest fully settles when one entry remains (or all remaining entries tie out on a shared elimination round and split the prize).
+
+### Key models + methods
+
+- `SurvivorRound` — `has_many :games` (dependent: nullify), `has_many :survivor_picks` (dependent: destroy).
+- `SurvivorPick` — `belongs_to :entry, :survivor_round, :team`. Unique `[survivor_round_id, entry_id]` + unique `[team_slug, entry_id]`.
+- `Entry#survivor?` / `Entry#eliminated?` — predicates for branching the UI.
+
+Kickoff memory: `project_turf_world_cup_survivor_kickoff` (2026-05-19, devnet soft launch).

@@ -1,5 +1,13 @@
 # Tests to Add (Audit Tier 2 #14)
 
+> **Status (2026-05-23):**
+> - **Priority 1** (Vault round-trip ~20 tests) — ⏳ **NOT STARTED at Rails unit level.** `test/services/solana/vault_test.rb` does not exist yet. Devnet smoke spec (`e2e/devnet-smoke.spec.js`, ~890 lines) covers the round-trip happy paths end-to-end at the Playwright level, but Rails unit coverage for edge cases (insufficient balance, wrong mint, locked contest, lamports-for-rent shortfall, sync of non-existent PDA) is still missing.
+> - **Priority 2** (Reconciler ~15 tests) — ⏳ **NOT STARTED.** `test/services/solana/reconciler_test.rb` does not exist. The Sidekiq-cron job is wired and writes to `ErrorLog` / `RECONCILER_ALERT_WEBHOOK`, but divergence-detection logic is not unit-tested.
+> - **Priority 3+** (Contest grading, settlement, edge cases) — ⏳ **PARTIAL.** `test/models/contest_test.rb` exists but doesn't cover all listed scenarios. Devnet smoke spec covers grade-then-settle end-to-end.
+> - Devnet integration tests are tracked separately in [`DEVNET_INTEGRATION_TESTS_TO_ADD.md`](DEVNET_INTEGRATION_TESTS_TO_ADD.md).
+>
+> When closing this doc out: collapse into a `docs/TEST_COVERAGE_STATUS.md` with per-priority completion %. For now, the priorities below remain the live punch list.
+
 The 2026-05-17 ecosystem audit identified turf-monster's test count (97 tests, 264 assertions) as low for the risk profile (real Solana tokens, 2-of-3 multisig settlement, on-chain entry/withdrawal flows). The audit's target: ~200 tests, roughly doubling current coverage, concentrated on the Solana boundary.
 
 This file is the concrete punch list. Execute in a focused session — each item below is roughly one test or one tight test cluster. After every batch, run `bin/rails test` and ensure green before continuing.

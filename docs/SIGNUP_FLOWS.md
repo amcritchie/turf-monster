@@ -48,16 +48,20 @@ _Generated 2026-05-20. For auth security internals (nonce replay, host binding, 
 
 Once any of the three controllers has a `User` row, the rest is identical:
 
-1. **`before_create :set_initial_session_token`** — writes `users.session_token`
+1. **`before_validation :ensure_username, on: :create`** (`user.rb:20`) — auto-fills the DB `username` column via `Studio::UsernameGenerator.generate` if blank. Guarantees no user ever has a blank username.
+2. **`before_create :set_initial_session_token`** — writes `users.session_token`
    (`SecureRandom.hex(32)`), the OPSEC-045 cookie-binding token.
-2. **`after_create :generate_managed_wallet!`** (`app/models/user.rb:187`) — unless the user is
+3. **`after_create :generate_managed_wallet!`** (`app/models/user.rb:203`) — unless the user is
    an admin, generates a custodial Solana keypair via `Solana::Keypair.generate` (local ed25519,
    **no RPC**), encrypts the secret key with a key derived from `MANAGED_WALLET_ENCRYPTION_KEY`,
    and writes `web2_solana_address` + `encrypted_web2_solana_private_key`.
-3. **`set_app_session(user)`** — writes the Rails cookie session (`session[:turf_user_id]`,
+4. **`after_commit :enqueue_onchain_account_setup, on: :create`** (`user.rb:27`) — enqueues `CreateOnchainUserAccountJob`, which calls `Solana::Vault#ensure_user_account(wallet, username:)` to create the on-chain `UserAccount` PDA with the username eagerly. **Async** — users are logged in before the PDA is finalized; reads of `user.username` always work because the DB column is set in step 1. See `docs/AUTH.md` § On-Chain Usernames.
+5. **`set_app_session(user)`** — writes the Rails cookie session (`session[:turf_user_id]`,
    `session[:session_token]`, SSO-awareness fields). No DB session row, no JWT.
 
 There is no `Session`, `Wallet`, or `Identity` table — everything hangs off `users`.
+
+**Post-signup redirect (all 3 flows)**: lands on `tokens_buy_path` (the entry-tokens upsell modal), not the root. Wired in `registrations_controller.rb:17`, `omniauth_callbacks_controller.rb:104`, and `solana_sessions_controller.rb:52`.
 
 ## Flow 1 — Phantom (web3 wallet)
 
@@ -222,11 +226,14 @@ sequenceDiagram
 
 | Area | File | Role |
 |---|---|---|
-| **Shared** | `app/models/user.rb` | `generate_managed_wallet!` (L187), `set_initial_session_token`, `from_solana_wallet`, `from_omniauth` |
+| **Shared** | `app/models/user.rb` | `ensure_username` (L20, L278), `enqueue_onchain_account_setup` (L27, L283), `generate_managed_wallet!` (L203), `set_initial_session_token`, `from_solana_wallet`, `from_omniauth` |
+| | `app/models/session_context.rb` | PORO — canonical guest/web2/web3 mode for `$store.session` (2026-05-20) |
+| | `app/jobs/create_onchain_user_account_job.rb` | Async on-chain `UserAccount` PDA + username creation at signup (2026-05-22) |
 | | `app/services/solana/keypair.rb` | Managed-wallet keypair encryption (`MANAGED_WALLET_ENCRYPTION_KEY`) |
-| | `app/controllers/application_controller.rb` | `set_app_session`, `verify_session_token` |
+| | `app/services/solana/vault.rb` | `ensure_user_account`, `create_user_account`, `set_username`, `build_set_username` |
+| | `app/controllers/application_controller.rb` | `set_app_session`, `verify_session_token`, `wallet_context` (builds `SessionContext`) |
 | | `config/initializers/studio.rb` | `session_key = :turf_user_id`, `registration_params` |
-| | `db/schema.rb` | `users` — `web2_/web3_solana_address`, `encrypted_web2_solana_private_key`, `session_token` |
+| | `db/schema.rb` | `users` — `web2_/web3_solana_address`, `encrypted_web2_solana_private_key`, `session_token`, `username` |
 | **Phantom** | `app/views/layouts/application.html.erb` | Inline Alpine `solanaWalletConnect()` — connect, sign, POST |
 | | `app/javascript/wallet_provider.js` · `phantom_deeplink.js` | Phantom detection; mobile deep-link |
 | | `app/controllers/solana_sessions_controller.rb` | `#nonce`, `#verify`, `#phantom_callback` |

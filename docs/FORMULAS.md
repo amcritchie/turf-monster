@@ -36,6 +36,8 @@ var _fcSliders = {};       // current slider values
 
 Alpine components read/write these globals directly. Never use `this.chart` or `$data.chart` for Chart.js objects.
 
+> **Same gotcha applies to DOM refs used with `scrollIntoView`.** Alpine wraps the element in a Proxy, which silently breaks the scroll API. Keep `scrollIntoView` element refs in plain `var`s outside Alpine and call the method from a plain function (see the Slate Manager simulate-all flow below for a working example).
+
 ### Cross-Component Communication Pattern
 
 Two Alpine components on the slate show page (`formulaCurves` for the chart/sliders, `rankManager` for the ranking list) communicate via global functions:

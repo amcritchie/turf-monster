@@ -36,6 +36,19 @@ Load these when working on specific areas:
 - Max 3 entries per user per contest (different selection combos required)
 - Entry fee deducted from user balance on confirm
 
+### World Cup Survivor (parallel format, `game_type: :world_cup_survivor`)
+
+Single-elimination survivor pick (one team per round, must win to advance). Separate contest format from Turf Totals; defined alongside the tier table in `Contest::FORMATS`.
+
+| Tier | Max entries | Entry fee | Winner takeall |
+|------|------------:|----------:|---------------:|
+| `survivor_wc_paid` | 59 | $19 | $1,000 |
+| `survivor_wc_free` | 59 | $0  | $200 |
+
+- Max 1 entry per user per Survivor contest (vs 3 for Turf Totals).
+- `picks_required = 0` at the entry level — picks are resolved per `SurvivorRound`, not at confirm time.
+- Lifecycle adds a `grade_round` admin action that scores the current round + marks `SurvivorPick.result` as `survived` or `eliminated`. See `Entry#survivor?` / `Entry#eliminated?` predicates.
+
 ## Contest Lifecycle
 
 ```
@@ -118,8 +131,9 @@ Mobile-first contest preview/info page. Renders inline matchup board or leaderbo
 - `solana_errors` — Solana error message parser (`parseSolanaError`).
 - `solana_stores` — Alpine.js wallet watcher store (detects wallet switches, silent re-auth).
 - `phantom_deeplink` — Phantom deep link protocol for mobile browsers.
-- `wallet_connect` — `fireSuccessConfetti()` confetti helper for successful transactions.
 - `cosign` — `cosignTransaction()` for admin treasury co-signing via Phantom. Reads RPC URL from `#cosign-config` data attribute.
+
+> `fireSuccessConfetti()` lives in `solana_utils.js`, not a separate `wallet_connect` module (the file `app/javascript/wallet_connect.js` exists but is not pinned in `config/importmap.rb` — flag for cleanup).
 - `turf_board` — `shrinkTeamNames()` utility for auto-sizing long team names.
 
 ### JSON Config Pattern (ERB→JS data passing)

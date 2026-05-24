@@ -413,3 +413,45 @@ When building a component preview that needs to simulate responsive behavior:
 3. Override Tailwind responsive utilities with `!important` on the container-scoped selectors
 4. For state toggles (scrolled, hover), use CSS class toggling with transitions — never swap between two separate DOM renders (kills transitions)
 5. Use higher-specificity selectors for state + breakpoint combinations (e.g., `.bp-tiny.is-scrolled-preview .nav-title` beats `.is-scrolled-preview .nav-title`)
+
+## Theme variable flow (Tailwind ↔ engine)
+
+Theme colors flow one direction: studio-engine config → CSS custom properties → Tailwind utilities AND hand-rolled CSS.
+
+```
+config/initializers/studio.rb   # e.g. theme_primary = "#4BAF50"
+        │
+        ▼
+ThemeSetting (engine)            # 7 role colors persisted per-app
+        │
+        ▼
+<style> in <head>                # --color-primary-rgb: 75 175 80; (RGB triplet)
+        │                         # --color-cta, --color-cta-hover, --color-page, …
+        ├──> Tailwind config     # primary palette = rgb(var(--color-primary-rgb) / <alpha>)
+        │                         #  → utility classes: bg-primary, text-primary, border-primary, ring-primary
+        └──> Hand-rolled CSS    # rgb(var(--color-primary-rgb)) directly in .matchup-selected, .hold-btn, etc.
+```
+
+Practical implications:
+- New role colors require both an engine palette change AND a safelist entry in `config/tailwind.config.js` (the safelist guards `bg`/`text`/`border`/`ring` utilities so they survive purging).
+- Always reference brand colors via the CSS var, never via hex literals — switching themes (or running the `/admin/theme` editor) only updates the var, not hardcoded hex.
+- For alpha variants in hand-rolled CSS, use the four-arg form: `rgb(var(--color-primary-rgb) / 0.2)`.
+
+## Toast manager z-index override
+
+The studio-engine `_flash.html.erb` partial ships toasts at `z-index: 60` (above most content but below sticky-fixed-tops). Turf Monster overrides this to `z-index: 200` in `_navbar.html.erb:21-22` so toasts render **above** both the sticky navbar AND any open modal. Without this, the sticky navbar (z-50) and the modal host (z-100) eclipse the toast. If you change the modal z-index, update the toast override too — the rule is "toast always wins".
+
+## Test scaffolding feature flag (`ENABLE_TEST_SCAFFOLDING`)
+
+When set, the env flag enables two scaffold-only UI elements visible to admins for end-to-end-with-real-money testing without real cost:
+
+- A **`$1 tiny` contest tier** in `Contest::FORMATS` — same payout shape as `tiny`, $1 entry fee. Lets you exercise the full Stripe + entry-token + onchain flow with pocket change.
+- A **`test_trio` token pack** (`StripePurchase::PACKS`) — 3 tokens for $5. Surfaces in the auth modal's `tokens-picker` step as a third option alongside `single` ($19) and `trio` ($49). Gated by `StripePurchase.available_packs` + `AppFlags.test_scaffolding?`.
+
+Unset before public launch — the `$1` tier and `$5/3` pack are not customer-facing offers. Memory ref: `project_turf_test_scaffolding`.
+
+## Seeds bar refactor (v0.9.0+)
+
+The 5-section seeds progress bar (`components/_seeds_bar.html.erb`) was refactored from per-segment classes (`.seeds-bar` / `.seeds-fill` / `.seeds-text`) to a single `.seeds-bar-continuous` class plus a CSS-registered `--bar-progress` custom property.
+
+**Why**: per-segment classes meant 5 separate width transitions chained together — each segment's animation curve restarted at the segment boundary, producing a visible staircase. The continuous form interpolates all 5 segment widths from a single transition driven by one variable; per-section shimmer overlays positioned in bar coordinates (`left: -(i-1)*100%, width: 500%`) keep the wave continuous across segments. The result: one ease curve over the whole bar, not 5 chained ones. CSS-only — no JS animation loop.
