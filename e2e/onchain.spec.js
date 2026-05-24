@@ -13,7 +13,11 @@ const CONTEST_PATH = "/contests/world-cup-2026";
 // ---------------------------------------------------------------------------
 
 async function selectMatchups(page) {
-  const cards = page.locator("button.bg-surface");
+  // role="checkbox" is the matchup-card semantic (set in _matchup_card.html.erb).
+  // Scope to the active selectionBoard and exclude locked matchups (already-
+  // kicked games render with `disabled`). The previous `button.bg-surface`
+  // selector drifted out of uniqueness AND scope AND ignored lock state.
+  const cards = page.locator('[x-data*="selectionBoard"] button[role="checkbox"]:not([disabled])');
 
   for (let i = 0; i < 6; i++) {
     // Dismiss blur overlay if it appears (after 5th selection)
