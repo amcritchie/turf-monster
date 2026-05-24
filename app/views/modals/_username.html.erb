@@ -16,50 +16,12 @@
        POST confirm_username_account_path with the tx_signature
 %>
 <% if current_user.can_change_username? %>
-  <div x-data="{
-         initial: '<%= j current_user.username %>',
-         username: '<%= j current_user.username %>',
-         saving: false,
-         error: null,
-         get changed() { return this.username && this.username !== this.initial; },
-         async save() {
-           if (!this.changed || this.saving) return;
-           this.saving = true; this.error = null;
-           var csrf = document.querySelector('meta[name=\'csrf-token\']')?.content || '';
-           var json = function(r) { return r.json(); };
-           try {
-             var data = await fetch('<%= update_username_account_path %>', {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
-               body: JSON.stringify({ username: this.username })
-             }).then(json);
-             if (data.error) throw new Error(data.error);
-             if (data.success) { window.location.reload(); return; }
-
-             if (data.needs_signature) {
-               var provider = window.walletProvider && window.walletProvider.detect();
-               if (!provider) throw new Error('Connect your Phantom wallet to rename.');
-               await provider.connect();
-               var txBytes = Uint8Array.from(atob(data.serialized_tx), function(c) { return c.charCodeAt(0); });
-               var tx = solanaWeb3.Transaction.from(txBytes);
-               var signed = await provider.signTransaction(tx);
-               var conn = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
-               var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
-               await conn.confirmTransaction(sig, 'confirmed');
-               var cdata = await fetch('<%= confirm_username_account_path %>', {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
-                 body: JSON.stringify({ token: data.token, tx_signature: sig })
-               }).then(json);
-               if (cdata.error) throw new Error(cdata.error);
-               window.location.reload();
-             }
-           } catch (e) {
-             this.error = (e && e.code === 4001) ? 'Signature rejected' : (e.message || 'Could not save username');
-             this.saving = false;
-           }
-         }
-       }">
+  <%# usernameRenameForm() factory lives in app/javascript/username_rename_form.js. %>
+  <div x-data="usernameRenameForm({
+         initialUsername: '<%= j current_user.username %>',
+         updateUrl: '<%= update_username_account_path %>',
+         confirmUrl: '<%= confirm_username_account_path %>'
+       })">
     <%= render 'modals/blocks/close_button' %>
 
     <h3 class="text-heading font-bold text-lg mb-1">Change Username</h3>

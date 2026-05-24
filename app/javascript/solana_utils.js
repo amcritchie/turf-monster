@@ -85,11 +85,15 @@ export function updateNavTokens(balance) {
   if (badge) {
     if (n > 0) badge.classList.remove('hidden');
     else       badge.classList.add('hidden');
-    // Keep data-token-count in sync so the click-to-show popover (Alpine
-    // x-data in _user_nav.html.erb) reads the live count on each open
-    // instead of the server-rendered snapshot from page load.
+    // Keep data-token-count in sync as a fallback for any consumer that
+    // hasn't migrated to the reactive entryTokenBadge factory yet.
     badge.dataset.tokenCount = n;
   }
+  // Broadcast so the entryTokenBadge Alpine factory (and any future
+  // subscriber) updates its reactive count without polling the dataset.
+  try {
+    window.dispatchEvent(new CustomEvent('entry-tokens-updated', { detail: { count: n } }));
+  } catch (_) {}
   // Balance link visibility — match the server-side rule.
   document.querySelectorAll('[data-balance-display]').forEach(function(el) {
     var isZero = (el.textContent || '').trim() === '$0';

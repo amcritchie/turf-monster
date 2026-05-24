@@ -24,22 +24,10 @@
 <% plural_suffix = free_entries == 1 ? "" : "s" %>
 
 <%# .free-entry-badge / .free-entry-punch / @keyframes free-entry-punch
-    live in application.tailwind.css (migrated 2026-05-24). %>
-<div class="relative leading-none"
-     x-data="{
-       open: false,
-       count: <%= free_entries %>,
-       timer: null,
-       toggle() {
-         this.count = parseInt(this.$refs.badge.dataset.tokenCount, 10) || 0;
-         this.open = !this.open;
-         clearTimeout(this.timer);
-         if (this.open) this.timer = setTimeout(() => this.open = false, 2000);
-       },
-       close() { this.open = false; clearTimeout(this.timer); }
-     }">
+    live in application.tailwind.css (migrated 2026-05-24).
+    entryTokenBadge() Alpine factory is in app/javascript/entry_token_badge.js. %>
+<div class="relative leading-none" x-data="entryTokenBadge({ initialCount: <%= free_entries %> })">
   <button type="button"
-          x-ref="badge"
           @click="toggle()"
           title="<%= free_entries %> unconsumed entry token<%= plural_suffix %>"
           class="free-entry-badge inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 border border-primary/40 text-primary font-bold leading-none whitespace-nowrap hover:bg-primary/25 transition cursor-pointer <%= 'hidden' unless free_entries.positive? %>"
