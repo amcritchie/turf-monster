@@ -105,7 +105,7 @@
                :style="{ '--bar-progress': displaySeeds }">
             <template x-for="i in 5" :key="i">
               <div class="flex-1 relative overflow-hidden rounded-md"
-                   style="background: rgb(var(--color-primary-500-rgb) / 0.22); border: 1.5px solid rgb(var(--color-primary-500-rgb) / 0.6);">
+                   style="background: rgb(var(--color-primary-500-rgb) / 0.06); border: 1.5px solid rgb(var(--color-primary-500-rgb) / 0.2);">
                 <div class="absolute inset-0 pointer-events-none"
                      :style="{
                        backgroundPosition: ((i - 1) * 25) + '% 0',
@@ -120,7 +120,7 @@
           </div>
           <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
             <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.7);">
-              <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 2.6ch; line-height: 1.25em;">
+              <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 3.2ch; line-height: 1.25em;">
                 <span class="block"
                       :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.9s cubic-bezier(0.16, 1, 0.3, 1)' }">
                   <template x-for="n in 101" :key="n">
