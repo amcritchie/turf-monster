@@ -1257,9 +1257,9 @@ window.selectionBoard = function() {
     <span x-text="selectionCount"></span><span class="text-xs">/<%= @contest.picks_required %></span>
   </button>
 
-  <!-- Cart Sidebar: Desktop (right panel). Sits below the navbar via the
+  <%# Cart Sidebar: Desktop (right panel). Sits below the navbar via the
        --nav-h CSS variable (a ResizeObserver in _navbar.html.erb keeps it
-       in sync with the sticky header's live height — no hardcoded px). -->
+       in sync with the sticky header's live height — no hardcoded px). %>
   <div x-show="cartOpen"
        x-transition:enter="transition ease-out duration-300"
        x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"

@@ -113,10 +113,10 @@ class AdminController < ApplicationController
       modal_id: "profile", file: "app/views/modals/_profile.html.erb",
       props: {} },
 
-    # NOTE — `_username.html.erb` and `_crop_photo.html.erb` entries
-    # were removed from this manifest during the modal-preview restore
-    # (the partials don't exist on main yet). Re-add the corresponding
-    # MODAL_VARIANTS entries when those modal partials land.
+    { group: "Username",
+      label: "Change username", key: "username",
+      modal_id: "username", file: "app/views/modals/_username.html.erb",
+      props: {} },
 
     # === Standalone modal-style views ====================================
     # Full Rails pages (not modal partials) that render the same card
@@ -134,7 +134,15 @@ class AdminController < ApplicationController
     { group: "Standalone — Stripe return (/tokens/processing)",
       label: "Errored (poll timed out)", key: "tokens-processing-errored",
       file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=errored" }
+      url:  "/tokens/processing?preview_state=errored" },
+
+    # === Crop Photo (avatar cropper) ====================================
+    # Now goes through the shared modal host — see modals/_crop_photo
+    # and the avatar_cropper local override in components/.
+    { group: "Crop Photo",
+      label: "Crop Photo (placeholder image)", key: "crop-photo",
+      modal_id: "crop-photo", file: "app/views/modals/_crop_photo.html.erb",
+      props: { imageUrl: "/logo.png" } }
   ].freeze
 
   def navbar

@@ -1,0 +1,113 @@
+<%#
+  Username modal — on-chain rename. Mounted by studio-engine's modal
+  host as id 'username'; host owns backdrop / escape / ARIA.
+  Trigger: $store.modals.open('username').
+
+  Gating: renames are blocked until the user has confirmed at least
+  one contest entry on-chain — User#can_change_username?. We branch
+  at ERB render time (not Alpine-side) so the partial keeps a single
+  root element, as required by template-x-if mounting.
+
+  Flow lifted from the old inline Username card on accounts/show:
+    1. POST update_username_account_path
+       - custodial wallet → server co-signs, success: true → reload
+       - phantom wallet   → needs_signature + serialized_tx + token
+    2. Phantom signs the partial TX, broadcasts, then we
+       POST confirm_username_account_path with the tx_signature
+%>
+<% if current_user.can_change_username? %>
+  <div x-data="{
+         initial: '<%= j current_user.username %>',
+         username: '<%= j current_user.username %>',
+         saving: false,
+         error: null,
+         get changed() { return this.username && this.username !== this.initial; },
+         async save() {
+           if (!this.changed || this.saving) return;
+           this.saving = true; this.error = null;
+           var csrf = document.querySelector('meta[name=\'csrf-token\']')?.content || '';
+           var json = function(r) { return r.json(); };
+           try {
+             var data = await fetch('<%= update_username_account_path %>', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+               body: JSON.stringify({ username: this.username })
+             }).then(json);
+             if (data.error) throw new Error(data.error);
+             if (data.success) { window.location.reload(); return; }
+
+             if (data.needs_signature) {
+               var provider = window.walletProvider && window.walletProvider.detect();
+               if (!provider) throw new Error('Connect your Phantom wallet to rename.');
+               await provider.connect();
+               var txBytes = Uint8Array.from(atob(data.serialized_tx), function(c) { return c.charCodeAt(0); });
+               var tx = solanaWeb3.Transaction.from(txBytes);
+               var signed = await provider.signTransaction(tx);
+               var conn = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+               var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
+               await conn.confirmTransaction(sig, 'confirmed');
+               var cdata = await fetch('<%= confirm_username_account_path %>', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+                 body: JSON.stringify({ token: data.token, tx_signature: sig })
+               }).then(json);
+               if (cdata.error) throw new Error(cdata.error);
+               window.location.reload();
+             }
+           } catch (e) {
+             this.error = (e && e.code === 4001) ? 'Signature rejected' : (e.message || 'Could not save username');
+             this.saving = false;
+           }
+         }
+       }">
+    <%= render 'modals/blocks/close_button' %>
+
+    <h3 class="text-heading font-bold text-lg mb-1">Change Username</h3>
+    <p class="text-sm text-muted mb-4">
+      Your username is stored on-chain.
+      <%= current_user.phantom_wallet? ? "Saving opens your Phantom wallet to sign." : "Changes are saved via your managed wallet." %>
+    </p>
+
+    <template x-if="error">
+      <p class="text-red-400 text-sm mb-3" x-text="error"></p>
+    </template>
+
+    <form @submit.prevent="save()" class="space-y-4">
+      <input type="text" x-model="username" class="input-field w-full"
+             placeholder="username" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_-]+"
+             title="3-30 characters — letters, numbers, hyphens, and underscores"
+             autofocus>
+      <button type="submit" class="btn btn-primary btn-lg w-full" :disabled="saving || !changed">
+        <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
+        <span x-show="saving">Saving…</span>
+      </button>
+    </form>
+  </div>
+<% else %>
+  <%# Locked state — visually mirrors the "Entry Tokens Minted" :lg
+      celebration card (red X pill + large title + subtext + primary CTA),
+      but inlined rather than rendered through modals/blocks/_card_header
+      because that partial's `block_given?` check can leak the surrounding
+      page content when no block is passed from this call site. CTA points
+      at root_path because ContestsController#world_cup already redirects
+      to the most recent open/locked/settled contest's lobby. %>
+  <div x-data="{}">
+    <%= render 'modals/blocks/close_button' %>
+
+    <div class="py-4 text-center">
+      <div class="mx-auto w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center mb-4">
+        <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </div>
+      <h3 class="text-3xl font-bold text-heading mb-2">Enter Contest First</h3>
+      <p class="text-sm text-secondary mb-4">
+        Enter a contest to modify your username.
+      </p>
+
+      <%= link_to "Enter a Contest", root_path,
+                  class: "btn btn-primary btn-lg w-full",
+                  "@click": "$store.modals.close()" %>
+    </div>
+  </div>
+<% end %>
