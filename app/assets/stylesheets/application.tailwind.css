@@ -10,11 +10,13 @@
 }
 
 /* Toast z-index defaults from studio-engine (60/55) sit below our
-   sticky navbar (z-[110]). Override via the engine's CSS custom
-   properties — no !important needed since studio-engine 0.4.10. */
+   sticky navbar (z-[125] from layouts/_navbar.html.erb) and the modal
+   backdrop (z-[120]). Override via the engine's CSS custom properties
+   so toasts (200/199) surface above everything — including any open
+   modal — no !important needed since studio-engine 0.4.10. */
 :root {
-  --studio-toast-z: 120;
-  --studio-toast-blur-z: 115;
+  --studio-toast-z: 200;
+  --studio-toast-blur-z: 199;
 }
 
 /* Theme CSS custom properties are now engine-generated via studio_theme_css_tag */
