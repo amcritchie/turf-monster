@@ -395,14 +395,15 @@ class ContestsController < ApplicationController
     entry ||= @contest.entries.find_or_create_by!(user: current_user, status: :cart) if @contest.world_cup_survivor?
     return render json: { error: "No cart entry found" }, status: :unprocessable_entity unless entry
 
-    # Verify Phantom wallet signature
-    verify_solana_signature!(
-      message: params[:message],
-      signature_b58: params[:signature],
-      pubkey_b58: params[:pubkey],
-      session: session,
-      expected_user_id: current_user.id  # OPSEC-005
-    )
+    # Single-signature entry flow (2026-05-24): the per-entry SIWS
+    # signMessage check was removed because the on-chain TX signed in
+    # confirm_onchain_entry below is itself the wallet-ownership proof —
+    # Anchor rejects any enter_contest_direct whose signer doesn't match
+    # the entry PDA's owner. We still require that this Rails session
+    # was established via a Phantom signature at login (onchain_session?)
+    # so a stolen email/password cookie can't pivot into the on-chain
+    # entry flow.
+    return render json: { success: false, error: "Phantom session required" }, status: :forbidden unless onchain_session?
 
     rescue_and_log(target: entry, parent: @contest) do
       raise "Contest is not onchain" unless @contest.onchain?
@@ -919,6 +920,24 @@ class ContestsController < ApplicationController
   def set_contest
     @contest = Contest.find_by(slug: params[:id])
     return if @contest
+
+    # Diagnostic — every "Contest not found" toast in the wild traces back
+    # to this miss. Log enough forensics to identify the source: who, what
+    # slug, what path, where they came from, browser vs Turbo, user-agent.
+    # `grep '\[set_contest:miss\]' log/development.log` after the toast
+    # appears to inspect.
+    Rails.logger.warn(
+      "[set_contest:miss] " \
+      "slug=#{params[:id].inspect} " \
+      "method=#{request.method} " \
+      "path=#{request.fullpath.inspect} " \
+      "referer=#{request.referer.inspect} " \
+      "turbo_frame=#{request.headers['Turbo-Frame'].inspect} " \
+      "xhr=#{request.xhr?} " \
+      "format=#{request.format.to_s.inspect} " \
+      "user=#{logged_in? ? current_user.id : 'guest'} " \
+      "ua=#{request.user_agent.to_s.first(120).inspect}"
+    )
 
     respond_to do |format|
       format.html { redirect_to root_path, alert: "Contest not found" }

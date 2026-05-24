@@ -915,7 +915,7 @@ window.selectionBoard = function() {
       try {
         if (useOnchainFlow) {
           var provider = window.walletProvider.detect();
-          Alpine.store('solanaModal').show('Sign Entry', 'Approve in your wallet...');
+          Alpine.store('solanaModal').show('Preparing Transaction', 'Building onchain transaction...');
 
           var resp = await provider.connect();
           var pubkeyB58 = resp.publicKey.toBase58();
@@ -924,22 +924,18 @@ window.selectionBoard = function() {
             throw new Error('Wrong wallet connected. Switch to ' + sess.address.substring(0, 8) + '..., or reconnect your wallet on the Account page.');
           }
 
-          var nonceResp = await fetch('/auth/solana/nonce');
-          var nonceData = await nonceResp.json();
-          var nonce = nonceData.nonce;
+          // Single-signature flow: the actual on-chain TX (signTransaction
+          // below) IS the wallet-ownership proof — Anchor rejects any
+          // enter_contest_direct whose signer doesn't match the entry PDA's
+          // owner. The previous SIWS signMessage step was defense-in-depth
+          // that doubled the signing prompts without strengthening on-chain
+          // integrity (current_user comes from the session cookie set at
+          // login via the same SIWS flow). Removed 2026-05-24.
 
-          var domain = window.location.host;
-          var userIdLine = sess.userId ? ('User-ID: ' + sess.userId + '\n\n') : '';  // OPSEC-005
-          var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Enter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
-          var encoded = new TextEncoder().encode(message);
-          var signed = await provider.signMessage(encoded, 'utf8');
-          var signatureB58 = encodeBase58(signed.signature);
-
-          Alpine.store('solanaModal').show('Preparing Transaction', 'Building onchain transaction...');
           var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
+            body: JSON.stringify({})
           });
           if (!prepareResp) return; // 401 — authedFetch surfaced the login modal
           var prepareData = await prepareResp.json();

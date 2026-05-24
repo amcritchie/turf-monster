@@ -141,26 +141,23 @@ window.survivorBoard = function() {
       try {
         if (useOnchainFlow) {
           var provider = window.walletProvider.detect();
-          modal.show('Sign Entry', 'Approve in your wallet…');
+          modal.show('Preparing Transaction', 'Building on-chain transaction…');
           var connectResp = await provider.connect();
           var pubkeyB58 = connectResp.publicKey.toBase58();
           if (sess.address && pubkeyB58 !== sess.address) {
             throw new Error('Wrong wallet connected. Switch to ' + sess.address.substring(0, 8) + '…');
           }
 
-          var nonce = (await (await fetch('/auth/solana/nonce')).json()).nonce;
-          var domain = window.location.host;
-          var userIdLine = sess.userId ? ('User-ID: ' + sess.userId + '\n\n') : '';
-          var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 +
-                        '\n\n' + userIdLine + 'Enter contest: ' + this.contestName + '\n\nNonce: ' + nonce;
-          var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
-          var signatureB58 = encodeBase58(signed.signature);
+          // Single-signature flow — see _turf_totals_board.html.erb for
+          // the full rationale. The on-chain TX signature below is itself
+          // the wallet-ownership proof; the prior per-entry SIWS check
+          // was defense-in-depth that doubled signing prompts without
+          // strengthening on-chain integrity.
 
-          modal.show('Preparing Transaction', 'Building on-chain transaction…');
           var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
+            body: JSON.stringify({})
           });
           if (!prepareResp) { this.submitting = false; return; } // 401 — login modal surfaced
           var prepareData = await prepareResp.json();
