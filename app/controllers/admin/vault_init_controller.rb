@@ -7,19 +7,12 @@ module Admin
   class VaultInitController < ApplicationController
     before_action :require_admin
 
-    # turf-vault v0.15.0+: hardcoded INIT_AUTHORITY for mainnet `initialize`.
-    # Mirrors `state.rs::INIT_AUTHORITY` — keep in sync if it ever rotates.
-    INIT_AUTHORITY = "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr".freeze
-
-    # Default signer set + threshold seeded into the form. Matches the
-    # 2-of-3 multisig documented in turf-vault/CLAUDE.md. Slot 1 is derived
-    # from INIT_AUTHORITY so the constant stays the single source of truth.
-    DEFAULT_SIGNERS = [
-      "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ", # Alex Bot
-      INIT_AUTHORITY,                                  # Alex (Phantom)
-      "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR"  # Mason
-    ].freeze
-    DEFAULT_THRESHOLD = 2
+    # Delegate to Solana::Config so the hardcoded values live in exactly one
+    # place. INIT_AUTHORITY mirrors `state.rs::INIT_AUTHORITY`; the signer
+    # set + threshold mirror what `initialize` writes into VaultState.
+    INIT_AUTHORITY    = Solana::Config::INIT_AUTHORITY
+    DEFAULT_SIGNERS   = Solana::Config::MULTISIG_SIGNERS
+    DEFAULT_THRESHOLD = Solana::Config::MULTISIG_THRESHOLD
 
     def show
       @vault = Solana::Vault.new.read_vault_state
