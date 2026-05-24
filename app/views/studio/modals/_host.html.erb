@@ -78,6 +78,19 @@
           this.stack = [];
           this._sync();
         },
+        // Drops every modal whose props don't explicitly opt out of dismissal
+        // (i.e. dismissible: false). Mirrors studio-engine v0.4.11. Used by
+        // the bfcache + Turbo snapshot cleanup below so an in-flight on-chain
+        // TX modal — which sets dismissible: false to forbid losing its UI
+        // mid-flight — survives a back/forward navigation; the still-running
+        // JS promise's solanaModal.success() resolves against a non-empty
+        // stack. Celebratory modals (default dismissible: true) still clear.
+        closeAllDismissible: function() {
+          this.stack = this.stack.filter(function(modal) {
+            return modal.props && modal.props.dismissible === false;
+          });
+          this._sync();
+        },
         isOpen: function(id) {
           for (var i = 0; i < this.stack.length; i++) {
             if (this.stack[i].id === id) return true;
@@ -98,14 +111,21 @@
     });
 
     // === bfcache + Turbo snapshot cleanup ==============================
-    function closeAllModals() {
+    // closeAllDismissible() keeps dismissible: false modals (pending
+    // on-chain TX) so the user returning via bfcache doesn't silently lose
+    // the modal that a still-in-flight JS promise will resolve against.
+    function clearStaleModals() {
       if (window.Alpine && Alpine.store) {
         var m = Alpine.store('modals');
-        if (m && typeof m.closeAll === 'function') m.closeAll();
+        if (m && typeof m.closeAllDismissible === 'function') {
+          m.closeAllDismissible();
+        } else if (m && typeof m.closeAll === 'function') {
+          m.closeAll();
+        }
       }
     }
-    window.addEventListener('pageshow', function(e) { if (e.persisted) closeAllModals(); });
-    document.addEventListener('turbo:before-cache', closeAllModals);
+    window.addEventListener('pageshow', function(e) { if (e.persisted) clearStaleModals(); });
+    document.addEventListener('turbo:before-cache', clearStaleModals);
   })();
 </script>
 
