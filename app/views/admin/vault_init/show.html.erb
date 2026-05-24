@@ -103,6 +103,7 @@
 (function() {
   var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
   var rpcUrl = document.getElementById('cosign-config').dataset.rpcUrl;
+  var pageNetwork = <%= @network.to_json.html_safe %>;
 
   function setStatus(msg, isError) {
     var el = document.getElementById('vault-init-status');
@@ -148,6 +149,19 @@
       await provider.connect();
       if (provider.publicKey.toBase58() !== payload.creator_pubkey) {
         throw new Error('Connected Phantom (' + provider.publicKey.toBase58() + ') ≠ creator (' + payload.creator_pubkey + ')');
+      }
+
+      // Phantom doesn't expose the user's selected cluster via its API, and
+      // signing succeeds regardless of cluster — the TX targets our RPC. If
+      // Phantom is showing a different network in its UI, the user could
+      // think they're authorizing devnet when this page targets mainnet.
+      // Force an explicit ack to surface the network being submitted to.
+      if (!confirm('About to submit on ' + pageNetwork.toUpperCase() + '.\n\n' +
+                   'Confirm Phantom is set to ' + pageNetwork + ' before signing.\n\n' +
+                   'Continue?')) {
+        setStatus('Cancelled.');
+        disableBtn(false);
+        return;
       }
 
       setStatus('Awaiting Phantom signature…');
