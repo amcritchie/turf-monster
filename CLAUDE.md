@@ -163,9 +163,9 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 
 **From the engine:** `Studio::ErrorHandling`, `ErrorLog` model, `Sluggable` concern, auth controllers, error log views, theme system, `_theme_toggle_morph` partial (spinner/toggle swap), `showNavSpinner`/`hideNavSpinner` globals, **`Studio::S3`** + **`Studio::ImageCache`** + `ImageCache` model.
 
-**Overridden locally:** `sessions/new.html.erb`, `registrations/new.html.erb`, `omniauth_callbacks_controller.rb` (merge support), `layouts/_navbar.html.erb` (app-specific nav links, mobile sub-navbar with duplicate gear+moon fix). SSO "Continue as X" partial intentionally not overridden — feature disabled at the session-cookie layer (see `docs/AUTH.md` SSO Satellite Role).
+**Overridden locally:** `sessions/new.html.erb`, `sessions_controller.rb` (SSO removed — 404s `sso_continue`/`sso_login`, see audit C3 + `docs/AUTH.md`), `registrations/new.html.erb`, `omniauth_callbacks_controller.rb` (merge support), `layouts/_navbar.html.erb` (app-specific nav links, mobile sub-navbar with duplicate gear+moon fix).
 
-**Routes:** `Studio.routes(self)` draws `/login`, `/signup`, `/logout`, `/sso_continue`, `/sso_login`, `/auth/:provider/callback`, `/error_logs`, `/admin/theme`.
+**Routes:** `Studio.routes(self)` draws `/login`, `/signup`, `/logout`, `/sso_continue`, `/sso_login`, `/auth/:provider/callback`, `/error_logs`, `/admin/theme`. `/sso_continue` and `/sso_login` return 404 — the local `SessionsController` overrides them. Cookie key is `_turf_session` (not the hub's `_studio_session`) and no longer scoped to `.mcritchie.studio` — the hub session is invisible here.
 
 **S3 config:** `config.s3_bucket_prefix = "turf-monster"` overrides the engine default — bucket resolves to `turf-monster-dev` (dev/test) or `turf-monster-production` (prod). All 4 studio buckets are public-read; `mcritchie-studio-dev` has a 90-day GLACIER_IR archive rule. AWS creds via shared `op://` refs in `/Users/alex/projects/.env` (Heroku needs `heroku config:set AWS_*` separately — not yet done). `image_caches` table created 2026-04-29; not yet used by any model in this app.
 

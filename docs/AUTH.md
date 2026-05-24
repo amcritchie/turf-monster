@@ -84,11 +84,28 @@ The instruction itself (`set_username`) is in turf-vault — the username is pad
 - Seed/fixture password: `"password"` (not "pass" — too short for min 6 validation)
 - `has_secure_password validations: false` disables ALL built-in validations including confirmation — must add `validates :password, confirmation: true` explicitly
 
-## SSO Satellite Role
+## SSO Satellite Role — REMOVED 2026-05-24
 
-> **Effective status: SSO is DISABLED in turf-monster.** The engine's `_sso_continue.html.erb` partial is intentionally NOT overridden here, and the layout never renders the "Continue as X" button — so even though the routes are mounted, the cross-app SSO UX is off. To re-enable: override the partial locally and render it in `sessions/new.html.erb`. The full mechanics below are kept as reference for when SSO comes back.
+> **Effective status: SSO is fully removed from turf-monster** as of the 2026-05-24 pre-launch audit (finding C3). The cookie is isolated, the SSO endpoints return 404, and the UI partial is deleted.
 
-This app receives one-way SSO from McRitchie Studio (the hub). Login page would show "Continue as [name]" button (from engine's `_sso_continue.html.erb` partial) when user is logged into Studio. `GET /sso_login` (the hub's nav-link target) redirects to this app's login page; sign-in itself goes through the CSRF-protected `POST /sso_continue` button there (OPSEC-016 — the GET no longer mutates the session). Logout only clears this app's session. Wallet-only users (no email) cannot SSO. Hub logo at `public/studio-logo.svg`. Requires shared `SECRET_KEY_BASE`.
+### What was changed
+- **Cookie key + scope** (`config/initializers/session_store.rb`): key `_studio_session` → `_turf_session`, `.mcritchie.studio` domain dropped. The hub's shared cookie is no longer readable here, so `session[:sso_email]` etc. cannot flow in.
+- **Controller override** (`app/controllers/sessions_controller.rb`): local replacement that 404s `sso_continue` and `sso_login`. Other actions (`new`/`create`/`destroy`) mirror studio-engine's.
+- **Login view** (`app/views/sessions/new.html.erb`): `has_sso` reveal overlay logic + `render "sessions/sso_continue"` calls removed.
+- **Partial deleted** (`app/views/sessions/_sso_continue.html.erb`).
+
+### Why
+The hub (mcritchie-studio) sets `_studio_session` cookie without `secure` / `httponly` / `same_site` flags. Because the cookie was shared with turf-monster (`.mcritchie.studio` domain + same key), the hub's unhardened cookie would overwrite turf-monster's hardened cookie on every cross-app request — making turf-monster sessions stealable via XSS or network MITM on the hub side, then replayable here. The hub also writes `session[:sso_email]` / `[:sso_name]` / `[:sso_provider]` / `[:sso_uid]`, which the engine's `sso_continue` action would consume to silently create or log in a turf-monster user. Closing this attack chain pre-mainnet was a launch-blocker.
+
+### Restoring SSO later
+When the hub's `config/initializers/session_store.rb` is hardened (secure/httponly/same_site flags added) and you want cross-app SSO back:
+1. Revert `config/initializers/session_store.rb` — key back to `_studio_session`, re-add `domain: ".mcritchie.studio"` in prod.
+2. Delete `app/controllers/sessions_controller.rb` (so the engine's SSO actions take over again).
+3. Re-render the SSO partial in `app/views/sessions/new.html.erb` — `<%= render "sessions/sso_continue" %>` plus the original `has_sso` reveal overlay.
+4. Recreate `app/views/sessions/_sso_continue.html.erb` (or rely on the engine's version — no local override needed).
+
+### Reference: how it worked before
+This app received one-way SSO from McRitchie Studio (the hub). Login page showed "Continue as [name]" button when the user was logged into Studio. `GET /sso_login` (the hub's nav-link target) redirected here; sign-in went through the CSRF-protected `POST /sso_continue` (OPSEC-016 — the GET no longer mutated the session). Logout only cleared this app's session. Wallet-only users (no email) couldn't SSO. Hub logo at `public/studio-logo.svg`. Required shared `SECRET_KEY_BASE`.
 
 ## Solana Auth Security
 
