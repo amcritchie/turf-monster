@@ -1,0 +1,12 @@
+<%#
+  Shared close × for any modal partial rendered inside the studio
+  modal host. Dispatches $store.modals.close(). Mount at the very
+  top of the partial — the negative margins pull the × flush with
+  the card's top-right corner (the host's p-6 padding is then
+  visually preserved below this row).
+%>
+<div class="flex justify-end -mt-2 -mr-2 mb-1">
+  <button type="button" @click="$store.modals.close()"
+          class="text-secondary hover:text-heading text-xl leading-none"
+          aria-label="Close">&times;</button>
+</div>

@@ -1,0 +1,85 @@
+<%# Local override of studio-engine's components/_avatar_cropper.
+    Refactored to push the crop overlay through the shared modal host
+    (Alpine.store('modals').open('crop-photo', ...)) instead of the
+    bespoke z-[110] showCropModal local state.
+
+    Promote this back to studio-engine in the next release.
+
+    Communication: parent → modal via store props (imageUrl).
+    Modal → parent via window CustomEvent 'crop-photo-confirmed'
+    (carries the cropped Blob). Window-event indirection keeps the
+    modal partial decoupled from any specific parent component.
+
+    Locals: form_field_name (e.g. "user[avatar]") %>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+
+<div x-data="avatarCropperHost()"
+     @crop-photo-confirmed.window="applyCrop($event.detail.blob)"
+     class="space-y-3">
+  <input type="file" name="<%= form_field_name %>" x-ref="hiddenFileInput" class="hidden">
+
+  <div class="flex items-center gap-4">
+    <div class="relative w-16 h-16 rounded-full overflow-hidden bg-surface-alt border-2 border-subtle flex-shrink-0">
+      <template x-if="croppedUrl">
+        <img :src="croppedUrl" class="w-full h-full object-cover">
+      </template>
+      <template x-if="!croppedUrl">
+        <div class="w-full h-full flex items-center justify-center text-muted">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+        </div>
+      </template>
+    </div>
+    <button type="button" @click="$refs.filePicker.click()" class="btn btn-outline btn-sm">
+      <span x-text="croppedUrl ? 'Change Photo' : 'Upload Photo'"></span>
+    </button>
+    <template x-if="croppedUrl">
+      <button type="button" @click="removePhoto()" class="text-muted hover:text-danger text-xs transition">Remove</button>
+    </template>
+  </div>
+
+  <input type="file" x-ref="filePicker" @change="onFileSelected($event)" accept="image/*" class="hidden">
+</div>
+
+<script>
+function avatarCropperHost() {
+  return {
+    croppedUrl: null,
+
+    onFileSelected(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+      var self = this;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        // Hand the raw image off to the shared modal host. The
+        // 'crop-photo' modal partial owns the cropper interaction and
+        // posts back via the 'crop-photo-confirmed' window event.
+        Alpine.store('modals').open('crop-photo', { imageUrl: e.target.result });
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';  // allow re-selecting the same file
+    },
+
+    applyCrop(blob) {
+      if (!blob) return;
+      if (this.croppedUrl) URL.revokeObjectURL(this.croppedUrl);
+      this.croppedUrl = URL.createObjectURL(blob);
+      var file = new File([blob], 'avatar.png', { type: 'image/png' });
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      this.$refs.hiddenFileInput.files = dt.files;
+    },
+
+    removePhoto() {
+      if (this.croppedUrl) URL.revokeObjectURL(this.croppedUrl);
+      this.croppedUrl = null;
+      var dt = new DataTransfer();
+      this.$refs.hiddenFileInput.files = dt.files;
+    }
+  };
+}
+</script>

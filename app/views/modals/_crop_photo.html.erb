@@ -1,0 +1,176 @@
+<%#
+  Crop Photo modal — content partial for the shared modal host.
+  Opened via Alpine.store('modals').open('crop-photo', { imageUrl? }).
+
+  Two modes, distinguished by whether the opener passes an imageUrl:
+
+    * fromParent (e.g. components/avatar_cropper) — caller has already
+      let the user pick a file and passes the resulting data URL via
+      props.imageUrl. The modal jumps straight to the cropper and, on
+      confirm, hands the cropped Blob back via the 'crop-photo-
+      confirmed' window event. Parent owns the upload (it has its own
+      form / submit path).
+
+    * standalone (e.g. account-page avatar click — opened with no
+      props) — the modal IS the picker too: a click/drag-drop empty
+      state lets the user pick a file inside the modal, then crops,
+      then POSTs the cropped image to save_profile_account_path and
+      reloads. No parent involved.
+
+  Single root: lives inside studio/modals/host's <template x-if>, so
+  only the outer wizard div is the top-level element here.
+%>
+<div x-data="{
+       cropper: null,
+       imageUrl: null,
+       fromParent: false,
+       dragging: false,
+       uploading: false,
+       error: null,
+       saveUrl: '<%= save_profile_account_path %>',
+
+       init() {
+         var c = $store.modals.current();
+         var props = (c && c.props) || {};
+         if (props.imageUrl) {
+           this.fromParent = true;
+           this.imageUrl = props.imageUrl;
+           this.mountCropper();
+         }
+       },
+
+       mountCropper() {
+         var self = this;
+         this.$nextTick(function() {
+           if (typeof Cropper === 'undefined') return;
+           if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
+           self.cropper = new Cropper(self.$refs.cropImage, {
+             aspectRatio: 1, viewMode: 1, dragMode: 'move',
+             autoCropArea: 0.9, cropBoxResizable: true,
+             cropBoxMovable: true, background: false, guides: true
+           });
+         });
+       },
+
+       readFile(file) {
+         if (!file) return;
+         if (!file.type || file.type.indexOf('image/') !== 0) {
+           this.error = 'Please choose an image file.';
+           return;
+         }
+         var self = this;
+         var reader = new FileReader();
+         reader.onload = function(e) {
+           self.error = null;
+           self.imageUrl = e.target.result;
+           self.mountCropper();
+         };
+         reader.readAsDataURL(file);
+       },
+
+       onFilePicked(event) {
+         var file = event.target.files[0];
+         event.target.value = '';
+         this.readFile(file);
+       },
+
+       onDrop(event) {
+         this.dragging = false;
+         var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+         this.readFile(file);
+       },
+
+       cancel() {
+         if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+         $store.modals.close();
+       },
+
+       confirm() {
+         if (!this.cropper || this.uploading) return;
+         var self = this;
+         var canvas = this.cropper.getCroppedCanvas({ width: 256, height: 256 });
+         canvas.toBlob(function(blob) {
+           if (self.fromParent) {
+             window.dispatchEvent(new CustomEvent('crop-photo-confirmed', { detail: { blob: blob } }));
+             if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
+             $store.modals.close();
+           } else {
+             self.uploadDirect(blob);
+           }
+         }, 'image/png');
+       },
+
+       uploadDirect(blob) {
+         var self = this;
+         self.uploading = true;
+         self.error = null;
+         var csrf = document.querySelector('meta[name=\'csrf-token\']')?.content || '';
+         var form = new FormData();
+         form.append('user[avatar]', new File([blob], 'avatar.png', { type: 'image/png' }));
+         fetch(self.saveUrl, {
+           method: 'POST',
+           headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
+           body: form
+         })
+         .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+         .then(function(result) {
+           if (result.ok && result.data.success) {
+             if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
+             $store.modals.close();
+             window.location.reload();
+           } else {
+             self.error = (result.data && result.data.error) || 'Failed to save photo';
+             self.uploading = false;
+           }
+         })
+         .catch(function(e) {
+           self.error = e.message || 'Network error';
+           self.uploading = false;
+         });
+       }
+     }">
+  <h3 class="text-heading font-bold text-lg text-center mb-4">Crop Photo</h3>
+
+  <template x-if="error">
+    <p class="text-red-400 text-sm mb-3 text-center" x-text="error"></p>
+  </template>
+
+  <input type="file" x-ref="filePicker" @change="onFilePicked($event)" accept="image/*" class="hidden">
+
+  <%# Empty state: click / drag-drop landing zone. %>
+  <template x-if="!imageUrl">
+    <div @click="$refs.filePicker.click()"
+         @dragover.prevent="dragging = true"
+         @dragleave.prevent="dragging = false"
+         @drop.prevent="onDrop($event)"
+         :class="dragging ? 'border-primary bg-primary/10' : 'border-subtle hover:border-primary'"
+         class="cursor-pointer border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-center p-8 mb-4 transition"
+         style="min-height: 240px;">
+      <svg class="w-12 h-12 text-muted mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.9 5 5 0 019.9-1A5.5 5.5 0 0118 16h-1m-6-4l3-3m0 0l3 3m-3-3v12"/>
+      </svg>
+      <p class="text-sm font-medium text-body">Drop an image or click to upload</p>
+      <p class="text-xs text-muted mt-1">PNG or JPG, square crop</p>
+    </div>
+  </template>
+
+  <%# Loaded state: cropper canvas. %>
+  <template x-if="imageUrl">
+    <div class="w-full mb-4" style="max-height: 360px;">
+      <img x-ref="cropImage" :src="imageUrl" class="max-w-full" style="display: block;">
+    </div>
+  </template>
+
+  <button type="button" @click="confirm()"
+          :disabled="!imageUrl || uploading"
+          :class="(!imageUrl || uploading) ? 'opacity-60 cursor-not-allowed' : ''"
+          class="btn btn-primary btn-lg w-full">
+    <span x-show="!uploading" x-text="imageUrl ? 'Crop &amp; Save' : 'Upload an Image to Continue'"></span>
+    <span x-show="uploading">Saving…</span>
+  </button>
+
+  <button type="button" @click="cancel()"
+          class="block mx-auto mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
+    Cancel
+  </button>
+</div>
