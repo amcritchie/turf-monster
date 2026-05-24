@@ -54,6 +54,13 @@
           Vault Init
           <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-400 text-black align-middle">!</span>
         <% end %>
+      <% else %>
+        <%= link_to admin_vault_state_path, class: link_class do %>
+          Vault State
+          <% if Admin::VaultStateController.vault_paused? %>
+            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500 text-white align-middle">🚨 PAUSED</span>
+          <% end %>
+        <% end %>
       <% end %>
       <%= link_to "Landing Pages", admin_landing_pages_path, class: link_class %>
       <%= link_to "Geo Settings", admin_geo_path, class: link_class %>

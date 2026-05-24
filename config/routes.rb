@@ -217,6 +217,14 @@ Rails.application.routes.draw do
     post "vault_init/build",                   to: "vault_init#build",      as: :build_vault_init
     post "vault_init/confirm",                 to: "vault_init#confirm",    as: :confirm_vault_init
 
+    # Vault state — pause / unpause (M5, v0.15.0). Emergency stop for
+    # user-facing funds operations. 2-of-3 cosign; same direct-cosign
+    # pattern as vault_init.
+    get  "vault_state",                        to: "vault_state#show",      as: :vault_state
+    post "vault_state/pause",                  to: "vault_state#pause",     as: :pause_vault_state
+    post "vault_state/unpause",                to: "vault_state#unpause",   as: :unpause_vault_state
+    post "vault_state/confirm",                to: "vault_state#confirm",   as: :confirm_vault_state
+
     # Seasons (on-chain seed schedule template)
     get  "seasons",                            to: "seasons#index",         as: :seasons
     post "seasons",                            to: "seasons#create"

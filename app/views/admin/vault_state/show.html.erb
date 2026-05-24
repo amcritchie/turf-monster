@@ -1,0 +1,247 @@
+<% content_for :title, "Vault State" %>
+
+<div class="max-w-3xl mx-auto px-4 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-heading">Vault State</h1>
+    <span class="font-mono text-xs text-muted"><%= @network %></span>
+  </div>
+
+  <% unless @vault %>
+    <div class="card p-4 mb-6">
+      <p class="text-secondary text-sm mb-2">
+        VaultState PDA does not exist on-chain. Run
+        <%= link_to "Vault Init", admin_vault_init_path, class: "text-primary hover:text-primary-300 font-medium underline" %>
+        first.
+      </p>
+    </div>
+  <% else %>
+    <div class="card p-4 mb-6">
+      <div class="flex items-center gap-2 mb-3">
+        <% if @vault[:paused] %>
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+            🚨 PAUSED
+          </span>
+        <% else %>
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+            ✓ ACTIVE
+          </span>
+        <% end %>
+        <span class="font-mono text-xs text-muted"><%= @vault[:pda] %></span>
+      </div>
+
+      <p class="text-secondary text-sm">
+        <% if @vault[:paused] %>
+          Deposit, withdraw, and all <code>enter_contest*</code> instructions
+          are rejected with <code>VaultPaused</code>. Settle, close, mint,
+          migrate, set_username, and create_user_account remain available.
+        <% else %>
+          Vault is operating normally. Pausing requires 2-of-3 multisig and
+          stops user-facing funds movement immediately.
+        <% end %>
+      </p>
+    </div>
+
+    <% if @vault[:paused] %>
+      <div class="card p-4 mb-6 border-green-500/30">
+        <h2 class="text-lg font-bold text-heading mb-2">Unpause Vault</h2>
+        <p class="text-secondary text-sm mb-4">
+          Restores deposit / withdraw / enter_contest operations. Same 2-of-3
+          auth as pause. The bot signs server-side; Phantom cosigns.
+        </p>
+
+        <form id="vault-unpause-form" class="space-y-4" onsubmit="return false;">
+          <div>
+            <label class="label-upper text-xs">Cosigner (Phantom wallet)</label>
+            <select name="cosigner_pubkey" class="input input-bordered w-full font-mono text-xs">
+              <% @multisig_signers.each do |s| %>
+                <option value="<%= s %>" <%= "selected" if s == @default_cosigner %>><%= s %></option>
+              <% end %>
+            </select>
+            <p class="text-muted text-xs mt-1">Must match the Phantom wallet you connect.</p>
+          </div>
+
+          <div class="flex items-center gap-3 pt-2">
+            <button id="vault-unpause-btn" type="button" onclick="vaultAction('unpause')" class="btn btn-primary">
+              Connect Phantom + Unpause
+            </button>
+            <span id="vault-action-status" class="text-sm text-secondary"></span>
+          </div>
+        </form>
+      </div>
+    <% else %>
+      <div class="card p-4 mb-6 border-red-500/30">
+        <h2 class="text-lg font-bold text-heading mb-2">🚨 Pause Vault</h2>
+        <p class="text-secondary text-sm mb-4">
+          Emergency stop — blocks user-facing funds operations within one
+          TX's finality time. The reason you enter below is logged on-chain
+          for incident triage. 2-of-3 cosign required.
+        </p>
+
+        <form id="vault-pause-form" class="space-y-4" onsubmit="return false;">
+          <div>
+            <label class="label-upper text-xs">Reason (logged on-chain, ≤ 64 bytes)</label>
+            <input type="text" name="reason" maxlength="64" placeholder="e.g. settle bug, suspicious withdraws, scheduled maintenance"
+                   class="input input-bordered w-full" required />
+          </div>
+
+          <div>
+            <label class="label-upper text-xs">Cosigner (Phantom wallet)</label>
+            <select name="cosigner_pubkey" class="input input-bordered w-full font-mono text-xs">
+              <% @multisig_signers.each do |s| %>
+                <option value="<%= s %>" <%= "selected" if s == @default_cosigner %>><%= s %></option>
+              <% end %>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-3 pt-2">
+            <button id="vault-pause-btn" type="button" onclick="vaultAction('pause')"
+                    class="btn bg-red-600 hover:bg-red-700 text-white">
+              🚨 Connect Phantom + PAUSE
+            </button>
+            <span id="vault-action-status" class="text-sm text-secondary"></span>
+          </div>
+        </form>
+      </div>
+    <% end %>
+
+    <details class="card p-4 mb-6">
+      <summary class="cursor-pointer text-sm font-medium text-secondary">Vault details</summary>
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mt-3">
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">Threshold</dt>
+          <dd class="font-mono"><%= @vault[:threshold] %>-of-<%= @vault[:signers].length %></dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">Paused</dt>
+          <dd class="font-mono"><%= @vault[:paused] ? "yes" : "no" %></dd>
+        </div>
+        <div class="sm:col-span-2">
+          <dt class="text-muted text-xs uppercase tracking-wide">Signers</dt>
+          <dd>
+            <ul class="font-mono text-xs space-y-1 mt-1">
+              <% @vault[:signers].each_with_index do |s, i| %>
+                <li><span class="text-muted">#<%= i + 1 %></span> <%= s %></li>
+              <% end %>
+            </ul>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">USDC mint</dt>
+          <dd class="font-mono text-xs break-all"><%= @vault[:usdc_mint] %></dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">USDT mint</dt>
+          <dd class="font-mono text-xs break-all"><%= @vault[:usdt_mint] %></dd>
+        </div>
+      </dl>
+    </details>
+  <% end %>
+
+  <div class="json-debug mt-8">
+    <pre><%= JSON.pretty_generate(@vault || { status: "uninitialized" }) %></pre>
+  </div>
+</div>
+
+<div id="cosign-config" data-rpc-url="<%= @rpc_url %>" style="display:none;"></div>
+
+<% if @vault %>
+<script>
+(function() {
+  var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+  var rpcUrl = document.getElementById('cosign-config').dataset.rpcUrl;
+  var pageNetwork = <%= @network.to_json.html_safe %>;
+
+  function setStatus(msg, isError) {
+    var el = document.getElementById('vault-action-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.color = isError ? '#dc2626' : '';
+  }
+
+  function disableBtn(disabled) {
+    ['vault-pause-btn', 'vault-unpause-btn'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) btn.disabled = disabled;
+    });
+  }
+
+  window.vaultAction = async function(instruction) {
+    var provider = window.solana;
+    if (!provider?.isPhantom) {
+      alert('Phantom wallet is required.');
+      return;
+    }
+
+    var form = document.getElementById('vault-' + instruction + '-form');
+    var fd = new FormData(form);
+    var payload = { cosigner_pubkey: fd.get('cosigner_pubkey') };
+    if (instruction === 'pause') payload.reason = fd.get('reason');
+
+    if (instruction === 'pause' && !payload.reason?.trim()) {
+      alert('Reason is required — it gets logged on-chain for incident triage.');
+      return;
+    }
+
+    if (instruction === 'pause' &&
+        !confirm('About to PAUSE the vault on ' + pageNetwork.toUpperCase() + '.\n\n' +
+                 'All deposits, withdraws, and contest entries will be blocked\n' +
+                 'until an unpause is cosigned.\n\n' +
+                 'Reason: ' + payload.reason + '\n\nProceed?')) {
+      return;
+    }
+
+    disableBtn(true);
+    setStatus('Building transaction…');
+
+    try {
+      var buildResp = await fetch('/admin/vault_state/' + instruction, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload)
+      });
+      var buildData = await buildResp.json();
+      if (!buildResp.ok) throw new Error(buildData.error || 'Build failed');
+
+      setStatus('Connecting Phantom…');
+      await provider.connect();
+      if (provider.publicKey.toBase58() !== payload.cosigner_pubkey) {
+        throw new Error('Connected Phantom (' + provider.publicKey.toBase58() + ') ≠ cosigner (' + payload.cosigner_pubkey + ')');
+      }
+
+      setStatus('Awaiting Phantom signature…');
+      var txBytes = Uint8Array.from(atob(buildData.serialized_tx), function(c) { return c.charCodeAt(0); });
+      var tx = solanaWeb3.Transaction.from(txBytes);
+      var signed = await provider.signTransaction(tx);
+
+      setStatus('Submitting to Solana…');
+      var connection = new solanaWeb3.Connection(rpcUrl);
+      var signature = await connection.sendRawTransaction(signed.serialize());
+      await Promise.race([
+        connection.confirmTransaction(signature, 'confirmed'),
+        new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Confirmation timed out after 60s')); }, 60000); })
+      ]);
+
+      setStatus('Verifying on server…');
+      var confirmResp = await fetch('/admin/vault_state/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify({
+          cosigner_pubkey: payload.cosigner_pubkey,
+          tx_signature: signature,
+          instruction: instruction
+        })
+      });
+      var confirmData = await confirmResp.json();
+      if (!confirmResp.ok) throw new Error(confirmData.error || 'Verification failed');
+
+      setStatus('Vault ' + (instruction === 'pause' ? 'paused' : 'unpaused') + ' — reloading…');
+      setTimeout(function() { window.location.reload(); }, 800);
+    } catch (err) {
+      console.error('Vault ' + instruction + ' failed:', err);
+      setStatus('Error: ' + err.message, true);
+      disableBtn(false);
+    }
+  };
+})();
+</script>
+<% end %>

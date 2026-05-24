@@ -263,12 +263,12 @@ module Solana
         pk, offset = Borsh.decode_pubkey(data, offset)
         Keypair.encode_base58(pk)
       end
-      threshold, offset   = Borsh.decode_u8(data, offset)
-      usdc_mint, offset   = Borsh.decode_pubkey(data, offset)
-      usdt_mint, offset   = Borsh.decode_pubkey(data, offset)
-      vault_usdc, offset  = Borsh.decode_pubkey(data, offset)
-      vault_usdt, offset  = Borsh.decode_pubkey(data, offset)
-      bump   = data[offset].ord; offset += 1
+      threshold, offset  = Borsh.decode_u8(data, offset)
+      usdc_mint, offset  = Borsh.decode_pubkey(data, offset)
+      usdt_mint, offset  = Borsh.decode_pubkey(data, offset)
+      vault_usdc, offset = Borsh.decode_pubkey(data, offset)
+      vault_usdt, offset = Borsh.decode_pubkey(data, offset)
+      bump, offset       = Borsh.decode_u8(data, offset)
       paused = data.length > offset ? data[offset].ord == 1 : false  # `paused` added v0.15.0
 
       {
@@ -282,6 +282,62 @@ module Solana
         bump: bump,
         paused: paused
       }
+    end
+
+    # Build a partially-signed `pause` transaction for Phantom to cosign.
+    #
+    # turf-vault v0.15.0 emergency stop. Requires 2-of-3 multisig — admin
+    # signs server-side (bot key), cosigner slot is left empty for Phantom
+    # to fill. `reason` is logged on-chain (UTF-8 zero-padded to 64 bytes).
+    #
+    # Returns { serialized_tx: base64, vault_pda: b58 }.
+    def build_pause_vault(cosigner_pubkey:, reason:)
+      admin = Keypair.admin
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      vault_pda, _ = vault_state_pda
+
+      reason_bytes = reason.to_s.b.bytes.first(64)
+      reason_bytes += [0] * (64 - reason_bytes.length)
+
+      data = Transaction.anchor_discriminator("pause") + reason_bytes.pack("C*")
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: cosigner_bytes,         is_signer: true, is_writable: false },
+          { pubkey: vault_pda,              is_signer: false, is_writable: true }
+        ],
+        data: data
+      )
+
+      serialized = tx.serialize_partial_base64(additional_signers: [cosigner_bytes])
+      { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
+    end
+
+    # Build a partially-signed `unpause` transaction for Phantom to cosign.
+    # Same 2-of-3 auth as pause; no reason arg.
+    def build_unpause_vault(cosigner_pubkey:)
+      admin = Keypair.admin
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      vault_pda, _ = vault_state_pda
+
+      data = Transaction.anchor_discriminator("unpause")
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
+          { pubkey: cosigner_bytes,         is_signer: true, is_writable: false },
+          { pubkey: vault_pda,              is_signer: false, is_writable: true }
+        ],
+        data: data
+      )
+
+      serialized = tx.serialize_partial_base64(additional_signers: [cosigner_bytes])
+      { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
     # Force-close the vault account (migration only — closes old-schema vault)
