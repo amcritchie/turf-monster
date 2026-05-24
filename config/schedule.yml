@@ -18,3 +18,9 @@ outbound_request_sweeper:
   class: OutboundRequestSweeperJob
   description: Trim outbound_requests audit table. Successful rows kept 90 days, failed rows 180 days.
   queue: default
+
+pending_transaction_sweeper:
+  cron: "23 4 * * *"     # daily at 04:23 UTC (off-peak, offset from outbound_request_sweeper)
+  class: PendingTransactionSweeperJob
+  description: Flip stale entry-flow PendingTransactions (pending/submitted older than 1h) to failed so admin reports surface real backlogs only.
+  queue: default

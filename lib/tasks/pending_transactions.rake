@@ -16,20 +16,12 @@
 namespace :pending_transactions do
   desc "Flip pending/submitted entry-flow PTs older than N hours (default 1) to failed"
   task :expire_stale, [:hours] => :environment do |_t, args|
-    hours = (args[:hours] || "1").to_f
-    cutoff = hours.hours.ago
-    scope = PendingTransaction.where(status: %w[pending submitted],
-                                     tx_type: "enter_contest_direct")
-                              .where("created_at < ?", cutoff)
-
-    total = scope.count
-    if total.zero?
-      puts "No stale entry-flow PTs older than #{hours}h."
-      next
+    hours = args[:hours] ? args[:hours].to_f : nil
+    expired = PendingTransactionSweeperJob.new.perform(stale_after_hours: hours)
+    if expired.zero?
+      puts "No stale entry-flow PTs to expire."
+    else
+      puts "✓ flipped #{expired} → failed"
     end
-
-    puts "Expiring #{total} stale entry-flow PT#{total == 1 ? "" : "s"} (created before #{cutoff})…"
-    expired = scope.update_all(status: "failed", updated_at: Time.current)
-    puts "✓ flipped #{expired} → failed"
   end
 end
