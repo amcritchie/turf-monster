@@ -23,7 +23,8 @@
   currentRoundId:     cr&.id,
   currentRoundLocked: cr ? cr.picks_locked? : true,
   myPick:             (entered && cr ? my_picks_by_round[cr.id]&.team_slug : nil),
-  usedTeams:          used_team_slugs
+  usedTeams:          used_team_slugs,
+  pendingRecoveryPtxSlug: @pending_recovery_ptx&.slug
 }.to_json.html_safe %>
 </script>
 
@@ -47,6 +48,51 @@ window.survivorBoard = function() {
 
     teamUsed(slug) { return this.usedTeams.indexOf(slug) !== -1; },
     isMyPick(slug) { return this.myPick === slug; },
+
+    init() {
+      // Stranded on-chain entry recovery — see _turf_totals_board.html.erb
+      // for the full mechanism. Server populates pendingRecoveryPtxSlug
+      // when this user has a pending/submitted PendingTransaction on
+      // this contest from an interrupted entry flow.
+      var self = this;
+      if (cfg.pendingRecoveryPtxSlug) {
+        setTimeout(function () { self.recoverPendingEntry(cfg.pendingRecoveryPtxSlug); }, 200);
+      }
+    },
+
+    async recoverPendingEntry(ptxSlug) {
+      var modal = Alpine.store('solanaModal');
+      modal.show('Checking Your Last Entry', 'Looking up your previous on-chain transaction…', { dismissible: false });
+      var maxAttempts = 6;
+      var attempts = 0;
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          var resp = await window.authedFetch('/contests/' + this.contestId + '/recover_pending_entry', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ ptx_slug: ptxSlug })
+          });
+          if (!resp) return;
+          var data = await resp.json();
+          if (data.status === 'confirmed') {
+            modal.success(data.tx_signature, "You're in! Good luck.");
+            if (data.redirect) modal.onClose = function () { window.location.href = data.redirect; };
+            return;
+          }
+          if (data.status === 'failed' || data.status === 'error' || data.status === 'missing') {
+            modal.close();
+            if (data.error) {
+              try { window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'alert', title: 'Entry not recovered', message: data.error, duration: 6000 } })); } catch (_) {}
+            }
+            return;
+          }
+        } catch (_) { /* network blip — keep polling */ }
+        await new Promise(function (r) { setTimeout(r, 5000); });
+      }
+      modal.close();
+      try { window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'alert', title: "Couldn't confirm last entry yet", message: "We'll keep watching — reload in a minute to retry.", duration: 6000 } })); } catch (_) {}
+    },
 
     showError(message) {
       this.error = message;

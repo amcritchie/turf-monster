@@ -2,7 +2,7 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
+  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
   before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
@@ -482,6 +482,81 @@ class ContestsController < ApplicationController
     render json: { success: false, error: e.message }, status: :unprocessable_entity
   end
 
+  # Resolve a PendingTransaction stranded by a mid-flight refresh. The
+  # client polls this when the contest page loads with a pending/submitted
+  # PT belonging to the current user. Three outcomes:
+  #   - confirmed:  signature finalized on-chain → entry promoted to active,
+  #                 PT marked confirmed, client redirects to the lobby
+  #   - processing: signature still unknown / propagating → client re-polls
+  #                 after a short delay (handled by the board JS)
+  #   - failed:     signature errored, never broadcast, or recovery threw
+  #                 → PT marked failed, client closes modal and frees the
+  #                 user to retry the entry flow
+  def recover_pending_entry
+    return render json: { error: "Missing ptx_slug" }, status: :unprocessable_entity if params[:ptx_slug].blank?
+    ptx = PendingTransaction.where(status: %w[pending submitted]).find_by(slug: params[:ptx_slug])
+    return render json: { status: "missing" } unless ptx
+    return render json: { error: "Not authorized" }, status: :forbidden unless ptx.initiator_address == current_user&.web3_solana_address
+
+    entry = ptx.target
+    return render json: { error: "Invalid PT target" }, status: :unprocessable_entity unless entry.is_a?(Entry) && entry.contest_id == @contest.id
+
+    # Already-active entry → close the loop on the PT and short-circuit.
+    if entry.active?
+      ptx.update!(status: "confirmed")
+      return render json: {
+        status: "confirmed",
+        redirect: contest_lobby_path(@contest),
+        tx_signature: entry.onchain_tx_signature
+      }
+    end
+
+    # Signed-but-never-broadcast scenario: stamp_entry_signature never ran,
+    # so we have nothing to look up. The signed TX can't be recovered;
+    # release the user to retry.
+    if ptx.tx_signature.blank?
+      ptx.update!(status: "failed")
+      return render json: { status: "failed", error: "Your last signature did not broadcast — try again." }
+    end
+
+    # Ask the RPC about the signature once. The client owns the polling
+    # cadence; keeping this action cheap avoids tying up a request thread.
+    status = Solana::Vault.new.send(:client).confirm_transaction(ptx.tx_signature).dig("value", 0)
+
+    if status.nil?
+      return render json: { status: "processing" }
+    end
+
+    if status["err"]
+      ptx.update!(status: "failed")
+      return render json: { status: "failed", error: "On-chain transaction failed." }
+    end
+
+    unless %w[confirmed finalized].include?(status["confirmationStatus"])
+      return render json: { status: "processing" }
+    end
+
+    # TX landed. Promote the entry server-side (re-derive entry_pda from
+    # the stored metadata, then call confirm_onchain! which runs the same
+    # safety checks the live confirm_onchain_entry endpoint does — locked
+    # games, per-user limit, sybil check).
+    entry_pda = ptx.parsed_metadata["entry_pda"]
+    begin
+      entry.confirm_onchain!(tx_signature: ptx.tx_signature, entry_pda: entry_pda)
+      ptx.update!(status: "confirmed")
+      render json: {
+        status: "confirmed",
+        redirect: contest_lobby_path(@contest),
+        tx_signature: ptx.tx_signature
+      }
+    rescue StandardError => e
+      ptx.update!(status: "failed")
+      render json: { status: "failed", error: "Recovery failed: #{e.message}" }
+    end
+  rescue StandardError => e
+    render json: { status: "error", error: e.message }, status: :unprocessable_entity
+  end
+
   # Confirm an onchain direct entry after the user has co-signed and submitted the tx.
   def confirm_onchain_entry
     entry = @contest.entries.find_by(id: params[:entry_id], user: current_user, status: :cart)
@@ -869,6 +944,7 @@ class ContestsController < ApplicationController
       @entries = @contest.entries.where(status: [:active, :complete]).includes(:user, selections: { slate_matchup: [:team, :game] }).order(score: :desc)
     end
     @cart_entry = @contest.entries.cart.find_by(user: current_user) if logged_in?
+    @pending_recovery_ptx = find_pending_recovery_ptx
   end
 
   # World Cup Survivor uses rounds + off-chain picks, not slate matchups.
@@ -879,6 +955,21 @@ class ContestsController < ApplicationController
                        .includes(:user, survivor_picks: [:survivor_round, :team])
                        .to_a
     @my_entry = current_user && @entries.find { |e| e.user_id == current_user.id }
+    @pending_recovery_ptx = find_pending_recovery_ptx
+  end
+
+  # Stranded onchain entry from a refresh between sign-and-confirm. The
+  # board JS reads this on init and POSTs /recover_pending_entry to either
+  # auto-promote the entry (TX landed) or release it (TX failed). Returns
+  # nil for guests, web2 users, off-chain contests, and the common case
+  # where no PT is stranded.
+  def find_pending_recovery_ptx
+    return nil unless current_user&.web3_solana_address.present? && @contest.onchain?
+    PendingTransaction.where(status: %w[pending submitted],
+                             initiator_address: current_user.web3_solana_address,
+                             target_type: "Entry")
+                      .where(target_id: @contest.entries.where(user_id: current_user.id).select(:id))
+                      .order(created_at: :desc).first
   end
 
   def load_seeds_data

@@ -310,6 +310,86 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  # --- recover_pending_entry tests ---
+
+  test "recover_pending_entry returns confirmed for an already-active entry" do
+    @user.update!(web3_solana_address: "WalletR1#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :active, onchain_tx_signature: "sig-was-here")
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct",
+      serialized_tx: "fake-stx",
+      status: "submitted",
+      tx_signature: "sig-x",
+      target: entry,
+      initiator_address: @user.web3_solana_address
+    )
+
+    post recover_pending_entry_contest_path(@contest),
+      params: { ptx_slug: ptx.slug }, as: :json
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "confirmed", body["status"]
+    assert_equal "sig-was-here", body["tx_signature"]
+    assert_equal "confirmed", ptx.reload.status
+  end
+
+  test "recover_pending_entry marks PT failed when there is no tx_signature stamped" do
+    @user.update!(web3_solana_address: "WalletR2#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct",
+      serialized_tx: "fake-stx",
+      status: "pending",
+      target: entry,
+      initiator_address: @user.web3_solana_address
+    )
+
+    post recover_pending_entry_contest_path(@contest),
+      params: { ptx_slug: ptx.slug }, as: :json
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "failed", body["status"]
+    assert_match(/did not broadcast/, body["error"])
+    assert_equal "failed", ptx.reload.status
+  end
+
+  test "recover_pending_entry forbids resolving another user's PT" do
+    @user.update!(web3_solana_address: "WalletR3#{SecureRandom.hex(4)}")
+    other = users(:jordan)
+    other.update!(web3_solana_address: "WalletR4#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: other, status: :cart)
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct",
+      serialized_tx: "fake-stx",
+      status: "submitted",
+      tx_signature: "sig-y",
+      target: entry,
+      initiator_address: other.web3_solana_address
+    )
+
+    post recover_pending_entry_contest_path(@contest),
+      params: { ptx_slug: ptx.slug }, as: :json
+
+    assert_response :forbidden
+    assert_equal "submitted", ptx.reload.status
+  end
+
+  test "recover_pending_entry returns missing when no PT matches" do
+    @user.update!(web3_solana_address: "WalletR5#{SecureRandom.hex(4)}")
+    log_in_as @user
+
+    post recover_pending_entry_contest_path(@contest),
+      params: { ptx_slug: "ptx-does-not-exist" }, as: :json
+
+    assert_response :success
+    assert_equal "missing", JSON.parse(response.body)["status"]
+  end
+
   # --- page load tests ---
 
   test "index loads" do
