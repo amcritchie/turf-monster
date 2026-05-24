@@ -1,80 +1,129 @@
-<% content_for(:title, "Modal Preview — Turf Monster") %>
+<% content_for(:title, "Modal Gallery — Turf Monster") %>
 
-<div class="max-w-2xl mx-auto py-10 space-y-10">
+<%# Visual gallery of every modal partial + state. Cards are grouped by
+    MODAL_VARIANTS[:group]; each card iframes admin_modal_preview_path
+    (or the variant's :url for standalone modal-style pages) so the
+    preview has its own Alpine context isolated from the gallery page.
+    The "Open ↗" button on modal_id variants pushes the modal onto the
+    real $store.modals stack of this page, so you can also poke at it
+    with the live host overlay.
+    The Stack-behavior tests at the bottom preserve the previous
+    behavior-test version of this page. %>
+
+<div class="max-w-7xl mx-auto py-10 px-4 space-y-10">
   <div>
-    <h1 class="text-heading text-2xl font-bold mb-1">Modal Preview</h1>
-    <p class="text-muted text-sm">Test page for studio-engine 0.4.10+ modal stack — on-chain TX cards, app modals, dismissibility, stacking, hold-at-least.</p>
+    <h1 class="text-heading text-2xl font-bold mb-1">Modal Gallery</h1>
+    <p class="text-muted text-sm">
+      Every modal partial + interesting state rendered side-by-side. Source: <code class="text-xs bg-inset px-1 rounded">AdminController::MODAL_VARIANTS</code>.
+    </p>
   </div>
 
-  <%# ── On-chain TX states (engine cards via $store.solanaModal) ── %>
-  <div class="card p-6 space-y-4">
-    <h2 class="text-heading text-lg font-semibold">On-Chain TX (engine cards)</h2>
-    <p class="text-secondary text-sm">Wraps engine's <code class="text-xs bg-inset px-1 rounded">_processing_card</code> / <code class="text-xs bg-inset px-1 rounded">_success_card</code> / <code class="text-xs bg-inset px-1 rounded">_error_card</code>. State machine: processing → success | error.</p>
-    <div class="flex flex-wrap gap-3">
-      <button class="btn btn-outline btn-sm" onclick="modalProcessing()">Processing</button>
-      <button class="btn btn-success btn-sm" onclick="modalSuccess()">Success</button>
-      <button class="btn btn-danger btn-sm" onclick="modalError()">Error</button>
-      <button class="btn btn-primary btn-sm" onclick="modalProcessThenSuccess()">Process → Success (3s)</button>
-      <button class="btn btn-primary btn-sm" onclick="modalProcessThenError()">Process → Error (3s)</button>
-    </div>
-  </div>
+  <% @variants.group_by { |v| v[:group] }.each do |group, items| %>
+    <section class="space-y-4">
+      <h2 class="text-heading text-lg font-semibold border-b border-subtle pb-2"><%= group %></h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <% items.each do |variant| %>
+          <% file_short = variant[:file].to_s.sub(%r{\Aapp/views/}, "") %>
+          <% iframe_src = variant[:url].presence || admin_modal_preview_path(modal_id: variant[:modal_id], props: variant[:props].to_json) %>
+          <div class="card overflow-hidden border border-subtle">
+            <%# Header strip %>
+            <div class="bg-inset px-4 py-2 flex items-center justify-between gap-3 border-b border-subtle">
+              <div class="min-w-0">
+                <div class="text-heading text-sm font-semibold truncate"><%= variant[:label] %></div>
+                <div class="text-[11px] text-muted font-mono truncate">
+                  <% if variant[:modal_id] %>
+                    id: <%= variant[:modal_id] %> · <%= file_short %>
+                  <% else %>
+                    <%= file_short %>
+                  <% end %>
+                </div>
+              </div>
+              <% if variant[:modal_id] %>
+                <button type="button" class="text-primary hover:underline text-xs font-medium flex-shrink-0"
+                        onclick='Alpine.store("modals").open(<%= variant[:modal_id].to_json.html_safe %>, <%= variant[:props].to_json.html_safe %>)'>
+                  Open &nearr;
+                </button>
+              <% else %>
+                <a href="<%= variant[:url] %>" target="_blank" rel="noopener" class="text-primary hover:underline text-xs font-medium flex-shrink-0">
+                  Open &nearr;
+                </a>
+              <% end %>
+            </div>
 
-  <%# ── Error recovery ── %>
-  <div class="card p-6 space-y-4">
-    <h2 class="text-heading text-lg font-semibold">Error with Recovery</h2>
-    <p class="text-secondary text-sm">Recovery handler renders a labeled button on the error card. <code class="text-xs bg-inset px-1 rounded">setRecovery(label, fn, { phantom })</code>.</p>
-    <div class="flex flex-wrap gap-3">
-      <button class="btn btn-danger btn-sm" onclick="modalErrorWithRetry()">Retry</button>
-      <button class="btn btn-danger btn-sm" onclick="modalErrorPhantomFaucet()">Phantom: Mint USDC</button>
-    </div>
-  </div>
+            <%# Preview iframe — sandboxed-ish (separate Alpine context).
+                Height is intentionally a fixed 520px so the grid lines
+                stay consistent; tall variants scroll inside the iframe.
+                loading=lazy keeps the gallery snappy. %>
+            <iframe src="<%= iframe_src %>"
+                    loading="lazy"
+                    title="<%= variant[:label] %> preview"
+                    class="w-full block"
+                    style="height: 520px; border: 0; background: var(--color-page);"></iframe>
+          </div>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
 
-  <%# ── Dismissibility ── %>
-  <div class="card p-6 space-y-4">
-    <h2 class="text-heading text-lg font-semibold">Dismissibility</h2>
-    <p class="text-secondary text-sm">Processing defaults to <code class="text-xs bg-inset px-1 rounded">dismissible: false</code> — Escape + click-outside are suppressed until success/error flips it true. Critical for in-flight Phantom signatures.</p>
-    <div class="flex flex-wrap gap-3">
-      <button class="btn btn-outline btn-sm" onclick="modalProcessing()">Try Escape (should NOT close)</button>
-      <button class="btn btn-outline btn-sm" onclick="modalDismissible()">Dismissible processing (Escape closes)</button>
+  <%# ── Stack behavior tests (carried over from the previous version
+      of this page — useful for poking at the engine modal-stack
+      mechanics: hold-at-least, dismissibility, stacking). %>
+  <section class="space-y-4 pt-6 border-t border-subtle">
+    <div>
+      <h2 class="text-heading text-lg font-semibold">Stack Behavior Tests</h2>
+      <p class="text-muted text-sm">Studio-engine modal-stack mechanics — on-chain TX cards, dismissibility, hold-at-least, LIFO stacking.</p>
     </div>
-  </div>
 
-  <%# ── Hold-at-least ── %>
-  <div class="card p-6 space-y-4">
-    <h2 class="text-heading text-lg font-semibold">Hold At Least (min spinner)</h2>
-    <p class="text-secondary text-sm"><code class="text-xs bg-inset px-1 rounded">window.StudioModals.holdAtLeast(ms)</code> returns a thenable that resolves after MAX(actual_op, ms). Stops fast operations from flashing the spinner.</p>
-    <div class="flex flex-wrap gap-3">
-      <button class="btn btn-primary btn-sm" onclick="modalFastWithHold()">Fast op + hold 1500ms</button>
-      <button class="btn btn-outline btn-sm" onclick="modalFastNoHold()">Fast op no hold (flashes)</button>
-    </div>
-  </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card p-6 space-y-3">
+        <h3 class="text-heading font-semibold">On-Chain TX states</h3>
+        <p class="text-secondary text-xs">Engine <code class="text-xs bg-inset px-1 rounded">_processing_card</code> / <code class="text-xs bg-inset px-1 rounded">_success_card</code> / <code class="text-xs bg-inset px-1 rounded">_error_card</code>.</p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-outline btn-sm" onclick="modalProcessing()">Processing</button>
+          <button class="btn btn-success btn-sm" onclick="modalSuccess()">Success</button>
+          <button class="btn btn-danger btn-sm" onclick="modalError()">Error</button>
+          <button class="btn btn-primary btn-sm" onclick="modalProcessThenSuccess()">Process → Success (3s)</button>
+          <button class="btn btn-primary btn-sm" onclick="modalProcessThenError()">Process → Error (3s)</button>
+        </div>
+      </div>
 
-  <%# ── App-registered modals (from application.html.erb host) ── %>
-  <div class="card p-6 space-y-4">
-    <h2 class="text-heading text-lg font-semibold">App Modals</h2>
-    <p class="text-secondary text-sm">Content partials registered in <code class="text-xs bg-inset px-1 rounded">application.html.erb</code>'s modal host block.</p>
-    <div class="flex flex-wrap gap-3">
-      <button class="btn btn-outline btn-sm" onclick="$store.modals.open('auth')">Auth Wizard</button>
-      <button class="btn btn-outline btn-sm" onclick="$store.modals.open('check-email')">Check Email</button>
-      <button class="btn btn-outline btn-sm" onclick="$store.modals.open('crop-photo')">Crop Photo</button>
-      <% if logged_in? %>
-        <button class="btn btn-outline btn-sm" onclick="$store.modals.open('profile')">Profile</button>
-        <button class="btn btn-outline btn-sm" onclick="$store.modals.open('username')">Username</button>
-      <% else %>
-        <span class="text-muted text-xs self-center">(profile + username are logged-in only)</span>
-      <% end %>
-    </div>
-  </div>
+      <div class="card p-6 space-y-3">
+        <h3 class="text-heading font-semibold">Error with recovery</h3>
+        <p class="text-secondary text-xs"><code class="text-xs bg-inset px-1 rounded">setRecovery(label, fn, { phantom })</code> renders a labeled button on the error card.</p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-danger btn-sm" onclick="modalErrorWithRetry()">Retry</button>
+          <button class="btn btn-danger btn-sm" onclick="modalErrorPhantomFaucet()">Phantom: Mint USDC</button>
+        </div>
+      </div>
 
-  <%# ── Stacking ── %>
-  <div class="card p-6 space-y-4">
-    <h2 class="text-heading text-lg font-semibold">Stacking</h2>
-    <p class="text-secondary text-sm">LIFO stack — opening a second modal pushes the first behind it; <code class="text-xs bg-inset px-1 rounded">close()</code> pops back to the previous.</p>
-    <div class="flex flex-wrap gap-3">
-      <button class="btn btn-primary btn-sm" onclick="modalStackTwo()">Open Two (success on top of processing)</button>
-      <button class="btn btn-outline btn-sm" onclick="$store.modals.closeAll()">closeAll()</button>
+      <div class="card p-6 space-y-3">
+        <h3 class="text-heading font-semibold">Dismissibility</h3>
+        <p class="text-secondary text-xs">Processing defaults <code class="text-xs bg-inset px-1 rounded">dismissible: false</code> — Escape + click-outside suppressed until success/error.</p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-outline btn-sm" onclick="modalProcessing()">Try Escape (locked)</button>
+          <button class="btn btn-outline btn-sm" onclick="modalDismissible()">Dismissible processing</button>
+        </div>
+      </div>
+
+      <div class="card p-6 space-y-3">
+        <h3 class="text-heading font-semibold">Hold at least</h3>
+        <p class="text-secondary text-xs"><code class="text-xs bg-inset px-1 rounded">StudioModals.holdAtLeast(ms)</code> prevents fast ops from flashing the spinner.</p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary btn-sm" onclick="modalFastWithHold()">Fast op + hold 1500ms</button>
+          <button class="btn btn-outline btn-sm" onclick="modalFastNoHold()">Fast op no hold (flashes)</button>
+        </div>
+      </div>
+
+      <div class="card p-6 space-y-3 md:col-span-2">
+        <h3 class="text-heading font-semibold">Stacking</h3>
+        <p class="text-secondary text-xs">LIFO — opening a second modal pushes the first behind it; <code class="text-xs bg-inset px-1 rounded">close()</code> pops back.</p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary btn-sm" onclick="modalStackTwo()">Open Two (success on top of processing)</button>
+          <button class="btn btn-outline btn-sm" onclick="$store.modals.closeAll()">closeAll()</button>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 </div>
 
 <script>
