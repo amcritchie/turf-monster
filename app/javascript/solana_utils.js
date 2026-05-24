@@ -9,6 +9,37 @@ export function lockedFetch(key, url, opts) {
   return fetch(url, opts).finally(function() { delete _lockedKeys[key]; });
 }
 
+// Auth-aware fetch — wraps fetch() and surfaces server-side logouts.
+// If the server returns 401 (cookie expired, CSRF mismatch, session cleared
+// in another tab), the client's $store.session still thinks we're logged in.
+// authedFetch flips $store.session to guest, closes any pending solanaModal,
+// and opens the auth modal at the login step. Returns null on 401 so
+// callers can short-circuit with `if (!resp) return;` instead of trying to
+// parse a 401 body as a normal response.
+//
+// Debounced: a burst of parallel 401s only triggers one modal open.
+var _sessionExpiredHandled = false;
+export async function authedFetch(url, opts) {
+  var resp = await fetch(url, opts);
+  if (resp.status !== 401) return resp;
+  if (_sessionExpiredHandled) return null;
+  _sessionExpiredHandled = true;
+  setTimeout(function() { _sessionExpiredHandled = false; }, 1500);
+  try {
+    var session = window.Alpine && Alpine.store && Alpine.store('session');
+    if (session) { session.loggedIn = false; session.mode = 'guest'; }
+  } catch (e) {}
+  try {
+    var sm = window.Alpine && Alpine.store && Alpine.store('solanaModal');
+    if (sm && sm.close) sm.close();
+  } catch (e) {}
+  try {
+    var modals = window.Alpine && Alpine.store && Alpine.store('modals');
+    if (modals && modals.open) modals.open('auth', { mode: 'login' });
+  } catch (e) {}
+  return null;
+}
+
 // Balance display refresh
 export function refreshBalance() {
   return lockedFetch('balance', '/admin/usdc_balance', {
@@ -113,6 +144,7 @@ export const CONFETTI_COLORS = ['#4BAF50', '#8E82FE', '#06D6A0', '#FF7C47', '#FF
 
 // Attach to window for backward compatibility with inline scripts/onclick handlers
 window.lockedFetch = lockedFetch;
+window.authedFetch = authedFetch;
 window.refreshBalance = refreshBalance;
 window.refreshBalanceDelayed = refreshBalanceDelayed;
 // Confetti burst that originates from the currently-open modal card —

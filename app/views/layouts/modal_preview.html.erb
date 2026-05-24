@@ -109,7 +109,7 @@
     <%= render "layouts/studio/head" %>
   </head>
 
-  <body x-data class="bg-page text-body" data-logged-in="<%= logged_in? %>" data-user-id="<%= current_user&.id %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>">
+  <body x-data class="bg-page text-body" data-logged-in="<%= logged_in? %>" data-user-id="<%= current_user&.id %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>" data-solana-rpc-url="<%= Solana::Config::RPC_URL %>">
     <%= yield %>
     <%= render "studio/modals/host" do %>
       <template x-if="$store.modals.current().id === 'check-email'">

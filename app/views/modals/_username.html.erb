@@ -43,7 +43,7 @@
                var txBytes = Uint8Array.from(atob(data.serialized_tx), function(c) { return c.charCodeAt(0); });
                var tx = solanaWeb3.Transaction.from(txBytes);
                var signed = await provider.signTransaction(tx);
-               var conn = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+               var conn = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
                var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
                await conn.confirmTransaction(sig, 'confirmed');
                var cdata = await fetch('<%= confirm_username_account_path %>', {

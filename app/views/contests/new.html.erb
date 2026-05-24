@@ -415,8 +415,8 @@
             var tx = solanaWeb3.Transaction.from(txBytes);
             var signedTx = await provider.signTransaction(tx);
 
-            modal.show('Broadcasting', 'Submitting to Solana devnet…');
-            var connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+            modal.show('Broadcasting', 'Submitting to Solana…');
+            var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
             var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
 
             modal.show('Confirming', 'Waiting for Solana confirmation…');

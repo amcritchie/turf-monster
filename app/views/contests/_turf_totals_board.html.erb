@@ -278,7 +278,7 @@ window.selectionBoard = function() {
       if (!this.loggedIn) return;
 
       var self = this;
-      fetch('/contests/' + this.contestId + '/toggle_selection', {
+      window.authedFetch('/contests/' + this.contestId + '/toggle_selection', {
         method: 'POST',
         headers: {
           'X-CSRF-Token': this.csrfToken,
@@ -287,8 +287,12 @@ window.selectionBoard = function() {
         },
         body: JSON.stringify({ matchup_id: matchupId })
       })
-      .then(function(resp) { return resp.json().then(function(data) { return { ok: resp.ok, data: data }; }); })
+      .then(function(resp) {
+        if (!resp) { self.selections = oldSelections; self.selectionOrder = oldOrder; return null; }
+        return resp.json().then(function(data) { return { ok: resp.ok, data: data }; });
+      })
       .then(function(result) {
+        if (!result) return;
         if (!result.ok) {
           self.selections = oldSelections;
           self.selectionOrder = oldOrder;
@@ -601,7 +605,7 @@ window.selectionBoard = function() {
       var ids = this.selectionOrder.slice();
       for (var i = 0; i < ids.length; i++) {
         try {
-          var resp = await fetch('/contests/' + this.contestId + '/toggle_selection', {
+          var resp = await window.authedFetch('/contests/' + this.contestId + '/toggle_selection', {
             method: 'POST',
             headers: {
               'X-CSRF-Token': this.csrfToken,
@@ -610,7 +614,7 @@ window.selectionBoard = function() {
             },
             body: JSON.stringify({ matchup_id: parseInt(ids[i], 10) })
           });
-          if (!resp.ok) return false;
+          if (!resp || !resp.ok) return false;
         } catch (e) { return false; }
       }
       return true;
@@ -870,11 +874,12 @@ window.selectionBoard = function() {
           var signatureB58 = encodeBase58(signed.signature);
 
           Alpine.store('solanaModal').show('Preparing Transaction', 'Building onchain transaction...');
-          var prepareResp = await fetch('/contests/' + this.contestId + '/prepare_entry', {
+          var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
           });
+          if (!prepareResp) return; // 401 — authedFetch surfaced the login modal
           var prepareData = await prepareResp.json();
           if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
 
@@ -884,18 +889,19 @@ window.selectionBoard = function() {
           var signedTx = await provider.signTransaction(tx);
 
           Alpine.store('solanaModal').show('Confirming Onchain', 'Submitting transaction to Solana...');
-          var connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+          var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
           var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
 
           Alpine.store('solanaModal').show('Confirming Onchain', 'Waiting for Solana confirmation...');
           await connection.confirmTransaction(txSig, 'confirmed');
 
           Alpine.store('solanaModal').show('Confirming Entry', 'Saving entry...');
-          var confirmResp = await fetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
+          var confirmResp = await window.authedFetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ tx_signature: txSig, entry_id: prepareData.entry_id, entry_pda: prepareData.entry_pda })
           });
+          if (!confirmResp) return; // 401 — authedFetch surfaced the login modal
           var confirmData = await confirmResp.json();
           if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm entry');
 
@@ -956,10 +962,11 @@ window.selectionBoard = function() {
             Alpine.store('solanaModal').show('Submitting Entry', 'Processing your entry...');
           }
 
-          var response = await fetch('/contests/' + this.contestId + '/enter', {
+          var response = await window.authedFetch('/contests/' + this.contestId + '/enter', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Accept': 'application/json' }
           });
+          if (!response) return; // 401 — authedFetch surfaced the login modal
           var data = await response.json();
 
           if (data.success) {

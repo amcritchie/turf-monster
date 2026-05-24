@@ -64,11 +64,12 @@ window.survivorBoard = function() {
       this.myPick = slug; // optimistic
       this.submitting = true;
       try {
-        var resp = await fetch('/contests/' + this.contestId + '/pick', {
+        var resp = await window.authedFetch('/contests/' + this.contestId + '/pick', {
           method: 'POST',
           headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({ round_id: this.currentRoundId, team_slug: slug })
         });
+        if (!resp) { this.myPick = prev; this.submitting = false; return; }
         var data = await resp.json();
         if (!data.success) { this.myPick = prev; this.showError(data.error || 'Pick failed.'); }
       } catch (e) {
@@ -110,11 +111,13 @@ window.survivorBoard = function() {
           var signatureB58 = encodeBase58(signed.signature);
 
           modal.show('Preparing Transaction', 'Building on-chain transaction…');
-          var prepareData = await (await fetch('/contests/' + this.contestId + '/prepare_entry', {
+          var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
-          })).json();
+          });
+          if (!prepareResp) { this.submitting = false; return; } // 401 — login modal surfaced
+          var prepareData = await prepareResp.json();
           if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
 
           modal.show('Sign Transaction', 'Approve the entry transaction in your wallet…');
@@ -122,16 +125,18 @@ window.survivorBoard = function() {
           var signedTx = await provider.signTransaction(solanaWeb3.Transaction.from(txBytes));
 
           modal.show('Confirming On-chain', 'Submitting to Solana…');
-          var connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
+          var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
           var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
           await connection.confirmTransaction(txSig, 'confirmed');
 
           modal.show('Confirming Entry', 'Saving your entry…');
-          var confirmData = await (await fetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
+          var confirmResp = await window.authedFetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ tx_signature: txSig, entry_id: prepareData.entry_id, entry_pda: prepareData.entry_pda })
-          })).json();
+          });
+          if (!confirmResp) { this.submitting = false; return; } // 401 — login modal surfaced
+          var confirmData = await confirmResp.json();
           if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm entry');
 
           modal.success(txSig, "You're in! Good luck.");
@@ -139,10 +144,12 @@ window.survivorBoard = function() {
           if (typeof refreshBalanceDelayed === 'function') refreshBalanceDelayed();
         } else {
           modal.show('Submitting Entry', 'Processing your entry…');
-          var data = await (await fetch('/contests/' + this.contestId + '/enter', {
+          var enterResp = await window.authedFetch('/contests/' + this.contestId + '/enter', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Accept': 'application/json' }
-          })).json();
+          });
+          if (!enterResp) { this.submitting = false; return; } // 401 — login modal surfaced
+          var data = await enterResp.json();
 
           if (data.success) {
             if (data.tx_signature) {
