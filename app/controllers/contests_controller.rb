@@ -433,13 +433,51 @@ class ContestsController < ApplicationController
         season_id: @contest.season_id
       )
 
+      # Persist a PendingTransaction so a refresh mid-flight (between sign
+      # and confirm_onchain_entry) leaves a server-side trail. Without it,
+      # the user's first signature can be silently consumed on-chain while
+      # the cart entry stays in `cart` status — and a retry hits Anchor's
+      # `init` constraint, surfacing as a generic error. Status flips to
+      # `submitted` via stamp_entry_signature after broadcast, then
+      # `confirmed` in confirm_onchain_entry. Any pending/submitted PT
+      # found on next page load is recoverable (admin can audit, or future
+      # client logic can auto-retry confirm using the stamped signature).
+      ptx = PendingTransaction.create!(
+        tx_type: "enter_contest_direct",
+        serialized_tx: result[:serialized_tx],
+        status: "pending",
+        target: entry,
+        initiator_address: current_user.web3_solana_address,
+        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug }.to_json
+      )
+
       render json: {
         success: true,
         serialized_tx: result[:serialized_tx],
         entry_id: entry.id,
-        entry_pda: result[:entry_pda]
+        entry_pda: result[:entry_pda],
+        ptx_slug: ptx.slug
       }
     end
+  rescue StandardError => e
+    render json: { success: false, error: e.message }, status: :unprocessable_entity
+  end
+
+  # Stamp the on-chain signature onto the PendingTransaction created by
+  # prepare_entry. Called by the client immediately after Phantom's
+  # sendRawTransaction resolves and before connection.confirmTransaction —
+  # so a refresh during the confirmation wait still has a server-side
+  # signature trail. The endpoint is cheap (single UPDATE) and adds one
+  # round-trip to the critical entry path.
+  def stamp_entry_signature
+    return render json: { error: "Missing ptx_slug or tx_signature" }, status: :unprocessable_entity if params[:ptx_slug].blank? || params[:tx_signature].blank?
+    ptx = PendingTransaction.where(status: %w[pending submitted]).find_by(slug: params[:ptx_slug])
+    return render json: { error: "Pending transaction not found" }, status: :not_found unless ptx
+    # Don't allow stamping a PT that belongs to a different user — initiator
+    # is the only authorization signal we have here.
+    return render json: { error: "Not authorized" }, status: :forbidden unless ptx.initiator_address == current_user&.web3_solana_address
+    ptx.update!(tx_signature: params[:tx_signature], status: "submitted")
+    render json: { success: true }
   rescue StandardError => e
     render json: { success: false, error: e.message }, status: :unprocessable_entity
   end
@@ -472,6 +510,16 @@ class ContestsController < ApplicationController
         tx_signature: params[:tx_signature],
         entry_pda: derived_entry_pda
       )
+
+      # Mark the PendingTransaction confirmed. Use the stamped signature as
+      # the lookup key (covers the case where prepare_entry created the row
+      # and the client stamped it post-broadcast). Fall back to target+initiator
+      # for any pre-stamp PTs (refresh-before-stamp legacy scenario).
+      ptx = PendingTransaction.where(target: entry, status: %w[pending submitted])
+                              .find_by(tx_signature: params[:tx_signature]) ||
+            PendingTransaction.where(target: entry, status: %w[pending submitted],
+                                     initiator_address: current_user.web3_solana_address).order(:created_at).last
+      ptx&.update!(tx_signature: params[:tx_signature], status: "confirmed")
 
       # Seeds awarded are determined on-chain by the active Season's seed_schedule.
       # Mirror that schedule here so the modal shows the same number the program awarded.

@@ -119,6 +119,7 @@ window.survivorBoard = function() {
           if (!prepareResp) { this.submitting = false; return; } // 401 — login modal surfaced
           var prepareData = await prepareResp.json();
           if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
+          var ptxSlug = prepareData.ptx_slug;
 
           modal.show('Sign Transaction', 'Approve the entry transaction in your wallet…');
           var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
@@ -127,6 +128,16 @@ window.survivorBoard = function() {
           modal.show('Confirming On-chain', 'Submitting to Solana…');
           var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
           var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+          // Server-side signature trail (see _turf_totals_board.html.erb stamp).
+          if (ptxSlug) {
+            try {
+              await window.authedFetch('/contests/' + this.contestId + '/stamp_entry_signature', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ ptx_slug: ptxSlug, tx_signature: txSig })
+              });
+            } catch (_) { /* non-fatal */ }
+          }
           await connection.confirmTransaction(txSig, 'confirmed');
 
           modal.show('Confirming Entry', 'Saving your entry…');

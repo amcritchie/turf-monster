@@ -881,6 +881,7 @@ window.selectionBoard = function() {
           });
           if (!prepareResp) return; // 401 — authedFetch surfaced the login modal
           var prepareData = await prepareResp.json();
+          var ptxSlug = prepareData.ptx_slug;
           if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
 
           Alpine.store('solanaModal').show('Sign Transaction', 'Approve the USDC transfer in your wallet...');
@@ -891,6 +892,22 @@ window.selectionBoard = function() {
           Alpine.store('solanaModal').show('Confirming Onchain', 'Submitting transaction to Solana...');
           var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
           var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+
+          // Stamp the signature on the server-side PendingTransaction
+          // before waiting for confirmation — if the user refreshes during
+          // the confirmation wait, the server still knows which signature
+          // belongs to this entry. Fire-and-forget; a stamp failure must
+          // not block the entry flow (the confirm_onchain_entry below also
+          // resolves the PT as a fallback).
+          if (ptxSlug) {
+            try {
+              await window.authedFetch('/contests/' + this.contestId + '/stamp_entry_signature', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ ptx_slug: ptxSlug, tx_signature: txSig })
+              });
+            } catch (_) { /* non-fatal */ }
+          }
 
           Alpine.store('solanaModal').show('Confirming Onchain', 'Waiting for Solana confirmation...');
           await connection.confirmTransaction(txSig, 'confirmed');

@@ -143,6 +143,7 @@ Rails.application.routes.draw do
       post :pick
       post :enter
       post :prepare_entry
+      post :stamp_entry_signature
       post :confirm_onchain_entry
       post :clear_picks
       post :grade
