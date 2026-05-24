@@ -107,26 +107,29 @@ module Webhooks
       end
     end
 
-    # OPSEC-036: a dispute (chargeback) was opened. Flag the buyer so further
-    # card purchases are blocked, and log loudly for operator follow-up.
+    # OPSEC-036 + B4/OPSEC-048: dispute → flag (blocks future card purchases)
+    # AND freeze (blocks entry/withdraw/spend while ops reviews).
     def handle_dispute(dispute)
       purchase = stripe_purchase_for_payment_intent(dispute.payment_intent)
       if purchase
         purchase.user.update!(payment_risk_flag: true)
+        purchase.user.freeze_for_payment_risk!(reason: "stripe.dispute charge=#{dispute.charge} reason=#{dispute.reason}")
         Rails.logger.error "[tokens] webhook.dispute user=#{purchase.user_id} purchase=#{purchase.id} " \
-          "charge=#{dispute.charge} reason=#{dispute.reason} amount=#{dispute.amount} — user flagged, card purchases blocked"
+          "charge=#{dispute.charge} reason=#{dispute.reason} amount=#{dispute.amount} — user flagged AND frozen"
       else
         Rails.logger.error "[tokens] webhook.dispute UNMATCHED charge=#{dispute.charge} pi=#{dispute.payment_intent} " \
           "reason=#{dispute.reason} amount=#{dispute.amount} — manual review required"
       end
     end
 
-    # OPSEC-036: a charge was refunded — record it on the StripePurchase.
+    # OPSEC-036 + B4/OPSEC-048: refund → mark refunded AND freeze (operator
+    # unfreezes via rails console for legit refunds).
     def handle_refund(charge)
       purchase = stripe_purchase_for_payment_intent(charge.payment_intent)
       if purchase
         purchase.mark_refunded!(reason: "stripe charge.refunded") unless purchase.status == "refunded"
-        Rails.logger.warn "[tokens] webhook.refund purchase=#{purchase.id} user=#{purchase.user_id} charge=#{charge.id} — marked refunded"
+        purchase.user.freeze_for_payment_risk!(reason: "stripe.refund charge=#{charge.id}")
+        Rails.logger.warn "[tokens] webhook.refund purchase=#{purchase.id} user=#{purchase.user_id} charge=#{charge.id} — marked refunded AND user frozen"
       else
         Rails.logger.warn "[tokens] webhook.refund UNMATCHED charge=#{charge.id} pi=#{charge.payment_intent}"
       end

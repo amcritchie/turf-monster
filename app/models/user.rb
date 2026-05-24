@@ -170,6 +170,25 @@ class User < ApplicationRecord
     password_digest.present? && password_digest != ""
   end
 
+  # B4 / OPSEC-048: account freeze for chargeback / dispute / refund. While
+  # frozen, the user can't enter contests, buy tokens, or withdraw. Existing
+  # on-chain tokens stay where they are (irreversible) but become unspendable
+  # via this app. Unfreezing for v1 = rails console: `user.unfreeze!`.
+  def frozen?
+    frozen_at.present?
+  end
+
+  def freeze_for_payment_risk!(reason:)
+    return if frozen?
+    update_columns(frozen_at: Time.current, frozen_reason: reason.to_s.first(255))
+    Rails.logger.error "[opsec-048] user.frozen user_id=#{id} reason=#{reason}"
+  end
+
+  def unfreeze!
+    update_columns(frozen_at: nil, frozen_reason: nil)
+    Rails.logger.info "[opsec-048] user.unfrozen user_id=#{id}"
+  end
+
   # OPSEC-045: rotate the session-binding token. Call after any action
   # that should invalidate other live sessions (password change today;
   # consider hooking on email change + 2FA disable later). Returns the

@@ -192,4 +192,16 @@ class ApplicationController < ActionController::Base
       end
     end
   end
+
+  # B4 / OPSEC-048: block money-moving actions when the account is frozen
+  # (chargeback / refund / dispute pending review). Read-only access stays open.
+  def require_unfrozen_account
+    return unless logged_in?
+    return unless current_user.frozen?
+    msg = "Your account is on hold pending review of a recent payment. Please contact support@turfmonster.media."
+    respond_to do |format|
+      format.html { redirect_to account_path, alert: msg }
+      format.json { render json: { error: msg }, status: :forbidden }
+    end
+  end
 end

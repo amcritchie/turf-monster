@@ -1,6 +1,8 @@
 class WalletsController < ApplicationController
   before_action :require_login
   before_action :require_geo_allowed, only: [:withdraw, :stripe_deposit, :moonpay_deposit, :topup]
+  # B4 / OPSEC-048: frozen accounts can view the wallet page but cannot move money.
+  before_action :require_unfrozen_account, only: [:withdraw, :stripe_deposit, :moonpay_deposit, :topup]
 
   def show
     @user = current_user

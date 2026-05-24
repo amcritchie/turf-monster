@@ -1,6 +1,8 @@
 class TokensController < ApplicationController
   before_action :require_login
   before_action :require_dev_mint_allowed, only: [:dev_mint]
+  # B4 / OPSEC-048: frozen accounts can't buy tokens.
+  before_action :require_unfrozen_account, only: [:stripe_checkout]
 
   def buy
     @packs = StripePurchase.available_packs
