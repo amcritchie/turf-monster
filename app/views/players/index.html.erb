@@ -1,25 +1,6 @@
 <% positions = @players.map(&:position).compact.uniq.sort %>
 
-<section x-data="{
-  search: '',
-  posFilter: 'all',
-  get filtered() {
-    const q = this.search.toLowerCase().trim();
-    const pos = this.posFilter;
-    const cards = document.querySelectorAll('[data-player-card]');
-    let count = 0;
-    cards.forEach(card => {
-      const name = (card.dataset.name || '').toLowerCase();
-      const cardPos = card.dataset.position || '';
-      const matchSearch = !q || name.includes(q);
-      const matchPos = pos === 'all' || cardPos === pos;
-      const visible = matchSearch && matchPos;
-      card.style.display = visible ? '' : 'none';
-      if (visible) count++;
-    });
-    return count;
-  }
-}">
+<section x-data="cardListFilter({ selector: '[data-player-card]', filters: { position: 'all' } })">
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
     <h2 class="text-2xl font-bold text-heading">Players</h2>
     <div class="flex items-center gap-3 w-full sm:w-auto">
@@ -27,17 +8,17 @@
              x-model.debounce.300ms="search"
              placeholder="Search players..."
              class="input-field text-sm !py-2 !px-3 w-full sm:w-64">
-      <span class="text-sm text-muted whitespace-nowrap" x-text="filtered + ' players'"></span>
+      <span class="text-sm text-muted whitespace-nowrap" x-text="visibleCount + ' players'"></span>
     </div>
   </div>
 
   <%# Position filter tabs %>
   <div class="flex flex-wrap gap-2 mb-6">
-    <button class="btn btn-sm" :class="posFilter === 'all' ? 'btn-primary' : 'btn-outline'" @click="posFilter = 'all'">All</button>
+    <button class="btn btn-sm" :class="filters.position === 'all' ? 'btn-primary' : 'btn-outline'" @click="filters.position = 'all'">All</button>
     <% positions.each do |pos| %>
       <button class="btn btn-sm"
-              :class="posFilter === '<%= pos %>' ? 'btn-primary' : 'btn-outline'"
-              @click="posFilter = '<%= pos %>'">
+              :class="filters.position === '<%= pos %>' ? 'btn-primary' : 'btn-outline'"
+              @click="filters.position = '<%= pos %>'">
         <%= pos %>
       </button>
     <% end %>

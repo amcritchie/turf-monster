@@ -52,6 +52,7 @@
            displayLevel: 1,
            levelingUp: false,
            showFreeEntryBadge: false,
+           _timers: [],
            init() {
              var self = this;
              var total = (<%= seeds_total_key %>) || 0;
@@ -66,16 +67,23 @@
              self.displaySeeds = oldToward;
              self.displayLevel = oldLevel;
 
-             setTimeout(function() {
+             // Track every timer we schedule so destroy() can clear them on
+             // modal close / auto-redirect. Previously a setInterval here
+             // ran forever (every 9min), plus 5 setTimeouts past the modal's
+             // 5s auto-redirect — all dead work that compounded with every
+             // entry confirmed in a session.
+             var schedule = function(fn, ms) { self._timers.push(setTimeout(fn, ms)); };
+
+             schedule(function() {
                if (newLevel > oldLevel) {
                  self.levelingUp = true;
                  self.displaySeeds = 100;
-                 setTimeout(function() {
+                 schedule(function() {
                    self.displayLevel = newLevel;
                    self.showFreeEntryBadge = true;
                  }, 1900);
-                 setTimeout(function() { self.displaySeeds = 0; }, 3400);
-                 setTimeout(function() {
+                 schedule(function() { self.displaySeeds = 0; }, 3400);
+                 schedule(function() {
                    self.displaySeeds = newToward;
                    self.levelingUp = false;
                  }, 3600);
@@ -83,17 +91,10 @@
                  self.displaySeeds = newToward;
                }
              }, 2000);
-
-             var fireShimmer = function() {
-               if (!self.$root || !self.$root.querySelectorAll) return;
-               self.$root.querySelectorAll('.modal-shimmer').forEach(function(el) {
-                 el.style.animation = 'none';
-                 void el.offsetHeight;
-                 el.style.animation = 'seedsShimmer 1.8s ease-in-out forwards';
-               });
-             };
-             for (var i = 1; i <= 5; i++) { setTimeout(fireShimmer, i * 9000); }
-             setTimeout(function() { setInterval(fireShimmer, 9 * 60 * 1000); }, 5 * 9000);
+           },
+           destroy() {
+             this._timers.forEach(clearTimeout);
+             this._timers = [];
            }
          }"
          class="mx-auto" style="max-width: 100%;">

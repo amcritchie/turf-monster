@@ -1,18 +1,4 @@
-<section x-data="{
-  search: '',
-  get filtered() {
-    const q = this.search.toLowerCase().trim();
-    const cards = document.querySelectorAll('[data-team-card]');
-    let count = 0;
-    cards.forEach(card => {
-      const name = (card.dataset.name || '').toLowerCase();
-      const match = !q || name.includes(q);
-      card.style.display = match ? '' : 'none';
-      if (match) count++;
-    });
-    return count;
-  }
-}">
+<section x-data="cardListFilter({ selector: '[data-team-card]' })">
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
     <h2 class="text-2xl font-bold text-heading">Teams</h2>
     <div class="flex items-center gap-3 w-full sm:w-auto">
@@ -20,7 +6,7 @@
              x-model.debounce.300ms="search"
              placeholder="Search teams..."
              class="input-field text-sm !py-2 !px-3 w-full sm:w-64">
-      <span class="text-sm text-muted whitespace-nowrap" x-text="filtered + ' teams'"></span>
+      <span class="text-sm text-muted whitespace-nowrap" x-text="visibleCount + ' teams'"></span>
     </div>
   </div>
 
