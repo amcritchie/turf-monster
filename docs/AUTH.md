@@ -34,11 +34,41 @@ validate :has_authentication_method  # must have email, solana_address, or provi
 
 ## Account Management (`/account`)
 
-- **AccountsController** — show, update, unlink_google, change_password, complete_profile, save_profile
+- **AccountsController** — show, update, unlink_google, change_password, complete_profile, save_profile, update_username, confirm_username
 - **Complete Profile page** (`/account/complete_profile`) — shown when `profile_complete?` is false. Collects username (+ optional avatar). `save_profile` action saves and redirects back to original destination.
 - **UserMergeable concern** — merges accounts when linking reveals overlap (lower ID survives)
 - **OmniauthCallbacksController** (app override) — merge support when linking Google while logged in. Uses `rescue ActiveRecord::RecordNotUnique` in `from_omniauth` to handle race conditions on concurrent OAuth callbacks.
 - Merge transfers entries, sums balances, fills blank auth fields, updates ErrorLog references
+
+## On-Chain Usernames (turf-vault v0.14.0+)
+
+Every user gets an on-chain `UserAccount` PDA with their username stored as a 32-byte UTF-8 field. The DB `username` column mirrors what's on-chain — the chain is the source of truth.
+
+### Signup auto-generation
+
+Two callbacks on `User` set this up eagerly so no user ever has a blank username:
+
+- `before_validation :ensure_username, on: :create` (`user.rb:20`) — fills the DB column with `Studio::UsernameGenerator.generate` if blank.
+- `after_commit :enqueue_onchain_account_setup, on: :create` (`user.rb:27`) — enqueues `CreateOnchainUserAccountJob` which calls `Solana::Vault#ensure_user_account(wallet, username:)`. The job is idempotent (skips if the PDA already exists at the current size).
+
+The job runs async via Sidekiq, so users are logged in before the PDA is finalized. Reads of `user.username` always work because the DB column is set first; on-chain lookups should fall back to the DB column when the PDA isn't found yet.
+
+### Editing the username
+
+The `AccountsController` exposes a two-step edit flow because Phantom users must client-side-sign the `set_username` instruction:
+
+- **Managed wallets** — `POST /account/update_username` server-signs immediately via `Solana::Vault#set_username(wallet, new_username, user_keypair:)`. DB column is mirrored in the same request. (`accounts_controller.rb:181-185`)
+- **Phantom wallets** — `POST /account/update_username` returns a partial `set_username` TX. Client signs and broadcasts. `POST /account/confirm_username` verifies the TX signature via `verify_solana_transaction!` (OPSEC-010) before mirroring the new username to the DB. (`accounts_controller.rb:159-217`)
+
+The instruction itself (`set_username`) is in turf-vault — the username is padded with `0x00` to 32 bytes on-chain. `Solana::Vault#username_bytes32` (`vault.rb`) handles the encoding.
+
+### Files
+
+- `app/models/user.rb` — callbacks (lines 20, 27, 278-285)
+- `app/jobs/create_onchain_user_account_job.rb` — async PDA creation
+- `app/controllers/accounts_controller.rb` — edit flow (lines 159-217)
+- `app/services/solana/vault.rb` — `ensure_user_account`, `create_user_account`, `set_username`, `build_set_username`, `username_bytes32`
+- `studio-engine` — `Studio::UsernameGenerator` (auto-gen helper)
 
 ## Admin Authorization
 

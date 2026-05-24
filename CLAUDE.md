@@ -172,10 +172,9 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 ## Models
 
 - **User** — name, username, email (nullable), solana_address, wallet_type, role, slug. Balance is on-chain USDC. See `docs/AUTH.md`.
-- **Contest** — name, tagline, entry_fee_cents, status, max_entries, rank, season_id (OPSEC-023), slate association, onchain fields, slug. `belongs_to :user` (creator, optional). `has_one_attached :contest_image` (Active Storage). Helpers: `lock_time_display`, `active_entry_count`, `locks_at` (alias for `starts_at`).
-- **ContestMatchup** — team_slug, opponent_team_slug, rank, turf_score, status. Belongs to contest + teams via slug FKs.
+- **Contest** — name, tagline, entry_fee_cents, status, max_entries, rank, season_id (OPSEC-023), slate association, onchain fields, slug. `belongs_to :user` (creator, optional). `has_one_attached :contest_image` (Active Storage). Helpers: `lock_time_display`, `active_entry_count`, `locks_at` (alias for `starts_at`). Contest's matchups come from `SlateMatchup` via the associated `Slate` — there is no separate `ContestMatchup` model.
 - **Entry** — user + contest, score, status (cart/active/complete/abandoned), rank, payout_cents, onchain fields, slug (includes id)
-- **Selection** — joins entry + contest_matchup (unique pair)
+- **Selection** — joins entry + slate_matchup (unique pair)
 - **Team** — name, short_name, emoji, color_primary/secondary, slug
 - **Game** — home_team + away_team via slug FKs, kickoff_at, status, scores, slug
 - **Player** — name, position, jersey_number, team via slug FK, slug

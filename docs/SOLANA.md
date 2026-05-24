@@ -28,6 +28,32 @@ Separate project at `/Users/alex/projects/turf-vault/`. PDAs: VaultState, UserAc
 - USDC Mint: `222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9`
 - USDT Mint: `9mxkN8KaVA8FFgDE2LEsn2UbYLPG8Xg9bf4V9MYYi8Ne`
 
+### Program Upgrades — Squads multisig (OPSEC-002, 2026-05-19+)
+
+**`anchor deploy` no longer works.** The program upgrade authority is a Squads V4 2-of-3 multisig vault (`BW13kgfiG2koFn3WRkte21NW9TFygsD1ge2fNJdjH6kC`), not a single keypair. Every upgrade goes through the Squad. Running `anchor deploy` will fail silently because the Solana CLI signs as a single keypair that is no longer the upgrade authority.
+
+Use `turf-vault/scripts/squad-upgrade.js` — it builds a buffer, sets the buffer authority to the Squad vault, then proposes + approves the upgrade tx through the Squad. See `turf-vault/CLAUDE.md` § "Deploying an upgrade" for the full step-by-step (1Password key refs included).
+
+**Post-deploy IDL re-pin (mandatory)**: After every Squad upgrade, turf-monster MUST re-pin `EXPECTED_IDL_HASH` from the **freshly built** IDL — NOT `anchor idl fetch`. Squad upgrades run only the BPF `upgrade` instruction; they do NOT update the on-chain IDL account. `anchor idl fetch` therefore returns the stale pre-upgrade IDL.
+
+```bash
+# After deploying turf-vault:
+cp /Users/alex/projects/turf-vault/target/idl/turf_vault.json \
+   /Users/alex/projects/turf-monster/config/turf_vault.idl.json
+cd /Users/alex/projects/turf-monster
+shasum -a 256 config/turf_vault.idl.json   # → this is the new EXPECTED_IDL_HASH
+
+# Set EXPECTED_IDL_HASH on Heroku BEFORE git push (assets:precompile runs verify_idl!):
+heroku config:set EXPECTED_IDL_HASH=<sha> -a turf-monster
+
+# Then commit + deploy
+git add config/turf_vault.idl.json
+git commit -m "Re-pin IDL after turf-vault vX.Y.Z deploy"
+bin/deploy
+```
+
+`Solana::Config#verify_idl!` will refuse to boot — and to precompile assets — in production when the file's SHA256 ≠ `EXPECTED_IDL_HASH`. Running prod against a drifted IDL silently corrupts every Borsh decode.
+
 ### Multisig Settlement Flow
 1. `Contest#grade!` scores entries and calls `settle_onchain!`
 2. `settle_onchain!` calls `Vault#build_settle_contest` → creates `PendingTransaction` with partially-signed TX
@@ -46,17 +72,23 @@ Separate project at `/Users/alex/projects/turf-vault/`. PDAs: VaultState, UserAc
 - **Managed**: Server generates + encrypts Ed25519 keypair, signs transactions on behalf of user (formerly "custodial")
 - **Phantom**: User connects Phantom browser extension, signs transactions directly
 
-## Hard Escrow Contest Creation (v0.4.0)
+## Hard Escrow Contest Creation (Phantom-driven, 2026-05-18+)
 
 Contest creation transfers prizes USDC from creator's Phantom wallet to vault — real hard escrow, not just a number on the PDA. Dual-signer: admin bot pays SOL rent, creator's Phantom signs the USDC transfer.
 
-1. Admin fills form + submits → `POST /contests` (creates DB record)
-2. `POST /contests/:id/prepare_onchain_contest` → server builds + admin partial-signs tx
-3. `phantom.signTransaction(tx)` → creator co-signs the prizes USDC transfer
-4. `connection.sendRawTransaction()` → submit to Solana
-5. `POST /contests/:id/confirm_onchain_contest` → saves onchain_contest_id + tx_signature
+The on-chain TX completes **before** the DB row is created, so the database always reflects committed on-chain state.
 
-Replaced the old server-only `create_onchain` flow. Contest model's `create_onchain!` method removed. Vault service uses `build_create_contest` (partial-sign) instead of `create_contest` (full-sign).
+1. Admin fills form + submits → `POST /contests` (`ContestsController#create`)
+   - Click-time prechecks: on-chain Contest PDA must not exist; creator's USDC must cover the prize pool. Insufficient-USDC modal includes a "Mint $500 Test USDC" recovery button.
+   - Server builds a partially-signed `create_contest` TX (admin pays SOL rent + signs as `payer`; creator will sign as `creator` for the USDC transfer). Returns the partial TX + a signed `params_token`.
+2. Client: `phantom.signTransaction(tx)` → `connection.sendRawTransaction()` → wait for confirmation.
+3. `POST /contests/finalize` (`ContestsController#finalize`) — collection route, no `:id`.
+   - Verifies the TX signature via `verify_solana_transaction!` (OPSEC-010 — matches the `create_contest` discriminator + expected accounts).
+   - Creates the DB row with `skip_onchain_callback = true` so the legacy `Contest#create_onchain!` after_create callback doesn't double-spend.
+
+### Legacy server-only fallback
+
+`Contest#create_onchain!` (via `after_create`) is preserved for Rails console / scripts / tests (`Rails.env.test?` auto-skips). The old `POST /contests/:id/prepare_onchain_contest` + `POST /contests/:id/confirm_onchain_contest` endpoints still exist for backward compat and are still referenced by `e2e/onchain.spec.js` — but the production UI no longer uses them.
 
 ## Dual-Path Onchain Entry Flow
 
