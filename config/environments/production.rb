@@ -106,11 +106,17 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # Prelaunch audit C4 (2026-05-24): enable DNS-rebinding + Host-header
+  # protection. Without this, Rails 7 accepts any Host header, which lets
+  # attackers replay Stripe-signed webhook payloads against the dyno's direct
+  # *.herokuapp.com URL (bypassing CDN/WAF allowlists) and enables DNS-rebinding
+  # to reach the app under a foreign origin's cookie scope.
+  config.hosts = [
+    "turf.mcritchie.studio",      # primary prod URL
+    "turf-monster.herokuapp.com", # direct Heroku dyno URL (health checks, etc.)
+  ]
+  # /up is the Rails health-check endpoint Heroku polls — Heroku's load balancer
+  # may use internal addressing, so exclude it from host authorization to avoid
+  # false-positive health-check failures.
+  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end
