@@ -1,0 +1,158 @@
+<% content_for(:title, "Modal Preview — Turf Monster") %>
+
+<div class="max-w-2xl mx-auto py-10 space-y-10">
+  <div>
+    <h1 class="text-heading text-2xl font-bold mb-1">Modal Preview</h1>
+    <p class="text-muted text-sm">Test page for studio-engine 0.4.10+ modal stack — on-chain TX cards, app modals, dismissibility, stacking, hold-at-least.</p>
+  </div>
+
+  <%# ── On-chain TX states (engine cards via $store.solanaModal) ── %>
+  <div class="card p-6 space-y-4">
+    <h2 class="text-heading text-lg font-semibold">On-Chain TX (engine cards)</h2>
+    <p class="text-secondary text-sm">Wraps engine's <code class="text-xs bg-inset px-1 rounded">_processing_card</code> / <code class="text-xs bg-inset px-1 rounded">_success_card</code> / <code class="text-xs bg-inset px-1 rounded">_error_card</code>. State machine: processing → success | error.</p>
+    <div class="flex flex-wrap gap-3">
+      <button class="btn btn-outline btn-sm" onclick="modalProcessing()">Processing</button>
+      <button class="btn btn-success btn-sm" onclick="modalSuccess()">Success</button>
+      <button class="btn btn-danger btn-sm" onclick="modalError()">Error</button>
+      <button class="btn btn-primary btn-sm" onclick="modalProcessThenSuccess()">Process → Success (3s)</button>
+      <button class="btn btn-primary btn-sm" onclick="modalProcessThenError()">Process → Error (3s)</button>
+    </div>
+  </div>
+
+  <%# ── Error recovery ── %>
+  <div class="card p-6 space-y-4">
+    <h2 class="text-heading text-lg font-semibold">Error with Recovery</h2>
+    <p class="text-secondary text-sm">Recovery handler renders a labeled button on the error card. <code class="text-xs bg-inset px-1 rounded">setRecovery(label, fn, { phantom })</code>.</p>
+    <div class="flex flex-wrap gap-3">
+      <button class="btn btn-danger btn-sm" onclick="modalErrorWithRetry()">Retry</button>
+      <button class="btn btn-danger btn-sm" onclick="modalErrorPhantomFaucet()">Phantom: Mint USDC</button>
+    </div>
+  </div>
+
+  <%# ── Dismissibility ── %>
+  <div class="card p-6 space-y-4">
+    <h2 class="text-heading text-lg font-semibold">Dismissibility</h2>
+    <p class="text-secondary text-sm">Processing defaults to <code class="text-xs bg-inset px-1 rounded">dismissible: false</code> — Escape + click-outside are suppressed until success/error flips it true. Critical for in-flight Phantom signatures.</p>
+    <div class="flex flex-wrap gap-3">
+      <button class="btn btn-outline btn-sm" onclick="modalProcessing()">Try Escape (should NOT close)</button>
+      <button class="btn btn-outline btn-sm" onclick="modalDismissible()">Dismissible processing (Escape closes)</button>
+    </div>
+  </div>
+
+  <%# ── Hold-at-least ── %>
+  <div class="card p-6 space-y-4">
+    <h2 class="text-heading text-lg font-semibold">Hold At Least (min spinner)</h2>
+    <p class="text-secondary text-sm"><code class="text-xs bg-inset px-1 rounded">window.StudioModals.holdAtLeast(ms)</code> returns a thenable that resolves after MAX(actual_op, ms). Stops fast operations from flashing the spinner.</p>
+    <div class="flex flex-wrap gap-3">
+      <button class="btn btn-primary btn-sm" onclick="modalFastWithHold()">Fast op + hold 1500ms</button>
+      <button class="btn btn-outline btn-sm" onclick="modalFastNoHold()">Fast op no hold (flashes)</button>
+    </div>
+  </div>
+
+  <%# ── App-registered modals (from application.html.erb host) ── %>
+  <div class="card p-6 space-y-4">
+    <h2 class="text-heading text-lg font-semibold">App Modals</h2>
+    <p class="text-secondary text-sm">Content partials registered in <code class="text-xs bg-inset px-1 rounded">application.html.erb</code>'s modal host block.</p>
+    <div class="flex flex-wrap gap-3">
+      <button class="btn btn-outline btn-sm" onclick="$store.modals.open('auth')">Auth Wizard</button>
+      <button class="btn btn-outline btn-sm" onclick="$store.modals.open('check-email')">Check Email</button>
+      <button class="btn btn-outline btn-sm" onclick="$store.modals.open('crop-photo')">Crop Photo</button>
+      <% if logged_in? %>
+        <button class="btn btn-outline btn-sm" onclick="$store.modals.open('profile')">Profile</button>
+        <button class="btn btn-outline btn-sm" onclick="$store.modals.open('username')">Username</button>
+      <% else %>
+        <span class="text-muted text-xs self-center">(profile + username are logged-in only)</span>
+      <% end %>
+    </div>
+  </div>
+
+  <%# ── Stacking ── %>
+  <div class="card p-6 space-y-4">
+    <h2 class="text-heading text-lg font-semibold">Stacking</h2>
+    <p class="text-secondary text-sm">LIFO stack — opening a second modal pushes the first behind it; <code class="text-xs bg-inset px-1 rounded">close()</code> pops back to the previous.</p>
+    <div class="flex flex-wrap gap-3">
+      <button class="btn btn-primary btn-sm" onclick="modalStackTwo()">Open Two (success on top of processing)</button>
+      <button class="btn btn-outline btn-sm" onclick="$store.modals.closeAll()">closeAll()</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Sample tx signature for previews (real-looking devnet hash)
+  var SAMPLE_TX = '4xPHntwjpVe1JK2bcSAtJ8e6t1qhCpRzG1QyrW8RrFu5h7nXJDvqA2zKbPGvT9MdNxLh3JsKkPRtAxHvCs8VxNm';
+
+  function modalProcessing() {
+    Alpine.store('solanaModal').show('Submitting Entry', 'Awaiting Phantom signature…');
+  }
+
+  function modalSuccess() {
+    Alpine.store('solanaModal').show('Submitting Entry', 'Awaiting Phantom signature…');
+    Alpine.store('solanaModal').success(SAMPLE_TX, 'Entry confirmed on-chain.');
+  }
+
+  function modalError() {
+    Alpine.store('solanaModal').show('Submitting Entry', 'Awaiting Phantom signature…');
+    Alpine.store('solanaModal').error('Transaction simulation failed — insufficient SOL for rent.', 'Submission Failed');
+  }
+
+  function modalProcessThenSuccess() {
+    Alpine.store('solanaModal').show('Submitting Entry', 'Awaiting RPC confirmation…');
+    setTimeout(function() { Alpine.store('solanaModal').success(SAMPLE_TX, 'Entry confirmed on-chain.'); }, 3000);
+  }
+
+  function modalProcessThenError() {
+    Alpine.store('solanaModal').show('Submitting Entry', 'Awaiting RPC confirmation…');
+    setTimeout(function() { Alpine.store('solanaModal').error('Phantom rejected the transaction.', 'Submission Failed'); }, 3000);
+  }
+
+  function modalErrorWithRetry() {
+    Alpine.store('solanaModal').show('Submitting Entry', '…');
+    Alpine.store('solanaModal').error('Network error — RPC timed out.', 'Submission Failed');
+    Alpine.store('solanaModal').setRecovery('Retry', function() {
+      toast({ type: 'notice', title: 'Recovery clicked', message: 'Would retry the failed TX here.' });
+    });
+  }
+
+  function modalErrorPhantomFaucet() {
+    Alpine.store('solanaModal').show('Funding Wallet', '…');
+    Alpine.store('solanaModal').error('Insufficient USDC for entry fee.', 'Insufficient Balance');
+    Alpine.store('solanaModal').setRecovery('Mint $500 Test USDC', function() {
+      toast({ type: 'notice', title: 'Phantom recovery clicked', message: 'Would call /faucet here.' });
+    }, { phantom: true });
+  }
+
+  function modalDismissible() {
+    Alpine.store('modals').open('onchain-tx', {
+      dismissible: true,
+      state: 'processing',
+      title: 'Dismissible Processing',
+      message: 'Escape and click-outside close this one.',
+      txSignature: null, errorMessage: null,
+      seedsEarned: 0, seedsTotal: 0, seedsLevel: 0,
+      lobbyUrl: null, recoveryLabel: null, recoveryPhantom: false
+    });
+  }
+
+  function modalFastWithHold() {
+    Alpine.store('solanaModal').show('Fast Operation', 'Holding at least 1500ms…');
+    window.StudioModals.holdAtLeast(1500).then(function() {
+      Alpine.store('solanaModal').success(SAMPLE_TX, 'Done (with min hold).');
+    });
+  }
+
+  function modalFastNoHold() {
+    Alpine.store('solanaModal').show('Fast Operation', 'No hold — flashes by.');
+    setTimeout(function() { Alpine.store('solanaModal').success(SAMPLE_TX, 'Done (no hold).'); }, 50);
+  }
+
+  function modalStackTwo() {
+    Alpine.store('solanaModal').show('First Modal', 'This is the bottom of the stack.');
+    setTimeout(function() {
+      Alpine.store('modals').open('check-email', { email: 'demo@turfmonster.media' });
+    }, 600);
+  }
+
+  function toast(detail) {
+    window.dispatchEvent(new CustomEvent('toast', { detail: detail }));
+  }
+</script>
