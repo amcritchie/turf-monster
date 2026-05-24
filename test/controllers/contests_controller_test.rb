@@ -2,16 +2,7 @@ require "test_helper"
 require "minitest/mock"
 
 class ContestsControllerTest < ActionDispatch::IntegrationTest
-  class FakeVault
-    attr_reader :calls
-    def initialize
-      @calls = []
-    end
-    def transfer_from_user(user, amount, mint:)
-      @calls << [:transfer_from_user, user.id, amount, mint]
-      { signature: "fake-transfer-sig" }
-    end
-  end
+  # FakeVault is shared — see test/support/fake_vault.rb (LW1 extraction).
   setup do
     @contest = contests(:one)
     @user = users(:sam)
@@ -209,12 +200,57 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   # --- web2 / managed-wallet token spend ---
 
-  test "enter consumes on-chain token via vault.enter_contest_with_token (SKIPPED — needs RPC mock)" do
-    skip "Refactored to on-chain — see Solana::Vault#enter_contest_with_token. Needs new FakeVault methods."
+  test "enter consumes on-chain token via vault.enter_contest_with_token for managed-wallet users" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert json["success"], "expected entry success, got: #{json["error"]}"
+    assert_equal 1, vault.enter_calls.length
+    assert_equal :enter_contest_with_token, vault.enter_calls.first[:method]
+    assert_equal "tpda_1", vault.enter_calls.first[:token_pda]
+    assert entry.reload.active?
   end
 
-  test "enter blocks managed-wallet user with no tokens (SKIPPED — on-chain refactor)" do
-    skip "Refactored to on-chain — User#next_unconsumed_entry_token now reads via Solana::Vault. Needs RPC mock harness."
+  test "enter blocks managed-wallet user with no tokens via 'No entry tokens' error" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [])
+    Solana::Vault.stub :new, vault do
+      post enter_contest_path(@contest), as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/No entry tokens/, JSON.parse(response.body)["error"])
+    assert entry.reload.cart?
+    assert_equal 0, vault.enter_calls.length
   end
 
   # --- page load tests ---

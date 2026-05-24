@@ -80,8 +80,30 @@ class UserTest < ActiveSupport::TestCase
   # entry tokens — refactored to on-chain in turf-vault v0.9.0+. See Solana::Vault#list_entry_tokens.
   # Tests for entry_token_balance now require RPC mocks; skipping until we add VCR/mock harness.
 
-  test "entry_token_balance reads from on-chain (SKIPPED — needs RPC mock)" do
-    skip "Refactored to on-chain — needs Solana::Vault stub"
+  test "entry_token_balance returns count of unconsumed tokens via Solana::Vault" do
+    user = users(:sam) # web3 wallet per fixture
+    vault = FakeVault.new(tokens: [
+      { pda: "tpda1", consumed: false },
+      { pda: "tpda2", consumed: true },
+      { pda: "tpda3", consumed: false }
+    ])
+    Solana::Vault.stub :new, vault do
+      assert_equal 2, user.entry_token_balance
+    end
+  end
+
+  test "entry_token_balance returns 0 for users without a wallet (short-circuit)" do
+    user = users(:jordan)
+    assert_equal 0, user.entry_token_balance
+  end
+
+  test "entry_token_balance returns 0 if Solana::Vault raises" do
+    user = users(:sam)
+    crashing_vault = Object.new
+    def crashing_vault.list_entry_tokens(*); raise "RPC down"; end
+    Solana::Vault.stub :new, crashing_vault do
+      assert_equal 0, user.entry_token_balance
+    end
   end
 
   # from_omniauth tests

@@ -1,6 +1,88 @@
 require "test_helper"
 require "minitest/mock"
 
+# BL5 (Stage 3 audit): #grade! tie-payout splitting. The ranking + payout
+# math at contest.rb:184-217 handles ties via spanned-rank summation and
+# integer remainder distribution. These pin down the easy-to-miss money-
+# bug cases on the "standard" tier (payouts 1=>$300, 2-5=>$50).
+class ContestGradeTiePayoutsTest < ActiveSupport::TestCase
+  setup do
+    @creator = users(:alex)
+    @slate = slates(:one)
+    @contest = Contest.create!(
+      name: "Standard tie test #{SecureRandom.hex(2)}",
+      slate: @slate,
+      rank: 9000 + rand(900),
+      contest_type: "standard",
+      starts_at: 1.hour.from_now,
+      user: @creator,
+      status: "open",
+      max_entries: 29
+    )
+  end
+
+  test "two entries tied for 1st split spanned ranks 1+2 evenly ($350 → $175 each)" do
+    e1 = make_active_entry(score: 100.0)
+    e2 = make_active_entry(score: 100.0)
+    e3 = make_active_entry(score: 50.0)
+
+    @contest.stub :score_entries!, nil do
+      @contest.grade!
+    end
+
+    [e1, e2, e3].each(&:reload)
+    assert_equal 1, e1.rank
+    assert_equal 1, e2.rank
+    assert_equal 3, e3.rank
+    assert_equal 17_500, e1.payout_cents
+    assert_equal 17_500, e2.payout_cents
+    assert_equal 50_00, e3.payout_cents
+  end
+
+  test "three-way tie for 1st spans ranks 1+2+3, splits $400 with remainder to earliest" do
+    e1 = make_active_entry(score: 100.0)
+    e2 = make_active_entry(score: 100.0)
+    e3 = make_active_entry(score: 100.0)
+    e4 = make_active_entry(score: 50.0)
+
+    @contest.stub :score_entries!, nil do
+      @contest.grade!
+    end
+
+    [e1, e2, e3, e4].each(&:reload)
+    assert_equal 1, e1.rank
+    assert_equal 1, e2.rank
+    assert_equal 1, e3.rank
+    assert_equal 4, e4.rank
+    # 400_00 / 3 = 13333, remainder 1 → e1 gets +1
+    assert_equal 13_334, e1.payout_cents
+    assert_equal 13_333, e2.payout_cents
+    assert_equal 13_333, e3.payout_cents
+    assert_equal 400_00, e1.payout_cents + e2.payout_cents + e3.payout_cents
+    assert_equal 50_00, e4.payout_cents
+  end
+
+  test "five-way tie for 1st spans entire standard schedule ($500 → $100 each)" do
+    entries_tied = 5.times.map { make_active_entry(score: 100.0) }
+
+    @contest.stub :score_entries!, nil do
+      @contest.grade!
+    end
+
+    entries_tied.each(&:reload)
+    assert entries_tied.all? { |e| e.rank == 1 }
+    entries_tied.each { |e| assert_equal 100_00, e.payout_cents }
+    assert_equal 500_00, entries_tied.sum(&:payout_cents)
+  end
+
+  private
+
+  def make_active_entry(score:)
+    user = User.create!(email: "tied_#{SecureRandom.hex(4)}@example.com", password: "password")
+    Entry.create!(user: user, contest: @contest, status: "active", score: score)
+  end
+end
+
 class ContestTest < ActiveSupport::TestCase
   setup do
     @contest = contests(:one)

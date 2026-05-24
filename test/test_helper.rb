@@ -1,6 +1,36 @@
 ENV["RAILS_ENV"] ||= "test"
+
+# I1 (Stage 3 audit): SimpleCov must start before Rails loads any app code
+# so it can track which lines get hit. Opt-in via COVERAGE=1 to keep the
+# default `bin/rails test` fast. Threshold enforcement is separately opt-in
+# (ENFORCE_COVERAGE=1) because parallel worker fragmentation makes the
+# aggregate look artificially low — read per-file numbers in
+# coverage/index.html to set realistic minimums.
+if ENV["COVERAGE"] == "1" || ENV["CI"]
+  require "simplecov"
+  SimpleCov.start "rails" do
+    command_name "Worker #{ENV['TEST_ENV_NUMBER'] || '0'}"
+    merge_timeout 3600
+    enable_coverage :branch
+    add_group "Models",      "app/models"
+    add_group "Controllers", "app/controllers"
+    add_group "Webhooks",    "app/controllers/webhooks"
+    add_group "Jobs",        "app/jobs"
+    add_group "Services",    "app/services"
+    add_filter "/test/"
+    add_filter "/config/"
+    add_filter "/db/"
+    add_filter "/vendor/"
+    minimum_coverage(line: 70) if ENV["ENFORCE_COVERAGE"] == "1"
+  end
+end
+
 require_relative "../config/environment"
 require "rails/test_help"
+
+# Shared test doubles. test/support/* is auto-loaded so individual test
+# files don't need to require_relative them.
+Dir[File.expand_path("support/**/*.rb", __dir__)].each { |f| require f }
 
 OmniAuth.config.test_mode = true
 

@@ -66,6 +66,8 @@ group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
   gem "selenium-webdriver"
+  # I1 (Stage 3 audit): code coverage. Opt-in via COVERAGE=1 — see test_helper.rb.
+  gem "simplecov", require: false
 end
 gem "dotenv-rails", groups: [:development, :test]
 gem "tailwindcss-rails", "~> 2.7"

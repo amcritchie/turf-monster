@@ -19,12 +19,23 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", text: /Entry Tokens/
   end
 
-  test "dev_mint requires admin (SKIPPED — on-chain refactor)" do
-    skip "Refactored: dev_mint now mints on-chain via Solana::Vault. Needs RPC mock."
+  test "dev_mint redirects non-admin with admin-only alert" do
+    log_in_as @jordan
+    post tokens_dev_mint_path, params: { pack: "single" }
+    assert_redirected_to tokens_buy_path
+    assert_match(/admin.*devnet/i, flash[:alert])
   end
 
-  test "dev_mint creates tokens for admin (SKIPPED — on-chain refactor)" do
-    skip "Refactored: dev_mint now mints on-chain via Solana::Vault. Needs RPC mock."
+  test "dev_mint creates requested quantity of on-chain tokens for an admin" do
+    log_in_as @alex
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      post tokens_dev_mint_path, params: { pack: "trio" }
+    end
+    assert_redirected_to tokens_buy_path
+    assert_match(/Minted 3 test tokens?/, flash[:notice])
+    assert_equal 3, vault.mint_calls.length
+    assert vault.mint_calls.all? { |r| r.start_with?("dev:") }
   end
 
   test "dev_mint rejects an unknown pack (kept — pure controller logic)" do
@@ -110,12 +121,30 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, body["minted"]
   end
 
-  test "status returns ready=true when StripePurchase is minted (SKIPPED — needs on-chain mock)" do
-    skip "Refactored to on-chain — status now checks StripePurchase.status=='minted'. Needs mock harness."
+  test "status returns ready=true when StripePurchase is minted" do
+    log_in_as @jordan
+    sid = "cs_test_status_#{SecureRandom.hex(4)}"
+    StripePurchase.create!(
+      user: @jordan, stripe_session_id: sid,
+      quantity: 1, price_cents: 19_00, status: "minted",
+      mint_tx_signatures: ["sig_0"].to_json
+    )
+    get tokens_status_path, params: { session_id: sid }
+    json = JSON.parse(response.body)
+    assert json["ready"]
+    assert_equal 1, json["minted"]
   end
 
-  test "status scopes session_id to current user (SKIPPED)" do
-    skip "Refactored to on-chain — StripePurchase.for_session is scoped via user.stripe_purchases."
+  test "status scopes session_id to current_user — other users see ready=false" do
+    sid = "cs_test_xuser_#{SecureRandom.hex(4)}"
+    StripePurchase.create!(
+      user: @alex, stripe_session_id: sid,
+      quantity: 1, price_cents: 19_00, status: "minted",
+      mint_tx_signatures: ["sig"].to_json
+    )
+    log_in_as @jordan
+    get tokens_status_path, params: { session_id: sid }
+    refute JSON.parse(response.body)["ready"]
   end
 
   private
