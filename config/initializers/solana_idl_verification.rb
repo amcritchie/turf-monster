@@ -6,9 +6,32 @@
 #   - dev DBs often run against an older IDL during iteration
 #   - tests stub Solana calls anyway (see test_solana_stubs.rb)
 #
-# To bypass in production (e.g. during a controlled deploy mid-upgrade),
-# set SKIP_IDL_VERIFICATION=true.
-if Rails.env.production? && ENV["SKIP_IDL_VERIFICATION"].blank?
+# 2026-05-23 (audit H4): the old `SKIP_IDL_VERIFICATION=true` escape hatch
+# was removed in production. A leaked Heroku API token + `heroku config:set
+# SKIP_IDL_VERIFICATION=true` would otherwise let an attacker swap in a
+# poisoned IDL whose account orderings differ from the deployed program,
+# causing every Phantom-signed TX to write to attacker-controlled
+# accounts. The escape hatch survives only in dev/test, where it never
+# protected anything meaningful.
+#
+# If a controlled mid-upgrade requires temporarily bypassing the check in
+# production, the deployer must:
+#   1. Set `EXPECTED_IDL_HASH` to the NEW IDL's hash (don't unset it)
+#   2. Commit the new IDL JSON
+#   3. Deploy
+# The whole point is that the env var should never be the kill switch.
+if Rails.env.production?
+  if ENV["SKIP_IDL_VERIFICATION"].present?
+    raise <<~MSG
+      SKIP_IDL_VERIFICATION is set in production — refusing to boot.
+
+      Audit H4 (2026-05-23) removed this escape hatch. To deploy a new IDL,
+      set EXPECTED_IDL_HASH to the new hash and commit the IDL JSON instead.
+
+      heroku config:unset SKIP_IDL_VERIFICATION --app turf-monster
+    MSG
+  end
+
   Rails.application.config.after_initialize do
     Solana::Config.verify_idl!
   rescue Solana::Config::IdlMismatchError => e

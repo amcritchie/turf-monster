@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# bin/deploy — ongoing Rails deploy to Heroku.
+#
+# For the one-time v0.15.0 mainnet first deploy, follow MAINNET_LAUNCH.md
+# instead — there's too much one-shot setup (program deploy, vault init,
+# Stripe webhook wiring) for a script.
+#
+# This script handles repeatable post-launch deploys:
+#   1. Pre-flight checks (clean tree, expected IDL hash present, etc.)
+#   2. Push to Heroku
+#   3. Run any pending migrations
+#   4. Smoke-check the live site
+#
+# Usage:
+#   bin/deploy              # deploy to default app (turf-monster, prod)
+#   bin/deploy staging      # deploy to staging app
+#   bin/deploy --skip-checks  # bypass pre-flight (last-resort)
+
+set -euo pipefail
+
+APP="${1:-turf-monster}"
+case "$APP" in
+  staging) HEROKU_APP="turf-monster-staging" ;;
+  -h|--help)
+    cat <<'USAGE'
+bin/deploy — ongoing Rails deploy to Heroku.
+
+Usage:
+  bin/deploy              # deploy to default app (turf-monster)
+  bin/deploy staging      # deploy to staging app
+  bin/deploy --skip-checks  # bypass pre-flight (last-resort)
+
+Env overrides:
+  SKIP_TESTS=1          # skip the local test run
+
+For the one-time v0.15.0 mainnet first deploy, follow MAINNET_LAUNCH.md
+instead — there's too much one-shot setup (program deploy, vault init,
+Stripe webhook wiring) to script.
+USAGE
+    exit 0
+    ;;
+  --skip-checks)
+    HEROKU_APP="turf-monster"
+    SKIP_CHECKS=1
+    ;;
+  *) HEROKU_APP="$APP" ;;
+esac
+
+bold() { printf '\033[1m%s\033[0m\n' "$*"; }
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+fail() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+warn() { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
+
+# ── Pre-flight ─────────────────────────────────────────────────────────────
+
+if [ "${SKIP_CHECKS:-0}" != "1" ]; then
+  bold "Pre-flight checks (app: $HEROKU_APP)"
+
+  # 1. Clean working tree
+  if ! git diff-index --quiet HEAD --; then
+    fail "Working tree has uncommitted changes. Commit or stash first."
+  fi
+  ok "Working tree clean"
+
+  # 2. On main branch (or explicitly overridden)
+  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  if [ "$BRANCH" != "main" ]; then
+    warn "Not on main (current: $BRANCH). Pushing this branch to Heroku's main."
+  else
+    ok "On main"
+  fi
+
+  # 3. Local main is up to date with origin
+  git fetch origin main --quiet
+  LOCAL=$(git rev-parse HEAD)
+  REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "")
+  if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ] && [ "$BRANCH" = "main" ]; then
+    warn "Local main differs from origin/main. Consider 'git push origin main' first."
+  else
+    ok "Synced with origin"
+  fi
+
+  # 4. IDL file present + hash matches Heroku's EXPECTED_IDL_HASH
+  IDL_FILE="config/turf_vault.idl.json"
+  if [ ! -f "$IDL_FILE" ]; then
+    fail "$IDL_FILE missing — re-pin per MAINNET_LAUNCH.md step 5."
+  fi
+  ok "IDL file present"
+
+  LOCAL_HASH=$(shasum -a 256 "$IDL_FILE" | awk '{print $1}')
+  REMOTE_HASH=$(heroku config:get EXPECTED_IDL_HASH --app "$HEROKU_APP" 2>/dev/null || echo "")
+  if [ -z "$REMOTE_HASH" ]; then
+    fail "EXPECTED_IDL_HASH not set on $HEROKU_APP — boot will fail (audit OPSEC-014). Set it before deploying."
+  fi
+  if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
+    fail "IDL hash drift: local=$LOCAL_HASH remote=$REMOTE_HASH. Re-run shasum + 'heroku config:set EXPECTED_IDL_HASH=...' before deploying."
+  fi
+  ok "IDL hash matches Heroku ($LOCAL_HASH)"
+
+  # 5. Verify SKIP_IDL_VERIFICATION isn't set (audit H4 — refuses to boot)
+  SKIP_IDL=$(heroku config:get SKIP_IDL_VERIFICATION --app "$HEROKU_APP" 2>/dev/null || echo "")
+  if [ -n "$SKIP_IDL" ]; then
+    fail "SKIP_IDL_VERIFICATION is set on $HEROKU_APP — audit H4 boot guard will refuse start. 'heroku config:unset SKIP_IDL_VERIFICATION --app $HEROKU_APP' first."
+  fi
+  ok "No SKIP_IDL_VERIFICATION override"
+
+  # 6. STRIPE_SECRET_KEY is live mode in prod
+  if [ "$HEROKU_APP" = "turf-monster" ]; then
+    STRIPE_KEY=$(heroku config:get STRIPE_SECRET_KEY --app "$HEROKU_APP" 2>/dev/null || echo "")
+    if [[ "$STRIPE_KEY" =~ ^sk_test_ ]]; then
+      fail "STRIPE_SECRET_KEY on prod starts with sk_test_ — must be sk_live_."
+    fi
+    ok "Stripe live mode"
+  fi
+
+  # 7. Tests pass locally (skip if --skip-tests was set, opt-in)
+  if [ "${SKIP_TESTS:-0}" != "1" ]; then
+    bold "Running tests"
+    if ! bin/rails test 2>&1 | tail -3; then
+      fail "Tests failed. Fix or set SKIP_TESTS=1 to bypass (not recommended)."
+    fi
+    ok "Tests pass"
+  fi
+fi
+
+# ── Deploy ─────────────────────────────────────────────────────────────────
+
+bold "Deploying to $HEROKU_APP"
+
+if [ "$BRANCH" = "main" ]; then
+  git push heroku main
+else
+  git push heroku "$BRANCH:main"
+fi
+ok "Pushed"
+
+# ── Migrations ─────────────────────────────────────────────────────────────
+
+PENDING=$(heroku run --app "$HEROKU_APP" --no-tty bin/rails db:migrate:status 2>/dev/null | grep -c '  down  ' || true)
+if [ "$PENDING" -gt 0 ]; then
+  bold "Running $PENDING pending migrations"
+  heroku run --app "$HEROKU_APP" bin/rails db:migrate
+  ok "Migrations complete"
+else
+  ok "No pending migrations"
+fi
+
+# ── Smoke check ────────────────────────────────────────────────────────────
+
+bold "Smoke check"
+URL=$(heroku info --app "$HEROKU_APP" --json 2>/dev/null | grep -o '"web_url":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ -z "$URL" ]; then
+  warn "Couldn't determine web URL. Skipping smoke check."
+else
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${URL}up" || echo "000")
+  if [ "$STATUS" = "200" ]; then
+    ok "Health check returned 200 ($URL)"
+  else
+    fail "Health check failed: $STATUS at ${URL}up"
+  fi
+fi
+
+bold "Deploy complete."
+echo "Next: heroku logs --tail --app $HEROKU_APP  (watch for VaultPaused / WithdrawDailyCapExceeded / 5xx)"

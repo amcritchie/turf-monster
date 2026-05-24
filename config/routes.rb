@@ -154,7 +154,8 @@ Rails.application.routes.draw do
       post :reset
       post :prepare_onchain_contest
       post :confirm_onchain_contest
-      post :payout_entry
+      # `post :payout_entry` was removed in the 2026-05-23 audit (H2) —
+      # see ContestsController for context.
     end
 
     # Contest chat — create (entrants/admins) + destroy (admin soft-delete).

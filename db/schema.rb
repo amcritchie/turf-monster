@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_20_160000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_24_031245) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -83,7 +83,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_20_160000) do
     t.integer "entry_number"
     t.string "onchain_entry_id"
     t.string "onchain_tx_signature"
-    t.string "payout_tx_signature"
     t.string "slug"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -443,8 +442,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_20_160000) do
     t.string "session_token"
     t.boolean "payment_risk_flag", default: false, null: false
     t.string "reference"
+    t.datetime "frozen_at"
+    t.string "frozen_reason"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
+    t.index ["frozen_at"], name: "index_users_on_frozen_at", where: "(frozen_at IS NOT NULL)"
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"
     t.index ["provider", "uid"], name: "index_users_on_provider_and_uid", unique: true, where: "(provider IS NOT NULL)"
     t.index ["reference"], name: "index_users_on_reference"
