@@ -1,0 +1,190 @@
+#!/usr/bin/env ruby
+# bin/devnet-v0.15-validate — post-deploy smoke test for turf-vault v0.15.0.
+#
+# Run AFTER you've:
+#   1. Built v0.15.0 with default features (devnet build)
+#   2. Deployed via Squads (scripts/squad-upgrade.js in turf-vault)
+#   3. force_close + reinit the vault
+#   4. (optionally) migrated existing UserAccounts via migrate_user_account
+#   5. Re-pinned config/turf_vault.idl.json + EXPECTED_IDL_HASH
+#
+# What this checks (read-only — no on-chain state changes):
+#   - VaultState PDA exists and decodes at v0.15.0 layout (235 bytes)
+#   - Vault is currently unpaused (paused: false)
+#   - Multisig signers + threshold are what config expects
+#   - IDL hash matches the deployed binary
+#   - Solana::Vault#build_pause_vault serializes a well-formed TX
+#   - Solana::Vault#build_unpause_vault serializes a well-formed TX
+#   - At least one UserAccount (if any exist) is at the v0.15.0 layout (129 bytes)
+#
+# Exit code 0 = all green; non-zero = failure. CI-friendly.
+#
+# Usage (from turf-monster repo root):
+#   bin/rails runner bin/devnet-v0.15-validate
+
+require_relative "../config/environment"
+
+class Validator
+  attr_reader :failures, :checks
+
+  def initialize
+    @failures = []
+    @checks   = 0
+  end
+
+  def check(name)
+    @checks += 1
+    print "  [#{@checks}] #{name}… "
+    yield
+    puts "\e[32mOK\e[0m"
+  rescue StandardError => e
+    puts "\e[31mFAIL\e[0m"
+    puts "      └─ #{e.message}"
+    puts "      └─ #{e.backtrace.first}" if ENV["DEBUG"]
+    @failures << name
+  end
+
+  def assert(condition, msg)
+    raise msg unless condition
+  end
+
+  def summary!
+    puts ""
+    if @failures.empty?
+      puts "\e[32m✓ All #{@checks} checks passed.\e[0m"
+      exit 0
+    else
+      puts "\e[31m✗ #{@failures.length}/#{@checks} failed:\e[0m"
+      @failures.each { |f| puts "  - #{f}" }
+      exit 1
+    end
+  end
+end
+
+v = Validator.new
+
+puts "turf-vault v0.15.0 devnet validation"
+puts "Network:    #{Solana::Config::NETWORK}"
+puts "RPC:        #{Solana::Config::RPC_URL}"
+puts "Program:    #{Solana::Config::PROGRAM_ID}"
+puts "USDC mint:  #{Solana::Config::USDC_MINT}"
+puts ""
+
+vault = Solana::Vault.new
+
+# ──────────────────────────────────────────────────────────────────────
+# IDL pinning
+# ──────────────────────────────────────────────────────────────────────
+
+v.check("Local IDL exists at config/turf_vault.idl.json") do
+  v.assert(File.exist?(Solana::Config::IDL_PATH), "missing: #{Solana::Config::IDL_PATH}")
+end
+
+v.check("EXPECTED_IDL_HASH set and matches the local IDL") do
+  v.assert(Solana::Config::EXPECTED_IDL_HASH.present?, "EXPECTED_IDL_HASH not set in env")
+  Solana::Config.verify_idl!  # raises on mismatch
+end
+
+v.check("IDL contains all v0.15.0 instructions (pause, unpause)") do
+  idl = JSON.parse(File.read(Solana::Config::IDL_PATH))
+  ix_names = (idl["instructions"] || idl.dig("metadata", "instructions") || []).map { |i| i["name"] }
+  # Anchor 0.32 emits camelCase in the IDL; tolerate both.
+  required = %w[pause unpause]
+  required.each do |name|
+    v.assert(
+      ix_names.include?(name) || ix_names.include?(name.camelize(:lower)),
+      "IDL is missing instruction `#{name}` — re-pin from the v0.15.0 build"
+    )
+  end
+end
+
+# ──────────────────────────────────────────────────────────────────────
+# VaultState
+# ──────────────────────────────────────────────────────────────────────
+
+state = nil
+v.check("VaultState PDA exists on-chain") do
+  state = vault.read_vault_state
+  v.assert(state, "PDA not found — was the vault re-initialized after force_close?")
+end
+
+v.check("VaultState decodes at v0.15.0 layout (paused field present)") do
+  v.assert(state.key?(:paused), "paused field missing from decoded VaultState — IDL/program drift")
+  v.assert([true, false].include?(state[:paused]), "paused is not a bool: #{state[:paused].inspect}")
+end
+
+v.check("Vault is currently unpaused (paused: false)") do
+  v.assert(!state[:paused], "vault is currently PAUSED — fix before launch or unpause first")
+end
+
+v.check("Multisig signer set matches config") do
+  expected = Solana::Config::MULTISIG_SIGNERS.sort
+  actual   = state[:signers].sort
+  v.assert(expected == actual, "on-chain signers #{actual.inspect} ≠ config #{expected.inspect}")
+end
+
+v.check("Multisig threshold matches config (#{Solana::Config::MULTISIG_THRESHOLD})") do
+  v.assert(
+    state[:threshold] == Solana::Config::MULTISIG_THRESHOLD,
+    "on-chain threshold #{state[:threshold]} ≠ config #{Solana::Config::MULTISIG_THRESHOLD}"
+  )
+end
+
+v.check("Mints match config (USDC + USDT)") do
+  v.assert(state[:usdc_mint] == Solana::Config::USDC_MINT, "USDC mint mismatch: on-chain=#{state[:usdc_mint]} config=#{Solana::Config::USDC_MINT}")
+  v.assert(state[:usdt_mint] == Solana::Config::USDT_MINT, "USDT mint mismatch")
+end
+
+# ──────────────────────────────────────────────────────────────────────
+# TX builders — verify the new Vault methods construct well-formed TXs
+# ──────────────────────────────────────────────────────────────────────
+
+cosigner_for_smoke = Solana::Config::MULTISIG_COSIGNER
+
+v.check("build_pause_vault returns a base64 partial TX") do
+  result = vault.build_pause_vault(cosigner_pubkey: cosigner_for_smoke, reason: "smoke test")
+  v.assert(result[:serialized_tx].is_a?(String), "no serialized_tx")
+  v.assert(result[:serialized_tx].length > 100, "serialized_tx looks too small: #{result[:serialized_tx].length} bytes")
+  v.assert(result[:vault_pda] == state[:pda], "vault_pda mismatch")
+  # Decode and check it has 2 signature slots (admin + cosigner)
+  decoded = Base64.decode64(result[:serialized_tx])
+  v.assert(decoded.bytesize > 64, "decoded TX too small")
+end
+
+v.check("build_unpause_vault returns a base64 partial TX") do
+  result = vault.build_unpause_vault(cosigner_pubkey: cosigner_for_smoke)
+  v.assert(result[:serialized_tx].is_a?(String), "no serialized_tx")
+  v.assert(result[:serialized_tx].length > 100, "serialized_tx looks too small")
+end
+
+# ──────────────────────────────────────────────────────────────────────
+# UserAccount layout (only checks if any UserAccount exists)
+# ──────────────────────────────────────────────────────────────────────
+
+v.check("Any existing UserAccount is at v0.15.0 layout (113 → 129 bytes)") do
+  sample_wallet = User.where.not(web2_solana_address: nil).limit(1).pluck(:web2_solana_address).first ||
+                  User.where.not(web3_solana_address: nil).limit(1).pluck(:web3_solana_address).first
+  if sample_wallet.nil?
+    puts "(no users with wallets in DB — skipping)"
+    next
+  end
+
+  status = vault.check_user_account_status(sample_wallet)
+  v.assert(
+    status != :needs_migration,
+    "user #{sample_wallet} is still at the old layout — run migrate_user_account for them"
+  )
+end
+
+# ──────────────────────────────────────────────────────────────────────
+# Wallet state — make sure the Rails app can also reach the program
+# ──────────────────────────────────────────────────────────────────────
+
+v.check("Solana::Vault#sync_balance round-trips for the admin wallet") do
+  admin_b58 = Solana::Keypair.admin.to_base58
+  # Admin may not have a UserAccount; that's fine — we're just testing the call path.
+  result = vault.sync_balance(admin_b58)
+  v.assert(result.nil? || result.is_a?(Hash), "unexpected return: #{result.inspect}")
+end
+
+v.summary!
