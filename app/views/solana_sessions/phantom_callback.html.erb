@@ -281,9 +281,7 @@
       dbg('Verify result', JSON.stringify(result));
       if (result.success) {
         cleanup();
-        if (result.new_user) {
-          localStorage.setItem('show_profile_modal', 'true');
-        }
+        window.handleSolanaVerifySuccess(result);
         dbg('OK', 'Login success! Redirecting...');
         window.location.href = result.redirect || '/';
       } else {

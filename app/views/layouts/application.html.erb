@@ -33,9 +33,20 @@
           }
         })();
 
-        // Invite link: save inviter on login
+        // Invite link: save inviter on login. Reads loggedIn from the
+        // canonical #session-context JSON block — same source the Alpine
+        // session store hydrates from. Doing it this way (rather than via
+        // $store.session) sidesteps a listener-ordering nuance: this
+        // turbo:load handler is registered BEFORE the session-store
+        // re-hydration handler below, so at this point in the tick the
+        // store may still hold the previous page's state. The JSON block
+        // is freshly server-rendered on every nav, so it's always current.
         document.addEventListener('turbo:load', function() {
-          var loggedIn = document.body.getAttribute('data-logged-in') === 'true';
+          var loggedIn = false;
+          var ctx = document.getElementById('session-context');
+          if (ctx) {
+            try { loggedIn = !!JSON.parse(ctx.textContent).loggedIn; } catch (e) {}
+          }
           var inviterSlug = localStorage.getItem('inviter_slug');
           if (loggedIn && inviterSlug) {
             fetch('/account/set_inviter', {
@@ -54,6 +65,22 @@
         // Alpine's defer script fires alpine:init BEFORE importmap modules execute.
         // These must be inline so they're available when Alpine processes the DOM.
         // The full wallet_provider.js module overwrites this stub after modules load.
+
+        // Mark a freshly-created user so the profile modal auto-opens after
+        // the post-verify page reload. Called from every site that
+        // successfully verifies a Solana sign-in: the inline connect()
+        // below (initial connect), solana_stores.js _reauth() (silent
+        // wallet-switch re-auth), and solana_sessions/phantom_callback
+        // (Phantom mobile deep-link return). The localStorage round-trip
+        // is intentional — it survives the window.location reload that
+        // ends each of those flows; the simpler alternative (Rails flash
+        // via SessionContext) would couple SessionContext to flash, which
+        // it currently avoids by design.
+        window.handleSolanaVerifySuccess = function(result) {
+          if (result && result.new_user) {
+            localStorage.setItem('show_profile_modal', 'true');
+          }
+        };
 
         // Minimal wallet provider stub — enough for Alpine x-data evaluation
         window.walletProvider = {
@@ -103,7 +130,7 @@
                   body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
                 })).json();
                 if (result.success) {
-                  if (result.new_user) localStorage.setItem('show_profile_modal', 'true');
+                  window.handleSolanaVerifySuccess(result);
                   window.location.href = result.redirect || '/';
                 } else {
                   this.error = result.error || 'Verification failed';
@@ -300,7 +327,22 @@
     <%= render "layouts/studio/head" %>
   </head>
 
-  <body x-data class="bg-page text-body min-h-screen" :class="{ 'dev-mode': $store.devMode }" data-logged-in="<%= logged_in? %>" data-user-id="<%= current_user&.id %>" data-wallet-address="<%= current_user&.solana_address %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>">
+  <%# Body data attrs (intentional, audited 2026-05-23):
+        - data-user-id:        read SYNCHRONOUSLY by the user-change-cleanup
+                               script below, BEFORE Alpine inits — moving to
+                               $store.session.userId would let stale per-user
+                               localStorage state leak into the next user's
+                               first paint
+        - data-wallet-address: read by app/javascript/solana_stores.js's
+                               wallet watcher (`_serverAddress()`). The
+                               session store's address would be equivalent
+                               (both are request-time snapshots) so the
+                               migration would be purely cosmetic
+        - data-solana-cluster: a build-time constant, used as a small inline
+                               default by the solanaModal store init
+        loggedIn is NO LONGER on the body — the one reader (invite-link
+        handler above) now consumes #session-context JSON directly. %>
+  <body x-data class="bg-page text-body min-h-screen" :class="{ 'dev-mode': $store.devMode }" data-user-id="<%= current_user&.id %>" data-wallet-address="<%= current_user&.solana_address %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>">
     <%# User-change cleanup. The seeds bar (and the welcome modal flag,
         and any other per-user localStorage state) used to leak across
         sessions when User A logged out and User B logged in in the

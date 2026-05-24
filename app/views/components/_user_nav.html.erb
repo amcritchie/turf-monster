@@ -10,12 +10,6 @@
 <% show_logout_link ||= false %>
 <% div2_html        ||= nil %>
 
-<style>
-  .username-cap { max-width: 5rem; }
-  @media (min-width: 400px) { .username-cap { max-width: 6rem; } }
-  @media (min-width: 768px) { .username-cap { max-width: 7rem; } }
-</style>
-
 <div class="flex gap-2">
   <% if logged_in? %>
     <%# Left column: Div 1 + Div 2 stacked %>
@@ -31,7 +25,7 @@
           <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>
           <%= render "components/theme_toggle_morph" %>
         </span>
-        <%= link_to account_link, class: "dm-coral username-cap text-heading font-semibold hover:text-primary transition-all duration-300 leading-none md:ml-0 ml-auto overflow-hidden whitespace-nowrap",
+        <%= link_to account_link, class: "dm-coral max-w-[5rem] min-[400px]:max-w-[6rem] md:max-w-[7rem] text-heading font-semibold hover:text-primary transition-all duration-300 leading-none md:ml-0 ml-auto overflow-hidden whitespace-nowrap",
               "x-bind:class": "scrolled ? 'text-base' : 'text-lg'",
               data: { username_display: true },
               "x-data": "{ overflows: false, init() { this.overflows = this.$el.scrollWidth > this.$el.clientWidth } }",

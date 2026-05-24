@@ -7,10 +7,9 @@
   </div>
 
   <% if @pending.empty? %>
-    <div class="empty-state">
-      <p class="text-secondary">No treasury transactions yet.</p>
-      <p class="text-muted text-sm mt-1">Settlement transactions requiring cosigning will appear here.</p>
-    </div>
+    <%= render "components/empty_state",
+          message: "No treasury transactions yet.",
+          detail:  "Settlement transactions requiring cosigning will appear here." %>
   <% else %>
     <div class="space-y-3">
       <% @pending.each do |tx| %>

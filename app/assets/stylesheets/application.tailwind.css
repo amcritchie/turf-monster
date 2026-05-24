@@ -9,11 +9,13 @@
   }
 }
 
-/* Toast notifications must stack above the sticky navbar (z-[110]).
-   studio-engine's _flash.html.erb sets these too low (60 / 55), and
-   #toast-container's z-index is an inline style — hence !important. */
-#toast-container { z-index: 120 !important; }
-.toast-page-blur { z-index: 115 !important; }
+/* Toast z-index defaults from studio-engine (60/55) sit below our
+   sticky navbar (z-[110]). Override via the engine's CSS custom
+   properties — no !important needed since studio-engine 0.4.10. */
+:root {
+  --studio-toast-z: 120;
+  --studio-toast-blur-z: 115;
+}
 
 /* Theme CSS custom properties are now engine-generated via studio_theme_css_tag */
 
@@ -84,8 +86,7 @@
     filter: brightness(0.9);
   }
   .btn-google {
-    @apply bg-white border border-strong shadow-sm;
-    color: #374151;
+    @apply bg-white border border-strong shadow-sm text-gray-700;
   }
   .btn-google:hover {
     @apply bg-gray-50;
@@ -258,7 +259,13 @@
   }
   .hold-btn.process .nudge-debug, .hold-btn.success .nudge-debug { opacity: 0; }
 
-  /* ── Dev Mode Debug Colors ── */
+  /* ── Dev Mode Debug Colors ──
+     `!important` is intentional here: these are diagnostic overlays
+     applied via `.dm-{color}` classes on arbitrary elements, and they
+     must override whatever the element's own background is. Scoped to
+     `.dev-mode` (toggled by Alpine $store.devMode) so production users
+     never see them. Don't refactor — `!important` is the right tool for
+     "diagnostic paint on top of everything." */
   .dev-mode .dm-blue     { background: rgba(100, 149, 237, 0.75) !important; } /* cornflowerblue */
   .dev-mode .dm-green    { background: rgba(144, 238, 144, 0.75) !important; } /* lightgreen */
   .dev-mode .dm-orange   { background: rgba(244, 164, 96, 0.75) !important; } /* sandybrown */

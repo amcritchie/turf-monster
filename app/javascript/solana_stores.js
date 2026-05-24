@@ -71,9 +71,7 @@ function registerWalletStore() {
         .then(function(r) { return r.json(); })
         .then(function(result) {
           if (result.success) {
-            if (result.new_user) {
-              localStorage.setItem('show_profile_modal', 'true');
-            }
+            window.handleSolanaVerifySuccess(result);
             window.location.reload();
           }
         })
