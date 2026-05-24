@@ -9,7 +9,9 @@
   <%= render layout: "hub_section", locals: { title: "Design" } do %>
     <%= render "hub_tile", name: "Theme",      url: admin_theme_path %>
     <%= render "hub_tile", name: "Navbar",     url: admin_navbar_path %>
-    <%= render "hub_tile", name: "Toast Test", url: toast_test_path %>
+    <% unless Rails.env.production? %>
+      <%= render "hub_tile", name: "Toast Test", url: toast_test_path %>
+    <% end %>
   <% end %>
 
   <%= render layout: "hub_section", locals: { title: "Sports" } do %>

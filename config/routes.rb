@@ -44,10 +44,16 @@ Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
   root "contests#world_cup"
 
-  get "toast_test", to: "toast_test#index"
-  post "toast_test/flash", to: "toast_test#trigger_flash"
+  # Prelaunch audit M14 (2026-05-24): dev-only tools — not drawn in production
+  # so they don't leak surface area on the public-mainnet app. Drawn in dev +
+  # test (so existing template URL helpers continue resolving in the test env).
+  unless Rails.env.production?
+    get  "toast_test",       to: "toast_test#index"
+    post "toast_test/flash", to: "toast_test#trigger_flash"
+    get  "seeds_lab",        to: "seeds_lab#index", as: :seeds_lab
+  end
+
   get "turf-totals-v1", to: "pages#turf_totals_v1", as: :turf_totals_v1
-  get "seeds_lab", to: "seeds_lab#index", as: :seeds_lab
 
   # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
   # vault USDC token account from the browser via Solana RPC, then displays
