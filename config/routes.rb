@@ -245,6 +245,12 @@ Rails.application.routes.draw do
   # Admin: Navbar review
   get "admin/navbar", to: "admin#navbar", as: :admin_navbar
 
+  # Admin: Modal gallery — grid of every modal partial / state variant
+  # rendered in isolated iframes (see AdminController::MODAL_VARIANTS).
+  get "admin/modals", to: "admin#modals", as: :admin_modals
+  get "admin/modals/preview/:modal_id", to: "admin#modal_preview", as: :admin_modal_preview
+  get "admin/modals/preview_crop", to: "admin#modal_preview_crop", as: :admin_modal_preview_crop
+
   # Admin: Mint USDC (devnet) + balance check
   post "admin/mint_usdc", to: "admin#mint_usdc", as: :admin_mint_usdc
   get "admin/usdc_balance", to: "admin#usdc_balance", as: :admin_usdc_balance

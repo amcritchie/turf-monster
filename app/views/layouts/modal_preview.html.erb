@@ -1,0 +1,137 @@
+<%#
+  Stripped layout for /admin/modals iframe previews. Mirrors the
+  essential pieces of application.html.erb (Tailwind, Alpine, the
+  modal host, the session + solanaModal stores) and DROPS everything
+  the modal partials don't need:
+
+    - LogRocket (script + identify)
+    - Invite link capture + set_inviter
+    - Devnet refresh-balance startup ping
+    - Navbar + phantom watcher + solana errors + flash
+    - User-change localStorage cleanup
+    - The max-w-7xl content wrapper (we yield directly under body)
+
+  Result: each preview iframe loads ~70% less JS/DOM than the full
+  layout, and the console doesn't spam TensorFlow.js kernel warnings.
+%>
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "Modal Preview" %></title>
+    <link rel="apple-touch-icon" href="/favicon.png">
+    <%# Solana web3 + nacl — needed by the username modal's signing path. %>
+    <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <% content_for :head do %>
+      <%# Session context — modal partials read $store.session. Reuses the
+          same #session-context JSON tag the application layout writes. %>
+      <script type="application/json" id="session-context"><%= wallet_context.to_json.html_safe %></script>
+      <script>
+        // Minimal wallet provider stub (full module overwrites on import).
+        window.walletProvider = {
+          isAvailable: function() {
+            return !!(window.__WALLET_KEYPAIR_SECRET) || !!(window.phantom && window.phantom.solana && window.phantom.solana.isPhantom);
+          },
+          isMobile: function() {
+            return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+          },
+          detect: function() { return null; }
+        };
+
+        // solanaWalletConnect — auth modal's Phantom button references this
+        // function in its x-data, so the stub must exist before Alpine inits.
+        // The preview never actually clicks Phantom; we just need the symbol.
+        window.solanaWalletConnect = function() {
+          return { connecting: false, error: null, statusText: 'Connect Wallet',
+                   walletAvailable: false, isMobile: false,
+                   async connect() { /* preview no-op */ } };
+        };
+
+        document.addEventListener('alpine:init', function() {
+          if (Alpine.store('solanaModal')) return;
+
+          Alpine.store('session', {
+            loggedIn: false, mode: 'guest', phantomLinked: false,
+            userId: null, address: '',
+            get isGuest() { return this.mode === 'guest'; },
+            get isWeb2()  { return this.mode === 'web2';  },
+            get isWeb3()  { return this.mode === 'web3';  },
+            hydrate: function(ctx) {
+              if (!ctx) return;
+              this.loggedIn = !!ctx.loggedIn;
+              this.mode = ctx.mode || 'guest';
+              this.phantomLinked = !!ctx.phantomLinked;
+              this.userId = ctx.userId || null;
+              this.address = ctx.address || '';
+            }
+          });
+          (function() {
+            var el = document.getElementById('session-context');
+            if (!el) return;
+            try { Alpine.store('session').hydrate(JSON.parse(el.textContent)); } catch (e) {}
+          })();
+
+          // solanaModal store — proxy over Alpine.store('modals') for the
+          // onchain-tx preview. Same shape as application.html.erb; kept
+          // in sync manually. If you touch one, touch the other.
+          var _txCluster = document.body ? (document.body.dataset.solanaCluster || 'devnet') : 'devnet';
+          var _txClusterParam = _txCluster === 'devnet' ? '?cluster=devnet' : '';
+          var _onCurrent = function() {
+            var c = Alpine.store('modals').current();
+            return (c && c.id === 'onchain-tx') ? c : null;
+          };
+          var _propRead = function(k, fb) { var c = _onCurrent(); return c ? (c.props[k] !== undefined ? c.props[k] : fb) : fb; };
+          Alpine.store('solanaModal', {
+            _recoveryHandler: null, _onCloseHandler: null,
+            show: function() { /* preview no-op */ },
+            success: function() { /* preview no-op */ },
+            error:   function() { /* preview no-op */ },
+            close:   function() { if (_onCurrent()) Alpine.store('modals').close(); },
+            setRecovery: function() { /* preview no-op */ },
+            _triggerRecovery: function() { /* preview no-op */ },
+            get visible()         { return !!_onCurrent(); },
+            get state()           { return _propRead('state', null); },
+            get title()           { return _propRead('title', ''); },
+            get message()         { return _propRead('message', ''); },
+            get txSignature()     { return _propRead('txSignature', null); },
+            get errorMessage()    { return _propRead('errorMessage', null); },
+            get seedsEarned()     { return _propRead('seedsEarned', 0); },
+            get seedsTotal()      { return _propRead('seedsTotal', 0); },
+            get seedsLevel()      { return _propRead('seedsLevel', 0); },
+            get lobbyUrl()        { return _propRead('lobbyUrl', null); },
+            get recoveryLabel()   { return _propRead('recoveryLabel', null); },
+            get recoveryPhantom() { return _propRead('recoveryPhantom', false); },
+            get explorerUrl()     { var tx = this.txSignature; return tx ? ('https://explorer.solana.com/tx/' + tx + _txClusterParam) : null; }
+          });
+        });
+      </script>
+    <% end %>
+    <%= render "layouts/studio/head" %>
+  </head>
+
+  <body x-data class="bg-page text-body" data-logged-in="<%= logged_in? %>" data-user-id="<%= current_user&.id %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>">
+    <%= yield %>
+    <%= render "studio/modals/host" do %>
+      <template x-if="$store.modals.current().id === 'check-email'">
+        <%= render "modals/check_email" %>
+      </template>
+      <template x-if="$store.modals.current().id === 'auth'">
+        <%= render "modals/auth" %>
+      </template>
+      <template x-if="$store.modals.current().id === 'onchain-tx'">
+        <%= render "modals/onchain_tx" %>
+      </template>
+      <template x-if="$store.modals.current().id === 'crop-photo'">
+        <%= render "modals/crop_photo" %>
+      </template>
+      <% if logged_in? %>
+        <template x-if="$store.modals.current().id === 'profile'">
+          <%= render "modals/profile" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'username'">
+          <%= render "modals/username" %>
+        </template>
+      <% end %>
+    <% end %>
+  </body>
+</html>
