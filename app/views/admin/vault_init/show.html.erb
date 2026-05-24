@@ -1,0 +1,188 @@
+<% content_for :title, "Vault Init" %>
+
+<div class="max-w-3xl mx-auto px-4 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-heading">Vault Init</h1>
+    <span class="font-mono text-xs text-muted"><%= @network %></span>
+  </div>
+
+  <% if @vault %>
+    <div class="card p-4 mb-6">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Initialized</span>
+        <span class="font-mono text-xs text-muted"><%= @vault[:pda] %></span>
+      </div>
+      <p class="text-secondary text-sm mb-3">VaultState already exists on-chain. Nothing more to do.</p>
+
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">Threshold</dt>
+          <dd class="font-mono"><%= @vault[:threshold] %>-of-<%= @vault[:signers].length %></dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">Paused</dt>
+          <dd class="font-mono"><%= @vault[:paused] ? "yes" : "no" %></dd>
+        </div>
+        <div class="sm:col-span-2">
+          <dt class="text-muted text-xs uppercase tracking-wide">Signers</dt>
+          <dd>
+            <ul class="font-mono text-xs space-y-1 mt-1">
+              <% @vault[:signers].each_with_index do |s, i| %>
+                <li><span class="text-muted">#<%= i + 1 %></span> <%= s %></li>
+              <% end %>
+            </ul>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">USDC mint</dt>
+          <dd class="font-mono text-xs break-all"><%= @vault[:usdc_mint] %></dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">USDT mint</dt>
+          <dd class="font-mono text-xs break-all"><%= @vault[:usdt_mint] %></dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">Vault USDC ATA</dt>
+          <dd class="font-mono text-xs break-all"><%= @vault[:vault_usdc] %></dd>
+        </div>
+        <div>
+          <dt class="text-muted text-xs uppercase tracking-wide">Vault USDT ATA</dt>
+          <dd class="font-mono text-xs break-all"><%= @vault[:vault_usdt] %></dd>
+        </div>
+      </dl>
+    </div>
+  <% else %>
+    <div class="card p-4 mb-6">
+      <p class="text-secondary text-sm mb-4">
+        The vault is uninitialized. Initialization can only be done by INIT_AUTHORITY's
+        Phantom wallet — the server bot key cannot sign this TX. The bot will fee-pay
+        and partially sign; Phantom then cosigns and submits.
+      </p>
+
+      <form id="vault-init-form" class="space-y-4" onsubmit="return false;">
+        <div>
+          <label class="label-upper text-xs">Creator (INIT_AUTHORITY)</label>
+          <input type="text" name="creator_pubkey" value="<%= @init_authority %>"
+                 class="input input-bordered w-full font-mono text-xs" />
+          <p class="text-muted text-xs mt-1">Must match the Phantom wallet you connect below.</p>
+        </div>
+
+        <% 3.times do |i| %>
+          <div>
+            <label class="label-upper text-xs">Signer <%= i + 1 %></label>
+            <input type="text" name="signer_<%= i + 1 %>" value="<%= @default_signers[i] %>"
+                   class="input input-bordered w-full font-mono text-xs" />
+          </div>
+        <% end %>
+
+        <div>
+          <label class="label-upper text-xs">Threshold</label>
+          <input type="number" name="threshold" value="<%= @default_threshold %>" min="1" max="3"
+                 class="input input-bordered w-24" />
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button id="vault-init-btn" type="button" onclick="initVault()" class="btn btn-primary">
+            Connect Phantom + Sign
+          </button>
+          <span id="vault-init-status" class="text-sm text-secondary"></span>
+        </div>
+      </form>
+    </div>
+  <% end %>
+
+  <div class="json-debug mt-8">
+    <pre><%= JSON.pretty_generate(@vault || { status: "uninitialized", init_authority: @init_authority }) %></pre>
+  </div>
+</div>
+
+<div id="cosign-config" data-rpc-url="<%= @rpc_url %>" style="display:none;"></div>
+
+<% unless @vault %>
+<script>
+(function() {
+  var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+  var rpcUrl = document.getElementById('cosign-config').dataset.rpcUrl;
+
+  function setStatus(msg, isError) {
+    var el = document.getElementById('vault-init-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.style.color = isError ? '#dc2626' : '';
+  }
+
+  function disableBtn(disabled) {
+    var btn = document.getElementById('vault-init-btn');
+    if (btn) btn.disabled = disabled;
+  }
+
+  window.initVault = async function() {
+    var provider = window.solana;
+    if (!provider?.isPhantom) {
+      alert('Phantom wallet is required.');
+      return;
+    }
+    var form = document.getElementById('vault-init-form');
+    var fd = new FormData(form);
+    var payload = {
+      creator_pubkey: fd.get('creator_pubkey'),
+      signer_1: fd.get('signer_1'),
+      signer_2: fd.get('signer_2'),
+      signer_3: fd.get('signer_3'),
+      threshold: fd.get('threshold')
+    };
+
+    disableBtn(true);
+    setStatus('Building transaction…');
+
+    try {
+      var buildResp = await fetch('/admin/vault_init/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify(payload)
+      });
+      var buildData = await buildResp.json();
+      if (!buildResp.ok) throw new Error(buildData.error || 'Build failed');
+
+      setStatus('Connecting Phantom…');
+      await provider.connect();
+      if (provider.publicKey.toBase58() !== payload.creator_pubkey) {
+        throw new Error('Connected Phantom (' + provider.publicKey.toBase58() + ') ≠ creator (' + payload.creator_pubkey + ')');
+      }
+
+      setStatus('Awaiting Phantom signature…');
+      var txBytes = Uint8Array.from(atob(buildData.serialized_tx), function(c) { return c.charCodeAt(0); });
+      var tx = solanaWeb3.Transaction.from(txBytes);
+      var signed = await provider.signTransaction(tx);
+
+      setStatus('Submitting to Solana…');
+      var connection = new solanaWeb3.Connection(rpcUrl);
+      var signature = await connection.sendRawTransaction(signed.serialize());
+      await Promise.race([
+        connection.confirmTransaction(signature, 'confirmed'),
+        new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Confirmation timed out after 60s')); }, 60000); })
+      ]);
+
+      setStatus('Verifying on server…');
+      var confirmResp = await fetch('/admin/vault_init/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify({
+          creator_pubkey: payload.creator_pubkey,
+          tx_signature: signature
+        })
+      });
+      var confirmData = await confirmResp.json();
+      if (!confirmResp.ok) throw new Error(confirmData.error || 'Verification failed');
+
+      setStatus('Vault initialized — reloading…');
+      setTimeout(function() { window.location.reload(); }, 800);
+    } catch (err) {
+      console.error('Vault init failed:', err);
+      setStatus('Error: ' + err.message, true);
+      disableBtn(false);
+    }
+  };
+})();
+</script>
+<% end %>

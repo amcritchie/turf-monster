@@ -204,6 +204,86 @@ module Solana
       { signature: signature, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
+    # Build a partially-signed `initialize` transaction for Phantom to cosign.
+    #
+    # Mainnet `initialize` requires `admin == INIT_AUTHORITY` — a specific
+    # Phantom keypair we don't (and shouldn't) hold server-side. This variant
+    # puts `creator_pubkey` in the instruction's admin slot (so the on-chain
+    # check sees Alex's Phantom) while the server's bot still fee-pays the TX.
+    # The bot signs server-side; the creator signature slot is left empty for
+    # Phantom to fill via `cosignTransaction()`.
+    #
+    # Returns { serialized_tx:, vault_pda: } — base64 partial TX + PDA b58.
+    def build_initialize_vault(creator_pubkey:, signers:, threshold:)
+      admin = Keypair.admin
+      creator_bytes = Keypair.decode_base58(creator_pubkey)
+      vault_pda, _ = vault_state_pda
+      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
+      usdt_mint = Keypair.decode_base58(Config::USDT_MINT)
+      vault_usdc, _ = vault_usdc_pda
+      vault_usdt, _ = vault_usdt_pda
+
+      data = Transaction.anchor_discriminator("initialize") +
+             signers.map { |s| Borsh.encode_pubkey(Keypair.decode_base58(s)) }.join +
+             Borsh.encode_u8(threshold)
+
+      tx = build_tx(admin)  # bot is fee payer (signs server-side)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: creator_bytes, is_signer: true, is_writable: true },  # admin = Phantom (INIT_AUTHORITY on mainnet)
+          { pubkey: vault_pda, is_signer: false, is_writable: true },
+          { pubkey: usdc_mint, is_signer: false, is_writable: false },
+          { pubkey: usdt_mint, is_signer: false, is_writable: false },
+          { pubkey: vault_usdc, is_signer: false, is_writable: true },
+          { pubkey: vault_usdt, is_signer: false, is_writable: true },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      serialized = tx.serialize_partial_base64(additional_signers: [creator_bytes])
+      { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
+    end
+
+    # Read the on-chain VaultState account. Returns nil if not yet initialized.
+    # VaultState layout (v0.15.0): 8 disc + 3*32 signers + 1 threshold + 32 usdc_mint
+    # + 32 usdt_mint + 32 vault_usdc + 32 vault_usdt + 1 bump + 1 paused = 235 bytes.
+    def read_vault_state(commitment: "confirmed")
+      pda, _ = vault_state_pda
+      info = client.get_account_info(Keypair.encode_base58(pda), commitment: commitment)
+      return nil unless info&.dig("value")
+
+      data = Base64.decode64(info["value"]["data"][0])
+      offset = 8
+
+      signers = 3.times.map do
+        pk, offset = Borsh.decode_pubkey(data, offset)
+        Keypair.encode_base58(pk)
+      end
+      threshold, offset   = Borsh.decode_u8(data, offset)
+      usdc_mint, offset   = Borsh.decode_pubkey(data, offset)
+      usdt_mint, offset   = Borsh.decode_pubkey(data, offset)
+      vault_usdc, offset  = Borsh.decode_pubkey(data, offset)
+      vault_usdt, offset  = Borsh.decode_pubkey(data, offset)
+      bump   = data[offset].ord; offset += 1
+      paused = data.length > offset ? data[offset].ord == 1 : false  # `paused` added v0.15.0
+
+      {
+        pda: Keypair.encode_base58(pda),
+        signers: signers,
+        threshold: threshold,
+        usdc_mint: Keypair.encode_base58(usdc_mint),
+        usdt_mint: Keypair.encode_base58(usdt_mint),
+        vault_usdc: Keypair.encode_base58(vault_usdc),
+        vault_usdt: Keypair.encode_base58(vault_usdt),
+        bump: bump,
+        paused: paused
+      }
+    end
+
     # Force-close the vault account (migration only — closes old-schema vault)
     # Requires 2-of-3 multisig: cosigner_keypair must be a second signer
     def force_close_vault(cosigner_keypair: nil)

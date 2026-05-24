@@ -1,0 +1,121 @@
+module Admin
+  # One-time vault-initialize UI. The on-chain `initialize` instruction is
+  # gated to `INIT_AUTHORITY` on mainnet builds — a Phantom keypair the
+  # server intentionally does not hold. This controller builds a partially-
+  # signed TX (admin bot pays fees), hands it to the browser for Phantom to
+  # cosign, then verifies the resulting on-chain TX.
+  class VaultInitController < ApplicationController
+    before_action :require_admin
+
+    # turf-vault v0.15.0+: hardcoded INIT_AUTHORITY for mainnet `initialize`.
+    # Mirrors `state.rs::INIT_AUTHORITY` — keep in sync if it ever rotates.
+    INIT_AUTHORITY = "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr".freeze
+
+    # Default signer set + threshold seeded into the form. Matches the
+    # 2-of-3 multisig documented in turf-vault/CLAUDE.md.
+    DEFAULT_SIGNERS = [
+      "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ", # Alex Bot
+      "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr", # Alex (Phantom)
+      "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR"  # Mason
+    ].freeze
+    DEFAULT_THRESHOLD = 2
+
+    def show
+      @vault = Solana::Vault.new.read_vault_state
+      @init_authority = INIT_AUTHORITY
+      @default_signers = DEFAULT_SIGNERS
+      @default_threshold = DEFAULT_THRESHOLD
+      @rpc_url = Solana::Config::RPC_URL
+      @network = Solana::Config::NETWORK
+    end
+
+    def build
+      rescue_and_log do
+        raise "Vault already initialized" if Solana::Vault.new.read_vault_state
+
+        creator   = params[:creator_pubkey].to_s.strip
+        signers   = [params[:signer_1], params[:signer_2], params[:signer_3]].map { |s| s.to_s.strip }
+        threshold = params[:threshold].to_i
+
+        validate_init_params!(creator, signers, threshold)
+
+        result = Solana::Vault.new.build_initialize_vault(
+          creator_pubkey: creator,
+          signers: signers,
+          threshold: threshold
+        )
+
+        render json: result.merge(creator_pubkey: creator)
+      end
+    rescue StandardError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
+    def confirm
+      rescue_and_log do
+        creator       = params[:creator_pubkey].to_s.strip
+        tx_signature  = params[:tx_signature].to_s.strip
+        raise "creator_pubkey required" if creator.blank?
+        raise "tx_signature required"   if tx_signature.blank?
+
+        vault_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.vault_state_pda.first)
+
+        Solana::TxVerifier.verify!(
+          signature: tx_signature,
+          instruction_name: "initialize",
+          signer_pubkey: creator,
+          writable_pubkey: vault_pda_b58
+        )
+
+        Rails.cache.delete(self.class.uninitialized_cache_key)
+
+        render json: { status: "ok", tx_signature: tx_signature, vault_pda: vault_pda_b58 }
+      end
+    rescue Solana::TxVerifier::VerificationError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    rescue StandardError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
+    # Cached on-chain check for the navbar badge — avoid an RPC call on every
+    # admin page render. Bust on successful #confirm.
+    def self.vault_uninitialized?
+      Rails.cache.fetch(uninitialized_cache_key, expires_in: 1.hour) do
+        Solana::Vault.new.read_vault_state.nil?
+      end
+    rescue StandardError
+      false # never block the navbar render on an RPC blip
+    end
+
+    def self.uninitialized_cache_key
+      "vault_init:uninitialized:#{Solana::Config::PROGRAM_ID}"
+    end
+
+    private
+
+    def validate_init_params!(creator, signers, threshold)
+      raise "creator_pubkey required" if creator.blank?
+      raise "Three signer addresses required" if signers.any?(&:blank?)
+      raise "Signers must be distinct" if signers.uniq.length != 3
+      raise "Threshold must be 1, 2, or 3" unless (1..3).cover?(threshold)
+      raise "creator_pubkey must be one of the signers" unless signers.include?(creator)
+
+      # On mainnet the on-chain `initialize` will reject any creator that
+      # isn't INIT_AUTHORITY — check up front so the user sees a clear
+      # error before the TX round-trips.
+      if Solana::Config.mainnet? && creator != INIT_AUTHORITY
+        raise "creator_pubkey must equal INIT_AUTHORITY (#{INIT_AUTHORITY}) on mainnet"
+      end
+
+      ([creator] + signers).each do |pk|
+        raise "Invalid pubkey: #{pk}" unless valid_base58_pubkey?(pk)
+      end
+    end
+
+    def valid_base58_pubkey?(str)
+      Solana::Keypair.decode_base58(str).bytesize == 32
+    rescue StandardError
+      false
+    end
+  end
+end

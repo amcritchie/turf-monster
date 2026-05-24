@@ -201,6 +201,11 @@ Rails.application.routes.draw do
     post "free_entries/:user_slug/mint",       to: "free_entries#mint",     as: :mint_free_entries
     post "free_entries/mint_all",              to: "free_entries#mint_all", as: :mint_all_free_entries
 
+    # Vault init (one-time mainnet setup — Phantom cosigns as INIT_AUTHORITY)
+    get  "vault_init",                         to: "vault_init#show",       as: :vault_init
+    post "vault_init/build",                   to: "vault_init#build",      as: :build_vault_init
+    post "vault_init/confirm",                 to: "vault_init#confirm",    as: :confirm_vault_init
+
     # Seasons (on-chain seed schedule template)
     get  "seasons",                            to: "seasons#index",         as: :seasons
     post "seasons",                            to: "seasons#create"
