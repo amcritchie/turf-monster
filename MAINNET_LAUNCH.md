@@ -158,7 +158,8 @@ heroku config:set --app turf-monster \
   EXPECTED_IDL_HASH=<from step 5> \
   MANAGED_WALLET_ENCRYPTION_KEY=<freshly-generated 64 hex chars> \
   STRIPE_SECRET_KEY=sk_live_... \
-  STRIPE_WEBHOOK_SECRET=whsec_...
+  STRIPE_WEBHOOK_SECRET=whsec_... \
+  SENTRY_DSN=https://<key>@<org>.ingest.us.sentry.io/<project>  # prelaunch audit H3
 
 # Sanity: SKIP_IDL_VERIFICATION MUST be unset (the v0.15.0 boot guard refuses
 # to start production if this is set — see audit H4).
