@@ -2,13 +2,17 @@
   "address": "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.14.0",
+    "version": "0.15.0",
     "spec": "0.1.0",
     "description": "Solana escrow program for contest entry fees and prize distribution"
   },
   "instructions": [
     {
       "name": "close_contest",
+      "docs": [
+        "Close a settled contest's account, reclaiming rent to the admin.",
+        "1-of-3 vault signer."
+      ],
       "discriminator": [
         139,
         238,
@@ -51,6 +55,10 @@
     },
     {
       "name": "create_contest",
+      "docs": [
+        "Create a new contest. Dual-signer: payer (admin bot, pays SOL rent) +",
+        "creator (Phantom wallet, signs prize-pool USDC transfer from their ATA)."
+      ],
       "discriminator": [
         129,
         189,
@@ -181,6 +189,10 @@
     },
     {
       "name": "create_season",
+      "docs": [
+        "Create a Season with an immutable per-entry seed-award schedule.",
+        "1-of-3 vault signer."
+      ],
       "discriminator": [
         38,
         108,
@@ -276,6 +288,11 @@
     },
     {
       "name": "create_user_account",
+      "docs": [
+        "Create a new per-wallet UserAccount PDA. Permissionless payer (any",
+        "wallet can pay rent for any user's account); the username is set at",
+        "creation time and can later be changed via `set_username`."
+      ],
       "discriminator": [
         146,
         68,
@@ -336,6 +353,10 @@
     },
     {
       "name": "deposit",
+      "docs": [
+        "User → vault SPL token transfer. Credits UserAccount.balance.",
+        "Blocked when vault is paused."
+      ],
       "discriminator": [
         242,
         35,
@@ -415,6 +436,11 @@
     },
     {
       "name": "enter_contest",
+      "docs": [
+        "Managed-wallet entry: debits UserAccount.balance for the entry fee",
+        "and creates the ContestEntry. 1-of-3 vault signer pays rent.",
+        "Blocked when vault is paused."
+      ],
       "discriminator": [
         124,
         21,
@@ -552,6 +578,10 @@
     },
     {
       "name": "enter_contest_direct",
+      "docs": [
+        "Phantom-wallet entry: user signs an SPL transfer from their ATA →",
+        "vault USDC PDA. Admin pays SOL rent. Blocked when vault is paused."
+      ],
       "discriminator": [
         72,
         147,
@@ -715,6 +745,10 @@
     },
     {
       "name": "enter_contest_direct_with_token",
+      "docs": [
+        "Phantom-wallet entry funded by consuming an EntryTokenAccount.",
+        "User signs; admin pays SOL rent. Blocked when vault is paused."
+      ],
       "discriminator": [
         164,
         30,
@@ -865,6 +899,11 @@
     },
     {
       "name": "enter_contest_with_token",
+      "docs": [
+        "Managed-wallet entry funded by consuming an EntryTokenAccount",
+        "(no USDC charged). Wallet must co-sign to consent (OPSEC-004).",
+        "Blocked when vault is paused."
+      ],
       "discriminator": [
         226,
         96,
@@ -1016,6 +1055,11 @@
     },
     {
       "name": "force_close_vault",
+      "docs": [
+        "Close the existing VaultState account to enable a schema migration.",
+        "Requires 2-of-3. Only succeeds if the on-chain data is at a DIFFERENT",
+        "size than the current schema (won't brick a healthy vault)."
+      ],
       "discriminator": [
         229,
         45,
@@ -1062,6 +1106,10 @@
     },
     {
       "name": "initialize",
+      "docs": [
+        "One-time setup of the singleton vault. Only callable by INIT_AUTHORITY",
+        "with the canonical USDC + USDT mints for this build."
+      ],
       "discriminator": [
         175,
         175,
@@ -1075,11 +1123,18 @@
       "accounts": [
         {
           "name": "admin",
+          "docs": [
+            "Must be INIT_AUTHORITY in mainnet builds (any signer in dev/test).",
+            "Pays SOL rent for VaultState + the two token accounts."
+          ],
           "writable": true,
           "signer": true
         },
         {
           "name": "vault_state",
+          "docs": [
+            "The new VaultState account. PDA at [b\"vault\"]."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -1097,13 +1152,22 @@
           }
         },
         {
-          "name": "usdc_mint"
+          "name": "usdc_mint",
+          "docs": [
+            "USDC mint. In mainnet builds, must equal EXPECTED_USDC_MINT."
+          ]
         },
         {
-          "name": "usdt_mint"
+          "name": "usdt_mint",
+          "docs": [
+            "USDT mint. In mainnet builds, must equal EXPECTED_USDT_MINT."
+          ]
         },
         {
           "name": "vault_usdc",
+          "docs": [
+            "Vault's USDC token account. PDA at [b\"vault_usdc\"], authority = vault_state."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -1127,6 +1191,9 @@
         },
         {
           "name": "vault_usdt",
+          "docs": [
+            "Vault's USDT token account. PDA at [b\"vault_usdt\"], authority = vault_state."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -1179,6 +1246,11 @@
     },
     {
       "name": "migrate_user_account",
+      "docs": [
+        "Resize a UserAccount PDA to the current v0.15.0 layout. Handles",
+        "both v0.13 (81 bytes, pre-username) and v0.14 (113 bytes) source",
+        "layouts. Idempotent. Admin-only."
+      ],
       "discriminator": [
         198,
         152,
@@ -1248,6 +1320,11 @@
     },
     {
       "name": "mint_entry_token",
+      "docs": [
+        "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer.",
+        "`sequence` is supplied by the caller to avoid PDA collisions when",
+        "minting multiple tokens per user."
+      ],
       "discriminator": [
         182,
         192,
@@ -1348,7 +1425,68 @@
       ]
     },
     {
+      "name": "pause",
+      "docs": [
+        "Emergency stop: blocks deposit / withdraw / enter_contest*. 2-of-3.",
+        "`reason` is logged on-chain (UTF-8 zero-padded to 64 bytes)."
+      ],
+      "discriminator": [
+        211,
+        22,
+        221,
+        251,
+        74,
+        121,
+        193,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "reason",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "set_username",
+      "docs": [
+        "Set / overwrite the username on a UserAccount. Signed by the",
+        "account owner — no admin involvement."
+      ],
       "discriminator": [
         103,
         131,
@@ -1400,6 +1538,11 @@
     },
     {
       "name": "settle_contest",
+      "docs": [
+        "Grade a contest: assign ranks + credit payouts to winners' UserAccounts.",
+        "2-of-3 (admin + cosigner). Uses remaining_accounts for variable-length",
+        "settlement arrays. Cap: total payouts ≤ entry_fees + prizes."
+      ],
       "discriminator": [
         79,
         122,
@@ -1456,7 +1599,58 @@
       ]
     },
     {
+      "name": "unpause",
+      "docs": [
+        "Lift the emergency stop. 2-of-3."
+      ],
+      "discriminator": [
+        169,
+        144,
+        4,
+        38,
+        10,
+        141,
+        188,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "update_signers",
+      "docs": [
+        "Rotate the multisig signer set or change the threshold. 2-of-3",
+        "required; at least one of the two cosigners must remain in the new",
+        "set (OPSEC-027 continuity)."
+      ],
       "discriminator": [
         228,
         82,
@@ -1514,6 +1708,11 @@
     },
     {
       "name": "withdraw",
+      "docs": [
+        "Vault → user SPL token transfer. Debits UserAccount.balance.",
+        "Capped at $100 per rolling 24h window per user (v0.15.0).",
+        "Blocked when vault is paused."
+      ],
       "discriminator": [
         183,
         18,
@@ -1762,16 +1961,35 @@
       "code": 6017,
       "name": "SignerContinuityRequired",
       "msg": "New signer set must retain at least one current cosigner"
+    },
+    {
+      "code": 6018,
+      "name": "VaultPaused",
+      "msg": "Vault is paused — user-facing funds operations are temporarily disabled"
+    },
+    {
+      "code": 6019,
+      "name": "WithdrawDailyCapExceeded",
+      "msg": "Withdrawal would exceed the $100 / 24h per-user cap"
     }
   ],
   "types": [
     {
       "name": "Contest",
+      "docs": [
+        "One per contest. Holds entry-fee schedule, payout tiers, accumulated",
+        "fees, status, and the season the contest is bound to.",
+        "",
+        "PDA seeds: [b\"contest\", contest_id]  (contest_id = SHA256 of Rails slug)"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "contest_id",
+            "docs": [
+              "SHA256(Rails slug). Stable, opaque, 32 bytes."
+            ],
             "type": {
               "array": [
                 "u8",
@@ -1781,26 +1999,45 @@
           },
           {
             "name": "prizes",
+            "docs": [
+              "Guaranteed prize amount the creator pre-funds at create time."
+            ],
             "type": "u64"
           },
           {
             "name": "entry_fee",
+            "docs": [
+              "Entry fee per entry, 6-decimal USDC."
+            ],
             "type": "u64"
           },
           {
             "name": "entry_fees",
+            "docs": [
+              "Total entry fees collected so far. Increments on every paid entry.",
+              "Settlement is capped at `entry_fees + prizes`."
+            ],
             "type": "u64"
           },
           {
             "name": "max_entries",
+            "docs": [
+              "Maximum number of entries this contest accepts."
+            ],
             "type": "u32"
           },
           {
             "name": "current_entries",
+            "docs": [
+              "Number of entries currently in the contest."
+            ],
             "type": "u32"
           },
           {
             "name": "status",
+            "docs": [
+              "Current lifecycle state."
+            ],
             "type": {
               "defined": {
                 "name": "ContestStatus"
@@ -1809,24 +2046,41 @@
           },
           {
             "name": "payout_amounts",
+            "docs": [
+              "USDC paid per rank, 6-decimal. Must sum to `prizes` (validated at",
+              "create_contest). Max 10 ranks."
+            ],
             "type": {
               "vec": "u64"
             }
           },
           {
             "name": "admin",
+            "docs": [
+              "Payer pubkey from create_contest (admin bot, pays SOL rent)."
+            ],
             "type": "pubkey"
           },
           {
             "name": "creator",
+            "docs": [
+              "Creator pubkey (signs the prizes USDC transfer from their ATA)."
+            ],
             "type": "pubkey"
           },
           {
             "name": "season_id",
+            "docs": [
+              "Season this contest is bound to (OPSEC-023). Pins the seed schedule",
+              "so a caller can't substitute a richer-reward season at entry time."
+            ],
             "type": "u32"
           },
           {
             "name": "bump",
+            "docs": [
+              "PDA bump."
+            ],
             "type": "u8"
           }
         ]
@@ -1834,6 +2088,12 @@
     },
     {
       "name": "ContestEntry",
+      "docs": [
+        "One per (contest, wallet, entry_num). A user can have multiple entries",
+        "per contest (Rails caps at 3); each gets its own PDA.",
+        "",
+        "PDA seeds: [b\"entry\", contest_id, wallet.as_ref(), entry_num.to_le_bytes()]"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1879,6 +2139,12 @@
     },
     {
       "name": "ContestStatus",
+      "docs": [
+        "Lifecycle of a Contest.",
+        "Open    — accepting entries",
+        "Locked  — entries closed, awaiting results (no instruction sets this yet)",
+        "Settled — graded, payouts credited"
+      ],
       "type": {
         "kind": "enum",
         "variants": [
@@ -1896,6 +2162,9 @@
     },
     {
       "name": "EntryStatus",
+      "docs": [
+        "Status of a single contest entry. Settle transitions Active → Won/Lost."
+      ],
       "type": {
         "kind": "enum",
         "variants": [
@@ -2013,6 +2282,26 @@
     },
     {
       "name": "Settlement",
+      "docs": [
+        "`settle_contest` — grade a contest and credit payouts.",
+        "",
+        "Takes a `Vec<Settlement>` (one per entry, including losers with payout=0)",
+        "and a pair of remaining_accounts per Settlement: [user_account, contest_entry].",
+        "Verifies each pair against the expected PDA seeds, then:",
+        "- Adds `payout` to UserAccount.balance + total_won",
+        "- Sets ContestEntry rank + payout, transitions Active → Won/Lost",
+        "",
+        "Cap: total payouts ≤ contest.entry_fees + contest.prizes. Anchor's",
+        "remaining_accounts pattern lets us settle a variable number of entries",
+        "in one TX (up to compute-budget limits — ~25-30 entries per call on mainnet).",
+        "",
+        "Auth: 2-of-3 (admin + cosigner). Settle is the only path that credits",
+        "balances to users, so it requires the highest authorization.",
+        "",
+        "Refusals:",
+        "- Duplicate (wallet, entry_num) in the Vec — would double-credit a user",
+        "- A ContestEntry already settled (status != Active) — defense in depth"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2037,35 +2326,67 @@
     },
     {
       "name": "UserAccount",
+      "docs": [
+        "One per user wallet. Holds the user's vault balance plus lifetime",
+        "accounting and v0.15.0's daily-withdraw circuit breaker.",
+        "",
+        "PDA seeds: [b\"user\", wallet.as_ref()]"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "wallet",
+            "docs": [
+              "Owner wallet."
+            ],
             "type": "pubkey"
           },
           {
             "name": "balance",
+            "docs": [
+              "Current spendable balance, 6-decimal USDC. Credited on deposit and",
+              "on `settle_contest` winnings; debited on withdraw and on",
+              "`enter_contest` (managed-wallet entry fee)."
+            ],
             "type": "u64"
           },
           {
             "name": "total_deposited",
+            "docs": [
+              "Lifetime cumulative deposits. Audit/UX only — never decremented."
+            ],
             "type": "u64"
           },
           {
             "name": "total_withdrawn",
+            "docs": [
+              "Lifetime cumulative withdrawals. Audit/UX only — never decremented."
+            ],
             "type": "u64"
           },
           {
             "name": "total_won",
+            "docs": [
+              "Lifetime cumulative winnings credited via settle_contest. Audit/UX only."
+            ],
             "type": "u64"
           },
           {
             "name": "seeds",
+            "docs": [
+              "Loyalty points awarded per entry from the contest's Season schedule.",
+              "Rails derives \"level\" client-side from this value (level = seeds/100 + 1)."
+            ],
             "type": "u64"
           },
           {
             "name": "username",
+            "docs": [
+              "On-chain master copy of the user's display name (v0.14.0). UTF-8,",
+              "zero-padded. Rails mirrors it; only the wallet owner can change via",
+              "`set_username`."
+            ],
             "type": {
               "array": [
                 "u8",
@@ -2074,7 +2395,26 @@
             }
           },
           {
+            "name": "daily_withdrawn",
+            "docs": [
+              "Lamports withdrawn in the current 24h window (v0.15.0). Resets to",
+              "zero when DAILY_WINDOW_SECONDS elapses since daily_window_start."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "daily_window_start",
+            "docs": [
+              "Unix timestamp of the current window's start (v0.15.0). Zero on",
+              "fresh accounts — the first withdraw initializes it."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "bump",
+            "docs": [
+              "PDA bump."
+            ],
             "type": "u8"
           }
         ]
@@ -2082,11 +2422,23 @@
     },
     {
       "name": "VaultState",
+      "docs": [
+        "Singleton vault account. Holds the 2-of-3 multisig signer set, the two",
+        "accepted token mints, the vault's token accounts, a bump, and a pause",
+        "flag (v0.15.0).",
+        "",
+        "PDA seeds: [b\"vault\"]"
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "signers",
+            "docs": [
+              "The three multisig signers. 1-of-3 can run routine ops; 2-of-3",
+              "needed for treasury ops (settle, force_close, update_signers,",
+              "pause, unpause)."
+            ],
             "type": {
               "array": [
                 "pubkey",
@@ -2096,27 +2448,58 @@
           },
           {
             "name": "threshold",
+            "docs": [
+              "Number of distinct signatures required for treasury ops. Currently 2."
+            ],
             "type": "u8"
           },
           {
             "name": "usdc_mint",
+            "docs": [
+              "USDC mint this vault accepts. Set once at init; verified against",
+              "EXPECTED_USDC_MINT."
+            ],
             "type": "pubkey"
           },
           {
             "name": "usdt_mint",
+            "docs": [
+              "USDT mint this vault accepts. Set once at init; verified against",
+              "EXPECTED_USDT_MINT."
+            ],
             "type": "pubkey"
           },
           {
             "name": "vault_usdc",
+            "docs": [
+              "Vault's USDC token account (PDA, authority = this vault_state)."
+            ],
             "type": "pubkey"
           },
           {
             "name": "vault_usdt",
+            "docs": [
+              "Vault's USDT token account (PDA, authority = this vault_state)."
+            ],
             "type": "pubkey"
           },
           {
             "name": "bump",
+            "docs": [
+              "PDA bump."
+            ],
             "type": "u8"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "Emergency pause flag (v0.15.0). When true, deposit / withdraw /",
+              "enter_contest* are rejected. Settle, close, mint_entry_token,",
+              "migrate, set_username, create_user_account, create_season,",
+              "update_signers, force_close, pause, unpause remain available.",
+              "Flipped via the `pause` / `unpause` instructions (2-of-3)."
+            ],
+            "type": "bool"
           }
         ]
       }

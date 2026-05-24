@@ -81,6 +81,18 @@ module Solana
     # short-circuit on blank/missing because local iteration is allowed
     # against an older IDL.
     def self.verify_idl!
+      # OPSEC-014 emergency bypass. Lets ops break out of a deploy-time IDL
+      # skew (e.g. when EXPECTED_IDL_HASH, the committed IDL file, and the
+      # freshly-built IDL have all diverged across turf-vault versions).
+      # Set BYPASS_IDL_CHECK=true on Heroku, deploy the new IDL, then run
+      # `heroku config:set EXPECTED_IDL_HASH=<new>` + `heroku config:unset
+      # BYPASS_IDL_CHECK` to restore verified state. Logs loud so the
+      # unverified window is visible in production logs.
+      if ENV["BYPASS_IDL_CHECK"].to_s.downcase == "true"
+        Rails.logger.warn "[opsec-014] IDL verification BYPASSED via BYPASS_IDL_CHECK=true — production is running unverified. Unset BYPASS_IDL_CHECK after the next successful release."
+        return
+      end
+
       if EXPECTED_IDL_HASH.blank?
         raise IdlMismatchError, "EXPECTED_IDL_HASH required in production (see OPSEC-014)" if Rails.env.production?
         return
@@ -106,8 +118,11 @@ module Solana
             > #{IDL_PATH}
           bin/rails solana:idl_hash  # then set EXPECTED_IDL_HASH
 
-        To bypass temporarily: heroku config:unset EXPECTED_IDL_HASH (or
-        unset locally). Don't ship to prod without a pin.
+        To bypass during a deploy (production): `heroku config:set
+        BYPASS_IDL_CHECK=true`, deploy, then `heroku config:set
+        EXPECTED_IDL_HASH=<new>` + `heroku config:unset BYPASS_IDL_CHECK`
+        to restore verified state. Don't leave BYPASS on.
+        In dev/test: `unset EXPECTED_IDL_HASH`. Don't ship to prod without a pin.
       MSG
     end
 
