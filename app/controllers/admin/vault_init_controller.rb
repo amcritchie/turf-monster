@@ -12,10 +12,11 @@ module Admin
     INIT_AUTHORITY = "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr".freeze
 
     # Default signer set + threshold seeded into the form. Matches the
-    # 2-of-3 multisig documented in turf-vault/CLAUDE.md.
+    # 2-of-3 multisig documented in turf-vault/CLAUDE.md. Slot 1 is derived
+    # from INIT_AUTHORITY so the constant stays the single source of truth.
     DEFAULT_SIGNERS = [
       "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ", # Alex Bot
-      "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr", # Alex (Phantom)
+      INIT_AUTHORITY,                                  # Alex (Phantom)
       "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR"  # Mason
     ].freeze
     DEFAULT_THRESHOLD = 2
@@ -96,6 +97,13 @@ module Admin
     def validate_init_params!(creator, signers, threshold)
       raise "creator_pubkey required" if creator.blank?
       raise "Three signer addresses required" if signers.any?(&:blank?)
+
+      # Validate base58 BEFORE distinctness — three identical garbage strings
+      # should report the invalid pubkey, not "must be distinct".
+      ([creator] + signers).each do |pk|
+        raise "Invalid pubkey: #{pk}" unless valid_base58_pubkey?(pk)
+      end
+
       raise "Signers must be distinct" if signers.uniq.length != 3
       raise "Threshold must be 1, 2, or 3" unless (1..3).cover?(threshold)
       raise "creator_pubkey must be one of the signers" unless signers.include?(creator)
@@ -105,10 +113,6 @@ module Admin
       # error before the TX round-trips.
       if Solana::Config.mainnet? && creator != INIT_AUTHORITY
         raise "creator_pubkey must equal INIT_AUTHORITY (#{INIT_AUTHORITY}) on mainnet"
-      end
-
-      ([creator] + signers).each do |pk|
-        raise "Invalid pubkey: #{pk}" unless valid_base58_pubkey?(pk)
       end
     end
 
