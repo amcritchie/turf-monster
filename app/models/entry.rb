@@ -43,6 +43,15 @@ class Entry < ApplicationRecord
   # always pass through the gate.
   def confirm!(tx_signature: nil, onchain_entry_id: nil, comped: false)
     raise "Contest is not open" unless contest.open?
+    # H7 prelaunch audit (2026-05-24): enforce contest-wide lock time. Closes
+    # the staggered-kickoff information-edge attack — a user could otherwise
+    # wait until 30 min after the contest's stated lock, read live scores from
+    # already-kicked games, then submit picks drawn from later-kickoff matchups
+    # whose individual `locked?` is still false. `comped: true` (admin fill via
+    # Contest#fill!) is exempt; admin seeding may legitimately happen after lock.
+    if contest.locks_at && Time.current >= contest.locks_at && !comped
+      raise "Contest has locked — entries closed"
+    end
     raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
 
     # Check no locked games
@@ -102,6 +111,12 @@ class Entry < ApplicationRecord
   # No DB balance deduction — USDC was transferred onchain directly.
   def confirm_onchain!(tx_signature:, entry_pda:)
     raise "Contest is not open" unless contest.open?
+    # H7 prelaunch audit (2026-05-24): enforce contest-wide lock time — see
+    # Entry#confirm! for the attack scenario. No `comped:` here because the
+    # on-chain path is user-initiated only (admin fills go through #confirm!).
+    if contest.locks_at && Time.current >= contest.locks_at
+      raise "Contest has locked — entries closed"
+    end
     raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
 
     # Check no locked games

@@ -149,6 +149,39 @@ class EntryTest < ActiveSupport::TestCase
     assert entry.reload.cart?
   end
 
+  test "confirm! rejects when contest lock time has passed (H7)" do
+    # Contest is still :open but starts_at is in the past — exactly the
+    # staggered-kickoff information-edge attack the H7 audit caught.
+    @contest.update!(starts_at: 1.hour.ago)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    error = assert_raises(RuntimeError) { entry.confirm!(tx_signature: "paid-tx-sig") }
+    assert_match(/locked/i, error.message)
+    assert entry.reload.cart?
+  end
+
+  test "confirm! allows comped entries past lock time (admin fill exemption)" do
+    # Contest#fill! seeds entries via comped: true and may run after lock.
+    @contest.update!(starts_at: 1.hour.ago)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    entry.confirm!(comped: true)
+
+    assert entry.active?
+  end
+
+  test "confirm_onchain! rejects when contest lock time has passed (H7)" do
+    @contest.update!(starts_at: 1.hour.ago)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    error = assert_raises(RuntimeError) { entry.confirm_onchain!(tx_signature: "tx", entry_pda: "pda") }
+    assert_match(/locked/i, error.message)
+    assert entry.reload.cart?
+  end
+
   test "confirm! rejects when user has reached per-contest entry limit" do
     # Create 3 confirmed entries with different combos
     # We only have 6 matchups, so we need different combos — use subsets
