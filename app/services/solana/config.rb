@@ -30,6 +30,12 @@ module Solana
     # Default cosigner for partially-signed treasury TXs (Alex Human — signs via Phantom)
     MULTISIG_COSIGNER = ENV.fetch("SOLANA_MULTISIG_COSIGNER", "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr")
 
+    # turf-vault v0.15.0+: the ONLY wallet permitted to call `initialize` on
+    # mainnet builds (per `state.rs::INIT_AUTHORITY`). Today this is the same
+    # key as MULTISIG_COSIGNER (Alex's Phantom), but it's kept separate so a
+    # future rotation of either role doesn't silently move the other.
+    INIT_AUTHORITY = ENV.fetch("SOLANA_INIT_AUTHORITY", "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr")
+
     DECIMALS = 6
 
     # IDL hash pinning (audit Tier 3 #22). Catches drift between the Rails

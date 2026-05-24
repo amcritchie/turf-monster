@@ -964,7 +964,13 @@ module Solana
       }
     end
 
-    # Read onchain UserAccount balance. Handles both old (73-byte) and new (81-byte) layouts.
+    # Read onchain UserAccount balance. Handles every UserAccount layout this
+    # program has shipped:
+    #   - v0.4.x (73 bytes): wallet + 4 totals
+    #   - v0.5.0 (81 bytes): + seeds
+    #   - v0.14.0 (113 bytes): + username[32]
+    #   - v0.15.0 (129 bytes): + daily_withdrawn (u64) + daily_window_start (i64)
+    # Older accounts return default-zero values for fields they don't have.
     def sync_balance(wallet_address, commitment: "confirmed")
       user_pda, _ = user_account_pda(wallet_address)
       pda_base58 = Keypair.encode_base58(user_pda)
@@ -988,10 +994,25 @@ module Solana
       end
 
       # Username added in v0.14.0 — 32-byte zero-padded UTF-8 array after seeds.
+      # Advance offset even if the username read happens, so the v0.15.0 block
+      # below starts at the right byte.
       username = nil
       if account_data.length >= 113
         raw = account_data[offset, 32].to_s
         username = raw.bytes.take_while { |byte| byte != 0 }.pack("C*").force_encoding("UTF-8").presence
+        offset += 32
+      end
+
+      # Daily withdraw cap fields added v0.15.0. Zero on fresh accounts — the
+      # first withdraw initializes daily_window_start to the current time and
+      # daily_withdrawn to the withdrawal amount. `daily_window_start` is i64
+      # on-chain; we decode as u64 (same trick as decode_season's start_at —
+      # real Unix timestamps never set the sign bit).
+      daily_withdrawn = 0
+      daily_window_start = 0
+      if account_data.length >= 129
+        daily_withdrawn, offset = Borsh.decode_u64(account_data, offset)
+        daily_window_start, offset = Borsh.decode_u64(account_data, offset)
       end
 
       {
@@ -1001,6 +1022,8 @@ module Solana
         total_won: total_won,
         seeds: seeds,
         username: username,
+        daily_withdrawn: daily_withdrawn,
+        daily_window_start: daily_window_start,
         balance_dollars: Config.lamports_to_dollars(balance)
       }
     end
