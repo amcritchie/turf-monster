@@ -98,6 +98,48 @@ class Rack::Attack
     req.ip if req.post? && req.path.match?(%r{\A/contests/[^/]+/messages\z})
   end
 
+  ### Throttle: signup — sybil + spam prevention (prelaunch audit H5)
+  # Engine route POST /signup is the browser-flow registration. Inline signup
+  # at /registrations/inline (modal/JSON path) is the other surface; see below.
+  throttle("signup/ip", limit: 5, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/signup"
+  end
+
+  throttle("inline_signup/ip", limit: 5, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/registrations/inline"
+  end
+
+  ### Throttle: wallet withdraw — money-out, strict cap (prelaunch audit H5)
+  throttle("wallet_withdraw/ip", limit: 5, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/wallet/withdraw"
+  end
+
+  ### Throttle: MoonPay deposit initiate — fee-bleed protection (prelaunch audit H5)
+  # Stripe deposit is already covered by the "stripe_checkout/ip" rule above.
+  throttle("moonpay_deposit/ip", limit: 10, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/wallet/moonpay_deposit"
+  end
+
+  ### Throttle: on-chain entry preparation — sign-build flood backstop (prelaunch audit H5)
+  # /contests/:id/prepare_entry builds a partially-signed entry TX. Cheap on
+  # paper but it hits Solana RPC + holds DB locks; flood mitigation worth it.
+  throttle("prepare_entry/ip", limit: 30, period: 1.minute) do |req|
+    req.ip if req.post? && req.path.match?(%r{\A/contests/[^/]+/prepare_entry\z})
+  end
+
+  ### Throttle: password change — credential-tamper attack surface (prelaunch audit H5)
+  throttle("change_password/ip", limit: 5, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/account/change_password"
+  end
+
+  ### Throttle: username update — squatting / spam prevention (prelaunch audit H5)
+  # On-chain set_username costs admin SOL when server-signs; throttling caps
+  # spend. Phantom-cosigned path costs the user instead but still rate-limited
+  # for spam control.
+  throttle("update_username/ip", limit: 10, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/account/update_username"
+  end
+
   ### Response: throttled requests get 429
   self.throttled_responder = lambda do |request|
     match_data = request.env["rack.attack.match_data"] || {}
