@@ -37,28 +37,9 @@
       </span>
     </div>
   <% end %>
-  <style>
-    .user-nav-col { width: 14rem; }
-    .nav-title { display: flex; gap: 0.25em; align-items: baseline; }
-    @media (min-width: 400px) { .user-nav-col { width: 15rem; } }
-    @media (min-width: 768px) { .user-nav-col { width: 20rem; } }
-    @media (max-width: 767px) {
-      .nav-title { font-size: 1.25rem !important; flex-direction: column; gap: 0; line-height: 1.15; transition: font-size 0.3s; }
-      .nav-title span:first-child { margin-bottom: -4px; }
-      .nav-title span:last-child { font-size: 1.5rem; transition: font-size 0.3s; }
-      .nav-logo-link { gap: 0.5rem !important; }
-      .is-scrolled .nav-title { font-size: 1rem !important; }
-      .is-scrolled .nav-title span:last-child { font-size: 1.15rem !important; }
-      .is-scrolled .nav-logo { width: 2.5rem !important; height: 2.5rem !important; }
-    }
-    @media (max-width: 399px) {
-      .nav-logo-link { gap: 0.25rem !important; }
-      .nav-title { font-size: 1.1rem !important; transition: font-size 0.3s; }
-      .nav-title span:last-child { font-size: 1.3rem; transition: font-size 0.3s; }
-      .is-scrolled .nav-title { font-size: 0.9rem !important; }
-      .is-scrolled .nav-title span:last-child { font-size: 1rem !important; }
-    }
-  </style>
+  <%# .user-nav-col / .nav-title / .nav-logo / .nav-logo-link responsive
+      rules live in application.tailwind.css @layer utilities (migrated
+      2026-05-24, dropped the 10 !important workarounds). %>
   <div class="flex items-center <%= is_preview ? 'py-6' : 'transition-all duration-300' %>"
        <%= ":class=\"scrolled ? 'py-2' : 'py-6'\"".html_safe unless is_preview %>>
     <%# Left side: logo + nav %>

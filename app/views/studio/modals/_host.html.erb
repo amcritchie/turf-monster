@@ -10,20 +10,8 @@
   Promote back to studio-engine in a future release as a configurable
   set of transition class names; this local copy is the dev preview.
 %>
-<style>
-  /* Scroll lock applied by $store.modals._sync() when the stack is non-empty. */
-  body.modal-open { overflow: hidden; }
-
-  /* Drain-bar keyframe used by studio/modals/blocks/_success_card when
-     cta_drain is set. (Currently no caller uses cta_drain — we removed
-     it in the inline-morph step 2 work — but keep the keyframe so the
-     gem block still works if any caller re-enables it.) */
-  @keyframes studio-modal-drain {
-    from { transform: scaleX(1); }
-    to   { transform: scaleX(0); }
-  }
-</style>
-
+<%# body.modal-open + @keyframes studio-modal-drain live in
+    application.tailwind.css (migrated 2026-05-24). %>
 <script>
   (function() {
     // === StudioModals helpers ===========================================

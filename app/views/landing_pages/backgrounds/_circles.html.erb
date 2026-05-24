@@ -23,12 +23,7 @@
   .lp-circle-5 { width: 1500px; height: 1500px; left: -750px; top: calc(50% - 750px);  opacity: 0.05; animation-delay: 1.2s; }
   /* Deep-green wash so the white text reads on the brand green. */
   .lp-circle-scrim { position: fixed; inset: 0; z-index: 0; background: rgba(8, 35, 14, 0.38); }
-  .lp-splash { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45); }
-  .lp-splash .text-heading   { color: #ffffff !important; }
-  .lp-splash .text-body      { color: rgba(255, 255, 255, 0.92) !important; }
-  .lp-splash .text-secondary { color: rgba(255, 255, 255, 0.86) !important; }
-  .lp-splash .text-muted     { color: rgba(255, 255, 255, 0.72) !important; }
-  .lp-splash .card { box-shadow: 0 24px 55px -15px rgba(0, 0, 0, 0.6); }
+  /* .lp-splash text overrides live in application.tailwind.css @layer utilities. */
   @media (prefers-reduced-motion: reduce) {
     .lp-circle { animation: none; }
   }

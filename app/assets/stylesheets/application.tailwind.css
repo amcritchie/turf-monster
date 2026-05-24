@@ -7,6 +7,49 @@
     padding-left: 0.25rem;
     padding-right: 0.25rem;
   }
+
+  /* Landing-page splash text overrides. The dark-background splash
+     partials (landing_pages/backgrounds/{_blobs,_circles,_gradient}) force
+     white text via the .lp-splash scope wrapped around the splash content.
+     Each compound selector has specificity 0,0,2,0 — beats Tailwind's
+     single-class text utilities (.text-heading etc., specificity 0,0,1,0) —
+     so no !important is needed. Previously these rules were duplicated
+     inline in all 3 background partials with !important; consolidated here
+     2026-05-24. */
+  .lp-splash { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45); }
+  .lp-splash .text-heading   { color: #ffffff; }
+  .lp-splash .text-body      { color: rgba(255, 255, 255, 0.92); }
+  .lp-splash .text-secondary { color: rgba(255, 255, 255, 0.86); }
+  .lp-splash .text-muted     { color: rgba(255, 255, 255, 0.72); }
+  .lp-splash .card { box-shadow: 0 24px 55px -15px rgba(0, 0, 0, 0.6); }
+
+}
+
+/* Navbar responsive sizing. Promoted from layouts/_navbar.html.erb's
+   inline style block 2026-05-24 — these rules fight Tailwind text,
+   gap, and sizing utilities applied to the same elements. Lives outside
+   any @layer (Tailwind's PostCSS pipeline doesn't accept @media inside
+   @layer); unlayered rules outrank any @layer in the cascade, so the
+   !important workarounds the inline block needed are dropped. */
+.user-nav-col { width: 14rem; }
+.nav-title    { display: flex; gap: 0.25em; align-items: baseline; }
+@media (min-width: 400px) { .user-nav-col { width: 15rem; } }
+@media (min-width: 768px) { .user-nav-col { width: 20rem; } }
+@media (max-width: 767px) {
+  .nav-title { font-size: 1.25rem; flex-direction: column; gap: 0; line-height: 1.15; transition: font-size 0.3s; }
+  .nav-title span:first-child { margin-bottom: -4px; }
+  .nav-title span:last-child  { font-size: 1.5rem; transition: font-size 0.3s; }
+  .nav-logo-link { gap: 0.5rem; }
+  .is-scrolled .nav-title { font-size: 1rem; }
+  .is-scrolled .nav-title span:last-child { font-size: 1.15rem; }
+  .is-scrolled .nav-logo  { width: 2.5rem; height: 2.5rem; }
+}
+@media (max-width: 399px) {
+  .nav-logo-link { gap: 0.25rem; }
+  .nav-title { font-size: 1.1rem; transition: font-size 0.3s; }
+  .nav-title span:last-child { font-size: 1.3rem; transition: font-size 0.3s; }
+  .is-scrolled .nav-title { font-size: 0.9rem; }
+  .is-scrolled .nav-title span:last-child { font-size: 1rem; }
 }
 
 /* Toast z-index defaults from studio-engine (60/55) sit below our
@@ -462,4 +505,68 @@
     rgb(var(--color-primary-rgb) / 0.15) 60%,
     transparent 80%
   );
+}
+
+/* === Modal host (studio/modals/_host.html.erb) =========================
+   Promoted from the local override partial's inline <style> block
+   2026-05-24 — these rules are page-static and were being emitted on
+   every HTML response. */
+
+/* Scroll lock applied by $store.modals._sync() when the stack is non-empty. */
+body.modal-open { overflow: hidden; }
+
+/* Drain-bar keyframe used by studio/modals/blocks/_success_card when
+   cta_drain is set — kept available for any future caller that re-enables
+   that option. */
+@keyframes studio-modal-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* === Entry-token badge (components/_entry_token_badge.html.erb) ========
+   Punch animation fired by window.animateFreeEntryBadge() after a
+   token-funded entry confirms. We intentionally do NOT set `display:` on
+   .free-entry-badge so Tailwind's `hidden` class wins when the user has
+   no tokens. */
+.free-entry-badge { transform-origin: center; }
+.free-entry-punch { animation: free-entry-punch 0.65s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes free-entry-punch {
+  0%   { transform: scale(1)    rotate(0deg); }
+  20%  { transform: scale(1.45) rotate(-15deg); }
+  40%  { transform: scale(1.2)  rotate(12deg); }
+  60%  { transform: scale(1.3)  rotate(-6deg); }
+  100% { transform: scale(1)    rotate(0deg); }
+}
+
+/* === Contest chat panel (contests/_chat_panel.html.erb) ================ */
+.chat-admin-only { display: none; }
+.chat-admin .chat-admin-only { display: inline-block; }
+
+/* New messages slide + fade in as they prepend to the list. */
+@keyframes chat-message-in {
+  from { opacity: 0; transform: translateY(-0.85rem) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.chat-message-in { animation: chat-message-in 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Keyboard-shortcut keycaps shown inside the Send button. */
+.chat-kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.1rem; height: 1.1rem; padding: 0 0.3rem;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 0.3rem;
+  font-size: 0.72rem; line-height: 1;
+}
+
+/* Pulsing "Live" indicator — a radar-ping ring behind the solid dot. */
+@keyframes chat-live-ping {
+  0%        { transform: scale(1);   opacity: 0.6; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.chat-live-ping { animation: chat-live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+/* Soften the bottom edge of the message list — content fades out. */
+.chat-scroll-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
 }
