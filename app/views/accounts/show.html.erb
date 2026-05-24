@@ -1,218 +1,229 @@
-<%# No CDN needed — Phantom injects its own provider %>
+<%# Cropper.js is loaded on this page so the shared crop-photo modal
+    (Alpine.store('modals').open('crop-photo', ...)) has its dependency
+    when the user clicks the avatar to upload. %>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 
 <div class="max-w-2xl mx-auto">
   <h1 class="text-2xl font-extrabold text-heading mb-8">Account Settings</h1>
 
-  <%# -- Profile -- %>
+  <%# -- Profile (avatar + username) -- %>
   <div class="card shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-heading mb-4">Profile</h2>
-    <%= form_with model: @user, url: account_path, method: :patch, html: { multipart: true } do |f| %>
-      <div class="mb-6">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-        <div x-data="avatarCropper()" class="flex flex-col items-center">
-          <%# Hidden file input for form submission %>
-          <input type="file" name="user[avatar]" x-ref="hiddenFileInput" class="hidden">
-          <input type="file" x-ref="filePicker" @change="onFileSelected($event)" accept="image/*" class="hidden">
+    <div x-data="profileAvatarUploader()"
+         @crop-photo-confirmed.window="onCropConfirmed($event.detail.blob)"
+         class="flex flex-col items-center">
+      <%# Hidden form auto-submitted after the user confirms a crop. %>
+      <%= form_with model: @user, url: account_path, method: :patch,
+                    html: { multipart: true, "x-ref": "form", class: "hidden" } do |f| %>
+        <input type="file" name="user[avatar]" x-ref="hiddenFileInput">
+      <% end %>
+      <input type="file" x-ref="filePicker" @change="onFileSelected($event)" accept="image/*" class="hidden">
 
-          <%# Clickable avatar with hover overlay %>
-          <div @click="$refs.filePicker.click()"
-               class="relative w-20 h-20 rounded-full cursor-pointer group overflow-hidden">
-            <%# Cropped preview layer %>
-            <img x-show="croppedUrl" :src="croppedUrl" class="absolute inset-0 w-full h-full rounded-full object-cover" x-cloak>
-            <%# Current avatar layer (hidden when cropped preview active) %>
-            <div x-show="!croppedUrl">
-              <% if @user.avatar.attached? %>
-                <%= image_tag @user.avatar, class: "w-20 h-20 rounded-full object-cover", alt: @user.display_name %>
-              <% else %>
-                <div class="w-20 h-20 rounded-full flex items-center justify-center font-bold text-white text-xl"
-                     style="background-color: <%= @user.avatar_color %>">
-                  <%= @user.avatar_initials %>
-                </div>
-              <% end %>
-            </div>
-            <%# Hover overlay — always in DOM, fades in on hover %>
-            <div class="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              <span class="text-white text-xs font-bold">Update</span>
-            </div>
+      <%# Clickable avatar — hover reveals "Update" overlay. Inline width/
+          height because Tailwind w-24/h-24 weren't compiled here (the JIT
+          only emits classes it sees at build time — see CLAUDE.md "Tailwind
+          class compilation"). Squeezing on flex-col + items-center left the
+          avatar as a pill instead of a circle. %>
+      <div @click="$refs.filePicker.click()"
+           style="width: 96px; height: 96px;"
+           class="relative rounded-full cursor-pointer group overflow-hidden mb-3 flex-shrink-0">
+        <% if @user.avatar.attached? %>
+          <%= image_tag @user.avatar, class: "rounded-full object-cover", style: "width: 96px; height: 96px;", alt: @user.display_name %>
+        <% else %>
+          <div class="rounded-full flex items-center justify-center font-bold text-white text-3xl"
+               style="width: 96px; height: 96px; background-color: <%= @user.avatar_color %>">
+            <%= @user.avatar_initials %>
           </div>
-
-          <%# Remove link %>
-          <template x-if="croppedUrl">
-            <button type="button" @click="removePhoto()" class="text-muted hover:text-danger text-xs transition mt-2">Remove</button>
-          </template>
-
-          <%# Crop modal %>
-          <template x-if="showCropModal">
-            <div class="fixed inset-0 z-[110] flex items-center justify-center" @keydown.escape.window="cancelCrop()">
-              <div class="absolute inset-0 bg-black/70" @click="cancelCrop()"></div>
-              <div class="relative bg-surface rounded-2xl border border-subtle shadow-2xl p-6 max-w-md w-full mx-4">
-                <h3 class="text-heading font-bold text-lg mb-4">Crop Photo</h3>
-                <div class="w-full" style="max-height: 360px;">
-                  <img x-ref="cropImage" :src="rawImageUrl" class="max-w-full" style="display: block;">
-                </div>
-                <div class="flex justify-end gap-3 mt-4">
-                  <button type="button" @click="cancelCrop()" class="btn btn-outline btn-sm">Cancel</button>
-                  <button type="button" @click="confirmCrop()" class="btn btn-primary btn-sm">Crop & Save</button>
-                </div>
-              </div>
-            </div>
-          </template>
+        <% end %>
+        <div class="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <span class="text-white text-xs font-bold">Update</span>
         </div>
-        <script>
-        function avatarCropper() {
-          return {
-            cropper: null, showCropModal: false, rawImageUrl: null, croppedUrl: null,
-            onFileSelected(event) {
-              var file = event.target.files[0];
-              if (!file) return;
-              var self = this;
-              var reader = new FileReader();
-              reader.onload = function(e) {
-                self.rawImageUrl = e.target.result;
-                self.showCropModal = true;
-                self.$nextTick(function() { self.initCropper(); });
-              };
-              reader.readAsDataURL(file);
-              event.target.value = '';
-            },
-            initCropper() {
-              if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
-              this.cropper = new Cropper(this.$refs.cropImage, {
-                aspectRatio: 1, viewMode: 1, dragMode: 'move', autoCropArea: 0.9,
-                cropBoxResizable: true, cropBoxMovable: true, background: false, guides: true
-              });
-            },
-            confirmCrop() {
-              var self = this;
-              this.cropper.getCroppedCanvas({ width: 256, height: 256 }).toBlob(function(blob) {
-                if (self.croppedUrl) URL.revokeObjectURL(self.croppedUrl);
-                self.croppedUrl = URL.createObjectURL(blob);
-                var dt = new DataTransfer();
-                dt.items.add(new File([blob], 'avatar.png', { type: 'image/png' }));
-                self.$refs.hiddenFileInput.files = dt.files;
-                self.closeCropModal();
-              }, 'image/png');
-            },
-            cancelCrop() { this.closeCropModal(); },
-            closeCropModal() {
-              if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
-              this.showCropModal = false; this.rawImageUrl = null;
-            },
-            removePhoto() {
-              if (this.croppedUrl) URL.revokeObjectURL(this.croppedUrl);
-              this.croppedUrl = null;
-              this.$refs.hiddenFileInput.files = new DataTransfer().files;
-            }
-          };
-        }
-        </script>
       </div>
-      <div class="mb-4">
-        <label for="user_name" class="block text-sm text-secondary mb-2 font-medium">Display Name</label>
-        <%= f.text_field :name, id: "user_name",
-          class: "input-field",
-          placeholder: "Your display name" %>
-      </div>
-      <div class="mb-4">
-        <label for="user_email" class="block text-sm text-secondary mb-2 font-medium">Email</label>
-        <%= f.email_field :email, id: "user_email",
-          class: "input-field",
-          placeholder: "you@example.com" %>
-      </div>
-      <button type="submit" class="btn btn-primary">
-        Save Changes
+
+      <div class="text-xl font-bold text-heading mb-3"><%= current_user.display_name %></div>
+
+      <button type="button" @click="$store.modals.open('username')" class="btn btn-outline btn-sm">
+        Change username
       </button>
-    <% end %>
-  </div>
-
-  <%# -- Username (on-chain master record) -- %>
-  <div class="card shadow p-6 mb-6" x-data="usernameEditor('<%= j current_user.username %>')">
-    <h2 class="text-lg font-bold text-heading mb-1">Username</h2>
-    <p class="text-sm text-muted mb-4">
-      Your username is stored on-chain.
-      <%= current_user.phantom_wallet? ? "Changing it opens your Phantom wallet to sign." : "Changes are saved via your managed wallet." %>
-    </p>
-
-    <template x-if="error">
-      <p class="text-red-400 text-sm mb-3" x-text="error"></p>
-    </template>
-
-    <form @submit.prevent="save()" class="flex items-start gap-3">
-      <input type="text" x-model="username" class="input-field flex-1"
-             placeholder="username" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_-]+"
-             title="3-30 characters — letters, numbers, hyphens, and underscores">
-      <button type="submit" class="btn btn-primary" :disabled="saving || !changed">
-        <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
-        <span x-show="saving">Saving…</span>
-      </button>
-    </form>
+    </div>
 
     <script>
-      function usernameEditor(initial) {
+      function profileAvatarUploader() {
         return {
-          username: initial,
-          initial: initial,
-          saving: false,
-          error: null,
-          get changed() { return this.username && this.username !== this.initial; },
-          async save() {
-            if (!this.changed || this.saving) return;
-            this.saving = true; this.error = null;
-            var csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-            var json = function(r) { return r.json(); };
-            try {
-              var data = await fetch('<%= update_username_account_path %>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
-                body: JSON.stringify({ username: this.username })
-              }).then(json);
-              if (data.error) throw new Error(data.error);
-              if (data.success) { window.location.reload(); return; }
-
-              if (data.needs_signature) {
-                var provider = window.walletProvider && window.walletProvider.detect();
-                if (!provider) throw new Error('Connect your Phantom wallet to rename.');
-                await provider.connect();
-                var txBytes = Uint8Array.from(atob(data.serialized_tx), function(c) { return c.charCodeAt(0); });
-                var tx = solanaWeb3.Transaction.from(txBytes);
-                var signed = await provider.signTransaction(tx);
-                var conn = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('devnet'), 'confirmed');
-                var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
-                await conn.confirmTransaction(sig, 'confirmed');
-                var cdata = await fetch('<%= confirm_username_account_path %>', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' },
-                  body: JSON.stringify({ token: data.token, tx_signature: sig })
-                }).then(json);
-                if (cdata.error) throw new Error(cdata.error);
-                window.location.reload();
-              }
-            } catch (e) {
-              this.error = (e && e.code === 4001) ? 'Signature rejected' : (e.message || 'Could not save username');
-              this.saving = false;
-            }
+          onFileSelected: function(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e) {
+              Alpine.store('modals').open('crop-photo', { imageUrl: e.target.result });
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+          },
+          onCropConfirmed: function(blob) {
+            if (!blob) return;
+            var dt = new DataTransfer();
+            dt.items.add(new File([blob], 'avatar.png', { type: 'image/png' }));
+            this.$refs.hiddenFileInput.files = dt.files;
+            this.$refs.form.requestSubmit();
           }
         };
       }
     </script>
   </div>
 
-  <%# -- Entry Tokens -- %>
+  <%# -- Identities (wallet + balances + Google + email) -- %>
   <div class="card shadow p-6 mb-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h2 class="text-lg font-bold text-heading mb-1">Entry Tokens</h2>
-        <p class="text-sm text-muted">1 token = 1 contest entry.</p>
+    <h2 class="text-lg font-bold text-heading mb-4">Identities</h2>
+
+    <% if @user.solana_connected? %>
+      <div class="mb-4">
+        <h3 class="text-sm font-bold text-heading mb-2">Solana Wallet</h3>
+        <div class="flex items-center gap-2 flex-wrap">
+          <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+          <span class="text-body font-mono text-sm break-all"><%= @user.solana_address %></span>
+          <% if @user.managed_wallet? %>
+            <span class="text-xs text-muted px-2 py-0.5 rounded bg-surface-alt">Managed</span>
+          <% else %>
+            <span class="text-xs text-violet px-2 py-0.5 rounded bg-violet/10">Phantom</span>
+          <% end %>
+        </div>
       </div>
-      <div class="flex items-center gap-4">
-        <span class="text-2xl font-bold text-primary font-mono"><%= @user.entry_token_balance %></span>
-        <%= link_to "Buy", tokens_buy_path, class: "btn btn-outline btn-sm" %>
+
+      <%# Balance tiles row — USDC | USDT | Entry Tokens | SOL | Seeds %>
+      <div class="grid grid-cols-5 gap-2 mb-3">
+        <%# All five tiles share an icon row with a fixed 28px height so the
+            labels + values line up across emoji icons and the 24px SVGs/PNG. %>
+        <%# USDC %>
+        <div class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
+          <div class="flex items-center justify-center mb-1" style="height: 28px;">
+            <img src="/usdc-mark.svg" alt="USDC" style="width: 24px; height: 24px;">
+          </div>
+          <span class="text-[10px] uppercase tracking-wide text-muted">USDC</span>
+          <span class="font-mono font-bold text-primary text-sm mt-0.5">
+            <% if @wallet_balances && @wallet_balances[:usdc] %>
+              <%= sprintf('$%.2f', @wallet_balances[:usdc]) %>
+            <% else %>—<% end %>
+          </span>
+        </div>
+
+        <%# USDT %>
+        <div class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
+          <div class="flex items-center justify-center mb-1" style="height: 28px;">
+            <%= image_tag "tokens/usdt.png", alt: "USDT", style: "width: 24px; height: 24px;" %>
+          </div>
+          <span class="text-[10px] uppercase tracking-wide text-muted">USDT</span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5">
+            <% if @wallet_balances && @wallet_balances[:usdt] %>
+              <%= sprintf('%.2f', @wallet_balances[:usdt]) %>
+            <% else %>—<% end %>
+          </span>
+        </div>
+
+        <%# Entry Tokens %>
+        <div class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
+          <div class="flex items-center justify-center mb-1" style="height: 28px;">
+            <span style="font-size: 22px; line-height: 1;">🎟️</span>
+          </div>
+          <span class="text-[10px] uppercase tracking-wide text-muted">Entry Tokens</span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5"><%= @user.entry_token_balance %></span>
+        </div>
+
+        <%# SOL %>
+        <div class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
+          <div class="flex items-center justify-center mb-1" style="height: 28px;">
+            <img src="/solana-mark.svg" alt="SOL" style="width: 24px; height: 24px;">
+          </div>
+          <span class="text-[10px] uppercase tracking-wide text-muted">SOL</span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5">
+            <% if @wallet_balances && @wallet_balances[:sol] %>
+              <%= sprintf('%.2f', @wallet_balances[:sol]) %>
+            <% else %>—<% end %>
+          </span>
+        </div>
+
+        <%# Seeds %>
+        <div class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
+          <div class="flex items-center justify-center mb-1" style="height: 28px;">
+            <span style="font-size: 22px; line-height: 1;">🌱</span>
+          </div>
+          <span class="text-[10px] uppercase tracking-wide text-muted">Seeds</span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5">
+            <%= @user_seeds.nil? ? "—" : @user_seeds %>
+          </span>
+        </div>
       </div>
+
+      <% if Solana::Config.devnet? %>
+        <a href="https://explorer.solana.com/address/<%= @user.solana_address %>?cluster=devnet"
+           target="_blank" class="inline-block text-xs text-secondary hover:text-primary transition mb-6">
+          View on Solana Explorer &rarr;
+        </a>
+      <% end %>
+    <% else %>
+      <div class="mb-6">
+        <%= render "shared/solana_wallet_connect", link_mode: true %>
+      </div>
+    <% end %>
+
+    <%# Google Account %>
+    <div class="mb-6">
+      <h3 class="text-sm font-bold text-heading mb-2">Google Account</h3>
+      <% if @user.google_connected? %>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-body">Connected via Google</span>
+          </div>
+          <%= button_to "Unlink", unlink_google_account_path, method: :post,
+            class: "btn btn-danger btn-sm",
+            data: { turbo_confirm: "Unlink your Google account?" } %>
+        </div>
+      <% else %>
+        <%= button_to "/auth/google_oauth2", method: :post, data: { turbo: false },
+          class: "btn btn-google gap-3 w-full" do %>
+          <%= render "components/google_logo" %>
+          Link Google Account
+        <% end %>
+      <% end %>
+    </div>
+
+    <%# Email — full PATCH /account flow. OPSEC-046: changing email
+        requires the user to confirm their current password, so we reveal
+        a hidden current_password field via Alpine when the value differs
+        from the saved address (password users only). %>
+    <div x-data="{ initial: '<%= j @user.email.to_s %>', current: '<%= j @user.email.to_s %>' }">
+      <h3 class="text-sm font-bold text-heading mb-2">Email</h3>
+      <%= form_with model: @user, url: account_path, method: :patch do |f| %>
+        <div class="flex gap-2">
+          <%= f.email_field :email,
+                            class: "input-field flex-1",
+                            placeholder: "you@example.com",
+                            "x-model": "current" %>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+        <% if @user.has_password? %>
+          <input type="password" name="current_password"
+                 x-show="current !== initial"
+                 x-cloak
+                 class="input-field mt-2"
+                 placeholder="Confirm current password to change email">
+        <% end %>
+      <% end %>
     </div>
   </div>
 
-  <%# -- Password -- %>
+  <%# -- Log out + Buy Entry Tokens (side by side) -- %>
+  <div class="grid grid-cols-2 gap-4 mb-6">
+    <%= link_to "Log out", logout_path, class: "btn btn-outline w-full" %>
+    <%= link_to "Buy Entry Tokens", tokens_buy_path, class: "btn btn-primary w-full" %>
+  </div>
+
+  <%# -- Change Password -- %>
   <div class="card shadow p-6 mb-6">
     <h2 class="text-lg font-bold text-heading mb-4"><%= @user.has_password? ? "Change Password" : "Set Password" %></h2>
     <%= form_tag change_password_account_path, method: :post do %>
@@ -241,102 +252,4 @@
       </button>
     <% end %>
   </div>
-
-  <%# -- Google + Log Out (side by side) -- %>
-  <div class="grid grid-cols-2 gap-4 mb-6">
-    <div class="card shadow p-6">
-      <h2 class="text-lg font-bold text-heading mb-4">Google Account</h2>
-      <% if @user.google_connected? %>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-            <span class="text-body">Connected via Google</span>
-          </div>
-          <%= button_to "Unlink", unlink_google_account_path, method: :post,
-            class: "btn btn-danger btn-sm",
-            data: { turbo_confirm: "Unlink your Google account?" } %>
-        </div>
-      <% else %>
-        <%= button_to "/auth/google_oauth2", method: :post, data: { turbo: false },
-          class: "btn btn-google gap-3 w-full" do %>
-          <%= render "components/google_logo" %>
-          Link Google Account
-        <% end %>
-      <% end %>
-    </div>
-
-    <div class="card shadow p-6 flex items-center justify-center">
-      <%= link_to "Log out", logout_path, class: "btn btn-outline w-full" %>
-    </div>
-  </div>
-
-  <%# -- Solana Wallet -- %>
-  <div class="card shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-heading mb-4">Solana Wallet</h2>
-    <% if @user.solana_connected? %>
-      <div class="flex items-center gap-3 mb-4">
-        <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        <span class="text-body font-mono text-sm"><%= @user.solana_address %></span>
-        <% if @user.managed_wallet? %>
-          <span class="text-xs text-muted px-2 py-0.5 rounded bg-surface-alt">Managed</span>
-        <% else %>
-          <span class="text-xs text-violet px-2 py-0.5 rounded bg-violet/10">Phantom</span>
-        <% end %>
-      </div>
-
-      <%# -- Balances -- %>
-      <div class="bg-inset rounded-lg p-4 space-y-3">
-        <%# USDC balance (on-chain) %>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="text-lg">💲</span>
-            <span class="text-sm font-medium text-body">USDC Balance</span>
-          </div>
-          <% if @wallet_balances && @wallet_balances[:usdc] %>
-            <span class="font-mono font-bold text-primary"><%= sprintf('$%.2f', @wallet_balances[:usdc]) %></span>
-          <% else %>
-            <span class="font-mono font-bold text-primary"><%= dollars(display_balance) %></span>
-          <% end %>
-        </div>
-
-        <div class="border-t border-subtle"></div>
-
-        <%# SOL balance %>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="text-lg">◎</span>
-            <span class="text-sm font-medium text-body">SOL</span>
-          </div>
-          <% if @wallet_balances %>
-            <span class="font-mono font-bold text-heading"><%= sprintf('%.4f', @wallet_balances[:sol]) %></span>
-          <% else %>
-            <span class="font-mono text-muted">—</span>
-          <% end %>
-        </div>
-
-        <%# USDT balance %>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="text-lg">💵</span>
-            <span class="text-sm font-medium text-body">USDT</span>
-          </div>
-          <% if @wallet_balances && @wallet_balances[:usdt] %>
-            <span class="font-mono font-bold text-heading"><%= sprintf('%.2f', @wallet_balances[:usdt]) %></span>
-          <% else %>
-            <span class="font-mono text-muted">—</span>
-          <% end %>
-        </div>
-      </div>
-
-      <% if Solana::Config.devnet? %>
-        <a href="https://explorer.solana.com/address/<%= @user.solana_address %>?cluster=devnet"
-           target="_blank" class="inline-block mt-3 text-xs text-secondary hover:text-primary transition">
-          View on Solana Explorer &rarr;
-        </a>
-      <% end %>
-    <% else %>
-      <%= render "shared/solana_wallet_connect", link_mode: true %>
-    <% end %>
-  </div>
-
 </div>

@@ -111,6 +111,15 @@ class User < ApplicationRecord
     username.present?
   end
 
+  # Username changes are on-chain instructions against the UserAccount PDA,
+  # so we need a connected wallet. UserAccount itself is created eagerly at
+  # signup now (see memory: on-chain usernames kickoff 2026-05-22), so we
+  # don't need to also gate on "has entered a contest" the way the original
+  # v0.13 modal copy did.
+  def can_change_username?
+    solana_connected?
+  end
+
   def truncated_solana
     return nil unless solana_address.present?
     "#{solana_address[0..3]}...#{solana_address[-4..]}"

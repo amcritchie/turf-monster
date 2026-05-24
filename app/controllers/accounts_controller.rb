@@ -253,7 +253,17 @@ class AccountsController < ApplicationController
   def load_solana_balances
     vault = Solana::Vault.new
     @wallet_balances = vault.fetch_wallet_balances(@user.solana_address)
+    # sync_balance reads the UserAccount PDA (separate from the SPL token
+    # accounts above) for the on-chain seeds counter. Independent rescue so a
+    # stale-PDA failure here doesn't blank out the USDC/SOL/USDT tiles.
+    begin
+      onchain = vault.sync_balance(@user.solana_address)
+      @user_seeds = onchain&.dig(:seeds)
+    rescue StandardError
+      @user_seeds = nil
+    end
   rescue StandardError
     @wallet_balances = nil
+    @user_seeds = nil
   end
 end

@@ -394,7 +394,17 @@
         <template x-if="$store.modals.current().id === 'profile'">
           <%= render "modals/profile" %>
         </template>
+        <template x-if="$store.modals.current().id === 'username'">
+          <%= render "modals/username" %>
+        </template>
       <% end %>
+      <%# crop-photo gets pushed on top of whatever modal owns the avatar
+          cropper (profile modal, complete_profile, /account). Not gated by
+          logged_in? because complete_profile renders before the profile is
+          finished. %>
+      <template x-if="$store.modals.current().id === 'crop-photo'">
+        <%= render "modals/crop_photo" %>
+      </template>
     <% end %>
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
