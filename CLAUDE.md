@@ -120,8 +120,8 @@ Mobile-first contest preview/info page. Renders inline matchup board or leaderbo
 - ERB views, import maps, no JS frameworks
 - bcrypt + Google OAuth + Solana wallet auth (Phantom)
 - **Sidekiq** + Redis for background jobs (web UI at `/admin/jobs`, admin-only)
-- **Studio engine gem** — `gem "studio-engine", git: "https://github.com/amcritchie/studio-engine.git"`
-- **SolanaStudio gem** — `gem "solana-studio", git: "https://github.com/amcritchie/solana-studio.git"`
+- **Studio engine gem** — `gem "studio-engine", "~> 0.4.0"` (RubyGems; current 0.4.10). `Studio.routes(self)` + `Studio.configure` in `config/initializers/studio.rb`.
+- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.0"` (RubyGems; current 0.4.2). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair.
 
 ## JS Modules (importmap)
 
