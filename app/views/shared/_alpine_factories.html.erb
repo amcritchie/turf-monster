@@ -1,0 +1,399 @@
+<%#
+  Single source of truth for Alpine x-data factory functions.
+
+  Why this exists: the importmap modules in app/javascript/*_factory.js
+  load AFTER Alpine has already processed x-data attributes (verified
+  2026-05-24 via Playwright console traces — Alpine 3.15.12 logs
+  "alpine already loaded" by the time our modules execute).
+
+  Any factory referenced as x-data="factoryName(...)" must be defined
+  on window BEFORE Alpine starts. A synchronous inline <script> like
+  the one below runs during HTML parse, well before Alpine's deferred
+  CDN script + the deferred importmap entry. So window.factoryName
+  is guaranteed available when Alpine evaluates the x-data expression.
+
+  The companion modules at app/javascript/<name>.js remain as
+  importmap-testable duplicates; they harmlessly re-assign the same
+  window globals after Alpine has already used these inline definitions.
+
+  Add a new factory: paste it below as `window.factoryName = function(...) {...}`.
+%>
+<script>
+  // === entryTokenBadge — navbar 🎟️ pill + popover ==================
+  window.entryTokenBadge = function (opts) {
+    opts = opts || {};
+    return {
+      open: false,
+      count: parseInt(opts.initialCount, 10) || 0,
+      _timer: null,
+      _onTokensUpdated: null,
+      init() {
+        var self = this;
+        this._onTokensUpdated = function (e) {
+          var n = e && e.detail && parseInt(e.detail.count, 10);
+          if (!isNaN(n)) self.count = n;
+        };
+        window.addEventListener("entry-tokens-updated", this._onTokensUpdated);
+      },
+      destroy() {
+        window.removeEventListener("entry-tokens-updated", this._onTokensUpdated);
+        clearTimeout(this._timer);
+      },
+      toggle() {
+        this.open = !this.open;
+        clearTimeout(this._timer);
+        if (this.open) {
+          var self = this;
+          this._timer = setTimeout(function () { self.open = false; }, 2000);
+        }
+      },
+      close() { this.open = false; clearTimeout(this._timer); }
+    };
+  };
+
+  // === contestLockPicker — /contests/new + /contests/edit calendar =
+  window.contestLockPicker = function (opts) {
+    opts = opts || {};
+    return {
+      sport: opts.sport || "",
+      lockDate: "", lockTime: "", calOpen: false,
+      viewYear: new Date().getFullYear(),
+      viewMonth: new Date().getMonth(),
+      tzAbbr: (function () {
+        var s = new Date().toLocaleTimeString("en-US", { timeZoneName: "short" });
+        return s.split(" ").pop();
+      })(),
+      tzIana: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+      days: ["Su","Mo","Tu","We","Th","Fr","Sa"],
+      init: function () {
+        if (opts.utcIso) {
+          var local = new Date(opts.utcIso);
+          if (!isNaN(local.getTime())) {
+            this.lockDate = local.getFullYear() + "-" + String(local.getMonth() + 1).padStart(2, "0") + "-" + String(local.getDate()).padStart(2, "0");
+            this.lockTime = String(local.getHours()).padStart(2, "0") + ":" + String(local.getMinutes()).padStart(2, "0");
+            this.viewYear = local.getFullYear();
+            this.viewMonth = local.getMonth();
+            this.sync();
+          }
+          return;
+        }
+        if (this.sport === "fifa") this.selectFifa();
+        else if (this.sport === "nfl") this.selectNfl();
+      },
+      sync: function () {
+        var hidden   = document.getElementById("contest_starts_at");
+        var dateSnap = document.getElementById("locks_at_date_selected");
+        var timeSnap = document.getElementById("locks_at_time_selected");
+        var tzSnap   = document.getElementById("locks_at_timezone_selected");
+        if (!hidden) return;
+        if (this.lockDate && this.lockTime) {
+          var local = new Date(this.lockDate + "T" + this.lockTime);
+          hidden.value = local.toISOString().substring(0, 16);
+          dateSnap.value = this.lockDate;
+          timeSnap.value = this.lockTime;
+          tzSnap.value   = this.tzIana;
+        } else {
+          hidden.value = dateSnap.value = timeSnap.value = tzSnap.value = "";
+        }
+      },
+      selectFifa: function () {
+        this.sport = "fifa"; this.lockDate = "2026-06-11"; this.lockTime = "13:00";
+        this.viewYear = 2026; this.viewMonth = 5; this.sync();
+      },
+      selectNfl: function () {
+        this.sport = "nfl"; this.lockDate = "2026-09-09"; this.lockTime = "18:15";
+        this.viewYear = 2026; this.viewMonth = 8; this.sync();
+      },
+      get displayDate() {
+        if (!this.lockDate) return "";
+        var parts = this.lockDate.split("-");
+        return this.months[parseInt(parts[1]) - 1].substring(0, 3) + " " + parseInt(parts[2]) + ", " + parts[0];
+      },
+      prevMonth: function () {
+        if (this.viewMonth === 0) { this.viewMonth = 11; this.viewYear--; } else { this.viewMonth--; }
+      },
+      nextMonth: function () {
+        if (this.viewMonth === 11) { this.viewMonth = 0; this.viewYear++; } else { this.viewMonth++; }
+      },
+      calDays: function () {
+        var first = new Date(this.viewYear, this.viewMonth, 1).getDay();
+        var count = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
+        var cells = [];
+        for (var i = 0; i < first; i++) cells.push(null);
+        for (var d = 1; d <= count; d++) cells.push(d);
+        return cells;
+      },
+      pickDay: function (d) {
+        var m  = String(this.viewMonth + 1).padStart(2, "0");
+        var dd = String(d).padStart(2, "0");
+        this.lockDate = this.viewYear + "-" + m + "-" + dd;
+        this.calOpen = false;
+        this.sync();
+      },
+      isSelected: function (d) {
+        if (!this.lockDate) return false;
+        var m  = String(this.viewMonth + 1).padStart(2, "0");
+        var dd = String(d).padStart(2, "0");
+        return this.lockDate === this.viewYear + "-" + m + "-" + dd;
+      },
+      isToday: function (d) {
+        var t = new Date();
+        return d === t.getDate() && this.viewMonth === t.getMonth() && this.viewYear === t.getFullYear();
+      }
+    };
+  };
+
+  // === imageDropzone — /contests/new + /contests/edit banner picker
+  window.imageDropzone = function (opts) {
+    opts = opts || {};
+    return {
+      fileName: opts.fileName || "",
+      previewUrl: opts.previewUrl || "",
+      dragging: false,
+      _ownsPreviewUrl: false,
+      pickFile: function (e) {
+        var file = e.target.files[0];
+        if (file) this.setFile(file);
+      },
+      dropFile: function (e) {
+        this.dragging = false;
+        var file = e.dataTransfer.files[0];
+        if (!file || !file.type.startsWith("image/")) return;
+        var input = this.$refs.fileInput;
+        var dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        this.setFile(file);
+      },
+      setFile: function (file) {
+        this.fileName = file.name;
+        if (this._ownsPreviewUrl && this.previewUrl) URL.revokeObjectURL(this.previewUrl);
+        this.previewUrl = URL.createObjectURL(file);
+        this._ownsPreviewUrl = true;
+      },
+      clear: function () {
+        if (this._ownsPreviewUrl && this.previewUrl) URL.revokeObjectURL(this.previewUrl);
+        this.fileName = "";
+        this.previewUrl = "";
+        this._ownsPreviewUrl = false;
+        this.$refs.fileInput.value = "";
+      }
+    };
+  };
+
+  // === cardListFilter — /players + /teams index search+filter =====
+  window.cardListFilter = function (opts) {
+    opts = opts || {};
+    var dsKey = (opts.searchAttr || "data-name")
+      .replace(/^data-/, "")
+      .replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+    return {
+      search: "",
+      visibleCount: 0,
+      filters: opts.filters || {},
+      _selector: opts.selector,
+      _dsKey: dsKey,
+      init() {
+        var self = this;
+        this.apply();
+        this.$watch("search", function () { self.apply(); });
+        Object.keys(this.filters).forEach(function (k) {
+          self.$watch("filters." + k, function () { self.apply(); });
+        });
+      },
+      apply() {
+        if (!this._selector) return;
+        var q = this.search.toLowerCase().trim();
+        var filters = this.filters;
+        var cards = document.querySelectorAll(this._selector);
+        var dsKey = this._dsKey;
+        var count = 0;
+        cards.forEach(function (card) {
+          var searchVal = (card.dataset[dsKey] || "").toLowerCase();
+          var matchSearch = !q || searchVal.includes(q);
+          var matchFilters = Object.keys(filters).every(function (k) {
+            var v = filters[k];
+            return v === "all" || card.dataset[k] === v;
+          });
+          var visible = matchSearch && matchFilters;
+          card.style.display = visible ? "" : "none";
+          if (visible) count++;
+        });
+        this.visibleCount = count;
+      }
+    };
+  };
+
+  // === cropPhotoModal — modals/_crop_photo.html.erb ================
+  window.cropPhotoModal = function (opts) {
+    opts = opts || {};
+    return {
+      cropper: null,
+      imageUrl: null,
+      fromParent: false,
+      dragging: false,
+      uploading: false,
+      error: null,
+      _saveUrl: opts.saveUrl,
+      init() {
+        var current = this.$store.modals.current();
+        var props = (current && current.props) || {};
+        if (props.imageUrl) {
+          this.fromParent = true;
+          this.imageUrl = props.imageUrl;
+          this.mountCropper();
+        }
+      },
+      destroy() {
+        if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+      },
+      mountCropper() {
+        var self = this;
+        this.$nextTick(function () {
+          if (typeof Cropper === "undefined") return;
+          if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
+          self.cropper = new Cropper(self.$refs.cropImage, {
+            aspectRatio: 1, viewMode: 1, dragMode: "move",
+            autoCropArea: 0.9, cropBoxResizable: true,
+            cropBoxMovable: true, background: false, guides: true
+          });
+        });
+      },
+      readFile(file) {
+        if (!file) return;
+        if (!file.type || file.type.indexOf("image/") !== 0) {
+          this.error = "Please choose an image file.";
+          return;
+        }
+        var self = this;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          self.error = null;
+          self.imageUrl = e.target.result;
+          self.mountCropper();
+        };
+        reader.readAsDataURL(file);
+      },
+      onFilePicked(event) {
+        var file = event.target.files[0];
+        event.target.value = "";
+        this.readFile(file);
+      },
+      onDrop(event) {
+        this.dragging = false;
+        var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+        this.readFile(file);
+      },
+      cancel() {
+        if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+        this.$store.modals.close();
+      },
+      confirm() {
+        if (!this.cropper || this.uploading) return;
+        var self = this;
+        var canvas = this.cropper.getCroppedCanvas({ width: 256, height: 256 });
+        canvas.toBlob(function (blob) {
+          if (self.fromParent) {
+            try { window.dispatchEvent(new CustomEvent("crop-photo-confirmed", { detail: { blob: blob } })); } catch (_) {}
+            if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
+            self.$store.modals.close();
+          } else {
+            self.uploadDirect(blob);
+          }
+        }, "image/png");
+      },
+      async uploadDirect(blob) {
+        this.uploading = true;
+        this.error = null;
+        var csrf = document.querySelector("meta[name='csrf-token']")?.content || "";
+        var form = new FormData();
+        form.append("user[avatar]", new File([blob], "avatar.png", { type: "image/png" }));
+        try {
+          var fetcher = window.authedFetch || fetch;
+          var resp = await fetcher(this._saveUrl, {
+            method: "POST",
+            headers: { "X-CSRF-Token": csrf, "Accept": "application/json" },
+            body: form
+          });
+          if (!resp) { this.uploading = false; return; }
+          var data = await resp.json();
+          if (resp.ok && data.success) {
+            if (this.cropper) { this.cropper.destroy(); this.cropper = null; }
+            this.$store.modals.close();
+            window.location.reload();
+          } else {
+            this.error = (data && data.error) || "Failed to save photo";
+            this.uploading = false;
+          }
+        } catch (e) {
+          this.error = e.message || "Network error";
+          this.uploading = false;
+        }
+      }
+    };
+  };
+
+  // === usernameRenameForm — modals/_username.html.erb ==============
+  window.usernameRenameForm = function (opts) {
+    opts = opts || {};
+    return {
+      initial: opts.initialUsername || "",
+      username: opts.initialUsername || "",
+      saving: false,
+      error: null,
+      get changed() { return this.username && this.username !== this.initial; },
+      async save() {
+        if (!this.changed || this.saving) return;
+        this.saving = true; this.error = null;
+        var csrf = document.querySelector("meta[name='csrf-token']")?.content || "";
+        var fetcher = window.authedFetch || fetch;
+        var headers = { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Accept": "application/json" };
+        try {
+          var resp = await fetcher(opts.updateUrl, {
+            method: "POST", headers: headers,
+            body: JSON.stringify({ username: this.username })
+          });
+          if (!resp) return;
+          var data = await resp.json();
+          if (data.error) throw new Error(data.error);
+          if (data.success) { window.location.reload(); return; }
+          if (data.needs_signature) {
+            var sig = await this._signAndBroadcast(data.serialized_tx);
+            var confirmResp = await fetcher(opts.confirmUrl, {
+              method: "POST", headers: headers,
+              body: JSON.stringify({ token: data.token, tx_signature: sig })
+            });
+            if (!confirmResp) return;
+            var cdata = await confirmResp.json();
+            if (cdata.error) throw new Error(cdata.error);
+            window.location.reload();
+          }
+        } catch (e) {
+          this.error = this._friendlyError(e);
+          this.saving = false;
+        }
+      },
+      async _signAndBroadcast(serializedTxB64) {
+        var provider = window.walletProvider && window.walletProvider.detect();
+        if (!provider) throw new Error("Connect your Phantom wallet to rename.");
+        await provider.connect();
+        var txBytes = Uint8Array.from(atob(serializedTxB64), function (c) { return c.charCodeAt(0); });
+        var tx = solanaWeb3.Transaction.from(txBytes);
+        var signed = await provider.signTransaction(tx);
+        var conn = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, "confirmed");
+        var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
+        await conn.confirmTransaction(sig, "confirmed");
+        return sig;
+      },
+      _friendlyError(e) {
+        if (e && e.code === 4001) return "Signature rejected";
+        return (e && e.message) || "Could not save username";
+      }
+    };
+  };
+
+  // seedsBar factory stays defined inline in components/_seeds_bar.html.erb
+  // because its body is ~150 lines and it has a single render site (navbar);
+  // pulling it here would bloat this shared file without saving page weight.
+</script>
