@@ -390,6 +390,80 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "missing", JSON.parse(response.body)["status"]
   end
 
+  test "recover_pending_entry promotes entry + marks PT confirmed when RPC reports confirmed" do
+    @user.update!(web3_solana_address: "WalletR6#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      status: "submitted", tx_signature: "sig-confirmed-1",
+      target: entry, initiator_address: @user.web3_solana_address,
+      metadata: { entry_pda: "epda-1" }.to_json
+    )
+
+    vault = FakeVault.new(signature_statuses: {
+      "sig-confirmed-1" => { "err" => nil, "confirmationStatus" => "confirmed" }
+    })
+    Solana::Vault.stub :new, vault do
+      post recover_pending_entry_contest_path(@contest),
+        params: { ptx_slug: ptx.slug }, as: :json
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "confirmed", body["status"]
+    assert_equal "sig-confirmed-1", body["tx_signature"]
+    assert_equal "confirmed", ptx.reload.status
+    assert entry.reload.active?, "expected entry to be promoted to active"
+    assert_equal "sig-confirmed-1", entry.onchain_tx_signature
+  end
+
+  test "recover_pending_entry returns processing when RPC doesn't know the signature" do
+    @user.update!(web3_solana_address: "WalletR7#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      status: "submitted", tx_signature: "sig-unknown",
+      target: entry, initiator_address: @user.web3_solana_address
+    )
+
+    vault = FakeVault.new(signature_statuses: {}) # sig not seeded → RPC returns nil
+    Solana::Vault.stub :new, vault do
+      post recover_pending_entry_contest_path(@contest),
+        params: { ptx_slug: ptx.slug }, as: :json
+    end
+
+    assert_response :success
+    assert_equal "processing", JSON.parse(response.body)["status"]
+    assert_equal "submitted", ptx.reload.status, "processing should not change PT status"
+  end
+
+  test "recover_pending_entry marks PT failed when RPC reports an error" do
+    @user.update!(web3_solana_address: "WalletR8#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      status: "submitted", tx_signature: "sig-errored",
+      target: entry, initiator_address: @user.web3_solana_address
+    )
+
+    vault = FakeVault.new(signature_statuses: {
+      "sig-errored" => { "err" => { "InstructionError" => [0, "Custom"] }, "confirmationStatus" => "confirmed" }
+    })
+    Solana::Vault.stub :new, vault do
+      post recover_pending_entry_contest_path(@contest),
+        params: { ptx_slug: ptx.slug }, as: :json
+    end
+
+    assert_response :success
+    assert_equal "failed", JSON.parse(response.body)["status"]
+    assert_equal "failed", ptx.reload.status
+    assert entry.reload.cart?, "errored TX should leave entry in cart"
+  end
+
   # --- page load tests ---
 
   test "index loads" do

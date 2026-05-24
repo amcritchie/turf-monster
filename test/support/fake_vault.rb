@@ -19,16 +19,27 @@ class FakeVault
   attr_reader :mint_calls, :transfer_calls, :enter_calls, :ensure_account_calls,
               :fund_calls, :deposit_calls
 
-  def initialize(fail_after: nil, starting_sequence: 0, tokens: [])
+  def initialize(fail_after: nil, starting_sequence: 0, tokens: [], signature_statuses: {})
     @fail_after = fail_after
     @starting_sequence = starting_sequence
     @tokens = tokens
+    @signature_statuses = signature_statuses
     @mint_calls = []
     @transfer_calls = []
     @enter_calls = []
     @ensure_account_calls = []
     @fund_calls = []
     @deposit_calls = []
+  end
+
+  # --- Solana RPC client stub (recovery flow) ---
+  #
+  # Returns a FakeSolanaClient seeded with the signature_statuses map from
+  # initialize. The recovery action calls
+  # `Solana::Vault.new.client.confirm_transaction(sig).dig("value", 0)`,
+  # so the stub mirrors that envelope shape.
+  def client
+    @client ||= FakeSolanaClient.new(@signature_statuses)
   end
 
   # --- Token minting (TokenPurchaseJob, dev_mint) ---
@@ -105,5 +116,21 @@ class FakeVault
 
   def seeds_for_entry(_entry_number)
     25
+  end
+end
+
+# Mirrors the relevant slice of Solana::Client used by
+# ContestsController#recover_pending_entry. The real RPC returns
+# {"value" => [{"err"=>..., "confirmationStatus"=>"confirmed"|"finalized"|"processed"}, ...]}
+# (one entry per requested signature); we always batch a single signature
+# here, so the array has at most one element. An unknown signature
+# returns {"value" => [nil]} per the JSON-RPC spec.
+class FakeSolanaClient
+  def initialize(statuses)
+    @statuses = statuses || {}
+  end
+
+  def confirm_transaction(signature)
+    { "value" => [@statuses[signature]] }
   end
 end

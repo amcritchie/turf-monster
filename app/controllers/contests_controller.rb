@@ -521,7 +521,7 @@ class ContestsController < ApplicationController
 
     # Ask the RPC about the signature once. The client owns the polling
     # cadence; keeping this action cheap avoids tying up a request thread.
-    status = Solana::Vault.new.send(:client).confirm_transaction(ptx.tx_signature).dig("value", 0)
+    status = Solana::Vault.new.client.confirm_transaction(ptx.tx_signature).dig("value", 0)
 
     if status.nil?
       return render json: { status: "processing" }
