@@ -93,7 +93,10 @@ class TokenPurchaseJob < ApplicationJob
   rescue => e
     Rails.logger.error "[tokens] job.error class=#{e.class} message=#{e.message} purchase_id=#{purchase&.id}"
     Rails.logger.error "[tokens] job.error_backtrace=#{e.backtrace.first(6).join(' | ')}" if e.backtrace
-    purchase&.update(status: "failed")
+    # H8 prelaunch audit: never downgrade a minted purchase to failed — the
+    # on-chain mint succeeded even if a post-mint step (e.g. TransactionLog
+    # write) raised.
+    purchase&.mark_failed_unless_minted!
     raise
   end
 end

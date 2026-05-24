@@ -24,6 +24,63 @@ class StripePurchaseTest < ActiveSupport::TestCase
     assert_raises(KeyError) { StripePurchase.pack("nope") }
   end
 
+  test "mark_failed_unless_minted! preserves minted status (H8)" do
+    # Simulates the rescue path firing AFTER mark_minted! has already run —
+    # e.g. TransactionLog.record! raising on a DB hiccup post-mint. The audit
+    # row must stay "minted" to match on-chain reality.
+    user = users(:sam)
+    purchase = StripePurchase.create!(
+      user: user,
+      stripe_session_id: "sid-h8-keep",
+      quantity: 1,
+      price_cents: 1900,
+      status: "minted"
+    )
+
+    purchase.mark_failed_unless_minted!
+
+    assert_equal "minted", purchase.reload.status
+  end
+
+  test "mark_failed_unless_minted! marks pending purchases as failed" do
+    user = users(:sam)
+    purchase = StripePurchase.create!(
+      user: user,
+      stripe_session_id: "sid-h8-fail",
+      quantity: 1,
+      price_cents: 1900,
+      status: "pending"
+    )
+
+    purchase.mark_failed_unless_minted!
+
+    assert_equal "failed", purchase.reload.status
+  end
+
+  test "mark_failed_unless_minted! reads the current DB row (race safety)" do
+    # If a concurrent process / re-delivered webhook minted the purchase
+    # while this job was mid-rescue, the rescue MUST see the latest state.
+    # The method reloads before checking.
+    user = users(:sam)
+    purchase = StripePurchase.create!(
+      user: user,
+      stripe_session_id: "sid-h8-race",
+      quantity: 1,
+      price_cents: 1900,
+      status: "pending"
+    )
+
+    # Concurrent path: another process flips the row to minted.
+    StripePurchase.where(id: purchase.id).update_all(status: "minted")
+    # The in-memory purchase still thinks it's pending.
+    assert_equal "pending", purchase.status
+
+    purchase.mark_failed_unless_minted!
+
+    # Reloads, sees minted, refuses to downgrade.
+    assert_equal "minted", purchase.reload.status
+  end
+
   test "available_packs hides test_trio unless test scaffolding is on" do
     AppFlags.stub :test_scaffolding?, false do
       assert_not StripePurchase.available_packs.key?("test_trio")

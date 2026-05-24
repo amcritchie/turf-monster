@@ -70,6 +70,18 @@ class StripePurchase < ApplicationRecord
     update!(status: "refunded", refunded_at: Time.current, refund_reason: reason)
   end
 
+  # Prelaunch audit H8 (2026-05-24): the TokenPurchaseJob rescue used to
+  # call `update(status: "failed")` unconditionally. If an exception fired
+  # AFTER `mark_minted!` (e.g. TransactionLog.record! failing on a DB hiccup
+  # post-mint), the audit row would flip from minted → failed even though
+  # the on-chain mint succeeded — misleading operators investigating
+  # chargebacks. Reload before writing, and refuse to downgrade a minted row.
+  def mark_failed_unless_minted!
+    reload
+    return if status == "minted"
+    update!(status: "failed")
+  end
+
   def tx_signatures
     return [] if mint_tx_signatures.blank?
     JSON.parse(mint_tx_signatures)
