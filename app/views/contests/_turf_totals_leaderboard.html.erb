@@ -180,34 +180,13 @@
             <% if rank_prize.to_i > 0 %>
               <span class="text-xs font-bold text-primary flex-shrink-0"><%= dollars(rank_prize / 100.0) %></span>
             <% end %>
-            <%# Payout action (admin only, settled) %>
-            <% if @contest.settled? && current_user&.admin? && paid %>
-              <div x-data="{ paid_tx: '<%= entry.payout_tx_signature %>' }" class="flex-shrink-0 hidden md:block">
-                <template x-if="paid_tx">
-                  <a :href="'https://explorer.solana.com/tx/' + paid_tx + '<%= '?cluster=devnet' if Solana::Config.devnet? %>'"
-                     target="_blank" class="text-primary hover:text-primary-300 text-xs font-mono flex items-center gap-1" title="View on Solana Explorer">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    Paid
-                  </a>
-                </template>
-                <template x-if="!paid_tx">
-                  <% if entry.user.solana_connected? %>
-                    <button @click="
-                      $store.solanaModal.show('Sending Payout', 'Transferring <%= dollars(entry.payout_cents / 100.0) %> to <%= entry.user.display_name %>...');
-                      fetch('<%== payout_entry_contest_path(@contest, entry_id: entry.id) %>', {
-                        method: 'POST',
-                        headers: { 'X-CSRF-Token': document.querySelector('meta[name=csrf-token]')?.content || '', 'Accept': 'application/json' }
-                      }).then(r => r.json()).then(data => {
-                        if (data.success) { paid_tx = data.tx; $store.solanaModal.success(data.tx, 'Payout sent'); refreshBalanceDelayed(); }
-                        else { $store.solanaModal.error(data.error); }
-                      }).catch(e => { $store.solanaModal.error(e.message); });"
-                      class="btn btn-primary btn-sm">Payout <%= dollars(entry.payout_cents / 100.0) %></button>
-                  <% else %>
-                    <span class="text-xs text-muted" title="User has no Solana wallet">No wallet</span>
-                  <% end %>
-                </template>
-              </div>
-            <% end %>
+            <%# Audit H2 (2026-05-23): per-entry admin Payout button removed.
+                Payouts now flow through the on-chain settle_contest path
+                exclusively (Contest#grade! -> settle_onchain! -> 2-of-3 cosign
+                in /admin/pending_transactions). Winners' UserAccount.balance
+                is credited on settle; they withdraw via /wallet themselves.
+                The `entries.payout_tx_signature` column was dropped in the
+                companion migration (RemovePayoutTxSignatureFromEntries). %>
             <%# Score — right end of the top info row %>
             <div class="text-right flex-shrink-0 ml-auto" style="min-width:3.5rem">
               <div class="font-mono font-bold text-lg <%= dimmed ? 'text-muted' : 'text-violet' %>"><%= sprintf('%.1f', entry.score) %></div>

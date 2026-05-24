@@ -96,7 +96,7 @@ Mobile-first contest preview/info page. Renders inline matchup board or leaderbo
 - **URL**: https://turf.mcritchie.studio
 - **Database**: Heroku Postgres (essential-0)
 - **Redis**: Heroku Redis mini (`redis-clear-09691`) — `REDIS_URL` set automatically
-- **Deploy**: `git push heroku main` (then `heroku run bin/rails db:migrate --app turf-monster` if needed)
+- **Deploy**: `bin/deploy` — wraps `git push heroku main` + auto-migrates + pre-flight checks (IDL hash drift, `SKIP_IDL_VERIFICATION` set, Stripe test-mode key, dirty tree, failing tests). `bin/deploy --help` for options. **One-time mainnet first deploy**: follow `MAINNET_LAUNCH.md` instead.
 - **Env vars** (currently set on Heroku): `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `RAILS_SERVE_STATIC_FILES`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `MAILER_FROM`, `MANAGED_WALLET_ENCRYPTION_KEY`, `EXPECTED_IDL_HASH`, `SOLANA_PROGRAM_ID`. See `.env.example` for the full documented set (including `SOLANA_ADMIN_KEY` / `SOLANA_RPC_URL` for local dev).
 
 ## Tech Stack
@@ -149,7 +149,7 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 
 **From the engine:** `Studio::ErrorHandling`, `ErrorLog` model, `Sluggable` concern, auth controllers, error log views, theme system, `_theme_toggle_morph` partial (spinner/toggle swap), `showNavSpinner`/`hideNavSpinner` globals, **`Studio::S3`** + **`Studio::ImageCache`** + `ImageCache` model.
 
-**Overridden locally:** `sessions/new.html.erb`, `registrations/new.html.erb`, `sessions/_sso_continue.html.erb`, `omniauth_callbacks_controller.rb` (merge support), `layouts/_navbar.html.erb` (app-specific nav links, mobile sub-navbar with duplicate gear+moon fix).
+**Overridden locally:** `sessions/new.html.erb`, `registrations/new.html.erb`, `omniauth_callbacks_controller.rb` (merge support), `layouts/_navbar.html.erb` (app-specific nav links, mobile sub-navbar with duplicate gear+moon fix). SSO "Continue as X" partial intentionally not overridden — feature disabled at the session-cookie layer (see `docs/AUTH.md` SSO Satellite Role).
 
 **Routes:** `Studio.routes(self)` draws `/login`, `/signup`, `/logout`, `/sso_continue`, `/sso_login`, `/auth/:provider/callback`, `/error_logs`, `/admin/theme`.
 

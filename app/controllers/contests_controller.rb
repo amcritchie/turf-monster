@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :payout_entry, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
 
   def index
@@ -188,34 +188,19 @@ class ContestsController < ApplicationController
     render json: { success: false, error: e.message }, status: :unprocessable_entity
   end
 
-  def payout_entry
-    entry = @contest.entries.find_by(id: params[:entry_id])
-    return render json: { success: false, error: "Entry not found" }, status: :not_found unless entry
-
-    rescue_and_log(target: entry, parent: @contest) do
-      raise "Contest not settled" unless @contest.settled?
-      raise "No payout for this entry" if entry.payout_cents.to_i == 0
-      raise "User has no Solana wallet" unless entry.user.solana_connected?
-
-      # OPSEC-030: serialize per-entry to prevent double-pay on admin
-      # double-click. The "Already paid" check inside the lock + on-chain
-      # transfer + DB update happen as one critical section.
-      result_sig = entry.with_lock do
-        raise "Already paid" if entry.payout_tx_signature.present?
-
-        vault = Solana::Vault.new
-        amount = Solana::Config.dollars_to_lamports(entry.payout_cents / 100.0)
-        result = vault.transfer_spl(entry.user.solana_address, amount, mint: Solana::Config::USDC_MINT)
-        entry.update!(payout_tx_signature: result[:signature])
-        result[:signature]
-      end
-
-      invalidate_usdc_cache
-      render json: { success: true, tx: result_sig, entry_id: entry.id }
-    end
-  rescue StandardError => e
-    render json: { success: false, error: e.message }, status: :unprocessable_entity
-  end
+  # Audit H2 (2026-05-23): `payout_entry` was removed.
+  #
+  # It was a per-entry admin button that called `vault.transfer_spl` from
+  # admin's USDC ATA → user's ATA. Combined with `Contest#grade!` ->
+  # `settle_onchain!` (which credits on-chain UserAccount.balance via the
+  # 2-of-3 settle_contest cosign flow), the two paths together produced a
+  # **double payout**: settle credits the user's vault balance + admin then
+  # transfers USDC directly to user ATA + user later withdraws the credited
+  # balance = paid twice.
+  #
+  # The single source of truth for payouts is now on-chain settle. After
+  # cosign confirms, winners' balances are credited automatically; users
+  # withdraw on their own schedule via /wallet. No admin per-entry button.
 
   def world_cup
     @contest = Contest.where(status: [:open, :locked, :settled]).order(created_at: :desc).first
