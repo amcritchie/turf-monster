@@ -370,41 +370,26 @@ module Solana
       data.length == expected_len ? :ok : :needs_migration
     end
 
-    # Ensure user's onchain account exists and is current, create or migrate as needed.
+    # Ensure user's onchain account exists, creating it if missing.
     # `username` is used only on the create path (new account).
+    #
+    # `:needs_migration` was previously handled by calling migrate_user_account.
+    # As of turf-vault v0.15.1 (prelaunch audit C1), that instruction is
+    # removed — no mainnet accounts exist to migrate, and the instruction's
+    # missing wallet-Signer / wallet-binding constraints made it a drain
+    # vector. If this method ever sees :needs_migration in practice, it
+    # signals real schema drift between Rails and turf-vault and must be
+    # investigated manually rather than auto-migrated.
     def ensure_user_account(wallet_address, username: nil)
       status = check_user_account_status(wallet_address)
       case status
       when :ok then nil
-      when :needs_migration then migrate_user_account(wallet_address)
       when :not_found then create_user_account(wallet_address, username: username)
+      when :needs_migration
+        raise "UserAccount at unexpected size for #{wallet_address} — turf-vault " \
+              "schema drift; v0.15.1 removed the migrate_user_account instruction. " \
+              "Investigate manually."
       end
-    end
-
-    # Migrate a UserAccount PDA to the current struct size (admin-only, idempotent)
-    def migrate_user_account(wallet_address)
-      admin = Keypair.admin
-      vault_pda, _ = vault_state_pda
-      user_pda, _ = user_account_pda(wallet_address)
-      wallet_bytes = Keypair.decode_base58(wallet_address)
-
-      data = Transaction.anchor_discriminator("migrate_user_account")
-
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: wallet_bytes, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
-        ],
-        data: data
-      )
-
-      signature = client.send_and_confirm(tx.serialize_base64)
-      { signature: signature, pda: Keypair.encode_base58(user_pda) }
     end
 
     # Create a UserAccount PDA for a wallet (admin pays rent).

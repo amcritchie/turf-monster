@@ -316,59 +316,11 @@ namespace :solana do
     end
   end
 
-  desc "Migrate UserAccount PDAs to current struct size"
-  task migrate_accounts: :environment do
-    require_solana_prod_confirmation!("solana:migrate_accounts")
-
-    vault = Solana::Vault.new
-
-    if ENV["ADDRESS"]
-      address = ENV["ADDRESS"]
-      puts "Checking #{address}..."
-      status = vault.check_user_account_status(address)
-      case status
-      when :ok
-        puts "  Already current (81 bytes)"
-      when :needs_migration
-        puts "  Needs migration — migrating..."
-        result = vault.migrate_user_account(address)
-        puts "  Migrated! Signature: #{result[:signature]}"
-      when :not_found
-        puts "  No UserAccount PDA found"
-      end
-    elsif ENV["ALL"] == "true"
-      users = User.where.not(web2_solana_address: nil).or(User.where.not(web3_solana_address: nil))
-      puts "Checking #{users.count} user(s)...\n\n"
-
-      stats = { ok: 0, migrated: 0, not_found: 0, error: 0 }
-      users.find_each do |user|
-        begin
-          status = vault.check_user_account_status(user.solana_address)
-          case status
-          when :ok
-            puts "  %-20s %s  OK" % [user.display_name, user.solana_address]
-            stats[:ok] += 1
-          when :needs_migration
-            result = vault.migrate_user_account(user.solana_address)
-            puts "  %-20s %s  MIGRATED (%s)" % [user.display_name, user.solana_address, result[:signature]]
-            stats[:migrated] += 1
-          when :not_found
-            puts "  %-20s %s  NOT FOUND" % [user.display_name, user.solana_address]
-            stats[:not_found] += 1
-          end
-        rescue => e
-          puts "  %-20s %s  ERROR: %s" % [user.display_name, user.solana_address, e.message]
-          stats[:error] += 1
-        end
-      end
-
-      puts "\nSummary: #{stats[:ok]} ok, #{stats[:migrated]} migrated, #{stats[:not_found]} not found, #{stats[:error]} errors"
-    else
-      puts "Usage:"
-      puts "  bin/rails solana:migrate_accounts ADDRESS=<wallet>   # single account"
-      puts "  bin/rails solana:migrate_accounts ALL=true            # batch all users"
-    end
-  end
+  # `solana:migrate_accounts` task removed alongside turf-vault v0.15.1
+  # (prelaunch audit C1) — the underlying migrate_user_account instruction
+  # is gone. If a UserAccount ever appears at an unexpected size in the
+  # future, Solana::Vault#ensure_user_account raises with a clear message
+  # and the operator investigates manually rather than auto-migrating.
 
   desc "Test key encryption roundtrip"
   task test_encryption: :environment do
