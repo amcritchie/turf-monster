@@ -4,7 +4,7 @@ class CreateContests < ActiveRecord::Migration[7.2]
       t.string :name, null: false
       t.string :contest_type, default: "small", null: false
       t.integer :entry_fee_cents, default: 0, null: false
-      t.string :status, default: "draft", null: false
+      t.string :status, default: "pending", null: false
       t.integer :max_entries
       t.string :tagline
       t.integer :rank
@@ -14,15 +14,19 @@ class CreateContests < ActiveRecord::Migration[7.2]
       t.boolean :onchain_settled, default: false, null: false
       t.string :onchain_tx_signature
       t.string :slug
-      t.timestamps
-      t.references :user, foreign_key: true, null: true
+      t.timestamps null: false
+      t.references :user, foreign_key: true
       t.string :locks_at_date_selected
       t.string :locks_at_time_selected
       t.string :locks_at_timezone_selected
-    end
+      t.integer :season_id
+      t.boolean :chat_enabled, default: true, null: false
+      t.string :game_type, default: "turf_totals", null: false
 
-    add_index :contests, :slug, unique: true
-    add_index :contests, :status
-    add_index :contests, :rank
+      t.index :game_type
+      t.index :rank
+      t.index :slug, unique: true
+      t.index :status
+    end
   end
 end

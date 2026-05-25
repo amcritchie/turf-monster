@@ -10,9 +10,9 @@ class CreateThemeSettings < ActiveRecord::Migration[7.2]
       t.string :dark
       t.string :light
       t.string :slug
-      t.timestamps
-    end
+      t.timestamps null: false
 
-    add_index :theme_settings, :app_name, unique: true
+      t.index :app_name, unique: true
+    end
   end
 end

@@ -6,10 +6,10 @@ class CreatePlayers < ActiveRecord::Migration[7.2]
       t.string :name, null: false
       t.string :position
       t.integer :jersey_number
-      t.timestamps
-    end
+      t.timestamps null: false
 
-    add_index :players, :slug, unique: true
-    add_index :players, :team_slug
+      t.index :slug, unique: true
+      t.index :team_slug
+    end
   end
 end

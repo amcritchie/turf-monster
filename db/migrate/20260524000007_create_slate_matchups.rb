@@ -11,12 +11,12 @@ class CreateSlateMatchups < ActiveRecord::Migration[7.2]
       t.string :status, default: "pending", null: false
       t.decimal :dk_goals_expectation, precision: 3, scale: 1
       t.string :slug
-      t.timestamps
-    end
+      t.timestamps null: false
 
-    add_index :slate_matchups, :slug, unique: true
-    add_index :slate_matchups, [:slate_id, :team_slug], unique: true
-    add_index :slate_matchups, :game_slug
-    add_index :slate_matchups, :status
+      t.index :game_slug
+      t.index [:slate_id, :team_slug], unique: true
+      t.index :slug, unique: true
+      t.index :status
+    end
   end
 end

@@ -11,9 +11,9 @@ class CreateSlates < ActiveRecord::Migration[7.2]
       t.float :formula_goal_base
       t.float :formula_goal_scale
       t.string :slug
-      t.timestamps
-    end
+      t.timestamps null: false
 
-    add_index :slates, :slug, unique: true
+      t.index :slug, unique: true
+    end
   end
 end

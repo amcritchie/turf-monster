@@ -9,12 +9,14 @@ class CreateGames < ActiveRecord::Migration[7.2]
       t.string :status, default: "scheduled"
       t.integer :home_score
       t.integer :away_score
-      t.timestamps
-    end
+      t.timestamps null: false
+      t.references :survivor_round, foreign_key: true
+      t.string :advancing_team_slug
 
-    add_index :games, :slug, unique: true
-    add_index :games, :home_team_slug
-    add_index :games, :away_team_slug
-    add_index :games, :status
+      t.index :slug, unique: true
+      t.index :home_team_slug
+      t.index :away_team_slug
+      t.index :status
+    end
   end
 end

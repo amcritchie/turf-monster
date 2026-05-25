@@ -10,14 +10,18 @@ class CreateEntries < ActiveRecord::Migration[7.2]
       t.integer :entry_number
       t.string :onchain_entry_id
       t.string :onchain_tx_signature
-      t.string :payout_tx_signature
       t.string :slug
-      t.timestamps
-    end
+      t.timestamps null: false
+      t.integer :eliminated_round
 
-    add_index :entries, :slug, unique: true
-    add_index :entries, :status
-    add_index :entries, [:user_id, :contest_id]
-    add_index :entries, [:contest_id, :status], name: "index_entries_on_contest_id_and_status"
+      t.index [:contest_id, :status]
+      t.index :slug, unique: true
+      t.index :status
+      t.index [:user_id, :contest_id, :entry_number],
+              unique: true,
+              where: "entry_number IS NOT NULL",
+              name: "index_entries_on_user_contest_entry_number"
+      t.index [:user_id, :contest_id]
+    end
   end
 end

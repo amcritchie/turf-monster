@@ -8,9 +8,9 @@ class CreateTeams < ActiveRecord::Migration[7.2]
       t.string :emoji
       t.string :color_primary
       t.string :color_secondary
-      t.timestamps
-    end
+      t.timestamps null: false
 
-    add_index :teams, :slug, unique: true
+      t.index :slug, unique: true
+    end
   end
 end

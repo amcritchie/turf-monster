@@ -11,11 +11,11 @@ class CreateErrorLogs < ActiveRecord::Migration[7.2]
       t.bigint :parent_id
       t.string :parent_name
       t.string :slug
-      t.timestamps
-    end
+      t.timestamps null: false
 
-    add_index :error_logs, :created_at
-    add_index :error_logs, [:target_type, :target_id]
-    add_index :error_logs, [:parent_type, :parent_id]
+      t.index :created_at
+      t.index [:parent_type, :parent_id]
+      t.index [:target_type, :target_id]
+    end
   end
 end
