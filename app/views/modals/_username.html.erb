@@ -16,34 +16,35 @@
        POST confirm_username_account_path with the tx_signature
 %>
 <% if current_user.can_change_username? %>
-  <%# usernameRenameForm() factory lives in app/javascript/username_rename_form.js. %>
+  <%# usernameRenameForm() factory lives in app/javascript/username_rename_form.js.
+      The shell partial (modals/blocks/_shell) provides the title row + close ×
+      so we don't repeat that boilerplate. %>
   <div x-data="usernameRenameForm({
          initialUsername: '<%= j current_user.username %>',
          updateUrl: '<%= update_username_account_path %>',
          confirmUrl: '<%= confirm_username_account_path %>'
        })">
-    <%= render 'modals/blocks/close_button' %>
+    <%= render layout: "modals/blocks/shell", locals: { title: "Change Username" } do %>
+      <p class="text-sm text-muted mb-4">
+        Your username is stored on-chain.
+        <%= current_user.phantom_wallet? ? "Saving opens your Phantom wallet to sign." : "Changes are saved via your managed wallet." %>
+      </p>
 
-    <h3 class="text-heading font-bold text-lg mb-1">Change Username</h3>
-    <p class="text-sm text-muted mb-4">
-      Your username is stored on-chain.
-      <%= current_user.phantom_wallet? ? "Saving opens your Phantom wallet to sign." : "Changes are saved via your managed wallet." %>
-    </p>
+      <template x-if="error">
+        <p class="text-red-400 text-sm mb-3" x-text="error"></p>
+      </template>
 
-    <template x-if="error">
-      <p class="text-red-400 text-sm mb-3" x-text="error"></p>
-    </template>
-
-    <form @submit.prevent="save()" class="space-y-4">
-      <input type="text" x-model="username" class="input-field w-full"
-             placeholder="username" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_-]+"
-             title="3-30 characters — letters, numbers, hyphens, and underscores"
-             autofocus>
-      <button type="submit" class="btn btn-primary btn-lg w-full" :disabled="saving || !changed">
-        <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
-        <span x-show="saving">Saving…</span>
-      </button>
-    </form>
+      <form @submit.prevent="save()" class="space-y-4">
+        <input type="text" x-model="username" class="input-field w-full"
+               placeholder="username" minlength="3" maxlength="30" pattern="[a-zA-Z0-9_-]+"
+               title="3-30 characters — letters, numbers, hyphens, and underscores"
+               autofocus>
+        <button type="submit" class="btn btn-primary btn-lg w-full" :disabled="saving || !changed">
+          <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
+          <span x-show="saving">Saving…</span>
+        </button>
+      </form>
+    <% end %>
   </div>
 <% else %>
   <%# Locked state — visually mirrors the "Entry Tokens Minted" :lg

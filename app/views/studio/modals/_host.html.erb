@@ -42,15 +42,49 @@
       if (Alpine.store('modals')) return;
       Alpine.store('modals', {
         stack: [],
+        // open(id, props, opts)
+        //   opts.replace: true  → swap the top entry with this one. When a
+        //     non-closing modal is currently visible, the swap is transitioned
+        //     — current modal animates out (modal-card-unmount), then the new
+        //     one mounts (modal-card-in). Defaults to no transition when
+        //     stack is empty.
+        //   opts.replace: false (default) → push on top of the stack. Stacking
+        //     semantics — when the new one closes, the previous is revealed
+        //     underneath (e.g. crop-photo on top of profile).
         open: function(id, props, opts) {
           props = props || {};
           opts  = opts  || {};
+          var self = this;
+
           if (opts.replace && this.stack.length > 0) {
+            var current = this.current();
+            if (current && !current._closing) {
+              // Animate current out, then swap. CLOSE_ANIM_MS matches the
+              // modal-card-out keyframe duration — see application.tailwind.css.
+              current._closing = true;
+              setTimeout(function() {
+                var idx = self.stack.indexOf(current);
+                if (idx >= 0) {
+                  self.stack[idx] = { id: id, props: props };
+                } else {
+                  self.stack.push({ id: id, props: props });
+                }
+                self._sync();
+              }, CLOSE_ANIM_MS);
+              return;
+            }
+            // Already mid-close — just hot-swap so we don't double up timers.
             this.stack[this.stack.length - 1] = { id: id, props: props };
           } else {
             this.stack.push({ id: id, props: props });
           }
           this._sync();
+        },
+        // Sugar — `swap('foo', props)` ≡ `open('foo', props, { replace: true })`.
+        // Use for multi-step flows where the previous step should fade out
+        // as the next one appears (auth wizard, token-purchase steps).
+        swap: function(id, props) {
+          return this.open(id, props, { replace: true });
         },
         close: function() {
           var self = this;
