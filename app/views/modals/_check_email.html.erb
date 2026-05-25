@@ -1,28 +1,76 @@
 <%#
-  Content fragment for the 'check-email' modal — opened via
-  $store.modals.open('check-email', { email, sendError }).
-  Rendered inside shared/_modal_host, which provides the backdrop,
-  card chrome, scroll lock, escape key, and click-outside.
+  Check-email modal — opened via
+  $store.modals.open('check-email', { email, state?, sendError? }).
+  Rendered inside studio/_modal_host, which provides backdrop, card
+  chrome, scroll lock, escape, click-outside, and the directional
+  swap animations (advance() for resend → resending → resent).
 
-  "Resend email" dispatches a window event the contest board listens for
-  (selectionBoard's @modal-resend-verification.window), so the modal
-  partial doesn't need to know about the board's Alpine scope.
+  Composed from blocks/_card_header — same pattern as the auth
+  modal's tokens-* steps and entry_confirmed. Status-shape header
+  (default :md size) keeps this modal subordinate to the page; this
+  isn't a celebration, it's a "next steps" handoff.
+
+  State machine on props.state:
+    default (or unset) — envelope icon, "Check your email", subtext
+                         with the user's address, "Resend email" CTA.
+                         sendError surfaces inline when set.
+    'resending'        — spinner + small title. No CTA — the resend
+                         API is fast; the modal just stands guard.
+    'resent'           — primary check icon + close CTA. End-state
+                         confirmation that a fresh link is out.
+
+  Resend wiring: the primary CTA dispatches `modal-resend-verification`
+  on the window. The contest board listens
+  (@modal-resend-verification.window) and runs the fetch + state
+  transitions via $store.modals.advance({ state: 'resending' }) etc.
+
+  Close affordances are template-style: a Close link below the CTA
+  in the default / resent states (no top-right ×; the host's
+  click-outside + escape already cover that). Resending has no close
+  affordance since the operation should complete on its own.
 %>
-<div class="text-center">
-  <div class="flex justify-end -mt-2 -mr-2">
-    <button @click="$store.modals.close()"
-            class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
-  </div>
-  <div class="text-4xl mb-3">&#128236;</div>
-  <h3 class="text-lg font-bold text-heading mb-1">Check your email</h3>
-  <p class="text-sm text-secondary mb-4">
-    We sent a confirmation link to
-    <span class="text-heading font-medium" x-text="$store.modals.current().props.email"></span>.
-    Click it to verify your email and finish entering.
-  </p>
-  <template x-if="$store.modals.current().props.sendError">
-    <p class="text-red-400 text-xs mb-3" x-text="$store.modals.current().props.sendError"></p>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }">
+  <%# Default — envelope + resend %>
+  <template x-if="!props.state || props.state === 'default'">
+    <div>
+      <%= render 'modals/blocks/card_header',
+            icon_emoji: '📬',
+            title: 'Check your email' do %>
+        We sent a confirmation link to
+        <span class="text-heading font-medium" x-text="props.email"></span>.
+        Click it to verify your email and finish entering.
+      <% end %>
+      <template x-if="props.sendError">
+        <p class="text-red-400 text-xs mb-3 text-center" x-text="props.sendError"></p>
+      </template>
+      <button @click="$dispatch('modal-resend-verification')"
+              class="btn btn-primary btn-lg w-full">Resend email</button>
+      <button @click="$store.modals.close()"
+              class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+        Close
+      </button>
+    </div>
   </template>
-  <button @click="$dispatch('modal-resend-verification')"
-          class="btn btn-outline w-full">Resend email</button>
+
+  <%# Resending — spinner + small title, no CTA %>
+  <template x-if="props.state === 'resending'">
+    <%= render 'modals/blocks/card_header',
+          spinner: true,
+          title: 'Resending…',
+          subtitle: 'Sending a fresh link your way.' %>
+  </template>
+
+  <%# Resent — checkmark + close CTA %>
+  <template x-if="props.state === 'resent'">
+    <div>
+      <%= render 'modals/blocks/card_header',
+            icon_color: 'primary',
+            title: 'New link sent' do %>
+        Check <span class="text-heading font-medium" x-text="props.email"></span>
+        for the latest confirmation link.
+      <% end %>
+      <button @click="$store.modals.close()"
+              class="btn btn-primary btn-lg w-full">Close</button>
+    </div>
+  </template>
 </div>

@@ -13,6 +13,11 @@
   because it doesn't need to outlive the modal. The form posts to
   save_profile_account_path; on success we close the modal and
   reload the page so the navbar avatar/name refresh.
+
+  Composed from modals/blocks/_shell (title row + close ×) — same
+  structural spine as the Form template. Errors render as an inline
+  paragraph above the form; no card_header here since the modal
+  isn't a celebration / status card.
 %>
 <div x-data="{
        saving: false,
@@ -45,28 +50,22 @@
          });
        }
      }">
+  <%= render layout: "modals/blocks/shell", locals: { title: "Edit Profile" } do %>
+    <template x-if="error">
+      <p class="text-red-400 text-sm mb-4" x-text="error"></p>
+    </template>
 
-  <div class="flex justify-end -mt-2 -mr-2 mb-2">
-    <button @click="$store.modals.close()"
-            class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
-  </div>
+    <form id="profile-modal-form" @submit.prevent="submit()" class="space-y-5">
+      <%= render "components/avatar_cropper", form_field_name: "user[avatar]" %>
 
-  <h3 class="text-heading font-bold text-lg mb-6">Edit Profile</h3>
-
-  <template x-if="error">
-    <p class="text-red-400 text-sm mb-4" x-text="error"></p>
-  </template>
-
-  <form id="profile-modal-form" @submit.prevent="submit()" class="space-y-5">
-    <%= render "components/avatar_cropper", form_field_name: "user[avatar]" %>
-
-    <button type="submit" class="btn btn-primary btn-lg w-full"
-            :disabled="saving">
-      <span x-show="!saving">Save Profile</span>
-      <span x-show="saving" class="inline-flex items-center gap-2">
-        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-        Saving...
-      </span>
-    </button>
-  </form>
+      <button type="submit" class="btn btn-primary btn-lg w-full"
+              :disabled="saving">
+        <span x-show="!saving">Save Profile</span>
+        <span x-show="saving" class="inline-flex items-center gap-2">
+          <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          Saving...
+        </span>
+      </button>
+    </form>
+  <% end %>
 </div>

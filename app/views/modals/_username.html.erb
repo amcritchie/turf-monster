@@ -47,34 +47,26 @@
     <% end %>
   </div>
 <% else %>
-  <%# Locked state — visually mirrors the "Entry Tokens Minted" :lg
-      celebration card (red X pill + large title + subtext + primary CTA),
-      but inlined rather than rendered through modals/blocks/_card_header
-      because that partial's `block_given?` check can leak the surrounding
-      page content when no block is passed from this call site. CTA targets
-      the admin-set main contest (via SeasonConfig.main_contest, which
-      falls back to most-recent open) so the click lands somewhere
-      actionable; root_path would work too but adds a redirect hop. %>
+  <%# Locked state — Success-template spine via card_header :lg + :error
+      icon. CTA targets the admin-set main contest (via SeasonConfig.main_contest,
+      which falls back to most-recent open) so the click lands somewhere
+      actionable; root_path would work too but adds a redirect hop.
+      block_given? trap is dodged by passing subtitle explicitly. %>
   <% locked_target = SeasonConfig.main_contest %>
   <div x-data="{}">
-    <%= render 'modals/blocks/close_button' %>
+    <%= render 'modals/blocks/card_header',
+          size: :lg,
+          icon: :error,
+          title: "Enter Contest First",
+          subtitle: "Your username is locked until you've played at least one contest. Submit an entry and the rename is unlocked for good." %>
 
-    <div class="py-4 text-center">
-      <div class="mx-auto w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center mb-4">
-        <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
-      </div>
-      <h3 class="text-3xl font-bold text-heading mb-2">Enter Contest First</h3>
-      <p class="text-sm text-secondary mb-4">
-        Your username is locked until you&rsquo;ve played at least one contest.
-        Submit an entry and the rename is unlocked for good.
-      </p>
-
-      <%= link_to (locked_target ? "Enter #{locked_target.name}" : "Browse Contests"),
-                  (locked_target ? contest_path(locked_target) : contests_path),
-                  class: "btn btn-primary btn-lg w-full",
-                  "@click": "$store.modals.close()" %>
-    </div>
+    <%= link_to (locked_target ? "Enter #{locked_target.name}" : "Browse Contests"),
+                (locked_target ? contest_path(locked_target) : contests_path),
+                class: "btn btn-primary btn-lg w-full",
+                "@click": "$store.modals.close()" %>
+    <button @click="$store.modals.close()"
+            class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+      Dismiss
+    </button>
   </div>
 <% end %>

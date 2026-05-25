@@ -38,13 +38,15 @@
      }">
 
   <%# === PROCESSING ========================================================
-      Pending Phantom signature, pending RPC confirmation, etc. The
-      generic engine block carries the same spinner + title + message
-      idiom the bespoke template used. %>
+      Pending Phantom signature, pending RPC confirmation, etc. Status-
+      template shape via card_header (spinner + small title) — same
+      structural family as the auth-modal tokens-confirming step so
+      both on-chain wait states read identically. %>
   <template x-if="$store.solanaModal.state === 'processing'">
-    <%= render 'studio/modals/blocks/processing_card',
-        title_key:   '$store.solanaModal.title',
-        message_key: '$store.solanaModal.message' %>
+    <%= render 'modals/blocks/card_header',
+          spinner: true,
+          title_key:    "$store.solanaModal.title",
+          subtitle_key: "$store.solanaModal.message" %>
   </template>
 
   <%# === SUCCESS ===========================================================
@@ -64,35 +66,33 @@
   </template>
 
   <%# === ERROR =============================================================
-      Uses the engine error_card for the basic shape (icon + title +
-      message). The Phantom-branded recovery button stays inline because
-      "Phantom-branded recovery" is Solana-specific — promote to engine
-      in step F as a generic `recovery_icon:` option. %>
+      Status-template shape via card_header :error + primary CTA. The
+      Phantom-branded recovery button stays inline because "Phantom-
+      branded recovery" is Solana-specific — same gap-3 / image-pair
+      pattern as the auth modal's Phantom Connect button. Subtitle uses
+      subtitle_key so the live errorMessage surfaces unchanged. %>
   <template x-if="$store.solanaModal.state === 'error'">
-    <div class="text-center">
-      <div class="mx-auto w-12 h-12 mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
-        <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
-      </div>
-      <h3 class="text-heading font-bold text-lg mb-2" x-text="$store.solanaModal.title"></h3>
-      <p class="text-red-400 text-sm mb-4" x-text="$store.solanaModal.errorMessage"></p>
-      <div class="flex flex-col gap-3 items-center">
-        <template x-if="$store.solanaModal.recoveryLabel && $store.solanaModal.recoveryPhantom">
-          <button @click="$store.solanaModal._triggerRecovery()"
-                  class="btn btn-secondary btn-lg w-full gap-3">
-            <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
-            <span x-text="$store.solanaModal.recoveryLabel"></span>
-          </button>
-        </template>
-        <template x-if="$store.solanaModal.recoveryLabel && !$store.solanaModal.recoveryPhantom">
-          <button @click="$store.solanaModal._triggerRecovery()"
-                  x-text="$store.solanaModal.recoveryLabel"
-                  class="btn btn-primary btn-sm"></button>
-        </template>
-        <button @click="$store.solanaModal.close()"
-                class="text-secondary hover:text-heading text-sm underline underline-offset-2 cursor-pointer">Close</button>
-      </div>
+    <div>
+      <%= render 'modals/blocks/card_header',
+            icon: :error,
+            title_key:    "$store.solanaModal.title",
+            subtitle_key: "$store.solanaModal.errorMessage" %>
+      <template x-if="$store.solanaModal.recoveryLabel && $store.solanaModal.recoveryPhantom">
+        <button @click="$store.solanaModal._triggerRecovery()"
+                class="btn btn-secondary btn-lg w-full gap-3">
+          <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
+          <span x-text="$store.solanaModal.recoveryLabel"></span>
+        </button>
+      </template>
+      <template x-if="$store.solanaModal.recoveryLabel && !$store.solanaModal.recoveryPhantom">
+        <button @click="$store.solanaModal._triggerRecovery()"
+                x-text="$store.solanaModal.recoveryLabel"
+                class="btn btn-primary btn-lg w-full"></button>
+      </template>
+      <button @click="$store.solanaModal.close()"
+              class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+        Close
+      </button>
     </div>
   </template>
 </div>

@@ -745,6 +745,38 @@ body.modal-open { overflow: hidden; }
   to   { transform: scaleX(0); }
 }
 
+/* === Loading dots =====================================================
+   Three primary-colored dots that bounce in sequence. Used by
+   modals/blocks/_card_header when spinner: true so async/in-flight
+   states (auth modal's tokens-confirming, onchain-tx processing) share
+   one visual idiom for "we're working on it" with the rest of the
+   modal family. Sizing matches the icon pills (32px square footprint)
+   so the card_header layout stays aligned across spinner / icon /
+   emoji modes. */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.loading-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  animation: loading-dots-bounce 1.2s ease-in-out infinite both;
+}
+.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+.loading-dots span:nth-child(3) { animation-delay: 0s; }
+@keyframes loading-dots-bounce {
+  0%, 80%, 100% { transform: translateY(0)    scale(0.85); opacity: 0.45; }
+  40%           { transform: translateY(-6px) scale(1);    opacity: 1;    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-dots span { animation: none; opacity: 0.85; }
+}
+
 /* === Modal mount / unmount animations =================================
    Used by studio/modals/_host.html.erb via the .modal-card-{mount,unmount}
    and .modal-backdrop-{mount,unmount} classes the host binds. The card
