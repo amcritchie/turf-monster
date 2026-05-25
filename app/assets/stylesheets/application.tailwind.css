@@ -382,14 +382,72 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
   }
+  /* L5 — L4 fill with a static medium green glow (8/16px) around the
+     perimeter. Wider than a rim, tighter than a wide halo. */
   .level-badge-5 {
+    background: linear-gradient(180deg, rgb(var(--color-primary-500-rgb) / 0.6), rgb(var(--color-primary-500-rgb) / 0.4));
+    color: #fff;
+    border-color: rgb(var(--color-primary-500-rgb) / 0.85);
+    box-shadow:
+      0 0 8px rgb(var(--color-primary-500-rgb) / 0.7),
+      0 0 16px rgb(var(--color-primary-500-rgb) / 0.4);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  }
+  /* L6 — L5's medium glow plus a beveled-coin treatment: bumped fill
+     saturation, top white inset highlight, bottom dark inset shadow,
+     and a tight drop shadow for the sculpted-pin feel. */
+  .level-badge-6 {
+    background: linear-gradient(180deg, rgb(var(--color-primary-500-rgb) / 0.7), rgb(var(--color-primary-500-rgb) / 0.45));
+    color: #fff;
+    border-color: rgb(var(--color-primary-500-rgb) / 0.85);
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 0 8px rgb(var(--color-primary-500-rgb) / 0.7),
+      0 0 16px rgb(var(--color-primary-500-rgb) / 0.4);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  }
+  /* ── Badge Sheen Sweep (reusable utility) ────────────────────────
+     Wraps any pill-shaped element to fire a one-shot diagonal white
+     sheen on initial render. Built so the seeds-card level badge can
+     "wink" alongside the seeds bar's existing per-segment shimmer.
+     Delay is driven by a CSS custom property (--sheen-delay) so the
+     caller can sync to whatever else is animating nearby.
+     Source: extracted from the 7d Sheen Sweep candidate 2026-05-24. */
+  .badge-with-sheen {
+    position: relative;
+    display: inline-block;
+    border-radius: 9999px;
+  }
+  .badge-with-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 35%, rgba(255, 255, 255, 0.45) 50%, transparent 65%);
+    background-size: 250% 100%;
+    background-repeat: no-repeat;
+    background-position: 200% 0;
+    border-radius: inherit;
+    pointer-events: none;
+    animation: badge-sheen-sweep 2.5s ease-in-out var(--sheen-delay, 0s) 1 both;
+  }
+  @keyframes badge-sheen-sweep {
+    from { background-position:  200% 0; }
+    to   { background-position: -100% 0; }
+  }
+
+  /* Reference: classic metal-tier treatments — the original Silver / Gold
+     concept for L5 / L6 before we settled on green-family glows. Kept
+     for future use and shown in the Reference section of the preview. */
+  .level-badge-classic-5 {
     background: linear-gradient(135deg, #f5f5f5, #9a9a9a 55%, #d8d8d8);
     color: #2a2a2a;
     border-color: #b8b8b8;
     box-shadow: 0 0 12px rgba(220, 220, 220, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
   }
-  .level-badge-6 {
+  .level-badge-classic-6 {
     background: linear-gradient(135deg, #FFE34D, #B8860B 55%, #FFC107);
     color: #4a2e00;
     border-color: #e8b500;
@@ -397,46 +455,60 @@
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
     font-weight: 800;
   }
+  /* L7 — L6's beveled face with the fill swapped to a diagonal
+     primary → mint gradient. Adds chromatic depth without animation. */
   .level-badge-7 {
-    background: linear-gradient(135deg, #16E5B6, #028A6F 60%, #06D6A0);
+    background: linear-gradient(135deg, rgb(var(--color-primary-500-rgb) / 0.8), rgba(6, 214, 160, 0.7));
     color: #fff;
-    border-color: #06D6A0;
-    box-shadow: 0 0 16px rgba(6, 214, 160, 0.7), 0 0 32px rgba(6, 214, 160, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    animation: level-pulse-emerald 2s ease-in-out infinite;
+    border-color: rgb(var(--color-primary-500-rgb) / 0.85);
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 0 8px rgb(var(--color-primary-500-rgb) / 0.7),
+      0 0 16px rgb(var(--color-primary-500-rgb) / 0.4);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  }
+  /* L8 — Full transition to mint. Same beveled face as L6/L7 but
+     the fill is all mint (no green half), so this is where the
+     green-family arc lands on its destination color. */
+  .level-badge-8 {
+    background: linear-gradient(135deg, #16E5B6, #06D6A0 60%, #028A6F);
+    color: #fff;
+    border-color: rgba(6, 214, 160, 0.85);
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 0 10px rgba(6, 214, 160, 0.7),
+      0 0 20px rgba(6, 214, 160, 0.4);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
     font-weight: 800;
   }
-  @keyframes level-pulse-emerald {
-    0%, 100% { box-shadow: 0 0 16px rgba(6, 214, 160, 0.7),  0 0 32px rgba(6, 214, 160, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
-    50%      { box-shadow: 0 0 22px rgba(6, 214, 160, 0.95), 0 0 48px rgba(6, 214, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
-  }
-  .level-badge-8 {
-    background: linear-gradient(135deg, #4DAEFF, #003a99 60%, #1e90ff);
+  /* L9 — Animated green ↔ mint gradient. Symmetric 3-stop palette so
+     the level-shimmer background-position sweep slides the mint peak
+     across the badge and back without a hard reset. */
+  .level-badge-9 {
+    background: linear-gradient(135deg,
+      rgb(var(--color-primary-500-rgb) / 0.9),
+      rgba(6, 214, 160, 0.9) 50%,
+      rgb(var(--color-primary-500-rgb) / 0.9));
     background-size: 200% 200%;
     color: #fff;
-    border-color: #4DAEFF;
-    box-shadow: 0 0 18px rgba(77, 174, 255, 0.7), 0 0 36px rgba(30, 144, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    border-color: rgba(6, 214, 160, 0.85);
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 0 10px rgba(6, 214, 160, 0.7),
+      0 0 20px rgba(6, 214, 160, 0.4);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    animation: level-shimmer 3s ease-in-out infinite;
+    animation: level-shimmer 2.5s ease-in-out infinite;
     font-weight: 800;
   }
   @keyframes level-shimmer {
     0%, 100% { background-position: 0% 50%; }
     50%      { background-position: 100% 50%; }
-  }
-  .level-badge-9 {
-    background: linear-gradient(135deg, #ff5e7e, #8b0000 60%, #ff1744);
-    background-size: 200% 200%;
-    color: #fff;
-    border-color: #ff5e7e;
-    box-shadow: 0 0 20px rgba(255, 23, 68, 0.7), 0 0 40px rgba(255, 23, 68, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    animation: level-shimmer 2.5s ease-in-out infinite, level-pulse-ruby 2s ease-in-out infinite;
-    font-weight: 800;
-  }
-  @keyframes level-pulse-ruby {
-    0%, 100% { box-shadow: 0 0 20px rgba(255, 23, 68, 0.7),  0 0 40px rgba(255, 23, 68, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
-    50%      { box-shadow: 0 0 26px rgba(255, 23, 68, 0.95), 0 0 56px rgba(255, 23, 68, 0.5),  inset 0 1px 0 rgba(255, 255, 255, 0.5); }
   }
   .level-badge-10 {
     background: linear-gradient(135deg, #ff0080, #ff8c00, #ffd700, #06D6A0, #4BAF50, #00d4ff, #8E82FE, #ff0080);

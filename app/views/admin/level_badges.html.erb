@@ -14,11 +14,11 @@
     2  => "Rookie — filled green",
     3  => "Polished — inset highlight",
     4  => "Lifted — drop shadow",
-    5  => "Silver",
-    6  => "Gold",
-    7  => "Emerald — gem tier",
-    8  => "Sapphire",
-    9  => "Ruby — pulsing shimmer",
+    5  => "Glowed — medium green halo",
+    6  => "Beveled Glow — sculpted coin with halo",
+    7  => "Two-Tone — green/mint gradient",
+    8  => "Mint — full transition",
+    9  => "Mint Animated — moving gradient",
     10 => "Legendary — holographic"
   }
 %>
@@ -30,6 +30,9 @@
       Progressive visual treatments for Level 1 → 10. Compare the bare badge against an in-context mock of the seeds card header. Higher tiers animate — give them a few seconds.
     </p>
   </header>
+
+
+
 
 
   <section class="space-y-3">
@@ -73,6 +76,40 @@
         <% (1..10).each do |lvl| %>
           <span class="level-badge level-badge-<%= lvl %>">Level <%= lvl %></span>
         <% end %>
+      </div>
+    </div>
+  </section>
+
+  <%# Reference — the original Silver/Gold metal-tier concept for L5/L6
+      before we settled on green-family glows. Kept here for future use;
+      CSS classes are .level-badge-classic-5 and .level-badge-classic-6. %>
+  <section>
+    <h2 class="label-upper font-bold mb-3">Reference — Classic metal tier (archived)</h2>
+    <p class="text-muted text-xs mb-3">Pre-iteration design where L5 was silver and L6 was gold. Kept as <code class="text-xs bg-inset px-1 rounded">.level-badge-classic-5</code> / <code class="text-xs bg-inset px-1 rounded">.level-badge-classic-6</code> in case we want to revive the metal ladder later.</p>
+    <div class="card p-4 flex items-center gap-6">
+      <div class="flex items-center justify-center flex-shrink-0" style="width:6rem">
+        <span class="level-badge level-badge-classic-5">Level 5</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-heading font-semibold text-sm">Level 5 (classic)</p>
+        <p class="text-muted text-xs">Silver — diagonal #f5f5f5 → #9a9a9a gradient + soft white halo.</p>
+      </div>
+      <div class="hidden md:flex items-center justify-between gap-3 px-3 py-2 bg-surface-alt rounded-lg flex-shrink-0" style="width:18rem">
+        <span class="text-heading font-semibold text-sm">Earn a Free Entry</span>
+        <span class="level-badge level-badge-classic-5">Level 5</span>
+      </div>
+    </div>
+    <div class="card p-4 flex items-center gap-6 mt-3">
+      <div class="flex items-center justify-center flex-shrink-0" style="width:6rem">
+        <span class="level-badge level-badge-classic-6">Level 6</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-heading font-semibold text-sm">Level 6 (classic)</p>
+        <p class="text-muted text-xs">Gold — diagonal #FFE34D → #B8860B gradient + amber halo.</p>
+      </div>
+      <div class="hidden md:flex items-center justify-between gap-3 px-3 py-2 bg-surface-alt rounded-lg flex-shrink-0" style="width:18rem">
+        <span class="text-heading font-semibold text-sm">Earn a Free Entry</span>
+        <span class="level-badge level-badge-classic-6">Level 6</span>
       </div>
     </div>
   </section>
