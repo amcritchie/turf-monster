@@ -91,12 +91,14 @@ async function getUSDCBalance(pubkey = BOT_PUBKEY) {
 // ---------------------------------------------------------------------------
 
 test.beforeAll(async () => {
-  // 1. SOLANA_BOT_KEY must be set
-  if (!process.env.SOLANA_BOT_KEY) {
-    throw new Error(
-      "SOLANA_BOT_KEY env var is required. Set it to Alex Bot's base58 private key."
-    );
-  }
+  // 1. SOLANA_BOT_KEY must be set. Skip the whole spec when it's not
+  // present so a default `npm test` run (which covers both chromium and
+  // the @devnet project) doesn't fail on a missing local-dev secret.
+  // CI / devnet runs explicitly supply the key.
+  test.skip(
+    !process.env.SOLANA_BOT_KEY,
+    "SOLANA_BOT_KEY env var is required. Set it to Alex Bot's base58 private key."
+  );
 
   // 2. Save original wallets, swap alex to bot key, clear Mack's wallet for fresh registration
   try {
@@ -389,9 +391,11 @@ test("@devnet 1 — Alex wallet login", async ({
   await setupKeypairProvider(page);
 
   await loginViaKeypair(page);
-  await expect(page.locator('a[href="/account"]').first()).toContainText(
-    "alex"
-  );
+  // Filter by hasText so we hit the visible username chip, not the
+  // dropdown menu's same-href "Account" link.
+  await expect(
+    page.locator('a[href="/account"]').filter({ hasText: "alex" }).first()
+  ).toBeVisible();
   console.log("Test 1 — Alex logged in via wallet");
 });
 
