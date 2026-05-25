@@ -854,14 +854,25 @@ window.selectionBoard = function() {
 
     setHoldSuccess() {
       document.querySelectorAll('.hold-btn').forEach(function(el) {
-        el.classList.remove('error', 'process');
+        el.classList.remove('error', 'process', 'loading');
         el.classList.add('success');
+      });
+    },
+
+    // After the hold completes but BEFORE the server confirms the entry.
+    // Shows a spinning arc on the button so users don't see "Confirmed!"
+    // until the submission actually lands. Cleared by setHoldSuccess/Error
+    // or resetHoldButtons once the response arrives.
+    setHoldLoading() {
+      document.querySelectorAll('.hold-btn').forEach(function(el) {
+        el.classList.remove('error', 'process', 'success');
+        el.classList.add('loading');
       });
     },
 
     setHoldError() {
       document.querySelectorAll('.hold-btn').forEach(function(el) {
-        el.classList.remove('success', 'process');
+        el.classList.remove('success', 'process', 'loading');
         el.classList.add('error');
       });
     },
@@ -871,7 +882,7 @@ window.selectionBoard = function() {
     // hit the error state ("Entry Blocked") stays stuck there.
     resetHoldButtons() {
       document.querySelectorAll('.hold-btn').forEach(function(el) {
-        el.classList.remove('error', 'success', 'process');
+        el.classList.remove('error', 'success', 'process', 'loading');
       });
     },
 
@@ -907,7 +918,7 @@ window.selectionBoard = function() {
       // web2 = managed wallet — POST /enter (server consumes an entry token).
       var useOnchainFlow = sess.isWeb3 && this.contestOnchain;
 
-      this.setHoldSuccess();
+      this.setHoldLoading();
       this.submitting = true;
 
       var seedsPerLevel = cfg.seedsPerLevel;
@@ -979,6 +990,7 @@ window.selectionBoard = function() {
           if (!confirmResp) return; // 401 — authedFetch surfaced the login modal
           var confirmData = await confirmResp.json();
           if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm entry');
+          this.setHoldSuccess();
 
           if (confirmData.seeds_earned) {
             var m = Alpine.store('solanaModal');
@@ -1045,6 +1057,7 @@ window.selectionBoard = function() {
           var data = await response.json();
 
           if (data.success) {
+            this.setHoldSuccess();
             // 🎟️ navbar punch — fires when the server reports the entry
             // was paid for by a token consume. Hooked here so both the
             // tokens-modal and the non-modal hold-to-confirm paths get

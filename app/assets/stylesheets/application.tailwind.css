@@ -252,9 +252,9 @@
   .hold-btn.process {
     --icon-x: 0; --ul-y: -100%; --ul-o-1: 0; --ul-o-2: 1; --ul-o-3: 0;
     --bg: var(--color-page, #1e1b35);
-    border-color: rgba(6, 214, 160, 0.7);
-    box-shadow: 0 0 30px rgba(6, 214, 160, 0.45), 0 0 80px rgba(6, 214, 160, 0.25),
-                0 0 120px rgba(6, 214, 160, 0.1), inset 0 0 40px rgba(6, 214, 160, 0.1);
+    border-color: rgb(var(--color-primary-rgb) / 0.7);
+    box-shadow: 0 0 30px rgb(var(--color-primary-rgb) / 0.45), 0 0 80px rgb(var(--color-primary-rgb) / 0.25),
+                0 0 120px rgb(var(--color-primary-rgb) / 0.1), inset 0 0 40px rgb(var(--color-primary-rgb) / 0.1);
     transition: transform .3s, box-shadow 2.5s ease-out, border-color 1s, background .5s;
   }
   .hold-btn.process, .hold-btn.success {
@@ -283,6 +283,37 @@
     border-color: rgba(239, 68, 68, 0.7);
     box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
     animation: none; cursor: default;
+  }
+
+  /* State: loading — hold completed, submission in flight, waiting for
+     server confirmation. Keeps the green glow from .process so the user
+     sees continuity, but swaps the filled progress ring for a spinning
+     arc so the visual reads as "still working" rather than "done". */
+  .hold-btn.loading {
+    --icon-x: 0; --ul-y: -100%; --ul-o-1: 0; --ul-o-2: 1; --ul-o-3: 0;
+    --bg: var(--color-page, #1e1b35);
+    --ul-x: 8px; --icon-o: 1;
+    border-color: rgb(var(--color-primary-rgb) / 0.7);
+    box-shadow: 0 0 30px rgb(var(--color-primary-rgb) / 0.45), 0 0 80px rgb(var(--color-primary-rgb) / 0.25),
+                0 0 120px rgb(var(--color-primary-rgb) / 0.1), inset 0 0 40px rgb(var(--color-primary-rgb) / 0.1);
+    cursor: default;
+  }
+  .hold-btn.loading > .hold-icon { background: transparent; }
+  .hold-btn.loading > .hold-icon::before { display: none; }
+  .hold-btn.loading > .hold-icon svg.progress {
+    animation: hold-spinner 0.8s linear infinite;
+    transition: none;
+  }
+  .hold-btn.loading > .hold-icon svg.progress circle {
+    stroke-width: 3;
+    stroke-dasharray: 30 21;
+    stroke-dashoffset: 0;
+    stroke: rgb(var(--color-primary-rgb));
+    transition: none;
+  }
+  @keyframes hold-spinner {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   /* Debug nudge countdown */
