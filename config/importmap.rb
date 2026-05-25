@@ -2,6 +2,7 @@
 
 pin "application"
 pin "@hotwired/turbo-rails", to: "turbo.min.js"
+pin "debug_logger"
 pin "base58"
 pin "wallet_provider"
 pin "solana_utils"
