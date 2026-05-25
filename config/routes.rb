@@ -54,6 +54,7 @@ Rails.application.routes.draw do
   end
 
   get "turf-totals-v1", to: "pages#turf_totals_v1", as: :turf_totals_v1
+  get "terms",          to: "pages#terms",          as: :terms
 
   # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
   # vault USDC token account from the browser via Solana RPC, then displays
@@ -200,6 +201,9 @@ Rails.application.routes.draw do
 
   # Admin: Treasury (pending multisig transactions)
   namespace :admin do
+    # User browser — refer chain, invitees count, audit columns. Read-only.
+    resources :users, only: [:index]
+
     resources :outbound_requests, only: [:index, :show]
 
     # Landing pages — funnel page manager (public pages live at /l/:slug)
@@ -280,4 +284,15 @@ Rails.application.routes.draw do
   get "admin/geo", to: "geo_settings#edit", as: :admin_geo
   patch "admin/geo", to: "geo_settings#update", as: :admin_geo_update
   post "admin/geo/toggle", to: "geo_settings#toggle_override", as: :admin_geo_toggle
+
+  # Test-only endpoints — exercised by Playwright e2e specs to seed
+  # OAuth mock payloads and force referral cache values without staging
+  # full signup flows. Guarded by Rails.env.test? so they never exist
+  # outside the test boot.
+  if Rails.env.test?
+    post "test/oauth_mock",               to: "test#set_oauth_mock"
+    post "test/set_user_referral_counts", to: "test#set_user_referral_counts"
+    post "test/create_active_entry",      to: "test#create_active_entry"
+    get  "test/user_info/:slug",          to: "test#user_info"
+  end
 end

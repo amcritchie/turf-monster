@@ -1,12 +1,30 @@
 class Entry < ApplicationRecord
   after_create :update_slug_with_id
 
+  # Referral cache: when an entry lands in a confirmed status (active or
+  # complete), flip the user's contest_entered flag and, if they were
+  # invited by someone, bump the inviter's invitees_in_contest_count
+  # cache + queue the nudge email. ReferralProgress.mark_entered! is
+  # idempotent, so re-firing on status churn is a no-op past the first
+  # transition. after_commit (not after_save) so the email job sees the
+  # committed entry if it touches the row.
+  after_commit :sync_user_contest_entered, on: %i[create update]
+
   belongs_to :user
   belongs_to :contest
   has_many :selections, dependent: :destroy
   has_many :survivor_picks, dependent: :destroy
 
   enum :status, { cart: "cart", active: "active", complete: "complete", abandoned: "abandoned" }
+
+  private
+
+  def sync_user_contest_entered
+    return unless active? || complete?
+    ReferralProgress.mark_entered!(user)
+  end
+
+  public
 
   def toggle_selection!(slate_matchup)
     raise "Game has already started" if slate_matchup.locked?

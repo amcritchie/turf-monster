@@ -23,6 +23,7 @@
 
   <%= render layout: "hub_section", locals: { title: "Admin" } do %>
     <%= render "hub_tile", name: "Schema",       url: admin_schema_path %>
+    <%= render "hub_tile", name: "Users",        url: admin_users_path %>
     <%= render "hub_tile", name: "Free Entries", url: admin_free_entries_path %>
     <% unless Rails.env.production? %>
       <%= render "hub_tile", name: "Faucet",     url: faucet_path %>

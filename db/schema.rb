@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_24_060000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_24_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -445,7 +445,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_24_060000) do
     t.string "reference"
     t.datetime "frozen_at"
     t.string "frozen_reason"
+    t.boolean "contest_entered", default: false, null: false
+    t.integer "invitees_count", default: 0, null: false
+    t.integer "invitees_in_contest_count", default: 0, null: false
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
+    t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
     t.index ["frozen_at"], name: "index_users_on_frozen_at", where: "(frozen_at IS NOT NULL)"
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"

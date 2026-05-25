@@ -1,16 +1,28 @@
 <%
   invite_url = "#{request.base_url}/contests/#{@contest.slug}?ref=#{current_user.slug}"
-  share_text = "Join me on Turf Monster! Pick your teams and compete."
+  share_title = "Weekly World Cup DFS ⚽️ - Turf Totals"
   encoded_url = ERB::Util.url_encode(invite_url)
-  encoded_text = ERB::Util.url_encode(share_text)
-  twitter_url = "https://twitter.com/intent/tweet?text=#{encoded_text}&url=#{encoded_url}"
+  encoded_title = ERB::Util.url_encode(share_title)
+  # Twitter: passing `text` + `url` as separate params makes the tweet
+  # composer render the URL on its own line beneath the title.
+  twitter_url = "https://twitter.com/intent/tweet?text=#{encoded_title}&url=#{encoded_url}"
+  # Facebook share dialog only accepts a URL — pulls og:title/og:description
+  # from the destination page.
   facebook_url = "https://www.facebook.com/sharer/sharer.php?u=#{encoded_url}"
-  whatsapp_url = "https://wa.me/?text=#{ERB::Util.url_encode("#{share_text} #{invite_url}")}"
+  # WhatsApp takes a single text blob — newline-separate the title and link
+  # so the link gets its own line in the chat message.
+  whatsapp_text = "#{share_title}\n#{invite_url}"
+  whatsapp_url = "https://wa.me/?text=#{ERB::Util.url_encode(whatsapp_text)}"
 %>
 
-<div x-data="{ copied: false }" class="card shadow p-5 mb-6">
+<div x-data="{ copied: false, infoOpen: false }" class="card shadow p-5 mb-6 relative">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-heading font-semibold text-sm">Invite ✌️ Friends, Get a Free Entry</h3>
+    <div class="flex items-center gap-2 min-w-0">
+      <h3 class="text-heading font-semibold text-sm">Bring ✌️ Friends, Get a Free Entry</h3>
+      <button type="button" @click="infoOpen = !infoOpen"
+              class="w-4 h-4 rounded-full bg-surface-alt text-muted hover:text-heading hover:bg-inset flex items-center justify-center text-[10px] font-bold leading-none transition flex-shrink-0"
+              aria-label="How invites work">i</button>
+    </div>
     <div class="flex items-center gap-1">
       <a href="<%= twitter_url %>" target="_blank" rel="noopener" class="p-1.5 rounded-md text-muted hover:text-heading hover:bg-surface-alt transition" title="Share on X">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
@@ -23,6 +35,29 @@
       </a>
     </div>
   </div>
+
+  <%# Info popover — explainer + terms link. Anchored to the card so it
+      drops down below the title. Outside click + Escape both close. %>
+  <div x-show="infoOpen" x-cloak
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 -translate-y-1"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       x-transition:leave="transition ease-in duration-100"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       @click.outside="infoOpen = false"
+       @keydown.escape.window="infoOpen = false"
+       class="absolute left-5 top-12 z-20 w-72 max-w-[calc(100%-2.5rem)] bg-surface border border-subtle rounded-lg shadow-2xl p-4">
+    <div class="flex items-start justify-between mb-2">
+      <h4 class="text-heading font-semibold text-sm">How it works</h4>
+      <button type="button" @click="infoOpen = false" class="text-muted hover:text-heading text-lg leading-none" aria-label="Close">&times;</button>
+    </div>
+    <p class="text-secondary text-xs leading-relaxed mb-3">
+      You get a free contest entry once <strong class="text-heading">two friends</strong> sign up <em>and</em> submit a contest entry of their own. The referral is locked in the moment they click your link &mdash; even before they sign up.
+    </p>
+    <%= link_to "Read full terms &rarr;".html_safe, "/terms#referrals", class: "text-primary hover:underline text-xs font-medium" %>
+  </div>
+
   <% copy_js = "navigator.clipboard.writeText('#{invite_url}'); copied = true; setTimeout(() => copied = false, 1500)" %>
   <div class="flex items-center gap-2">
     <div @click="<%= copy_js %>" class="flex-1 min-w-0 bg-inset border border-subtle rounded-lg px-3 py-2 text-xs font-mono text-muted truncate cursor-pointer hover:border-primary/40 transition"><%= invite_url %></div>

@@ -1,0 +1,106 @@
+<% content_for(:title, "Users — Admin") %>
+
+<div class="max-w-6xl mx-auto py-8 px-4 space-y-6">
+  <div>
+    <h1 class="text-heading text-2xl font-bold mb-1">Users</h1>
+    <p class="text-muted text-sm">
+      Sorted by invitees-in-contest desc, then invitees desc, then signup desc.
+      The referral caches (<code class="text-xs bg-inset px-1 rounded">contest_entered</code>,
+      <code class="text-xs bg-inset px-1 rounded">invitees_count</code>,
+      <code class="text-xs bg-inset px-1 rounded">invitees_in_contest_count</code>)
+      are maintained by <code class="text-xs bg-inset px-1 rounded">ReferralProgress</code>.
+    </p>
+  </div>
+
+  <div class="card overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-subtle text-muted text-[10px] uppercase tracking-wide">
+          <th class="text-left px-4 py-3">User</th>
+          <th class="text-left px-3 py-3">Email</th>
+          <th class="text-left px-3 py-3">Wallet</th>
+          <th class="text-center px-3 py-3" title="Has this user landed any confirmed entry?">Entered</th>
+          <th class="text-left px-3 py-3">Invited by</th>
+          <th class="text-right px-3 py-3" title="How many users have this user as their inviter">Invitees</th>
+          <th class="text-right px-3 py-3" title="How many of those invitees have entered a contest">In&nbsp;Contest</th>
+          <th class="text-right px-4 py-3">Joined</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @users.each do |u| %>
+          <tr class="border-b border-subtle/40 hover:bg-inset transition">
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0"
+                     style="width: 28px; height: 28px; background-color: <%= u.avatar_color %>">
+                  <%= u.avatar_initials %>
+                </div>
+                <div class="min-w-0">
+                  <div class="text-heading font-semibold truncate"><%= u.display_name %></div>
+                  <% if u.admin? %>
+                    <span class="text-[10px] font-bold px-1.5 py-0 rounded bg-primary/15 text-primary border border-primary/30">ADMIN</span>
+                  <% end %>
+                </div>
+              </div>
+            </td>
+            <td class="px-3 py-3 text-secondary truncate max-w-[14rem]"><%= u.email || "—" %></td>
+            <td class="px-3 py-3">
+              <% if u.phantom_wallet? %>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-violet/10 text-violet">PHANTOM</span>
+              <% elsif u.managed_wallet? %>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-alt text-muted">MANAGED</span>
+              <% else %>
+                <span class="text-muted">—</span>
+              <% end %>
+            </td>
+            <td class="px-3 py-3 text-center">
+              <% if u.contest_entered? %>
+                <span class="text-green-400 font-bold">✓</span>
+              <% else %>
+                <span class="text-muted">—</span>
+              <% end %>
+            </td>
+            <td class="px-3 py-3">
+              <% if u.inviter %>
+                <span class="text-secondary"><%= u.inviter.display_name %></span>
+              <% else %>
+                <span class="text-muted">—</span>
+              <% end %>
+            </td>
+            <td class="px-3 py-3 text-right font-mono">
+              <% if u.invitees_count.positive? %>
+                <span class="text-heading font-bold"><%= u.invitees_count %></span>
+              <% else %>
+                <span class="text-muted">0</span>
+              <% end %>
+            </td>
+            <td class="px-3 py-3 text-right font-mono">
+              <% if u.invitees_in_contest_count.positive? %>
+                <span class="text-primary font-bold"><%= u.invitees_in_contest_count %></span>
+                <% if u.invitees_in_contest_count >= 2 %>
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30 ml-1" title="2+ invitees have entered — eligible for a free entry token">TOKEN</span>
+                <% end %>
+              <% else %>
+                <span class="text-muted">0</span>
+              <% end %>
+            </td>
+            <td class="px-4 py-3 text-right text-muted text-xs whitespace-nowrap">
+              <%= u.created_at.strftime("%b %-d, %Y") %>
+            </td>
+          </tr>
+        <% end %>
+        <% if @users.empty? %>
+          <tr><td colspan="8" class="px-4 py-10 text-center text-muted">No users yet.</td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="text-xs text-muted">
+    Total: <span class="font-mono font-bold text-heading"><%= @users.size %></span>
+    &middot; Entered a contest: <span class="font-mono font-bold text-heading"><%= @users.count(&:contest_entered?) %></span>
+    &middot; With ≥1 invitee: <span class="font-mono font-bold text-heading"><%= @users.count { |u| u.invitees_count.positive? } %></span>
+    &middot; Token-eligible (≥2 invitees in contest):
+    <span class="font-mono font-bold text-heading"><%= @users.count { |u| u.invitees_in_contest_count >= 2 } %></span>
+  </p>
+</div>

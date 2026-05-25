@@ -67,4 +67,12 @@ Rails.application.configure do
 
   # Use test adapter for jobs (no Redis needed)
   config.active_job.queue_adapter = :test
+
+  # OmniAuth — flip into test_mode so /auth/:provider goes straight to the
+  # mock instead of trying to hit the real Google OAuth servers. Playwright
+  # specs POST to /test/oauth_mock to set the desired mock payload before
+  # navigating to the auth URL.
+  config.after_initialize do
+    OmniAuth.config.test_mode = true
+  end
 end

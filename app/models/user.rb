@@ -26,6 +26,12 @@ class User < ApplicationRecord
   # + username are committed before the job runs.
   after_commit :enqueue_onchain_account_setup, on: :create
 
+  # Referral cache: keep the inviter's invitees_count + (if this user has
+  # already entered a contest) invitees_in_contest_count in sync when
+  # invited_by_id is set/changed. ReferralProgress.sync_invitee_attribution!
+  # is a no-op when invited_by_id didn't change.
+  after_save { ReferralProgress.sync_invitee_attribution!(self) }
+
   # --- Class methods ---
 
   # OPSEC-005: from_omniauth now refuses to silently link a freshly-arrived

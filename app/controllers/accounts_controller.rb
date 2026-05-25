@@ -13,6 +13,11 @@ class AccountsController < ApplicationController
   def show
     @user = current_user
     load_solana_balances if @user.solana_connected?
+    # Referral widget — share URL points at the most recent open contest
+    # so cold traffic lands on something live. Falls back to / (which
+    # ContestsController#world_cup redirects through to a live contest
+    # anyway) if no contest is currently open.
+    @referral_share_contest = Contest.where(status: :open).order(created_at: :desc).first
   end
 
   # Lightweight session-state probe for client-side rehydration. Returns the

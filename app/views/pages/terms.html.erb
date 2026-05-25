@@ -1,0 +1,45 @@
+<% content_for :title, "Terms — Turf Monster" %>
+
+<div class="max-w-3xl mx-auto py-10 px-2 space-y-12">
+  <header>
+    <h1 class="text-4xl font-extrabold text-heading mb-2">Terms</h1>
+    <p class="text-secondary text-sm">Last updated <%= Date.today.strftime("%B %d, %Y") %>.</p>
+  </header>
+
+  <section id="referrals" class="space-y-4 scroll-mt-24">
+    <h2 class="text-2xl font-bold text-heading">Referral Program</h2>
+    <p class="text-body leading-relaxed">
+      Every account has a personal referral link of the form
+      <code class="text-xs bg-inset px-1.5 py-0.5 rounded">.../contests/:slug?ref=&lt;your-slug&gt;</code>.
+      Share it from any contest page using the &ldquo;Bring &nbsp;✌️ Friends, Get a Free Entry&rdquo;
+      card and you&rsquo;ll earn free contest entries when your invites convert.
+    </p>
+
+    <h3 class="text-lg font-semibold text-heading">How a referral is recorded</h3>
+    <ul class="list-disc list-inside text-body space-y-1 text-sm">
+      <li>When a visitor lands on <em>any</em> Turf Monster page with a <code class="text-xs bg-inset px-1 rounded">?ref=</code> parameter, the referrer slug is saved in the visitor&rsquo;s browser before the URL is cleaned up.</li>
+      <li>The referrer is locked in the moment they sign up <em>or</em> log in for the first time after clicking. After that, the link is associated with their account permanently and cannot be changed.</li>
+      <li>If a visitor already has an account, the referrer is recorded only if they don&rsquo;t already have one.</li>
+      <li>Self-referrals are rejected.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-heading">How a free entry is earned</h3>
+    <ul class="list-disc list-inside text-body space-y-1 text-sm">
+      <li>A free entry is credited to the referrer when <strong>two distinct invitees</strong> each sign up <em>and</em> submit a paid contest entry of their own.</li>
+      <li>Sign-ups alone do not qualify. The invitee must complete an entry; carts and abandoned entries don&rsquo;t count.</li>
+      <li>Referrals stack: every two qualifying invitees earns one free entry. Four qualifying invitees earns two, and so on.</li>
+      <li>Free entries are credited as Entry Tokens (see your <%= link_to "Account page", account_path, class: "text-primary hover:underline" %>) and may be redeemed in any open contest they cover.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-heading">Eligibility &amp; abuse</h3>
+    <ul class="list-disc list-inside text-body space-y-1 text-sm">
+      <li>Inviter and invitee must be different real users. Multiple accounts controlled by the same person disqualify the referral chain and may result in account freezes.</li>
+      <li>Turf Monster reserves the right to void referrals, revoke earned free entries, or freeze accounts that abuse the program.</li>
+      <li>The program may change or end at any time; entries already earned will be honored.</li>
+    </ul>
+  </section>
+
+  <section class="space-y-2 text-sm text-secondary border-t border-subtle pt-6">
+    <p>Questions? Email <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>.</p>
+  </section>
+</div>

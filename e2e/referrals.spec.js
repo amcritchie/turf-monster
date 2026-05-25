@@ -1,0 +1,202 @@
+// Referral attribution + free-entry token UI.
+//
+// Three signup-flow tests exercise the ?ref= → localStorage → /account/set_inviter
+// → invitees_count chain and the Entry#after_commit → ReferralProgress →
+// invitees_in_contest_count chain, one per onboarding lane (Phantom, Google,
+// Email). Two UI tests force the inviter's counters via the test endpoint and
+// assert the /account widget renders the "1 of 2" and "ENTRY TOKEN COMING SOON"
+// states.
+//
+// Bypasses the real /enter action — that hits Solana::Vault for paid
+// onchain contests, which would need devnet in this test boot. Instead we
+// POST /test/create_active_entry to create an :active Entry directly,
+// which fires the same Entry#after_commit callback that the real /enter
+// path would.
+
+const { test, expect } = require("@playwright/test");
+const { login, loginViaPhantom, setupPhantomMock } = require("./helpers");
+
+const CONTEST_SLUG = "world-cup-2026";
+
+// Seeded users — slugs are {username}-{id} since the seed creates them in
+// CORE_USERS order against an empty users table.
+const INVITER_FOR_PHANTOM = "mason-3";
+const INVITER_FOR_GOOGLE  = "mack-4";
+const INVITER_FOR_EMAIL   = "turf-5";
+const ALEX_SLUG           = "alex-1";
+
+// --- Helpers --------------------------------------------------------------
+
+// Drop ?ref= on any page so the application layout's IIFE grabs it into
+// localStorage. We use /faucet because it's a cheap, guest-friendly page
+// — / redirects through to a contest which fires the leaderboard poll.
+async function seedRef(page, refSlug) {
+  await page.goto(`/faucet?ref=${refSlug}`);
+  // The cleanup IIFE strips ?ref= and replaces history; wait for that.
+  await page.waitForFunction(() => !window.location.search.includes("ref="));
+}
+
+async function setReferralCounts(page, slug, ic, iic) {
+  const res = await page.request.post("/test/set_user_referral_counts", {
+    data: { slug, invitees_count: ic, invitees_in_contest_count: iic },
+  });
+  expect(res.ok()).toBeTruthy();
+}
+
+async function getUserInfo(page, slug) {
+  const res = await page.request.get(`/test/user_info/${slug}`);
+  expect(res.ok()).toBeTruthy();
+  return res.json();
+}
+
+// Waits for the JS set_inviter handler that fires on turbo:load to land.
+// Idempotent — if the user already has an inviter, the action 200s quickly.
+async function waitForSetInviterAndCreateEntry(page, contestSlug) {
+  // The turbo:load handler may have fired before we attach the listener;
+  // give it up to 5s and fall back to issuing the call ourselves so the
+  // attribution definitely lands before we create the entry.
+  try {
+    await page.waitForResponse(
+      (r) => r.url().includes("/account/set_inviter") && r.status() < 400,
+      { timeout: 5000 }
+    );
+  } catch (_e) {
+    // Fallback: re-derive from localStorage and call directly.
+    await page.evaluate(async () => {
+      const slug = localStorage.getItem("inviter_slug");
+      if (!slug) return;
+      await fetch("/account/set_inviter", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token":
+            document.querySelector('meta[name="csrf-token"]')?.content || "",
+        },
+        body: JSON.stringify({ inviter_slug: slug }),
+      });
+      localStorage.removeItem("inviter_slug");
+    });
+  }
+
+  const res = await page.request.post("/test/create_active_entry", {
+    data: { contest_slug: contestSlug },
+  });
+  expect(res.ok()).toBeTruthy();
+  return res.json();
+}
+
+// --- Signup-flow tests ----------------------------------------------------
+
+test("ref → Phantom signup → entry credits the inviter", async ({ page }) => {
+  // Start with a clean inviter slate so the +1/+1 assertion is unambiguous.
+  await setReferralCounts(page, INVITER_FOR_PHANTOM, 0, 0);
+
+  await setupPhantomMock(page, { seedByte: 3 });
+  await seedRef(page, INVITER_FOR_PHANTOM);
+
+  await loginViaPhantom(page);
+  // Phantom auth → new user created → land on / → turbo:load fires set_inviter.
+  // The profile modal may auto-open; we don't need to interact with it because
+  // the user already has an auto-generated username from User#ensure_username.
+
+  const entry = await waitForSetInviterAndCreateEntry(page, CONTEST_SLUG);
+  expect(entry.inviter_slug).toBe(INVITER_FOR_PHANTOM);
+
+  const inviter = await getUserInfo(page, INVITER_FOR_PHANTOM);
+  expect(inviter.invitees_count).toBe(1);
+  expect(inviter.invitees_in_contest_count).toBe(1);
+
+  const newUser = await getUserInfo(page, entry.user_slug);
+  expect(newUser.contest_entered).toBe(true);
+  expect(newUser.inviter_slug).toBe(INVITER_FOR_PHANTOM);
+});
+
+test("ref → Google signup → entry credits the inviter", async ({ page }) => {
+  await setReferralCounts(page, INVITER_FOR_GOOGLE, 0, 0);
+
+  const ts = Date.now().toString(36);
+  const googleEmail = `google-${ts}@test.com`;
+
+  // Pin the OmniAuth mock payload so /auth/google_oauth2/callback creates THIS user.
+  const mockRes = await page.request.post("/test/oauth_mock", {
+    data: {
+      provider: "google_oauth2",
+      uid: `playwright-google-${ts}`,
+      email: googleEmail,
+      name: `Google Test ${ts}`,
+    },
+  });
+  expect(mockRes.ok()).toBeTruthy();
+
+  await seedRef(page, INVITER_FOR_GOOGLE);
+
+  // OmniAuth test_mode short-circuits /auth/:provider straight to the callback,
+  // which creates the user + signs them in + redirects to /.
+  await page.goto("/auth/google_oauth2");
+  await page.waitForURL((url) => !url.pathname.startsWith("/auth/"));
+
+  const entry = await waitForSetInviterAndCreateEntry(page, CONTEST_SLUG);
+  expect(entry.inviter_slug).toBe(INVITER_FOR_GOOGLE);
+
+  const inviter = await getUserInfo(page, INVITER_FOR_GOOGLE);
+  expect(inviter.invitees_count).toBe(1);
+  expect(inviter.invitees_in_contest_count).toBe(1);
+});
+
+test("ref → email signup → entry credits the inviter", async ({ page }) => {
+  await setReferralCounts(page, INVITER_FOR_EMAIL, 0, 0);
+
+  const ts = Date.now().toString(36);
+  const email = `email-${ts}@test.com`;
+  const password = "password123";
+
+  await seedRef(page, INVITER_FOR_EMAIL);
+
+  await page.goto("/signup");
+  await page.fill("#user_email", email);
+  await page.fill("#user_password", password);
+  // The signup form is single-password (no confirmation field) — see
+  // app/views/registrations/new.html.erb.
+  await page.getByRole("button", { name: "Sign Up", exact: true }).click();
+
+  // Email signup → /account/complete_profile (skipped if username already
+  // auto-set, which it is via User#ensure_username). Either way, we're
+  // logged in by the time turbo:load fires.
+  await page.waitForURL(
+    (url) => !url.pathname.startsWith("/signup"),
+    { timeout: 15_000 }
+  );
+
+  const entry = await waitForSetInviterAndCreateEntry(page, CONTEST_SLUG);
+  expect(entry.inviter_slug).toBe(INVITER_FOR_EMAIL);
+
+  const inviter = await getUserInfo(page, INVITER_FOR_EMAIL);
+  expect(inviter.invitees_count).toBe(1);
+  expect(inviter.invitees_in_contest_count).toBe(1);
+});
+
+// --- Account-page UI tests ------------------------------------------------
+
+test("/account shows '1 of 2 friends' copy when one invitee has entered", async ({ page }) => {
+  await login(page, "alex@mcritchie.studio", "password");
+
+  await setReferralCounts(page, ALEX_SLUG, 1, 1);
+
+  await page.goto("/account");
+
+  await expect(page.locator("body")).toContainText("Bring ✌️ Friends, Get a Free Entry");
+  await expect(page.locator("body")).toContainText("1 of 2 friends");
+  await expect(page.locator("body")).not.toContainText("ENTRY TOKEN COMING SOON");
+});
+
+test("/account shows the ENTRY TOKEN COMING SOON badge when two invitees have entered", async ({ page }) => {
+  await login(page, "alex@mcritchie.studio", "password");
+
+  await setReferralCounts(page, ALEX_SLUG, 2, 2);
+
+  await page.goto("/account");
+
+  await expect(page.locator("body")).toContainText("Bring ✌️ Friends, Get a Free Entry");
+  await expect(page.locator("body")).toContainText("ENTRY TOKEN COMING SOON");
+  await expect(page.locator("body")).toContainText("2 friends entered");
+});

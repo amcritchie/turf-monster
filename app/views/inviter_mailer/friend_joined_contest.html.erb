@@ -1,0 +1,30 @@
+<h1>Your friend just joined a contest 🎉</h1>
+
+<p>Hi <%= @inviter.display_name %>,</p>
+
+<p>
+  <strong><%= @invitee.display_name %></strong> just entered their first Turf Monster contest
+  using your invite link.
+</p>
+
+<% if @remaining.positive? %>
+  <p>
+    You&rsquo;re now <strong><%= @invitees_in_contest %>/<%= @target %></strong> of the way to
+    a free contest entry token. Bring
+    <strong><%= @remaining %> more friend<%= "s" if @remaining != 1 %></strong>
+    who enter<%= "s" if @remaining == 1 %> a contest and we&rsquo;ll credit you one entry token.
+  </p>
+<% else %>
+  <p>
+    That&rsquo;s <strong><%= @invitees_in_contest %> friends</strong> who&rsquo;ve entered using
+    your invite link. Your free entry token is on the way &mdash; check your account page.
+  </p>
+<% end %>
+
+<p>
+  <%= link_to "Share your invite link &rarr;".html_safe, @account_url %>
+</p>
+
+<p>Thanks for spreading the word.</p>
+
+<p>&mdash; Turf Monster</p>

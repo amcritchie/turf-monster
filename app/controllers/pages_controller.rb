@@ -3,4 +3,7 @@ class PagesController < ApplicationController
 
   def turf_totals_v1
   end
+
+  def terms
+  end
 end
