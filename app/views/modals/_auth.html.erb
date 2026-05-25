@@ -69,9 +69,13 @@
       couldn't repro remotely; x-show eliminates the variable since the
       content is mounted unconditionally.
 
-      Layout follows modals/templates/_wizard.html.erb — centered title
-      on the same row as the top-right close ×, segmented 3-of-3
-      progress pill below. Credentials is step 1 (signup → picker → done). %>
+      Layout follows the Wizard template: centered title with absolute-
+      positioned close ×, segmented 3-of-3 progress pill below.
+      Credentials is step 1 (signup → picker → done). Progress pill is
+      shared via modals/blocks/_progress_pill. Inline mode-specific
+      header + the three CTAs (Phantom / Google / email-form) + the
+      mode toggle don't fit a generic block — kept inline because they
+      ARE the credentials step. %>
   <div x-show="isCredentialsStep" x-cloak>
       <%# Wizard-template header — title centered on the same baseline
           as the close × via absolute positioning. %>
@@ -82,13 +86,9 @@
                 class="absolute top-0 right-0 -mr-2 text-secondary hover:text-heading text-xl leading-none"
                 aria-label="Close">&times;</button>
       </div>
-      <%# Segmented progress pill — 3 segments, first one filled
-          (credentials is step 1 of the 3-step onboarding journey). %>
-      <div class="flex items-center justify-center gap-1.5 mx-auto max-w-[200px] mb-4">
-        <div class="h-1.5 flex-1 rounded-full bg-primary"></div>
-        <div class="h-1.5 flex-1 rounded-full bg-inset border border-subtle"></div>
-        <div class="h-1.5 flex-1 rounded-full bg-inset border border-subtle"></div>
-      </div>
+      <%# Credentials is step 1 of the 3-step onboarding journey
+          (credentials → tokens-picker → confirmed). %>
+      <%= render "modals/blocks/progress_pill", current: 1, total: 3 %>
       <p class="text-xs text-secondary mb-4 text-center"
          x-text="props.mode === 'signup' ? 'Create your account to submit your lineup' : 'Your 6 picks are saved.'"></p>
 

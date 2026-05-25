@@ -35,8 +35,12 @@
             aria-label="Close">&times;</button>
   </div>
 
-  <%# Segmented progress pill — one segment per step, fills primary as
-      you advance. Lives in its own row below the header. %>
+  <%# Segmented progress pill — one segment per step, fills primary
+      as you advance. The shared block partial is static-ERB so it
+      doesn't fit Alpine's reactive `step` here; use the inline
+      x-for version while the demo's step counter lives in local
+      x-data. Real wizards driven by props can use the shared
+      modals/blocks/progress_pill partial directly. %>
   <div class="flex items-center justify-center gap-1.5 mx-auto max-w-[200px] mb-6">
     <template x-for="i in total" :key="i">
       <div class="h-1.5 flex-1 rounded-full transition-colors duration-300"

@@ -42,11 +42,8 @@
         <div class="text-center pt-1 mb-3">
           <h3 class="text-heading font-bold text-lg leading-tight">Get Entry Tokens</h3>
         </div>
-        <div class="flex items-center justify-center gap-1.5 mx-auto max-w-[200px] mb-4">
-          <div class="h-1.5 flex-1 rounded-full bg-primary"></div>
-          <div class="h-1.5 flex-1 rounded-full bg-primary"></div>
-          <div class="h-1.5 flex-1 rounded-full bg-inset border border-subtle"></div>
-        </div>
+        <%# Picker is step 2 of the 3-step onboarding journey. %>
+        <%= render "modals/blocks/progress_pill", current: 2, total: 3 %>
         <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved &mdash; pick a pack to finish.</p>
         <div class="space-y-3">
           <% StripePurchase.available_packs.each do |pack_id, pack| %>
