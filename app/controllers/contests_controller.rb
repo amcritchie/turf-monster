@@ -208,7 +208,13 @@ class ContestsController < ApplicationController
   # withdraw on their own schedule via /wallet. No admin per-entry button.
 
   def world_cup
-    @contest = Contest.where(status: [:open, :locked, :settled]).order(created_at: :desc).first
+    # Prefer the admin-set main contest (SeasonConfig.main_contest_explicit,
+    # /admin/site_config), then SeasonConfig.main_contest's open-only fallback,
+    # then the broader open/locked/settled pool so a freshly-graded contest
+    # still serves as a leaderboard landing page until a newer one opens.
+    @contest = SeasonConfig.main_contest_explicit ||
+               SeasonConfig.main_contest ||
+               Contest.where(status: [:open, :locked, :settled]).order(created_at: :desc).first
     return redirect_to contests_path unless @contest
     redirect_to contest_path(@contest)
   end

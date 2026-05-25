@@ -204,6 +204,12 @@ Rails.application.routes.draw do
     # User browser — refer chain, invitees count, audit columns. Read-only.
     resources :users, only: [:index]
 
+    # Site-wide singleton config — currently just the main_contest pointer,
+    # but the page is the canonical home for any future global setting that
+    # doesn't fit on a per-record edit form.
+    get   "site_config", to: "site_configs#show",   as: :site_config
+    patch "site_config", to: "site_configs#update"
+
     resources :outbound_requests, only: [:index, :show]
 
     # Landing pages — funnel page manager (public pages live at /l/:slug)

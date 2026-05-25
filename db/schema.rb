@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_24_170000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_24_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -260,6 +260,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_24_170000) do
     t.string "slug", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "main_contest_id"
+    t.index ["main_contest_id"], name: "index_season_configs_on_main_contest_id"
     t.index ["slug"], name: "index_season_configs_on_slug", unique: true
   end
 
@@ -471,6 +473,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_24_170000) do
   add_foreign_key "landing_pages", "contests", on_delete: :nullify
   add_foreign_key "messages", "contests"
   add_foreign_key "messages", "users"
+  add_foreign_key "season_configs", "contests", column: "main_contest_id", on_delete: :nullify
   add_foreign_key "selections", "entries"
   add_foreign_key "selections", "slate_matchups"
   add_foreign_key "slate_matchups", "slates"

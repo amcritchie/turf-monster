@@ -1,0 +1,73 @@
+<% content_for(:title, "Site Config — Admin") %>
+
+<div class="max-w-2xl mx-auto py-8 px-4 space-y-8">
+  <div>
+    <h1 class="text-heading text-2xl font-bold mb-1">Site Config</h1>
+    <p class="text-muted text-sm">
+      Site-wide singleton settings. Currently: the <strong>main contest</strong> —
+      the default contest the app links to when it doesn&rsquo;t otherwise know
+      which contest to use (root <code class="text-xs bg-inset px-1 rounded">/</code> redirect,
+      <code class="text-xs bg-inset px-1 rounded">/account</code> share widget,
+      <code class="text-xs bg-inset px-1 rounded">/faucet</code> CTA).
+    </p>
+  </div>
+
+  <div class="card p-6 space-y-5">
+    <h2 class="text-heading text-lg font-semibold">Main Contest</h2>
+
+    <%# Current-state callout — explicit pick vs. resolved fallback. %>
+    <div class="bg-inset rounded-lg p-4 text-sm space-y-2">
+      <div class="flex items-baseline justify-between gap-3">
+        <span class="text-muted">Admin-set:</span>
+        <span class="font-mono text-heading">
+          <%= @explicit_main ? @explicit_main.name : "— none —" %>
+          <% if @explicit_main && !@explicit_main.open? %>
+            <span class="text-[10px] uppercase font-bold ml-1 px-1.5 py-0.5 rounded bg-warning-500/20 text-warning border border-warning-500/40">
+              <%= @explicit_main.status %>
+            </span>
+          <% end %>
+        </span>
+      </div>
+      <div class="flex items-baseline justify-between gap-3">
+        <span class="text-muted">Resolved (what the app uses):</span>
+        <span class="font-mono text-heading">
+          <% if @resolved_main %>
+            <%= link_to @resolved_main.name, contest_path(@resolved_main),
+                  class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
+          <% else %>
+            — no open contests —
+          <% end %>
+        </span>
+      </div>
+      <p class="text-xs text-muted pt-1">
+        Resolved falls back to the most recent open contest when no explicit
+        pick is set or when the pick has locked/settled.
+      </p>
+    </div>
+
+    <%= form_with url: admin_site_config_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+      <div>
+        <label for="main_contest_id" class="block text-sm text-secondary mb-2 font-medium">
+          Pick a contest (open + locked only)
+        </label>
+        <%= select_tag :main_contest_id,
+              options_for_select(
+                [["— none (auto-fallback) —", ""]] +
+                @selectable_contests.map { |c| ["#{c.name} (#{c.status})", c.id] },
+                @explicit_main&.id
+              ),
+              id: "main_contest_id",
+              class: "input-field" %>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Save</button>
+    <% end %>
+
+    <% if @selectable_contests.empty? %>
+      <p class="text-xs text-muted">
+        No open or locked contests exist yet — create one at
+        <%= link_to "/contests/new", new_contest_path, class: "text-primary hover:underline" %>.
+      </p>
+    <% end %>
+  </div>
+</div>
