@@ -1022,7 +1022,7 @@ window.selectionBoard = function() {
           var modal = Alpine.store('solanaModal');
           modal.success(txSig, 'Entry Confirmed', 999);
           modal.title = 'Good Luck';
-          modal.lobbyUrl = confirmData.redirect || ('/c/' + this.contestId + '/lobby');
+          modal.lobbyUrl = confirmData.redirect || ('/contests/' + this.contestId);
           refreshBalanceDelayed();
 
         } else {

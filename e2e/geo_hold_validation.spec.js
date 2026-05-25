@@ -5,7 +5,7 @@ async function doLogin(page) {
   await page.fill('input[name="email"]', "alex@mcritchie.studio");
   await page.fill('input[name="password"]', "password");
   await page.locator('form button.btn-primary[type="submit"]').click();
-  // / redirects to /c/:slug/lobby — wait for any URL outside /login
+  // / redirects to /contests/:slug — wait for any URL outside /login
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 

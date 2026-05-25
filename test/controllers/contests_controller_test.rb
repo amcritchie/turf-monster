@@ -105,9 +105,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     post enter_contest_path(contest)
 
     assert_response :redirect
-    # ContestsController#enter redirects to /c/:id/lobby (see contest_lobby_path),
-    # not /contests/:id. Updated 2026-05-23 to match current behavior.
-    assert_redirected_to contest_lobby_path(contest)
+    assert_redirected_to contest_path(contest)
   end
 
   # --- onchain session entry tests ---
@@ -728,14 +726,6 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
   test "show redirects for missing contest" do
     get contest_path(id: "nonexistent")
     assert_redirected_to root_path
-  end
-
-  # --- legacy lobby URL backwards-compat ---
-
-  test "legacy lobby URL 301-redirects to canonical show URL" do
-    get contest_lobby_path(@contest)
-    assert_response :moved_permanently
-    assert_redirected_to contest_path(@contest)
   end
 
   # --- generate_bundle (provision setup bundles) ---

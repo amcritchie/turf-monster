@@ -135,7 +135,6 @@ Rails.application.routes.draw do
     end
   end
 
-  get "c/:id/lobby", to: "contests#lobby", as: :contest_lobby
   get "c/:id/leaderboard_poll", to: "contests#leaderboard_poll", as: :contest_leaderboard_poll
 
   resources :contests, only: [:index, :show, :new, :create, :edit, :update] do

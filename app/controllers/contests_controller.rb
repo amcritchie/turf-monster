@@ -1,8 +1,8 @@
 class ContestsController < ApplicationController
   include Solana::SessionAuth
 
-  skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :lobby, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :lobby, :leaderboard_poll, :pick, :grade_round]
+  skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll]
+  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
   before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
@@ -238,12 +238,6 @@ class ContestsController < ApplicationController
     end
   end
 
-  # Legacy lobby route — kept for permalinks shared before the show/lobby
-  # merge. Redirects to the canonical /contests/:slug.
-  def lobby
-    redirect_to contest_path(@contest), status: :moved_permanently
-  end
-
   def leaderboard_poll
     version = params[:version].to_i
     current_version = @contest.updated_at.to_i
@@ -349,7 +343,7 @@ class ContestsController < ApplicationController
       end
 
       respond_to do |format|
-        format.html { redirect_to contest_lobby_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
+        format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
         format.json {
           seeds_earned = 0
           seeds_total = 0
@@ -373,7 +367,7 @@ class ContestsController < ApplicationController
 
           render json: {
             success: true,
-            redirect: contest_lobby_path(@contest),
+            redirect: contest_path(@contest),
             tx_signature: entry.onchain_tx_signature,
             # Flag for the client: true iff this entry was paid for by
             # an on-chain EntryTokenAccount consumption. Drives the
@@ -493,7 +487,7 @@ class ContestsController < ApplicationController
   # client polls this when the contest page loads with a pending/submitted
   # PT belonging to the current user. Three outcomes:
   #   - confirmed:  signature finalized on-chain → entry promoted to active,
-  #                 PT marked confirmed, client redirects to the lobby
+  #                 PT marked confirmed, client redirects to the contest show page
   #   - processing: signature still unknown / propagating → client re-polls
   #                 after a short delay (handled by the board JS)
   #   - failed:     signature errored, never broadcast, or recovery threw
@@ -513,7 +507,7 @@ class ContestsController < ApplicationController
       ptx.update!(status: "confirmed")
       return render json: {
         status: "confirmed",
-        redirect: contest_lobby_path(@contest),
+        redirect: contest_path(@contest),
         tx_signature: entry.onchain_tx_signature
       }
     end
@@ -553,7 +547,7 @@ class ContestsController < ApplicationController
       ptx.update!(status: "confirmed")
       render json: {
         status: "confirmed",
-        redirect: contest_lobby_path(@contest),
+        redirect: contest_path(@contest),
         tx_signature: ptx.tx_signature
       }
     rescue StandardError => e
@@ -618,7 +612,7 @@ class ContestsController < ApplicationController
 
       render json: {
         success: true,
-        redirect: contest_lobby_path(@contest),
+        redirect: contest_path(@contest),
         tx_signature: params[:tx_signature],
         seeds_earned: seeds_earned,
         seeds_total: seeds_total,

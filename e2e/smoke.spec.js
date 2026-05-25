@@ -7,7 +7,7 @@ const { login } = require("./helpers");
 
 test("index page loads with contest and matchup cards", async ({ page }) => {
   await page.goto("/");
-  // / redirects to /c/:slug/lobby; the inline matchup board renders for guests
+  // / redirects to /contests/:slug; the inline matchup board renders for guests
   await expect(page.locator("body")).toContainText("Your Picks");
   // Matchup cards rendered as buttons with team names
   const matchupCards = page.locator("button.bg-surface");
@@ -180,7 +180,6 @@ test("user can start a second entry after confirming the first", async ({ page }
 
   // Clear any existing cart first
   const contestPath = "/contests/world-cup-2026";
-  const lobbyPath = "/c/world-cup-2026/lobby";
   await page.evaluate(async (cp) => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
     await fetch(`${cp}/clear_picks`, {
@@ -188,10 +187,10 @@ test("user can start a second entry after confirming the first", async ({ page }
       headers: { "X-CSRF-Token": csrfToken, "Accept": "application/json" },
     });
   }, contestPath);
-  // Navigate directly to the target contest's lobby — / redirects to the most
-  // recent contest, which may be a partial contest left by other tests (e.g.
-  // the onchain admin-creates-contest test).
-  await page.goto(lobbyPath);
+  // Navigate directly to the target contest — / redirects to the most recent
+  // contest, which may be a partial contest left by other tests (e.g. the
+  // onchain admin-creates-contest test).
+  await page.goto(contestPath);
   await page.waitForLoadState("networkidle");
 
   // Select 6 matchups
@@ -224,7 +223,7 @@ test("user can start a second entry after confirming the first", async ({ page }
   }, contestPath);
 
   // Reload to get fresh page state after confirm — target world-cup-2026 directly
-  await page.goto(lobbyPath);
+  await page.goto(contestPath);
   await page.waitForLoadState("networkidle");
 
   // Dismiss blur overlay if present

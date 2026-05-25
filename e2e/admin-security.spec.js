@@ -7,7 +7,7 @@ test.describe("Admin Security", () => {
     await page.goto("/admin/transactions");
 
     // Should be redirected away from /admin/ with "Not authorized" alert.
-    // The actual landing URL is /c/:slug/lobby (root_path → contests#world_cup redirect).
+    // The actual landing URL is /contests/:slug (root_path → contests#world_cup redirect).
     await expect(page).not.toHaveURL(/\/admin\//);
     await expect(page.locator("body")).toContainText("Not authorized");
   });

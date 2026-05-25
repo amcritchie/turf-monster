@@ -4,7 +4,7 @@ const { setupOnchainMocks, computeMockTransaction } = require("./rpc-mock");
 /**
  * Log in via the login form.
  * Waits for the URL to navigate away from /login — handles either landing on /
- * or the redirect chain / → /c/:slug/lobby that ContestsController#world_cup
+ * or the redirect chain / → /contests/:slug that ContestsController#world_cup
  * does when at least one contest exists.
  */
 async function login(page, email, password) {
