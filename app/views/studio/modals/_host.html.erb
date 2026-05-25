@@ -37,6 +37,7 @@
     // unmounts. If you change the keyframe durations there, bump
     // this to match.
     var CLOSE_ANIM_MS = 220;
+    var SWAP_IN_MS    = 220;
 
     document.addEventListener('alpine:init', function() {
       if (Alpine.store('modals')) return;
@@ -44,13 +45,17 @@
         stack: [],
         // open(id, props, opts)
         //   opts.replace: true  → swap the top entry with this one. When a
-        //     non-closing modal is currently visible, the swap is transitioned
-        //     — current modal animates out (modal-card-unmount), then the new
-        //     one mounts (modal-card-in). Defaults to no transition when
-        //     stack is empty.
+        //     non-closing modal is currently visible, the swap is a directional
+        //     slide — current modal exits stage-right (modal-card-swap-out)
+        //     and the new one enters stage-left (modal-card-swap-in). Gives
+        //     a "forward progress" feel for wizards / multi-step flows.
+        //     Defaults to a plain mount animation when the stack is empty.
         //   opts.replace: false (default) → push on top of the stack. Stacking
         //     semantics — when the new one closes, the previous is revealed
         //     underneath (e.g. crop-photo on top of profile).
+        // SWAP_IN_MS must match the modal-card-swap-in animation duration in
+        // application.tailwind.css; we clear the flag after that so a fresh
+        // open() doesn't re-trigger the slide.
         open: function(id, props, opts) {
           props = props || {};
           opts  = opts  || {};
@@ -59,17 +64,39 @@
           if (opts.replace && this.stack.length > 0) {
             var current = this.current();
             if (current && !current._closing) {
-              // Animate current out, then swap. CLOSE_ANIM_MS matches the
-              // modal-card-out keyframe duration — see application.tailwind.css.
+              // Phase 1: mark leaving entry with _swappingOut + _closing so
+              // the :class binding swaps in the slide-out keyframe (instead
+              // of the default scale-pop modal-card-unmount) for CLOSE_ANIM_MS.
+              // _swapDir picks which slide direction (forward = exit right,
+              // back = exit left); the same flag carries onto the new entry
+              // below so slide-in mirrors slide-out.
+              var dir = (opts.direction === 'back') ? 'back' : 'forward';
+              current._swapDir = dir;
+              current._swappingOut = true;
               current._closing = true;
               setTimeout(function() {
+                // Phase 2: stack swap. New entry carries _swappingIn + the
+                // same _swapDir so the host's :class binding picks the
+                // matching slide-in keyframe.
                 var idx = self.stack.indexOf(current);
+                var newEntry = { id: id, props: props, _swappingIn: true, _swapDir: dir };
                 if (idx >= 0) {
-                  self.stack[idx] = { id: id, props: props };
+                  self.stack[idx] = newEntry;
                 } else {
-                  self.stack.push({ id: id, props: props });
+                  self.stack.push(newEntry);
                 }
                 self._sync();
+                // Phase 3: clear the swap-in flag + direction after the
+                // slide finishes so a future close() runs the unmount
+                // keyframe cleanly. _settled latches so the host's
+                // :class binding doesn't snap modal-card-mount back on
+                // (which would re-fire the bounce-in keyframe from
+                // opacity:0 and look like a flash mid-settle).
+                setTimeout(function() {
+                  newEntry._swappingIn = false;
+                  newEntry._swapDir = null;
+                  newEntry._settled = true;
+                }, SWAP_IN_MS);
               }, CLOSE_ANIM_MS);
               return;
             }
@@ -81,10 +108,59 @@
           this._sync();
         },
         // Sugar — `swap('foo', props)` ≡ `open('foo', props, { replace: true })`.
-        // Use for multi-step flows where the previous step should fade out
-        // as the next one appears (auth wizard, token-purchase steps).
-        swap: function(id, props) {
-          return this.open(id, props, { replace: true });
+        // Pass opts through so callers can request a back-direction slide
+        // on a cross-modal handoff if the new modal is semantically
+        // upstream of the current one (e.g. "return to home modal").
+        swap: function(id, props, opts) {
+          return this.open(id, props, Object.assign({ replace: true }, opts || {}));
+        },
+        // advance(propsPatch, opts) — patch the current entry's props
+        // WITH the same directional slide as swap(), but WITHOUT
+        // replacing the stack entry. Use this for in-flow step
+        // transitions inside one modal (e.g. picker → waiting →
+        // confirming) where the modal's outer x-data scope (form
+        // state, watchers, factories) needs to survive the transition.
+        // swap() drops a fresh entry into the stack which re-evaluates
+        // the registered <template x-if="id===...">  — fine for
+        // cross-modal handoffs, but heavy for "same modal, next step."
+        // advance() is the lightweight cousin.
+        //
+        // opts.direction: 'forward' (default — current exits right, next
+        //   enters from left; reads as "moving ahead in the flow")
+        //   or 'back' (mirrored — current exits left, next enters from
+        //   right; reads as "returning to the previous step"). Pair
+        //   forward calls with back calls on their inverse buttons so
+        //   the user's spatial model of the wizard stays consistent.
+        //
+        // Timing mirrors swap():
+        //   t=0      → flip _swappingOut, outer card slides off (CLOSE_ANIM_MS)
+        //   t=220ms  → patch props, flip _swappingIn, card slides in
+        //   t=440ms  → clear _swappingIn + _swapDir so the next open/
+        //              close uses default mount/unmount keyframes
+        //
+        // Guards: no-op if no current entry, or if the entry is already
+        // closing or mid-swap (prevents double-clicks from stacking timers).
+        advance: function(propsPatch, opts) {
+          opts = opts || {};
+          var cur = this.current();
+          if (!cur || cur._closing || cur._swappingOut) return;
+          var self = this;
+          cur._swapDir = (opts.direction === 'back') ? 'back' : 'forward';
+          cur._swappingOut = true;
+          setTimeout(function() {
+            // Re-resolve in case the stack mutated during the slide-out
+            // window. If our entry got popped (e.g. user hit Escape mid-
+            // animation), bail rather than splat props onto a stale ref.
+            if (self.stack.indexOf(cur) < 0) return;
+            if (propsPatch) Object.assign(cur.props, propsPatch);
+            cur._swappingOut = false;
+            cur._swappingIn = true;
+            setTimeout(function() {
+              cur._swappingIn = false;
+              cur._swapDir = null;
+              cur._settled = true;
+            }, SWAP_IN_MS);
+          }, CLOSE_ANIM_MS);
         },
         close: function() {
           var self = this;
@@ -177,8 +253,30 @@
        aria-modal="true"
        @keydown.escape.window="$store.modals.current() && $store.modals.current().props.dismissible !== false && $store.modals.close()"
        @click.self="$store.modals.current() && $store.modals.current().props.dismissible !== false && $store.modals.close()">
-    <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full modal-card-mount"
-         :class="$store.modals.current()?._closing && 'modal-card-unmount'">
+    <%# Card animation is class-driven so it can pick the right keyframe
+        for the current store state. Plain mount/unmount for first
+        open + close. Swap-out + swap-in for inter-modal transitions
+        triggered by $store.modals.swap() / advance() (or open with
+        { replace: true }). _swapDir picks forward (exit right / enter
+        left — default) vs back (exit left / enter right — opt-in via
+        { direction: 'back' }).
+        modal-card-mount is gated on !_settled so when a swap-in
+        completes (which clears _swappingIn) the class binding does
+        NOT snap back to modal-card-mount and re-fire the bounce-in
+        keyframe — without the gate, the card briefly disappears and
+        bounces in again right as the slide finishes, which reads as
+        a flash mid-transition. _settled also stays true for the rest
+        of the entry's lifetime so a stale Alpine re-evaluation can't
+        retrigger the bounce. %>
+    <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
+         :class="{
+           'modal-card-mount':         !$store.modals.current()?._settled && !$store.modals.current()?._swappingIn && !$store.modals.current()?._swappingOut,
+           'modal-card-swap-in':        $store.modals.current()?._swappingIn  && $store.modals.current()?._swapDir !== 'back',
+           'modal-card-swap-out':       $store.modals.current()?._swappingOut && $store.modals.current()?._swapDir !== 'back',
+           'modal-card-swap-in-back':   $store.modals.current()?._swappingIn  && $store.modals.current()?._swapDir === 'back',
+           'modal-card-swap-out-back':  $store.modals.current()?._swappingOut && $store.modals.current()?._swapDir === 'back',
+           'modal-card-unmount':        $store.modals.current()?._closing && !$store.modals.current()?._swappingOut
+         }">
       <%= yield if block_given? %>
     </div>
   </div>

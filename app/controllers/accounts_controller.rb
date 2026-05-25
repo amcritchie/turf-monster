@@ -278,16 +278,28 @@ class AccountsController < ApplicationController
 
   def load_solana_balances
     vault = Solana::Vault.new
+
+    # [BENCH] Temporary instrumentation for /account slow-load investigation.
+    # Logs how long each Solana RPC takes. Remove once root cause is found.
+    t_total = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     @wallet_balances = vault.fetch_wallet_balances(@user.solana_address)
+    Rails.logger.info("[BENCH] fetch_wallet_balances took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
+
     # sync_balance reads the UserAccount PDA (separate from the SPL token
     # accounts above) for the on-chain seeds counter. Independent rescue so a
     # stale-PDA failure here doesn't blank out the USDC/SOL/USDT tiles.
     begin
+      t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       onchain = vault.sync_balance(@user.solana_address)
+      Rails.logger.info("[BENCH] sync_balance took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
       @user_seeds = onchain&.dig(:seeds)
     rescue StandardError
       @user_seeds = nil
     end
+
+    Rails.logger.info("[BENCH] load_solana_balances total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")
   rescue StandardError
     @wallet_balances = nil
     @user_seeds = nil

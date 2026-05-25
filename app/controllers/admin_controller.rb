@@ -7,6 +7,41 @@ class AdminController < ApplicationController
   # sync with app/views/modals/* and the host registrations in
   # layouts/application.html.erb.
   MODAL_VARIANTS = [
+    # === Templates ===========================================================
+    # Reference implementations new modal work should copy. Each pairs a
+    # visual archetype (form / action / status / wizard) with a complete
+    # working modal under app/views/modals/templates/. Registered in the
+    # modal host gated to !production. The :partial key tells the gallery
+    # to render the variant INLINE (no iframe) — the templates are pure
+    # local x-data with no props dependency, so they drop in anywhere.
+    # Open ↗ still pushes them onto the live host for full interactive
+    # testing (backdrop, escape, click-outside).
+    { group: "Templates",
+      label: "Wizard (Step N of M + nav)", key: "template-wizard",
+      modal_id: "template-wizard", file: "app/views/modals/templates/_wizard.html.erb",
+      partial: "modals/templates/wizard",
+      props: {} },
+    { group: "Templates",
+      label: "Success (large title — celebration)", key: "template-success",
+      modal_id: "template-success", file: "app/views/modals/templates/_success.html.erb",
+      partial: "modals/templates/success",
+      props: {} },
+    { group: "Templates",
+      label: "Status (small title — in-flight)", key: "template-status",
+      modal_id: "template-status", file: "app/views/modals/templates/_status.html.erb",
+      partial: "modals/templates/status",
+      props: {} },
+    { group: "Templates",
+      label: "Action (icon + question + dual CTA)", key: "template-action",
+      modal_id: "template-action", file: "app/views/modals/templates/_action.html.erb",
+      partial: "modals/templates/action",
+      props: {} },
+    { group: "Templates",
+      label: "Form (title + body + CTA)", key: "template-form",
+      modal_id: "template-form", file: "app/views/modals/templates/_form.html.erb",
+      partial: "modals/templates/form",
+      props: {} },
+
     { group: "Auth — credentials",
       label: "Signup", key: "auth-signup",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
@@ -41,11 +76,12 @@ class AdminController < ApplicationController
     { group: "Auth — token purchase sub-flow",
       label: "Submitted (entry confirmed)", key: "auth-tokens-submitted",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
-      # redirectUrl: '#' (not '/') so the success card's auto-redirect
-      # is a harmless hash-change instead of navigating the iframe away.
+      # redirectUrl: nil — the cta_redirect partial sees null and skips
+      # the timer-end window.location, so the gallery preview keeps the
+      # drain animation but never navigates the iframe.
       props: { step: "tokens-submitted",
                txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
-               redirectUrl: "#", seedsEarned: 13, seedsTotal: 13 } },
+               redirectUrl: nil, seedsEarned: 13, seedsTotal: 13 } },
     { group: "Auth — token purchase sub-flow",
       label: "Error (poll timed out)", key: "auth-tokens-error",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",

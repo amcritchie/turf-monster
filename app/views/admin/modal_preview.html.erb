@@ -53,4 +53,17 @@
     var a = e.target.closest && e.target.closest('a');
     if (a && a.href && a.target !== '_blank') e.preventDefault();
   }, true);
+
+  // Preview-only: success_card's 5s auto-redirect fires
+  // `window.location.href = url`, which Turbo treats as a same-origin
+  // nav and dispatches `turbo:before-cache`. The modal host's
+  // bubble-phase listener (studio/modals/_host.html.erb#clearStaleModals
+  // → closeAllDismissible) then splices the modal off the stack — the
+  // iframe goes blank. Intercept in capture phase + stopImmediatePropagation
+  // so the host's bubble-phase listener never fires inside previews. The
+  // production app still gets the cleanup because that path doesn't load
+  // this layout.
+  document.addEventListener('turbo:before-cache', function (e) {
+    e.stopImmediatePropagation();
+  }, true);
 </script>

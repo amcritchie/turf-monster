@@ -100,11 +100,18 @@ class TokensController < ApplicationController
     return render json: { ready: false }, status: :bad_request if session_id.blank?
 
     purchase = current_user.stripe_purchases.for_session(session_id).first
-    render json: {
+    payload = {
       ready: purchase&.status == "minted",
       minted: purchase&.tx_signatures&.length.to_i,
       balance: current_user.entry_token_balance
     }
+    # Tagged log so polling visibility is easy to grep. Pairs with the
+    # client-side [tokens] pollTokenStatus logs in the board partial —
+    # together they show the full handoff chain from the Stripe-return
+    # tab through to the in-modal minted state.
+    Rails.logger.info "[tokens] status user=#{current_user.id} session=#{session_id[0,12]}… " \
+                      "purchase_status=#{purchase&.status.inspect} → #{payload.inspect}"
+    render json: payload
   end
 
   # Dev-only helper: mint tokens directly on-chain with source="dev" instead of going through Stripe.

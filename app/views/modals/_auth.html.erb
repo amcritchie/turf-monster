@@ -67,15 +67,29 @@
       via display:none when a tokens-* / redirect step is active. The
       previous x-if approach kept rendering empty in some condition I
       couldn't repro remotely; x-show eliminates the variable since the
-      content is mounted unconditionally. %>
+      content is mounted unconditionally.
+
+      Layout follows modals/templates/_wizard.html.erb — centered title
+      on the same row as the top-right close ×, segmented 3-of-3
+      progress pill below. Credentials is step 1 (signup → picker → done). %>
   <div x-show="isCredentialsStep" x-cloak>
-      <div class="flex items-start justify-between mb-1">
-        <h3 class="text-lg font-bold text-heading"
+      <%# Wizard-template header — title centered on the same baseline
+          as the close × via absolute positioning. %>
+      <div class="relative mb-3 -mt-2">
+        <h3 class="text-heading font-bold text-lg leading-tight text-center pt-1"
             x-text="props.mode === 'signup' ? 'Create Your Account' : 'Log in to enter'"></h3>
         <button @click="$store.modals.close()"
-                class="text-secondary hover:text-heading text-xl leading-none">&times;</button>
+                class="absolute top-0 right-0 -mr-2 text-secondary hover:text-heading text-xl leading-none"
+                aria-label="Close">&times;</button>
       </div>
-      <p class="text-xs text-secondary mb-4"
+      <%# Segmented progress pill — 3 segments, first one filled
+          (credentials is step 1 of the 3-step onboarding journey). %>
+      <div class="flex items-center justify-center gap-1.5 mx-auto max-w-[200px] mb-4">
+        <div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+        <div class="h-1.5 flex-1 rounded-full bg-inset border border-subtle"></div>
+        <div class="h-1.5 flex-1 rounded-full bg-inset border border-subtle"></div>
+      </div>
+      <p class="text-xs text-secondary mb-4 text-center"
          x-text="props.mode === 'signup' ? 'Create your account to submit your lineup' : 'Your 6 picks are saved.'"></p>
 
       <!-- Primary CTA: Phantom (matches on-chain contest flow).

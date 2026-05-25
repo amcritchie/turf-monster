@@ -482,9 +482,64 @@
       <template x-if="$store.modals.current().id === 'crop-photo'">
         <%= render "modals/crop_photo" %>
       </template>
+
+      <%# Template reference modals — registered in non-production only so
+          they don't add JS surface area to prod. Surfaced at the top of
+          /admin/modals as "Templates" so new modal work has copy-paste
+          starting points. %>
+      <% unless Rails.env.production? %>
+        <template x-if="$store.modals.current().id === 'template-form'">
+          <%= render "modals/templates/form" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-action'">
+          <%= render "modals/templates/action" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-status'">
+          <%= render "modals/templates/status" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-success'">
+          <%= render "modals/templates/success" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-wizard'">
+          <%= render "modals/templates/wizard" %>
+        </template>
+      <% end %>
     <% end %>
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>
+
+    <%# [BENCH] Click-time stamp for /account navigation. Pairs with the
+        DOMContentLoaded/load/turbo:* timing logs in views/accounts/show.html.erb
+        and the server-side RPC timing in AccountsController. Remove this
+        block once the slow-load investigation is done. %>
+    <script>
+      document.addEventListener('click', function(e) {
+        var a = e.target && e.target.closest && e.target.closest('a[href]');
+        if (!a) return;
+        try {
+          var url = new URL(a.href, window.location.origin);
+          if (url.pathname !== '/account') return;
+        } catch (_) { return; }
+        window.__accountClickAt = performance.now();
+        console.log('%c[BENCH] /account link clicked', 'color:#FFD700; font-weight:bold',
+                    'at ' + Math.round(window.__accountClickAt) + 'ms');
+      }, true);
+
+      document.addEventListener('turbo:before-fetch-request', function(e) {
+        if (window.__accountClickAt == null) return;
+        if (!e.detail || !e.detail.url || e.detail.url.pathname !== '/account') return;
+        console.log('%c[BENCH] turbo fetch start', 'color:#FFD700',
+                    (performance.now() - window.__accountClickAt).toFixed(0) + 'ms (since-click)');
+      });
+      document.addEventListener('turbo:before-fetch-response', function(e) {
+        if (window.__accountClickAt == null) return;
+        if (!e.detail || !e.detail.fetchResponse) return;
+        var url = e.detail.fetchResponse.response && e.detail.fetchResponse.response.url;
+        if (!url || !url.endsWith('/account')) return;
+        console.log('%c[BENCH] turbo fetch response received', 'color:#FFD700',
+                    (performance.now() - window.__accountClickAt).toFixed(0) + 'ms (since-click)');
+      });
+    </script>
   </body>
 </html>

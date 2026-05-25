@@ -75,7 +75,11 @@
       _ticker: null,
 
       start() {
-        if (!sessionId) { this.errored = true; return; }
+        console.log('[tokens] processing.start sessionId=', sessionId, 'contestUrl=', contestUrl);
+        if (!sessionId) {
+          console.warn('[tokens] processing.start: no sessionId — flipping to errored state');
+          this.errored = true; return;
+        }
 
         // Notify any listening contest tab (the modal there mirrors the
         // confirming → minted → submitted flow). Two channels because
@@ -88,8 +92,13 @@
             var ch = new BroadcastChannel('tt-tokens');
             ch.postMessage({ source: 'tt-tokens', status: 'returned', sessionId: sessionId });
             ch.close();
+            console.log('[tokens] processing → BroadcastChannel(tt-tokens) posted "returned"');
+          } else {
+            console.warn('[tokens] processing: BroadcastChannel unsupported in this browser');
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('[tokens] processing: BroadcastChannel post failed', e);
+        }
 
         try {
           if (window.opener && !window.opener.closed) {
@@ -97,8 +106,13 @@
               { source: 'tt-tokens', status: 'returned', sessionId: sessionId },
               window.location.origin
             );
+            console.log('[tokens] processing → window.opener.postMessage delivered');
+          } else {
+            console.log('[tokens] processing: no window.opener (form-opened tab or closed) — relying on BroadcastChannel');
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('[tokens] processing: opener.postMessage failed', e);
+        }
 
         // Contest-context flow: the buyer came from a contest tab
         // (success_url carried ?contest=slug → controller set @contest →
@@ -112,10 +126,12 @@
         // delivery confirmation — see commit 4890000 for the standalone
         // case where contestUrl is empty and polling is the only path.
         if (contestUrl) {
+          console.log('[tokens] processing: contest tab is owning UI; closing self in 80ms (fallback nav to', contestUrl, 'at 400ms)');
           setTimeout(function () { window.close(); }, 80);
           setTimeout(function () { window.location.href = contestUrl; }, 400);
           return;
         }
+        console.log('[tokens] processing: no contestUrl — standalone polling mode');
 
         // Standalone flow: no contest context (e.g. /tokens/buy direct
         // purchase, or webhook arrived during a server-down window).

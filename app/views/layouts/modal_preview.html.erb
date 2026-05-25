@@ -132,6 +132,25 @@
           <%= render "modals/username" %>
         </template>
       <% end %>
+
+      <%# Template reference modals — surfaced in the gallery as "Templates". %>
+      <% unless Rails.env.production? %>
+        <template x-if="$store.modals.current().id === 'template-form'">
+          <%= render "modals/templates/form" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-action'">
+          <%= render "modals/templates/action" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-status'">
+          <%= render "modals/templates/status" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-success'">
+          <%= render "modals/templates/success" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'template-wizard'">
+          <%= render "modals/templates/wizard" %>
+        </template>
+      <% end %>
     <% end %>
   </body>
 </html>

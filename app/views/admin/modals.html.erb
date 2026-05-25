@@ -24,7 +24,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <% items.each do |variant| %>
           <% file_short = variant[:file].to_s.sub(%r{\Aapp/views/}, "") %>
-          <% iframe_src = variant[:url].presence || admin_modal_preview_path(modal_id: variant[:modal_id], props: variant[:props].to_json) %>
+          <% iframe_src = variant[:url].presence || (variant[:modal_id] && admin_modal_preview_path(modal_id: variant[:modal_id], props: variant[:props].to_json)) %>
           <div class="card overflow-hidden border border-subtle">
             <%# Header strip %>
             <div class="bg-inset px-4 py-2 flex items-center justify-between gap-3 border-b border-subtle">
@@ -50,15 +50,33 @@
               <% end %>
             </div>
 
-            <%# Preview iframe — sandboxed-ish (separate Alpine context).
-                Height is intentionally a fixed 520px so the grid lines
-                stay consistent; tall variants scroll inside the iframe.
-                loading=lazy keeps the gallery snappy. %>
-            <iframe src="<%= iframe_src %>"
-                    loading="lazy"
-                    title="<%= variant[:label] %> preview"
-                    class="w-full block"
-                    style="height: 520px; border: 0; background: var(--color-page);"></iframe>
+            <% if variant[:partial] %>
+              <%# Inline-component preview — render the partial directly inside
+                  a faux modal-host card. No iframe, no per-card Alpine context,
+                  no countdown timers firing in the background. Pure-locals
+                  templates (form/action/status/wizard) work because their
+                  x-data is fully self-contained and their close-button calls
+                  $store.modals.close() which is a no-op when nothing's on
+                  the stack. Faux card mirrors the host's outer card classes
+                  (bg-surface + rounded-xl + border + shadow + p-6) so the
+                  inline render visually matches a real opened modal. %>
+              <div class="flex items-start justify-center p-4 min-h-[520px]" style="background: var(--color-page);">
+                <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full">
+                  <%= render variant[:partial] %>
+                </div>
+              </div>
+            <% else %>
+              <%# Iframe preview — separate Alpine context per card. Heavy but
+                  necessary for variants whose x-data reads from $store.modals
+                  (auth wizard state machine, on-chain TX state). Height is
+                  fixed so the grid stays consistent; loading=lazy keeps the
+                  gallery snappy. %>
+              <iframe src="<%= iframe_src %>"
+                      loading="lazy"
+                      title="<%= variant[:label] %> preview"
+                      class="w-full block"
+                      style="height: 520px; border: 0; background: var(--color-page);"></iframe>
+            <% end %>
           </div>
         <% end %>
       </div>

@@ -1,15 +1,21 @@
 <%#
-  Entry-confirmed success card. The canonical celebration for a
-  successful contest entry — used by BOTH web3 (on-chain Solana
-  entry) and web2 (entry-token-funded) flows so the user sees the
-  same UX regardless of payment method.
+  Entry-confirmed celebration. The canonical "you're in" modal for
+  BOTH web3 (on-chain Solana entry) and web2 (entry-token-funded)
+  flows so the user sees the same UX regardless of payment method.
 
-  Composes studio-engine's _success_card (large "Good Luck" title,
-  branded Solana tx link, "Contest Lobby" CTA with drain countdown,
-  confetti) and injects the seeds bar + level-up celebration as the
-  card's yield block. The seeds bar mounts only when seeds_earned
-  is positive, so flows that don't award seeds fall back to the
-  plain success card.
+  Componentized from modals/templates/_success.html.erb — same visual
+  spine (card_header at :lg + primary btn-lg CTA + subtle dismiss
+  link) plus three on-chain enrichments that make this distinct from
+  a generic success modal:
+
+    - Branded Solana tx link (gradient mark + truncated signature)
+    - Seeds bar with level-up celebration animation
+    - 5-second drain countdown on the primary CTA + auto-redirect
+      (delegated to modals/blocks/_cta_redirect — that partial owns
+      the timer + drain styling; this card only fires confetti)
+
+  Owns the confetti setTimeout; destroy() clears it so a mid-modal
+  close doesn't fire confetti past unmount.
 
   All data is passed in as Alpine expression strings so the partial
   works against any backing store/scope. Callers wire:
@@ -17,35 +23,77 @@
     web2: props.{txSignature,lobbyUrl,seedsEarned,seedsTotal}
 
   Locals (all Alpine expressions, all required):
-    tx_signature_key   — expression returning the Solana tx hash
-    lobby_url_key      — expression returning the lobby URL (CTA href
-                         + auto-redirect destination)
-    seeds_earned_key   — expression returning seeds awarded this entry
-    seeds_total_key    — expression returning user's total seeds
+    tx_signature_key — expression returning the Solana tx hash
+    lobby_url_key    — expression returning the lobby URL (CTA href
+                       + auto-redirect destination)
+    seeds_earned_key — expression returning seeds awarded this entry
+    seeds_total_key  — expression returning user's total seeds
 %>
 <%
   tx_signature_key = local_assigns.fetch(:tx_signature_key)
   lobby_url_key    = local_assigns.fetch(:lobby_url_key)
   seeds_earned_key = local_assigns.fetch(:seeds_earned_key)
   seeds_total_key  = local_assigns.fetch(:seeds_total_key)
+  cluster_param    = Solana::Config.devnet? ? "?cluster=devnet" : ""
 %>
-<%= render 'studio/modals/blocks/success_card',
-    title:                 "Good Luck",
-    message:               "Entry Confirmed",
-    icon_color:            'mint',
-    large_title:           true,
-    tx_signature_key:      tx_signature_key,
-    tx_solana:             true,
-    cta_label:             "Contest Lobby ⚔️",
-    cta_href_key:          lobby_url_key,
-    cta_drain:             true,
-    auto_redirect_url_key: lobby_url_key,
-    auto_redirect_seconds: 5,
-    confetti:              true do %>
+<div x-data="{
+       _confettiTimer: null,
+       init() {
+         var self = this;
+         self._confettiTimer = setTimeout(function () {
+           self._confettiTimer = null;
+           try { if (window.fireSuccessConfetti) window.fireSuccessConfetti(); } catch (_) {}
+         }, 100);
+       },
+       destroy() {
+         if (this._confettiTimer) { clearTimeout(this._confettiTimer); this._confettiTimer = null; }
+       }
+     }">
+
+  <%# Card header — Success-template spine (size :lg, primary icon
+      circle to match every other success/celebration card across the
+      app; bg-mint/15 isn't in the Tailwind safelist so the previous
+      mint accent rendered the check without its containing pill).
+      "Good Luck" headline + "Entry Confirmed" subtitle. %>
+  <%= render "modals/blocks/card_header",
+        size: :lg,
+        icon_color: 'primary',
+        title: "Good Luck",
+        subtitle: "Entry Confirmed" %>
+
+  <%# Solana tx attestation — boxed branded link with the Solana gradient
+      mark + truncated signature. Mounts only when the signature is set. %>
+  <template x-if="(<%= tx_signature_key %>)">
+    <div class="text-center mb-3 -mt-1">
+      <a :href="'https://explorer.solana.com/tx/' + (<%= tx_signature_key %>) + '<%= cluster_param %>'"
+         target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-subtle hover:border-primary/50 transition group no-underline"
+         style="background: rgba(var(--color-primary-500-rgb), 0.06);">
+        <svg width="14" height="11" viewBox="0 0 397 311" fill="none">
+          <defs><linearGradient id="ec-solana-grad" x1="361" y1="-9" x2="153" y2="389" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#00FFA3"/><stop offset="1" stop-color="#DC1FFF"/>
+          </linearGradient></defs>
+          <path d="M65 234c2-2 6-4 9-4h317c6 0 9 7 5 11l-63 63c-2 2-6 4-9 4H6c-6 0-9-7-5-11l64-63z" fill="url(#ec-solana-grad)"/>
+          <path d="M65 4c2-2 6-4 9-4h317c6 0 9 7 5 11l-63 63c-2 2-6 4-9 4H6c-6 0-9-7-5-11L65 4z" fill="url(#ec-solana-grad)"/>
+          <path d="M333 119c-2-2-6-4-9-4H7c-6 0-9 7-5 11l63 63c2 2 6 4 9 4h317c6 0 9-7 5-11l-63-63z" fill="url(#ec-solana-grad)"/>
+        </svg>
+        <span class="font-mono text-[11px] text-secondary group-hover:text-primary transition"
+              x-text="(<%= tx_signature_key %>) ? ((<%= tx_signature_key %>).substring(0, 16) + '…') : ''"></span>
+        <svg class="w-3 h-3 text-muted group-hover:text-primary transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+        </svg>
+      </a>
+    </div>
+  </template>
+
   <%# Seeds bar + level-up celebration. Mounts only when this entry
-      awarded seeds. The animation walks the bar from the user's
-      previous toward-next value up to the new one (or through 100→0
-      with a level-up flourish if they crossed a level threshold). %>
+      awarded seeds; otherwise the card falls back to header + tx + CTA.
+      Animation walks the bar from the user's previous toward-next value
+      up to the new one (or through 100→0 with a level-up flourish if
+      they crossed a threshold). Own _timers array so destroy() can
+      clear every scheduled setTimeout on modal close / auto-redirect —
+      we previously leaked a setInterval that ran for 9 minutes per
+      entry session. %>
   <template x-if="(<%= seeds_earned_key %>) > 0">
     <div x-data="{
            displaySeeds: 0,
@@ -63,27 +111,19 @@
              var newLevel = Math.floor(total / seedsPerLevel) + 1;
              var oldToward = oldSeeds % seedsPerLevel;
              var newToward = total % seedsPerLevel;
-
              self.displaySeeds = oldToward;
              self.displayLevel = oldLevel;
-
-             // Track every timer we schedule so destroy() can clear them on
-             // modal close / auto-redirect. Previously a setInterval here
-             // ran forever (every 9min), plus 5 setTimeouts past the modal's
-             // 5s auto-redirect — all dead work that compounded with every
-             // entry confirmed in a session.
-             var schedule = function(fn, ms) { self._timers.push(setTimeout(fn, ms)); };
-
-             schedule(function() {
+             var schedule = function (fn, ms) { self._timers.push(setTimeout(fn, ms)); };
+             schedule(function () {
                if (newLevel > oldLevel) {
                  self.levelingUp = true;
                  self.displaySeeds = 100;
-                 schedule(function() {
+                 schedule(function () {
                    self.displayLevel = newLevel;
                    self.showFreeEntryBadge = true;
                  }, 1900);
-                 schedule(function() { self.displaySeeds = 0; }, 3400);
-                 schedule(function() {
+                 schedule(function () { self.displaySeeds = 0; }, 3400);
+                 schedule(function () {
                    self.displaySeeds = newToward;
                    self.levelingUp = false;
                  }, 3600);
@@ -97,7 +137,7 @@
              this._timers = [];
            }
          }"
-         class="mx-auto" style="max-width: 100%;">
+         class="mx-auto mb-4" style="max-width: 100%;">
       <template x-if="!showFreeEntryBadge">
         <div class="relative">
           <div class="seeds-bar-continuous flex gap-1.5"
@@ -141,4 +181,18 @@
       </template>
     </div>
   </template>
-<% end %>
+
+  <%# Primary CTA — drain-overlay button + 5s auto-redirect, all
+      managed by modals/blocks/_cta_redirect. When lobby_url_key
+      resolves to null (gallery preview), the drain still plays but
+      the timer-end redirect is a no-op so the iframe stays put. %>
+  <%= render "modals/blocks/cta_redirect",
+        href_key:   lobby_url_key,
+        label_html: "Contest Lobby &#x2694;&#xFE0F;" %>
+
+  <%# Subtle dismiss link — Success template's secondary pattern. %>
+  <button @click="$store.modals.close()"
+          class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+    Dismiss
+  </button>
+</div>

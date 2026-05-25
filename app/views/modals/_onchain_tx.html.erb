@@ -52,9 +52,13 @@
       now render the same semantic 'entry confirmed' card. Seeds bar +
       level-up celebration mount automatically when seeds were awarded. %>
   <template x-if="$store.solanaModal.state === 'success'">
+    <%# lobby_url_key passed straight (no || fallback) — cta_redirect
+        treats null as "skip the auto-redirect, keep the drain visual"
+        so a missing lobbyUrl stays visible in the gallery and degrades
+        gracefully in prod instead of bouncing to '#'. %>
     <%= render 'modals/blocks/entry_confirmed',
         tx_signature_key: "$store.solanaModal.txSignature",
-        lobby_url_key:    "$store.solanaModal.lobbyUrl || '#'",
+        lobby_url_key:    "$store.solanaModal.lobbyUrl",
         seeds_earned_key: "$store.solanaModal.seedsEarned",
         seeds_total_key:  "$store.solanaModal.seedsTotal" %>
   </template>

@@ -118,10 +118,14 @@ window.selectionBoard = function() {
         var modals = Alpine.store('modals');
         var cur = modals.current();
         var curStep = (cur && cur.id === 'auth') ? cur.props.step : null;
+        console.log('[tokens] board.handleTokenSignal received', { status: data.status, sessionId: data.sessionId, curModalId: cur && cur.id, curStep: curStep });
 
         if (data.status === 'returned' && data.sessionId) {
           // De-dupe: both channels may deliver the same signal.
-          if (curStep === 'tokens-confirming' || curStep === 'tokens-minted') return;
+          if (curStep === 'tokens-confirming' || curStep === 'tokens-minted') {
+            console.log('[tokens] board.handleTokenSignal de-duped — already at', curStep);
+            return;
+          }
           // Stamp the moment the spinner went on screen — pollTokenStatus
           // awaits this minimum before the success swap so the spinner
           // doesn't flash by when the webhook beats the modal mounting.
@@ -135,8 +139,10 @@ window.selectionBoard = function() {
             txSignature:   ''
           };
           if (cur && cur.id === 'auth') {
+            console.log('[tokens] board → reusing open auth modal, flipping step to tokens-confirming');
             Object.assign(cur.props, freshProps);
           } else {
+            console.log('[tokens] board → no auth modal open, opening fresh at tokens-confirming');
             modals.open('auth', freshProps);
           }
           board.pollTokenStatus(data.sessionId);
@@ -144,6 +150,7 @@ window.selectionBoard = function() {
         }
 
         if (data.status === 'minted') {
+          console.log('[tokens] board.handleTokenSignal: legacy "minted" — closing modal, resetting holds');
           // Legacy fallback — the new tab fully completed the mint. Close
           // the modal and let the user do a fresh Hold to Confirm; we no
           // longer auto-submit the entry. (The pendingCheckEmail nudge
@@ -154,16 +161,32 @@ window.selectionBoard = function() {
       };
 
       window.addEventListener('message', function (e) {
-        if (e.origin !== window.location.origin) return;
+        if (e.origin !== window.location.origin) {
+          if (e.data && e.data.source === 'tt-tokens') {
+            console.warn('[tokens] board: dropped postMessage from wrong origin', e.origin);
+          }
+          return;
+        }
+        if (e.data && e.data.source === 'tt-tokens') {
+          console.log('[tokens] board ← window.message channel');
+        }
         handleTokenSignal(e.data);
       });
 
       try {
         if ('BroadcastChannel' in window) {
           board._tokensChannel = new BroadcastChannel('tt-tokens');
-          board._tokensChannel.onmessage = function (e) { handleTokenSignal(e.data); };
+          board._tokensChannel.onmessage = function (e) {
+            console.log('[tokens] board ← BroadcastChannel(tt-tokens)');
+            handleTokenSignal(e.data);
+          };
+          console.log('[tokens] board: BroadcastChannel(tt-tokens) listener attached');
+        } else {
+          console.warn('[tokens] board: BroadcastChannel unsupported — relying on window.postMessage only');
         }
-      } catch (_) {}
+      } catch (e) {
+        console.error('[tokens] board: BroadcastChannel listener attach failed', e);
+      }
 
       // Hold-to-Confirm dispatch listener — the shared hold_button
       // partial fires this window event regardless of which DOM scope
@@ -479,19 +502,26 @@ window.selectionBoard = function() {
         try { sessionStorage.setItem('pendingCheckEmail', this.contestId); }
         catch (e) { /* sessionStorage unavailable */ }
 
-        // Transition the wizard step in place — same modal shell, just
-        // swap to the tokens-picker view. Reset the form-flow flags so
-        // tokens steps start clean.
-        p.submitting    = null;
-        p.formError     = '';
-        p.phantomError  = '';
-        p.googleError   = '';
-        p.step          = 'tokens-picker';
-        p.mintedCount   = 0;
-        p.mintedBalance = 0;
-        p.errorText     = '';
-        p.redirectUrl   = '';
-        p.txSignature   = '';
+        // Patch the current modal entry with the same directional slide
+        // the host runs for swap() — credentials exits stage-right, the
+        // picker enters stage-left. advance() (instead of swap()) keeps
+        // the same stack entry so the auth modal's outer x-data scope
+        // — including the email/password fields the user just typed —
+        // survives the transition. The patch resets the form-flow flags
+        // so the picker step starts clean; props not listed (mode, etc.)
+        // are preserved.
+        Alpine.store('modals').advance({
+          step:          'tokens-picker',
+          submitting:    null,
+          formError:     '',
+          phantomError:  '',
+          googleError:   '',
+          mintedCount:   0,
+          mintedBalance: 0,
+          errorText:     '',
+          redirectUrl:   '',
+          txSignature:   ''
+        });
       } catch (e) {
         p.formError  = 'Network error. Try again.';
         p.submitting = null;
@@ -684,14 +714,17 @@ window.selectionBoard = function() {
 
     // Open (or transition the wizard to) the buy-tokens picker step.
     // Called after Google signup, after the "out of entry tokens" error,
-    // and from the pendingAuthStep restore in init(). If the auth wizard
-    // is already open (e.g. submitInlineSignup just finished), we mutate
-    // its props in place so the modal shell stays mounted and we get a
-    // flicker-free credentials → tokens-picker transition.
+    // and from the pendingAuthStep restore in init(). Two paths:
+    //   - Empty stack (cold open from navbar / direct CTA) → open() pushes
+    //     a fresh auth entry and the host's default mount animation plays.
+    //   - Auth wizard already on a different step (post-signup, post-
+    //     confirm-error) → advance() patches props in place and the
+    //     directional slide runs.
     showTokensPanel() {
       this.profileModal = false;
-      var s = Alpine.store('modals');
-      var freshProps = {
+      var s   = Alpine.store('modals');
+      var cur = s.current();
+      var props = {
         step:          'tokens-picker',
         mintedCount:   0,
         mintedBalance: 0,
@@ -699,11 +732,10 @@ window.selectionBoard = function() {
         redirectUrl:   '',
         txSignature:   ''
       };
-      var cur = s.current();
       if (cur && cur.id === 'auth') {
-        Object.assign(cur.props, freshProps);
+        s.advance(props);
       } else {
-        s.open('auth', freshProps);
+        s.open('auth', props);
       }
     },
 
@@ -719,7 +751,10 @@ window.selectionBoard = function() {
       var elapsedMs = 0;
       var intervalMs = 1500;
       var timeoutMs = 45000;
+      var attempt = 0;
+      console.log('[tokens] pollTokenStatus.start sessionId=', sessionId, 'intervalMs=', intervalMs, 'timeoutMs=', timeoutMs);
       var tick = async function () {
+        attempt++;
         try {
           var r = await fetch('/tokens/status?session_id=' + encodeURIComponent(sessionId), {
             headers: { 'Accept': 'application/json' },
@@ -727,7 +762,9 @@ window.selectionBoard = function() {
           });
           if (r.ok) {
             var d = await r.json();
+            console.log('[tokens] pollTokenStatus attempt=' + attempt + ' /tokens/status →', d);
             if (d.ready) {
+              console.log('[tokens] pollTokenStatus: READY — awaiting min-visible hold then flipping to tokens-minted');
               // The hold was started when the 'returned' signal arrived
               // (window.StudioModals.holdAtLeast(1500) — see init's
               // handleTokenSignal). Awaits the min-visible duration
@@ -735,10 +772,20 @@ window.selectionBoard = function() {
               var hold = self._confirmingHold || window.StudioModals.holdAtLeast(0);
               hold.then(function () {
                 var p = self._authProps();
-                if (!p) return;  // user closed the modal mid-poll
-                p.mintedCount   = d.minted;
-                p.mintedBalance = d.balance;
-                p.step          = 'tokens-minted';
+                if (!p) {
+                  console.warn('[tokens] pollTokenStatus: modal closed before mint readyswap — no-op');
+                  return;
+                }
+                console.log('[tokens] pollTokenStatus: step → tokens-minted, mintedCount=', d.minted, 'balance=', d.balance);
+                // advance() patches props + runs the host's directional
+                // slide. The minted-state values land alongside the step
+                // change so the new card renders with the right data
+                // during slide-in.
+                Alpine.store('modals').advance({
+                  mintedCount:   d.minted,
+                  mintedBalance: d.balance,
+                  step:          'tokens-minted'
+                });
                 // Push the new token count to the navbar + celebrate
                 // the mint. The badge punches (scale+wobble) so the
                 // user catches the new 🎟️ in their peripheral vision,
@@ -754,11 +801,16 @@ window.selectionBoard = function() {
               // 'tokens-submitted' (set in confirmEntry).
               return;
             }
+          } else {
+            console.warn('[tokens] pollTokenStatus attempt=' + attempt + ' /tokens/status non-OK', r.status);
           }
-        } catch (_) { /* keep polling */ }
+        } catch (e) {
+          console.warn('[tokens] pollTokenStatus attempt=' + attempt + ' fetch error (will retry)', e);
+        }
 
         elapsedMs += intervalMs;
         if (elapsedMs >= timeoutMs) {
+          console.error('[tokens] pollTokenStatus TIMEOUT after', elapsedMs, 'ms — flipping to tokens-error');
           var p2 = self._authProps();
           if (p2) {
             p2.errorText = "Payment cleared but the on-chain mint is still settling. Refresh in a moment to finish your entry.";
@@ -1074,18 +1126,27 @@ window.selectionBoard = function() {
               if (inTokensMinted) {
                 // Stay in the wizard — show the on-chain receipt + CTA
                 // in the 'tokens-submitted' card instead of stacking the
-                // solanaModal on top.
-                p.mintedBalance = Math.max(0, (p.mintedBalance || 0) - 1);
-                try { if (window.updateNavTokens) window.updateNavTokens(p.mintedBalance); } catch (_) {}
-                p.txSignature  = data.tx_signature;
-                p.redirectUrl  = data.redirect || '/';
-                p.seedsEarned  = data.seeds_earned || 0;
-                p.seedsTotal   = data.seeds_total  || 0;
-                p.step         = 'tokens-submitted';
+                // solanaModal on top. mintedBalance + navTokens fire
+                // synchronously so the navbar count is accurate at the
+                // moment the slide begins; the celebratory props (tx,
+                // seeds, redirect) land via advance() alongside the
+                // step change so the success card renders ready-to-go
+                // when the slide-in starts.
+                var nextBalance = Math.max(0, (p.mintedBalance || 0) - 1);
+                try { if (window.updateNavTokens) window.updateNavTokens(nextBalance); } catch (_) {}
+                Alpine.store('modals').advance({
+                  mintedBalance: nextBalance,
+                  txSignature:   data.tx_signature,
+                  redirectUrl:   data.redirect || '/',
+                  seedsEarned:   data.seeds_earned || 0,
+                  seedsTotal:    data.seeds_total  || 0,
+                  step:          'tokens-submitted'
+                });
                 refreshBalanceDelayed();
-                // Entry confirmation — burst from the modal card, not
-                // the badge (the user is looking at the modal here).
-                try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 100); } catch (_) {}
+                // Modal-card confetti — delayed past the slide-in start
+                // so the burst originates from the success card after it
+                // settles in place (not the confirming card sliding off).
+                try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 320); } catch (_) {}
               } else {
                 var sm = Alpine.store('solanaModal');
                 sm.seedsEarned = data.seeds_earned || 0;
@@ -1104,19 +1165,23 @@ window.selectionBoard = function() {
               if (inTokensMinted) {
                 // The entry just consumed one token — keep the navbar in
                 // sync (server-side decrement already happened).
-                p.mintedBalance = Math.max(0, (p.mintedBalance || 0) - 1);
-                try { if (window.updateNavTokens) window.updateNavTokens(p.mintedBalance); } catch (_) {}
+                var nextBalance2 = Math.max(0, (p.mintedBalance || 0) - 1);
+                try { if (window.updateNavTokens) window.updateNavTokens(nextBalance2); } catch (_) {}
                 if (hasPendingEmail) {
                   try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
                   Alpine.store('modals').close();
                   this.sendVerificationEmail();
                 } else {
-                  p.redirectUrl  = data.redirect || '/';
-                  p.seedsEarned  = data.seeds_earned || 0;
-                  p.seedsTotal   = data.seeds_total  || 0;
-                  p.step         = 'tokens-submitted';
-                  // Entry confirmation — burst from the modal card.
-                  try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 100); } catch (_) {}
+                  Alpine.store('modals').advance({
+                    mintedBalance: nextBalance2,
+                    redirectUrl:   data.redirect || '/',
+                    seedsEarned:   data.seeds_earned || 0,
+                    seedsTotal:    data.seeds_total  || 0,
+                    step:          'tokens-submitted'
+                  });
+                  // Modal-card confetti — delayed past the slide-in start
+                  // so the burst originates from the settled success card.
+                  try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 320); } catch (_) {}
                   refreshBalanceDelayed();
                 }
               } else if (hasPendingEmail) {

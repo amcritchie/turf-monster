@@ -784,11 +784,49 @@ body.modal-open { overflow: hidden; }
 .modal-backdrop-mount { animation: modal-backdrop-in 180ms ease-out both; }
 .modal-backdrop-unmount { animation: modal-backdrop-out 200ms ease-in forwards; }
 
-/* Honor reduced-motion preferences — drop the spring + bounce, just
-   fade fast. Vestibular safety. */
+/* Inter-modal swap animations — directional slide for forward-flow feel.
+   The leaving modal slides off to the right + fades; the new one enters
+   from the left. Pairs with $store.modals.swap() (or open(_, _, { replace
+   true })) in studio/modals/_host.html.erb — the store flips _swappingOut
+   on the leaving entry, waits CLOSE_ANIM_MS, then flips _swappingIn on
+   the entering entry. Total swap duration ≈ 440ms (220 out + 220 in). */
+@keyframes modal-card-slide-out-right {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(48px) scale(0.98); }
+}
+@keyframes modal-card-slide-in-left {
+  from { opacity: 0; transform: translateX(-48px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+.modal-card-swap-out { animation: modal-card-slide-out-right 220ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.modal-card-swap-in  { animation: modal-card-slide-in-left   220ms cubic-bezier(0, 0, 0.2, 1) both; }
+
+/* Back-direction pair — current step slides off stage-LEFT, next slides
+   in from the RIGHT. Mirror of the forward pair above; together they
+   give wizard nav a directional language (forward = →, back = ←) so
+   the user's spatial model of "where the previous step lives" is
+   preserved. Trigger: $store.modals.advance(patch, { direction: 'back' })
+   or swap(id, props, { direction: 'back' }). */
+@keyframes modal-card-slide-out-left {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(-48px) scale(0.98); }
+}
+@keyframes modal-card-slide-in-right {
+  from { opacity: 0; transform: translateX(48px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+.modal-card-swap-out-back { animation: modal-card-slide-out-left 220ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.modal-card-swap-in-back  { animation: modal-card-slide-in-right 220ms cubic-bezier(0, 0, 0.2, 1) both; }
+
+/* Honor reduced-motion preferences — drop the spring/slide motion,
+   just fade fast. Vestibular safety. */
 @media (prefers-reduced-motion: reduce) {
   .modal-card-mount,
   .modal-card-unmount,
+  .modal-card-swap-out,
+  .modal-card-swap-in,
+  .modal-card-swap-out-back,
+  .modal-card-swap-in-back,
   .modal-backdrop-mount,
   .modal-backdrop-unmount {
     animation-duration: 80ms;
@@ -796,6 +834,10 @@ body.modal-open { overflow: hidden; }
   }
   @keyframes modal-card-in  { from { opacity: 0; } to { opacity: 1; } }
   @keyframes modal-card-out { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes modal-card-slide-out-right { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes modal-card-slide-in-left   { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes modal-card-slide-out-left  { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes modal-card-slide-in-right  { from { opacity: 0; } to { opacity: 1; } }
 }
 
 /* === Entry-token badge (components/_entry_token_badge.html.erb) ========

@@ -1,0 +1,57 @@
+<%#
+  Primary CTA with a 5-second drain animation that auto-redirects when
+  the countdown hits zero. Used on celebration cards (entry confirmed,
+  account created, etc.) where the user is leaving the modal anyway —
+  the drain is both a visual progress bar AND a click-now affordance.
+
+  The drain animation always plays (it's a key piece of visual polish
+  and the gallery wants to demo it). The redirect itself is gated:
+
+    - URL truthy  → animation drains, then window.location = URL
+    - URL null    → animation still drains; on completion the timer
+                    fires but the redirect is a no-op. Click does not
+                    short-circuit either — falls through to closing
+                    the modal so the gallery preview stays alive.
+
+  Locals (all optional except href_key):
+    href_key         — Alpine expression. The destination URL or null.
+                       Re-read inside the timer fire so callers can
+                       lazy-resolve (e.g. props.redirectUrl populated
+                       by an async response).
+    label_html       — Button label HTML. Default "Continue".
+    duration_seconds — Drain + redirect timer in seconds. Default 5.
+
+  Co-located x-data so callers don't need to wire init/destroy; drop
+  the partial under any header/content and it self-manages its timer.
+%>
+<%
+  href_key         = local_assigns.fetch(:href_key)
+  label_html       = local_assigns.fetch(:label_html, "Continue")
+  duration_seconds = local_assigns.fetch(:duration_seconds, 5)
+%>
+<div x-data="{
+       _redirectTimer: null,
+       init() {
+         var self = this;
+         self._redirectTimer = setTimeout(function () {
+           self._redirectTimer = null;
+           var url = (<%= href_key %>);
+           if (url) { try { window.location.href = url; } catch (_) {} }
+         }, <%= duration_seconds * 1000 %>);
+       },
+       destroy() {
+         if (this._redirectTimer) { clearTimeout(this._redirectTimer); this._redirectTimer = null; }
+       }
+     }">
+  <a :href="(<%= href_key %>) || '#'"
+     @click="if (!(<%= href_key %>)) { $event.preventDefault(); $store.modals.close(); }"
+     class="btn btn-primary btn-lg w-full relative overflow-hidden no-underline">
+    <%# Drain overlay — translucent white sweeping right-to-left over
+        duration_seconds. studio-modal-drain keyframe lives in
+        application.tailwind.css. forwards fill-mode parks the drain
+        at 0 width once it completes. %>
+    <div class="absolute inset-0 pointer-events-none origin-left"
+         style="background: rgba(255,255,255,0.18); animation: studio-modal-drain <%= duration_seconds %>s linear forwards;"></div>
+    <span class="relative z-10"><%= label_html.html_safe %></span>
+  </a>
+</div>
