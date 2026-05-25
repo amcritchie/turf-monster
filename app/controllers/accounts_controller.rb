@@ -182,11 +182,16 @@ class AccountsController < ApplicationController
     new_username = params[:username].to_s.strip
     @user.username = new_username
 
+    # Server-side mirror of the UI gate (modals/_username.html.erb +
+    # User#can_change_username?). Belt-and-suspenders so a direct POST
+    # can't bypass the "enter a contest first" lock.
+    unless @user.can_change_username?
+      reason = @user.solana_connected? ? "Enter a contest first to unlock username changes." : "No wallet on this account."
+      return render json: { success: false, error: reason }, status: :forbidden
+    end
+
     unless @user.valid?
       return render json: { success: false, error: @user.errors.full_messages.first }, status: :unprocessable_entity
-    end
-    unless @user.solana_connected?
-      return render json: { success: false, error: "No wallet on this account." }, status: :unprocessable_entity
     end
 
     if @user.phantom_wallet?

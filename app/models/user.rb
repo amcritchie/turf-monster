@@ -118,12 +118,12 @@ class User < ApplicationRecord
   end
 
   # Username changes are on-chain instructions against the UserAccount PDA,
-  # so we need a connected wallet. UserAccount itself is created eagerly at
-  # signup now (see memory: on-chain usernames kickoff 2026-05-22), so we
-  # don't need to also gate on "has entered a contest" the way the original
-  # v0.13 modal copy did.
+  # so we need a connected wallet. We ALSO gate on contest_entered? — the
+  # auto-generated kebab-case slug stays locked until the user has played
+  # at least one contest, so accounts can't be created and immediately
+  # renamed (anti-squatting + a small earn-it incentive).
   def can_change_username?
-    solana_connected?
+    solana_connected? && contest_entered?
   end
 
   def truncated_solana

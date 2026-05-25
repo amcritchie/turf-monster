@@ -69,6 +69,9 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   # --- update_username tests ---
 
   test "update_username rejects a taken username" do
+    # Must satisfy can_change_username? (wallet + entered) to reach the
+    # validation check; otherwise the gate intercepts first with 403.
+    @alex.update_columns(web2_solana_address: "test_wallet_alex_111", contest_entered: true)
     log_in_as @alex
     post update_username_account_path, params: { username: users(:jordan).username }, as: :json
     assert_response :unprocessable_entity
@@ -77,6 +80,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
 
   test "update_username (custodial) saves via a server-signed set_username" do
     user = User.create!(email: "renamer@mcritchie.studio", password: "password") # managed wallet
+    user.update_columns(contest_entered: true) # satisfy the gate
     log_in_as user
     fake_vault = Object.new
     def fake_vault.set_username(*, **)
@@ -87,6 +91,27 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     end
     assert_response :success
     assert_equal "renamed-fox", user.reload.username
+  end
+
+  test "update_username is gated until contest_entered" do
+    user = User.create!(email: "gated@mcritchie.studio", password: "password") # managed wallet, contest_entered: false
+    log_in_as user
+    post update_username_account_path, params: { username: "new-name-here" }, as: :json
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_not body["success"]
+    assert_match(/Enter a contest first/i, body["error"])
+    assert_equal user.username, user.reload.username, "username should not have changed"
+  end
+
+  test "update_username rejects when no wallet (gate fail-closed)" do
+    user = User.create!(email: "nowallet@mcritchie.studio", password: "password")
+    user.update_columns(web2_solana_address: nil, web3_solana_address: nil, contest_entered: true)
+    log_in_as user
+    post update_username_account_path, params: { username: "new-name" }, as: :json
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_match(/No wallet/i, body["error"])
   end
 
   test "show renders for logged in user" do

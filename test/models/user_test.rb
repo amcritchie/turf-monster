@@ -227,4 +227,24 @@ class UserTest < ActiveSupport::TestCase
     assert_nil user.update_level_from_seeds!(0)
     assert_equal 1, user.reload.level
   end
+
+  # --- can_change_username? gate ---
+
+  test "can_change_username? false when not solana_connected" do
+    user = User.new(email: "bare@example.com", password: "password")
+    user.assign_attributes(web2_solana_address: nil, web3_solana_address: nil, contest_entered: true)
+    refute user.can_change_username?
+  end
+
+  test "can_change_username? false when solana_connected but contest_entered is false" do
+    user = User.new(email: "unentered@example.com", password: "password")
+    user.assign_attributes(web2_solana_address: "wallet_test_abc", contest_entered: false)
+    refute user.can_change_username?
+  end
+
+  test "can_change_username? true when solana_connected AND contest_entered" do
+    user = User.new(email: "ready@example.com", password: "password")
+    user.assign_attributes(web2_solana_address: "wallet_test_xyz", contest_entered: true)
+    assert user.can_change_username?
+  end
 end
