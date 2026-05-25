@@ -2,7 +2,7 @@
   "address": "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.15.0",
+    "version": "0.15.1",
     "spec": "0.1.0",
     "description": "Solana escrow program for contest entry fees and prize distribution"
   },
@@ -503,7 +503,28 @@
         },
         {
           "name": "contest",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
         },
         {
           "name": "contest_entry",
@@ -649,7 +670,28 @@
         },
         {
           "name": "contest",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
         },
         {
           "name": "contest_entry",
@@ -816,7 +858,28 @@
         },
         {
           "name": "contest",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
         },
         {
           "name": "contest_entry",
@@ -972,7 +1035,28 @@
         },
         {
           "name": "contest",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
         },
         {
           "name": "contest_entry",
@@ -1245,80 +1329,6 @@
       ]
     },
     {
-      "name": "migrate_user_account",
-      "docs": [
-        "Resize a UserAccount PDA to the current v0.15.0 layout. Handles",
-        "both v0.13 (81 bytes, pre-username) and v0.14 (113 bytes) source",
-        "layouts. Idempotent. Admin-only."
-      ],
-      "discriminator": [
-        198,
-        152,
-        90,
-        54,
-        134,
-        206,
-        92,
-        198
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "user_account",
-          "docs": [
-            "Verified via PDA seeds constraint + discriminator check in handler."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "wallet"
-              }
-            ]
-          }
-        },
-        {
-          "name": "wallet"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "mint_entry_token",
       "docs": [
         "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer.",
@@ -1582,7 +1592,28 @@
         },
         {
           "name": "contest",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
         }
       ],
       "args": [
@@ -1971,6 +2002,21 @@
       "code": 6019,
       "name": "WithdrawDailyCapExceeded",
       "msg": "Withdrawal would exceed the $100 / 24h per-user cap"
+    },
+    {
+      "code": 6020,
+      "name": "UsernameReserved",
+      "msg": "Username uses a reserved prefix"
+    },
+    {
+      "code": 6021,
+      "name": "UsernameInvalidChars",
+      "msg": "Username contains characters that are not printable ASCII (0x20..0x7E)"
+    },
+    {
+      "code": 6022,
+      "name": "UsernameTooShort",
+      "msg": "Username must be at least 3 characters"
     }
   ],
   "types": [
