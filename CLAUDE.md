@@ -8,6 +8,7 @@ Load these when working on specific areas:
 
 | File | When to read |
 |------|-------------|
+| `docs/workflows/README.md` | **Workflow index** — user journeys, backend pipelines, operator processes, dev/deploy. Start here when working on any end-to-end flow. |
 | `docs/AUTH.md` | Authentication, account management, admin authorization, SSO |
 | `docs/SIGNUP_FLOWS.md` | Sign-up flow sequence diagrams (Phantom / Google / manual) |
 | `docs/SOLANA.md` | Solana integration, wallet types, onchain flows, rake tasks |
@@ -62,14 +63,14 @@ pending → open → locked → settled
 
 ### Contest Targeting (root page)
 
-- Root (`/`) redirects to the most recent open/locked/settled contest's **lobby** page (`/c/:id/lobby`)
+- Root (`/`) redirects to the most recent open/locked/settled contest's **show** page (`/contests/:slug`)
 - Falls back to `/contests` index if no eligible contest exists
 - `Contest.ranked` scope and `Contest.target` still exist but root no longer uses them
-- `load_contest_board_data` — shared private method used by `lobby` and `show` actions
+- `load_contest_board_data` — private method used by the `show` action
 
-### Lobby Page (`/c/:id/lobby`)
+### Contest Show Page (`/contests/:slug`)
 
-Mobile-first contest preview/info page. Renders inline matchup board or leaderboard depending on user state.
+Mobile-first contest page. Renders inline matchup board or leaderboard depending on user state.
 
 **Sections:**
 1. Hero banner (Active Storage image or gradient fallback) + creator avatar + Solana PDA overlay (SE corner)
@@ -79,7 +80,7 @@ Mobile-first contest preview/info page. Renders inline matchup board or leaderbo
 5. Admin section (Fill/Lock/Grade + Simulate buttons) — admin only, unsettled contests
 6. Contest selector — other open/locked contests
 
-**Partial `compact` flag**: Both `_turf_totals_board` and `_turf_totals_leaderboard` accept `compact: true` to hide admin buttons, onchain details, and info cards when rendered inline from the lobby.
+**Partial `compact` flag**: Both `_turf_totals_board` and `_turf_totals_leaderboard` accept `compact: true` to hide admin buttons, onchain details, and info cards when rendered inline.
 
 ### Admin Actions (contest show page + navbar)
 
@@ -231,10 +232,9 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 ## Routes
 
 ### Public
-- `/` — contests#world_cup (redirects to most recent contest lobby)
-- `/c/:id/lobby` — contests#lobby (mobile-first contest preview, inline board/leaderboard)
+- `/` — contests#world_cup (redirects to most recent contest's show page)
 - `/contests` — contests#index (card grid, newest first, banner images, "My Contests" + "New Contest" buttons)
-- `/contests/:id` — contest show (full leaderboard + admin actions)
+- `/contests/:id` — contest show (mobile-first contest page — hero, inline board/leaderboard, admin section, contest selector)
 - `/contests/:id/edit` — admin contest editor (name, tagline, status, rank, image, locks_at)
 - `/teams`, `/teams/:slug` — team index/show
 - `/games` — games index
@@ -337,7 +337,7 @@ Violations of these produce silent no-ops or phantom DOM elements, not errors. E
 ## TODO
 
 - [x] Google OAuth, Solana integration Phases 1-6, remove Ethereum, remove Over/Under, deploy Anchor
-- [x] Contest lobby page (`/c/:id/lobby`) — hero banner, inline board/leaderboard, admin section, contest selector
+- [x] Contest show page (`/contests/:slug`) — hero banner, inline board/leaderboard, admin section, contest selector
 - [x] Stripe/MoonPay deposit actions — `WalletsController#stripe_deposit` + `#moonpay_deposit` are live. Buttons not yet surfaced on `/wallet`; admin 3-step withdrawal flow still pending.
 - [x] Entry tokens (web2 contest-entry currency, 2026-05-17/18) — `EntryToken` model + Stripe checkout via `TokensController#stripe_checkout` → `TokenPurchaseJob` (mints tokens, tops up custodial ATA with $19 USDC each, busts `usdc_balance` cache). Post-Stripe redirect lands on `/tokens/processing?session_id=…` which polls `/tokens/status` until tokens are minted, then swaps to a success card. `ContestsController#enter` spends a token before `vault.transfer_from_user` for managed-wallet users. Post-signup upsell redirect in `AccountsController#save_profile`. Webhook controllers skip `:require_authentication` so Stripe POSTs reach the handler. Navbar shows token count when USDC=0 but tokens>0; otherwise dollars. Refund/expiry rules + chargeback handling still TBD.
 - [x] **Entry tokens migrated on-chain (2026-05-18)** — `EntryToken` DB model replaced with `EntryTokenAccount` PDA on turf-vault (v0.10.0). DB now has `stripe_purchases` (audit log only: customer_id, session_id, charge_id, mint_tx_signatures, refund_status). Vault gained `mint_entry_token`, `list_entry_tokens`, `enter_contest_with_token`. New Anchor instructions `mint_entry_token` (admin-signed, 1-of-3 vault signer) and `enter_contest_with_token` (consumes token atomically, awards seeds per the Season's seed_schedule, no USDC charged). `ContestsController#enter` checks `user.next_unconsumed_entry_token` and routes to the token path when one exists. Stripe webhook → `TokenPurchaseJob` now calls `Vault.mint_entry_token` once per quantity (source: 'stripe', source_ref: 'stripe:#{session_id}:#{i}'). New admin UI at `/admin/free_entries` shows per-user seeds/level/minted/owed with per-user [Mint N] + [Mint All] buttons (operator-driven; the "Free Entry Earned" badge in the entry modal is a marketing vector, not auto-mint). **KNOWN GAP (intentional for v1):** token-funded entries don't increment `contest.entry_fees` on-chain — operator subsidizes prize pools as needed. See `memory/project_turf_monster_free_entries_onchain.md` for full architecture.

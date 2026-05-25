@@ -51,7 +51,7 @@ Once any of the three controllers has a `User` row, the rest is identical:
 1. **`before_validation :ensure_username, on: :create`** (`user.rb:20`) — auto-fills the DB `username` column via `Studio::UsernameGenerator.generate` if blank. Guarantees no user ever has a blank username.
 2. **`before_create :set_initial_session_token`** — writes `users.session_token`
    (`SecureRandom.hex(32)`), the OPSEC-045 cookie-binding token.
-3. **`after_create :generate_managed_wallet!`** (`app/models/user.rb:203`) — unless the user is
+3. **`after_create :generate_managed_wallet!`** (`app/models/user.rb:237`) — unless the user is
    an admin, generates a custodial Solana keypair via `Solana::Keypair.generate` (local ed25519,
    **no RPC**), encrypts the secret key with a key derived from `MANAGED_WALLET_ENCRYPTION_KEY`,
    and writes `web2_solana_address` + `encrypted_web2_solana_private_key`.
@@ -62,6 +62,8 @@ Once any of the three controllers has a `User` row, the rest is identical:
 There is no `Session`, `Wallet`, or `Identity` table — everything hangs off `users`.
 
 **Post-signup redirect (all 3 flows)**: lands on `tokens_buy_path` (the entry-tokens upsell modal), not the root. Wired in `registrations_controller.rb:17`, `omniauth_callbacks_controller.rb:104`, and `solana_sessions_controller.rb:52`.
+
+**Reference attribution (all 3 flows)**: a 30-day `cookies[:reference]` set by `LandingPagesController#show` (`app/controllers/landing_pages_controller.rb:18`) or `ApplicationController#capture_reference` (`application_controller.rb:51-56`) is persisted onto `users.reference` at signup. Phantom captures it inline at user-build (`solana_sessions_controller.rb:37-42`); Google updates the column post-create and deletes the cookie (`omniauth_callbacks_controller.rb:95-98`); Manual carries it through a hidden form field (`registrations/new.html.erb:17`). First-touch wins — the cookie is only set when blank.
 
 ## Flow 1 — Phantom (web3 wallet)
 
@@ -186,7 +188,7 @@ sequenceDiagram
     BE->>BE: Solana::Keypair.generate — local ed25519<br/>encrypt with MANAGED_WALLET_ENCRYPTION_KEY
     BE->>DB: UPDATE users — web2_solana_address +<br/>encrypted_web2_solana_private_key
     BE->>BE: set_app_session — Rails cookie<br/>turf_user_id · session_token
-    BE-->>FE: Redirect to / — Welcome to Turf Monster
+    BE-->>FE: Redirect to /tokens/buy — Welcome to Turf Monster
     FE->>U: Logged in immediately — email_verified_at is still NULL
 
     rect rgb(238, 246, 255)
@@ -226,7 +228,7 @@ sequenceDiagram
 
 | Area | File | Role |
 |---|---|---|
-| **Shared** | `app/models/user.rb` | `ensure_username` (L20, L278), `enqueue_onchain_account_setup` (L27, L283), `generate_managed_wallet!` (L203), `set_initial_session_token`, `from_solana_wallet`, `from_omniauth` |
+| **Shared** | `app/models/user.rb` | `ensure_username` (L20, L312), `enqueue_onchain_account_setup` (L27, L317), `generate_managed_wallet!` (L237), `set_initial_session_token` (L22, L217), `from_solana_wallet`, `from_omniauth` |
 | | `app/models/session_context.rb` | PORO — canonical guest/web2/web3 mode for `$store.session` (2026-05-20) |
 | | `app/jobs/create_onchain_user_account_job.rb` | Async on-chain `UserAccount` PDA + username creation at signup (2026-05-22) |
 | | `app/services/solana/keypair.rb` | Managed-wallet keypair encryption (`MANAGED_WALLET_ENCRYPTION_KEY`) |

@@ -119,6 +119,5 @@ This app received one-way SSO from McRitchie Studio (the hub). Login page showed
 - `/account/save_profile` — POST, save profile completion form
 - `/account/unlink_google` — POST, unlink Google OAuth
 - `/account/change_password` — POST, set or change password
-- `/account/update_level` — PATCH, update level from seeds
 
 **Route name gotcha**: `resource :account` with member routes generates `unlink_google_account_path` (not `account_unlink_google_path`). The action name comes first.
