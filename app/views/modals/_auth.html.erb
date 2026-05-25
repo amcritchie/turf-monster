@@ -191,26 +191,22 @@
   <%= render 'modals/auth/tokens' %>
 
   <%# === REDIRECT STEP ======================================================
-      The countdown here is driven by the board's setInterval (mutates
-      props.countdown), and the CTA dispatches auth-go-now so the
-      board can run pre-redirect cleanup (session storage, navbar
-      sync) before navigation. Standardizing this step needs deeper
-      surgery on the board's auth-redirect-handler — kept as-is for
-      now; revisit when we wire props.redirectUrl into the redirect
-      step + retire the board's countdown loop. %>
+      Status-template spine: card_header with caller-provided emoji
+      (icon_emoji_key reads props.icon) + cta_redirect for the drain-
+      and-go button. The board's setInterval + props.countdown loop
+      is retired — cta_redirect owns the timer end-to-end and reads
+      props.url at fire time so the CTA respects late-bound URLs +
+      the null-bypass (gallery preview). %>
   <template x-if="props.step === 'redirect'">
-    <div class="text-center py-6">
-      <div class="text-5xl mb-4 leading-none" x-text="props.icon"></div>
-      <h3 class="text-lg font-bold text-heading mb-2" x-text="props.title"></h3>
-      <p class="text-sm text-secondary mb-4" x-text="props.message"></p>
-      <div class="mb-4">
-        <%= render 'studio/modals/blocks/progress_countdown',
-            current_key: 'props.countdown',
-            total_key:   'props.seconds || 5' %>
-      </div>
-      <button @click="$dispatch('auth-go-now')"
-              class="btn btn-primary w-full"
-              x-text="props.cta || 'Go now'"></button>
+    <div>
+      <%= render 'modals/blocks/card_header',
+            icon_emoji_key: "props.icon",
+            title_key:      "props.title",
+            subtitle_key:   "props.message" %>
+      <%= render 'modals/blocks/cta_redirect',
+            href_key:         "props.url",
+            label_key:        "props.cta || 'Go now'",
+            duration_seconds: 5 %>
     </div>
   </template>
 </div>

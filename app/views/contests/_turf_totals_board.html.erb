@@ -100,7 +100,6 @@ window.selectionBoard = function() {
     profileError: '',
     profileSubmitting: false,
     signupMethod: '',
-    _redirectInterval: null,      // setInterval handle for the redirect-step countdown
 
     init() {
       // Stripe checkout runs in a NEW TAB (see the buy-tokens panel). When
@@ -828,7 +827,25 @@ window.selectionBoard = function() {
     // the generic Alpine.store('modals') stack. Resend is handled by the
     // @modal-resend-verification listener on the selectionBoard root, so
     // the modal partial doesn't need this scope to dispatch back here.
+    //
+    // Two paths through the same fetch:
+    //   first-time open (no modal yet) → open in 'default' state, patch
+    //     sendError inline if the fetch fails. No resending spinner —
+    //     the user opened a modal expecting "check your email" copy,
+    //     not a loader.
+    //   resend (modal already open) → advance() into 'resending' to slide
+    //     in the spinner, then advance() into 'resent' on success or
+    //     back to 'default' + sendError on failure. The slides give the
+    //     user confirmation that something happened mid-flight.
     async sendVerificationEmail() {
+      var s = Alpine.store('modals');
+      var alreadyOpen = s.isOpen('check-email');
+      if (alreadyOpen) {
+        s.advance({ state: 'resending', sendError: '' });
+      } else {
+        s.open('check-email', { email: this.userEmail, state: 'default' });
+      }
+
       var sendError = '';
       try {
         var resp = await fetch('/email_verification', {
@@ -847,10 +864,19 @@ window.selectionBoard = function() {
       } catch (e) {
         sendError = 'Network error sending the email.';
       }
-      Alpine.store('modals').open('check-email', {
-        email:     this.userEmail,
-        sendError: sendError
-      }, { replace: Alpine.store('modals').isOpen('check-email') });
+
+      if (alreadyOpen) {
+        if (sendError) {
+          s.advance({ state: 'default', sendError: sendError }, { direction: 'back' });
+        } else {
+          s.advance({ state: 'resent' });
+        }
+      } else if (sendError) {
+        // First-time path — modal is already on screen in default state;
+        // patch sendError inline without an animation (no state change).
+        var cur = s.current();
+        if (cur && cur.id === 'check-email') cur.props.sendError = sendError;
+      }
     },
 
     // After a reload-based login (see init()), push the guest cart to the
@@ -863,45 +889,21 @@ window.selectionBoard = function() {
       }
     },
 
-    // Open the auth wizard at the redirect step. The countdown ticks
-    // through props.countdown; when it hits zero the page redirects.
-    // The setInterval handle lives on the board (this._redirectInterval)
-    // so we can clear it from goNow() or when the modal closes.
-    showRedirectModal(title, message, icon, url, seconds, cta) {
-      var s = Alpine.store('modals');
-      s.open('auth', {
-        step:      'redirect',
-        title:     title,
-        message:   message,
-        icon:      icon,
-        url:       url,
-        seconds:   seconds,
-        cta:       cta,
-        countdown: seconds
+    // Open the auth wizard at the redirect step. cta_redirect owns the
+    // countdown + auto-navigation; the seconds arg is accepted for
+    // backward compatibility but currently fixed at 5 in the partial
+    // (only caller passes 5). Pass null for url to suppress the auto-
+    // navigation (the partial keeps the drain visual + manual click
+    // closes the modal).
+    showRedirectModal(title, message, icon, url, _seconds, cta) {
+      Alpine.store('modals').open('auth', {
+        step:    'redirect',
+        title:   title,
+        message: message,
+        icon:    icon,
+        url:     url,
+        cta:     cta
       });
-      if (this._redirectInterval) clearInterval(this._redirectInterval);
-      var self = this;
-      this._redirectInterval = setInterval(function() {
-        var p = self._authProps();
-        if (!p || p.step !== 'redirect') {
-          clearInterval(self._redirectInterval);
-          self._redirectInterval = null;
-          return;
-        }
-        p.countdown--;
-        if (p.countdown <= 0) {
-          clearInterval(self._redirectInterval);
-          self._redirectInterval = null;
-          window.location.href = url;
-        }
-      }, 1000);
-    },
-
-    goNow() {
-      if (this._redirectInterval) clearInterval(this._redirectInterval);
-      this._redirectInterval = null;
-      var p = this._authProps();
-      if (p && p.url) window.location.href = p.url;
     },
 
     setHoldSuccess() {
@@ -1265,8 +1267,7 @@ window.selectionBoard = function() {
      @auth-signup-submit.window="submitInlineSignup($event.detail.email, $event.detail.password)"
      @auth-login-submit.window="submitInlineLogin($event.detail.email, $event.detail.password)"
      @auth-phantom-click.window="loginWithPhantom()"
-     @auth-google-click.window="loginWithGoogle()"
-     @auth-go-now.window="goNow()">
+     @auth-google-click.window="loginWithGoogle()">
 
   <!-- Blur overlay (click to dismiss) -->
   <div x-show="selectionCount === <%= @contest.picks_required %> && !blurDismissed"
@@ -1497,7 +1498,8 @@ window.selectionBoard = function() {
       rendered through shared/_modal_host as the 'auth' modal id with internal
       step state. The board's show*() methods open the wizard at the right
       step; the wizard partial dispatches window events (auth-signup-submit,
-      auth-login-submit, auth-phantom-click, auth-google-click, auth-go-now)
+      auth-login-submit, auth-phantom-click, auth-google-click — the
+      redirect step's CTA navigates through cta_redirect, no dispatch)
       that the selectionBoard root listens for (see x-data attribute above). %>
 
   <!-- Mobile spacer to prevent fixed cart from covering content -->

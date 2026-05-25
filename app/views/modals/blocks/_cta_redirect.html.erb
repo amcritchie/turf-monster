@@ -19,6 +19,10 @@
                        lazy-resolve (e.g. props.redirectUrl populated
                        by an async response).
     label_html       — Button label HTML. Default "Continue".
+    label_key        — Alpine expression returning the label string
+                       (rendered via x-text). Takes priority over
+                       label_html. Use when the caller provides the
+                       label via props.
     duration_seconds — Drain + redirect timer in seconds. Default 5.
 
   Co-located x-data so callers don't need to wire init/destroy; drop
@@ -52,6 +56,10 @@
         at 0 width once it completes. %>
     <div class="absolute inset-0 pointer-events-none origin-left"
          style="background: rgba(255,255,255,0.18); animation: studio-modal-drain <%= duration_seconds %>s linear forwards;"></div>
-    <span class="relative z-10"><%= label_html.html_safe %></span>
+    <% if local_assigns[:label_key] %>
+      <span class="relative z-10" x-text="<%= label_key %>"></span>
+    <% else %>
+      <span class="relative z-10"><%= label_html.html_safe %></span>
+    <% end %>
   </a>
 </div>

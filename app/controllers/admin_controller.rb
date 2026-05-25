@@ -91,9 +91,11 @@ class AdminController < ApplicationController
     { group: "Auth — redirect",
       label: "Redirect countdown", key: "auth-redirect",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      # url: nil — cta_redirect drains the bar but skips the actual
+      # window.location at timer-end, so the gallery preview stays put.
       props: { step: "redirect", icon: "⏱️", title: "Heading to the lobby",
                message: "We're sending you to the contest lobby.",
-               countdown: 3, seconds: 5, cta: "Go now" } },
+               url: nil, cta: "Go now" } },
 
     { group: "Check email",
       label: "Default", key: "check-email",
