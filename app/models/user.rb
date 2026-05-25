@@ -287,12 +287,22 @@ class User < ApplicationRecord
   # Balance comes from on-chain RPC; consumption happens atomically inside the
   # enter_contest_with_token Anchor instruction (no spend_entry_token! needed).
 
+  # Per-request memoized — views call this from the navbar, the entry-token
+  # badge, and the action body all in the same render. The User instance is
+  # the same `current_user` reference across the request, so the memo holds.
+  # Write paths that consume/mint tokens should also `user.instance_variable_set(:@entry_token_balance, nil)`
+  # if the count needs to refresh mid-request (no current callers do this).
   def entry_token_balance
-    return 0 unless solana_connected?
-    Solana::Vault.new.list_entry_tokens(solana_address).count { |t| !t[:consumed] }
-  rescue => e
-    Rails.logger.warn "entry_token_balance fetch failed for user=#{id}: #{e.message}"
-    0
+    @entry_token_balance ||= if solana_connected?
+      begin
+        Solana::Vault.new.list_entry_tokens(solana_address).count { |t| !t[:consumed] }
+      rescue => e
+        Rails.logger.warn "entry_token_balance fetch failed for user=#{id}: #{e.message}"
+        0
+      end
+    else
+      0
+    end
   end
 
   # Returns the first unconsumed EntryTokenAccount PDA for this user, or nil.

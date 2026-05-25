@@ -24,36 +24,6 @@ module Solana
         error = e
         raise
       ensure
-        # [BENCH] Caller-source trace. Walks the backtrace and finds the FIRST
-        # frame that lives in our app or our gems (skip Ruby stdlib + gem internals
-        # we don't own). Logs it next to the RPC so we can see who's spamming
-        # Solana on /account. Remove after the N+1 hunt.
-        begin
-          app_frame = caller_locations(1, 80).find do |loc|
-            p = loc.absolute_path.to_s
-            next false unless p.include?("/projects/")
-            next false if p.include?("/solana-studio")
-            next false if p.include?("/client_logger.rb")
-            next false if p.include?("/services/solana/vault.rb")
-            true
-          end
-          gem_frame = caller_locations(1, 80).find do |loc|
-            p = loc.absolute_path.to_s
-            next false unless p.include?("/projects/")
-            next false if p.include?("/client_logger.rb")
-            true
-          end
-          tag = if app_frame
-            "#{File.basename(File.dirname(app_frame.absolute_path))}/#{File.basename(app_frame.absolute_path)}:#{app_frame.lineno} #{app_frame.label}"
-          else
-            "??"
-          end
-          via = (gem_frame && gem_frame != app_frame) ? " via #{File.basename(gem_frame.absolute_path)}:#{gem_frame.lineno}" : ""
-          Rails.logger.info("[BENCH-RPC] #{method} from #{tag}#{via}")
-        rescue => trace_err
-          Rails.logger.warn "[BENCH-RPC] trace failed: #{trace_err.message}"
-        end
-
         begin
           OutboundRequestLogger.record!(
             service:       "solana_rpc",

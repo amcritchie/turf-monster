@@ -71,12 +71,14 @@ module Admin
       render json: { error: e.message }, status: :unprocessable_entity
     end
 
-    # Cached on-chain check for the navbar badge — avoid an RPC call on every
-    # admin page render. Bust on successful #confirm.
+    # Navbar badge check — answers "is the vault uninitialized?" off the
+    # per-request shared VaultState read (Solana::Vault.cached_vault_state),
+    # so this and the paused? check below cost one RPC together instead of
+    # two. Rails.cache layer remains for cross-request reuse in prod;
+    # Current-level memo carries dev where :null_store would otherwise let
+    # every render through to Solana.
     def self.vault_uninitialized?
-      Rails.cache.fetch(uninitialized_cache_key, expires_in: 1.hour) do
-        Solana::Vault.new.read_vault_state.nil?
-      end
+      Solana::Vault.cached_vault_state.nil?
     rescue StandardError
       false # never block the navbar render on an RPC blip
     end

@@ -276,32 +276,88 @@ class AccountsController < ApplicationController
     end
   end
 
+  # Reads every on-chain view the /account page (and its surrounding
+  # layout) needs in parallel, so total wall-clock time is bounded by the
+  # slowest single RPC instead of their sum:
+  #   - fetch_wallet_balances : SOL + SPL token (USDC/USDT) tiles
+  #   - sync_balance          : UserAccount PDA for the seeds counter
+  #   - list_entry_tokens     : free-entry token count (navbar badge + tile)
+  #   - read_vault_state      : admin dropdown's Vault Init / PAUSED badges
+  # Each thread gets its own Solana::Vault.new (Net::HTTP isn't safe to share
+  # across threads) and is wrapped in Rails.application.executor.wrap so the
+  # OutboundRequest audit write gets a proper AR connection from the pool.
+  # Pre-populates @user's @entry_token_balance memo + Current.vault_state so
+  # downstream view helpers (entry_token_balance, vault_uninitialized?,
+  # vault_paused?) hit the prefetched data instead of firing fresh RPCs.
   def load_solana_balances
-    vault = Solana::Vault.new
-
-    # [BENCH] Temporary instrumentation for /account slow-load investigation.
-    # Logs how long each Solana RPC takes. Remove once root cause is found.
     t_total = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    wallet_address = @user.solana_address
+    is_admin       = current_user&.admin?
 
-    t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    @wallet_balances = vault.fetch_wallet_balances(@user.solana_address)
-    Rails.logger.info("[BENCH] fetch_wallet_balances took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
+    balances_thread = Thread.new do
+      Rails.application.executor.wrap do
+        t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = Solana::Vault.new.fetch_wallet_balances(wallet_address)
+        Rails.logger.info("[BENCH] fetch_wallet_balances took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
+        result
+      rescue => e
+        Rails.logger.warn("fetch_wallet_balances failed: #{e.message}")
+        nil
+      end
+    end
 
-    # sync_balance reads the UserAccount PDA (separate from the SPL token
-    # accounts above) for the on-chain seeds counter. Independent rescue so a
-    # stale-PDA failure here doesn't blank out the USDC/SOL/USDT tiles.
-    begin
-      t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      onchain = vault.sync_balance(@user.solana_address)
-      Rails.logger.info("[BENCH] sync_balance took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
-      @user_seeds = onchain&.dig(:seeds)
-    rescue StandardError
-      @user_seeds = nil
+    sync_thread = Thread.new do
+      Rails.application.executor.wrap do
+        t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = Solana::Vault.new.sync_balance(wallet_address)
+        Rails.logger.info("[BENCH] sync_balance took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
+        result
+      rescue => e
+        Rails.logger.warn("sync_balance failed: #{e.message}")
+        nil
+      end
+    end
+
+    tokens_thread = Thread.new do
+      Rails.application.executor.wrap do
+        t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = Solana::Vault.new.list_entry_tokens(wallet_address).count { |tk| !tk[:consumed] }
+        Rails.logger.info("[BENCH] entry_token_balance took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
+        result
+      rescue => e
+        Rails.logger.warn("entry_token_balance failed: #{e.message}")
+        0
+      end
+    end
+
+    vault_state_thread = if is_admin
+      Thread.new do
+        Rails.application.executor.wrap do
+          t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          result = Rails.cache.fetch("solana:vault_state", expires_in: 1.minute) do
+            Solana::Vault.new.read_vault_state
+          end
+          Rails.logger.info("[BENCH] vault_state took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
+          result
+        rescue => e
+          Rails.logger.warn("vault_state failed: #{e.message}")
+          nil
+        end
+      end
+    end
+
+    @wallet_balances = balances_thread.value
+    @user_seeds      = sync_thread.value&.dig(:seeds)
+    # Pre-populate the User#entry_token_balance memo so the navbar +
+    # entry_token_badge + show body all read the prefetched count instead
+    # of firing fresh list_entry_tokens RPCs (which would block the view).
+    @user.instance_variable_set(:@entry_token_balance, tokens_thread.value)
+
+    if vault_state_thread
+      Current.vault_state_fetched = true
+      Current.vault_state         = vault_state_thread.value
     end
 
     Rails.logger.info("[BENCH] load_solana_balances total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")
-  rescue StandardError
-    @wallet_balances = nil
-    @user_seeds = nil
   end
 end

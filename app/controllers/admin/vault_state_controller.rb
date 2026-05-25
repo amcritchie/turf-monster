@@ -95,13 +95,11 @@ module Admin
       render json: { error: e.message }, status: :unprocessable_entity
     end
 
-    # Cached on-chain check for the navbar badge — show a 🚨 marker on the
-    # admin dropdown when the vault is paused. 60s cache so the navbar
-    # render isn't an RPC hot path; busts on successful pause/unpause confirm.
+    # Navbar badge check — shares a single VaultState read with
+    # Admin::VaultInitController.vault_uninitialized? via
+    # Solana::Vault.cached_vault_state (memoized on Current per request).
     def self.vault_paused?
-      Rails.cache.fetch(paused_cache_key, expires_in: 1.minute) do
-        Solana::Vault.new.read_vault_state&.dig(:paused) || false
-      end
+      Solana::Vault.cached_vault_state&.dig(:paused) || false
     rescue StandardError
       false # never block the navbar render on an RPC blip
     end

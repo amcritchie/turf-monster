@@ -280,6 +280,23 @@ module Solana
       }
     end
 
+    # Per-request memoized read of the VaultState account. Used by the admin
+    # dropdown to answer both "is the vault uninitialized?" and "is the vault
+    # paused?" off a single RPC. Falls back to Rails.cache (1-minute TTL) for
+    # cross-request caching in prod; dev's :null_store no-ops, so the
+    # Current-level memo is the real saver on every admin page render.
+    def self.cached_vault_state
+      return Current.vault_state if Current.vault_state_fetched
+
+      Current.vault_state_fetched = true
+      Current.vault_state = Rails.cache.fetch("solana:vault_state", expires_in: 1.minute) do
+        new.read_vault_state
+      end
+    rescue StandardError => e
+      Rails.logger.warn("[solana] cached_vault_state failed: #{e.message}")
+      Current.vault_state = nil
+    end
+
     # Build a partially-signed `pause` transaction for Phantom to cosign.
     #
     # turf-vault v0.15.0 emergency stop. Requires 2-of-3 multisig — admin

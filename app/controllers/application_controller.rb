@@ -116,16 +116,32 @@ class ApplicationController < ActionController::Base
     session[:geo_override].present?
   end
 
-  # Navbar balance — always on-chain USDC for connected wallets
+  # Navbar balance — always on-chain USDC for connected wallets.
+  # Memoized on the controller instance: the value can't change within a
+  # single request, and views call this helper multiple times across the
+  # navbar, layout, and action body. Without per-request memoization the
+  # 60s Rails.cache.fetch — which is :null_store in dev — re-issues a
+  # Solana RPC chain on every call site.
+  #
+  # Reuses @wallet_balances when the controller already populated it (e.g.
+  # AccountsController#show via load_solana_balances). Avoids running
+  # fetch_wallet_balances twice in the same request.
   def display_balance
-    return 0 unless current_user.solana_connected?
+    return @display_balance if defined?(@display_balance)
 
-    Rails.cache.fetch(usdc_cache_key, expires_in: 60.seconds) do
-      fetch_user_usdc
-    end
-  rescue => e
-    Rails.logger.warn "Failed to fetch onchain balance: #{e.message}"
-    0
+    @display_balance =
+      if @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:usdc)
+        @wallet_balances[:usdc] || 0
+      elsif current_user.solana_connected?
+        begin
+          Rails.cache.fetch(usdc_cache_key, expires_in: 60.seconds) { fetch_user_usdc }
+        rescue => e
+          Rails.logger.warn "Failed to fetch onchain balance: #{e.message}"
+          0
+        end
+      else
+        0
+      end
   end
 
   # Fresh onchain USDC balance from logged-in user's wallet
@@ -143,17 +159,33 @@ class ApplicationController < ActionController::Base
     Rails.cache.delete(usdc_cache_key(user))
   end
 
-  # Navbar seeds bar — on-chain seed count for the logged-in user
+  # Navbar seeds bar — on-chain seed count for the logged-in user.
+  # Per-request memoized for the same reason as display_balance: the
+  # navbar + seeds_bar partials both ask for this data, and the 60s
+  # Rails.cache.fetch is a no-op under dev's :null_store store.
+  #
+  # Reuses @user_seeds when the controller already loaded it (e.g.
+  # AccountsController#show via load_solana_balances), avoiding a second
+  # sync_balance RPC.
   def display_seeds_data
-    return seeds_payload(0) unless current_user&.solana_connected?
+    return @display_seeds_data if defined?(@display_seeds_data)
 
-    Rails.cache.fetch(seeds_cache_key, expires_in: 60.seconds) do
-      onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
-      seeds_payload(onchain&.dig(:seeds) || 0)
-    end
-  rescue => e
-    Rails.logger.warn "Failed to fetch onchain seeds: #{e.message}"
-    seeds_payload(0)
+    @display_seeds_data =
+      if defined?(@user_seeds) && !@user_seeds.nil?
+        seeds_payload(@user_seeds)
+      elsif current_user&.solana_connected?
+        begin
+          Rails.cache.fetch(seeds_cache_key, expires_in: 60.seconds) do
+            onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
+            seeds_payload(onchain&.dig(:seeds) || 0)
+          end
+        rescue => e
+          Rails.logger.warn "Failed to fetch onchain seeds: #{e.message}"
+          seeds_payload(0)
+        end
+      else
+        seeds_payload(0)
+      end
   end
 
   def seeds_payload(seeds)
