@@ -194,18 +194,39 @@ test.fixme("onchain entry via Phantom with mocked devnet", async ({ page }) => {
 // Test 5: Contest creation (admin, mocked onchain)
 // ---------------------------------------------------------------------------
 
-// 2026-05-24 fixme: same devnet-coupling issue as the onchain entry test
-// above. The contest-creation page reads the creator's USDC balance via
-// ApplicationController#display_balance → Solana::Vault#fetch_wallet_balances,
-// which hits real devnet RPC at server-render time (the Playwright route
-// mocks only intercept JS-side requests). On this seeded wallet, real
-// devnet returns ~$40 USDC — under every selectable tier's prize pool
-// requirement — so the click-time affordability check blocks the create
-// flow with the "Insufficient USDC" recovery modal before the test can
-// reach the success state. Real fix needs either (a) a Ruby-level stub
-// for Solana::Vault in test env, (b) seed-time minting of USDC to the
-// test wallet via real devnet, or (c) a /test/* endpoint that bypasses
-// the balance gate. Out of scope for the locator-pattern fix sweep.
+// 2026-05-24 fixme (revisited): even past the USDC affordability gate, this
+// test hits a hard wall at the client-side TX serialization step. The flow:
+//
+//   1. POST /contests → server builds a partial-signed TX (admin keypair
+//      signs the fee-payer slot; creator slot zero-filled for Phantom cosign).
+//   2. Client deserializes the TX, Phantom mock partialSigns (real Ed25519).
+//   3. connection.sendRawTransaction(signedTx.serialize(), …) — here
+//      solanaWeb3 calls verifySignatures by default and rejects with
+//      "Invalid signature for public key F6f8…" (alex-bot, the seed's
+//      admin keypair). Source: the server-side recent blockhash stub
+//      produces a TX shape whose admin signature solanaWeb3 disagrees
+//      with on the round-trip — could be a wire-format mismatch between
+//      solana-studio (Ruby) and @solana/web3.js (JS) serialization.
+//
+// What's been tried (all reverted):
+//   - /test/force_usdc_balance endpoint + Rails.cache memory_store → gets
+//     past the page-render + server-side balance gates.
+//   - Solana::Client stubs for get_token_account_balance, get_account_info,
+//     get_latest_blockhash → covered the server-side RPC blockers.
+//   - Vault#fetch_wallet_balances stub honoring the cache → prevented the
+//     navbar's auto-refresh from clobbering the forced balance.
+//
+// What's still needed:
+//   - Either pass { verifySignatures: false } at the sendRawTransaction
+//     call site (intrusive to production code), OR pre-build a TX whose
+//     admin signature solanaWeb3 will accept (means coordinating Ruby+JS
+//     serialization formats exactly, big undertaking), OR mock the
+//     /contests POST response itself at the JS-route level (defeats the
+//     point of testing the controller).
+//
+// Out of scope for now. The investigation notes stay attached so the
+// next attempt has a starting point past "everything looks fine
+// server-side, why is the client rejecting?"
 test.fixme("admin creates onchain contest", async ({ page }) => {
   await setupPhantomMock(page);
   await setupOnchainMocks(page);
