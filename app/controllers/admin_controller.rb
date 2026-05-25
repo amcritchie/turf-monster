@@ -148,6 +148,9 @@ class AdminController < ApplicationController
   def navbar
   end
 
+  def level_badges
+  end
+
   def modals
     @variants = MODAL_VARIANTS
   end

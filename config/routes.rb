@@ -263,6 +263,9 @@ Rails.application.routes.draw do
   # Admin: Navbar review
   get "admin/navbar", to: "admin#navbar", as: :admin_navbar
 
+  # Admin: Level badges preview gallery (1–10)
+  get "admin/level_badges", to: "admin#level_badges", as: :admin_level_badges
+
   # Admin: Modal gallery — grid of every modal partial / state variant
   # rendered in isolated iframes (see AdminController::MODAL_VARIANTS).
   get "admin/modals", to: "admin#modals", as: :admin_modals

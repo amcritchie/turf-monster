@@ -362,19 +362,25 @@
     border-color: rgb(var(--color-primary-500-rgb) / 0.6);
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
   }
+  /* L3 — L2 fill plus inset top highlight + inset bottom shadow line
+     for a "polished pin" feel (no outer drop shadow yet). */
   .level-badge-3 {
-    background: linear-gradient(135deg, #4BAF50, #06D6A0);
+    background: linear-gradient(180deg, rgb(var(--color-primary-500-rgb) / 0.6), rgb(var(--color-primary-500-rgb) / 0.4));
     color: #fff;
-    border-color: rgba(255, 255, 255, 0.25);
-    box-shadow: 0 0 8px rgba(75, 175, 80, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    border-color: rgb(var(--color-primary-500-rgb) / 0.7);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.15);
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
   }
+  /* L4 — L2 fill plus an outer drop shadow so the badge reads as
+     lifted off the card surface. */
   .level-badge-4 {
-    background: linear-gradient(135deg, #cd7f32, #6e3d12 55%, #b87333);
+    background: linear-gradient(180deg, rgb(var(--color-primary-500-rgb) / 0.6), rgb(var(--color-primary-500-rgb) / 0.4));
     color: #fff;
-    border-color: #a05a2c;
-    box-shadow: 0 0 10px rgba(205, 127, 50, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.25);
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+    border-color: rgb(var(--color-primary-500-rgb) / 0.7);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
   }
   .level-badge-5 {
     background: linear-gradient(135deg, #f5f5f5, #9a9a9a 55%, #d8d8d8);
