@@ -56,8 +56,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
       params: { matchup_id: @m1.id },
       as: :json
 
-    assert_response :redirect
-    assert_redirected_to login_path
+    # JSON requests get a clean 401 (which solana_utils.authedFetch turns into
+    # the login modal). Previously the engine's require_authentication did a
+    # blind redirect_to login_path even on AJAX, which Rails responded to with
+    # 406 Not Acceptable — silent failure for the client.
+    assert_response :unauthorized
+    assert_equal "unauthenticated", JSON.parse(response.body)["error"]
   end
 
   # --- enter (confirm) tests ---

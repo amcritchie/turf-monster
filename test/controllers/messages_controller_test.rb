@@ -38,7 +38,9 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     assert_no_difference -> { @contest.messages.count } do
       post contest_messages_url(@contest), params: { message: { body: "anon" } }, as: :json
     end
-    assert_response :redirect
+    # JSON requests get a clean 401 (authedFetch surfaces this as the
+    # login modal). HTML navigations still redirect.
+    assert_response :unauthorized
   end
 
   test "a blank message is rejected" do

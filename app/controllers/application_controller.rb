@@ -294,7 +294,10 @@ class ApplicationController < ActionController::Base
           end
         rescue => e
           Rails.logger.warn("[preload] vault_state failed: #{e.message}")
-          nil
+          # Sentinel so the main thread can distinguish "confirmed nil"
+          # (truly uninitialized) from "RPC errored" — vault_uninitialized?
+          # fails safe to false in the latter case.
+          :__preload_error__
         end
       end
     end
@@ -304,8 +307,14 @@ class ApplicationController < ActionController::Base
     current_user.instance_variable_set(:@entry_token_balance, tokens_thread.value)
 
     if vault_state_thread
+      result = vault_state_thread.value
       Current.vault_state_fetched = true
-      Current.vault_state         = vault_state_thread.value
+      if result == :__preload_error__
+        Current.vault_state_error = true
+        Current.vault_state       = nil
+      else
+        Current.vault_state = result
+      end
     end
 
     Rails.logger.info("[BENCH] perform_solana_preload total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")

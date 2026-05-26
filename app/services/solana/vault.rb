@@ -285,6 +285,10 @@ module Solana
     # paused?" off a single RPC. Falls back to Rails.cache (1-minute TTL) for
     # cross-request caching in prod; dev's :null_store no-ops, so the
     # Current-level memo is the real saver on every admin page render.
+    #
+    # On RPC failure, sets Current.vault_state_error so callers that need to
+    # distinguish "we know it's nil" from "we don't know" (vault_uninitialized?)
+    # can fail safe instead of treating the nil as truth.
     def self.cached_vault_state
       return Current.vault_state if Current.vault_state_fetched
 
@@ -294,6 +298,7 @@ module Solana
       end
     rescue StandardError => e
       Rails.logger.warn("[solana] cached_vault_state failed: #{e.message}")
+      Current.vault_state_error = true
       Current.vault_state = nil
     end
 

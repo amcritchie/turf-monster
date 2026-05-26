@@ -77,8 +77,14 @@ module Admin
     # two. Rails.cache layer remains for cross-request reuse in prod;
     # Current-level memo carries dev where :null_store would otherwise let
     # every render through to Solana.
+    #
+    # Fails safe to false when the RPC errored (Current.vault_state_error)
+    # so a transient blip doesn't pop the alarming "Vault Init" navbar
+    # badge on the admin dropdown.
     def self.vault_uninitialized?
-      Solana::Vault.cached_vault_state.nil?
+      state = Solana::Vault.cached_vault_state
+      return false if Current.vault_state_error
+      state.nil?
     rescue StandardError
       false # never block the navbar render on an RPC blip
     end
