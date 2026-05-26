@@ -72,8 +72,30 @@ namespace :solana do
     elsif ENV["FORCE_CLOSE"] == "true"
       require_solana_prod_confirmation!("solana:init_vault FORCE_CLOSE=true")
 
-      puts "\nForce-closing vault (migration)..."
-      result = vault.force_close_vault
+      # force_close_vault is a 2-of-3 treasury op on-chain — admin alone
+      # can't sign it. Provide the second signer's secret key (base58) via
+      # COSIGNER_KEY. For devnet, the canonical second signer is Mason
+      # (CytJS23…); his key lives in 1Password at agent.mason.solana.
+      #
+      #   COSIGNER_KEY=$(op item get agent.mason.solana --vault agents \
+      #     --fields "private key" --reveal) \
+      #     bin/rails solana:init_vault FORCE_CLOSE=true
+      cosigner_key = ENV["COSIGNER_KEY"]
+      unless cosigner_key
+        puts "\nERROR: force_close_vault requires a 2-of-3 cosign — admin alone can't sign it."
+        puts "Pass COSIGNER_KEY=<base58-secret> for one of the other 2 signers."
+        puts
+        puts "For devnet (Mason's key from 1Password):"
+        puts '  COSIGNER_KEY=$(op item get agent.mason.solana --vault agents --fields "private key" --reveal) \\'
+        puts "    bin/rails solana:init_vault FORCE_CLOSE=true"
+        exit 1
+      end
+
+      cosigner_keypair = Solana::Keypair.from_base58(cosigner_key)
+      puts "\nForce-closing vault (admin + cosigner)..."
+      puts "  Admin:    #{admin.to_base58}"
+      puts "  Cosigner: #{cosigner_keypair.to_base58}"
+      result = vault.force_close_vault(cosigner_keypair: cosigner_keypair)
       puts "Vault force-closed!"
       puts "  Signature: #{result[:signature]}"
     else

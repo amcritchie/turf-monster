@@ -383,7 +383,13 @@ module Solana
       return :not_found unless info&.dig("value")
 
       data = Base64.decode64(info["value"]["data"][0])
-      expected_len = 113 # 8 discriminator + 105 UserAccount fields (v0.14.0+: adds username[32])
+      # 8 discriminator + 121 UserAccount fields = 129 bytes (v0.15.0+):
+      # adds daily_withdrawn (u64) + daily_window_start (i64) on top of the
+      # v0.14.0 username[32]. Pre-v0.15.0 accounts (113 / 81 / 73 bytes) can
+      # no longer be migrated — v0.15.1 removed migrate_user_account
+      # (prelaunch audit C1) — and the deployed program won't deserialize
+      # them anyway, so they correctly report :needs_migration here.
+      expected_len = 129
       data.length == expected_len ? :ok : :needs_migration
     end
 
