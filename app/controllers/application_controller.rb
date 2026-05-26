@@ -334,7 +334,10 @@ class ApplicationController < ActionController::Base
       end
     end
 
-    Rails.logger.info("[BENCH] perform_solana_preload total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")
+    # debug-level (not info) so this fires once per authenticated HTML
+    # request without spamming prod logs. Bump to info temporarily when
+    # investigating a preload regression.
+    Rails.logger.debug("[BENCH] perform_solana_preload total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")
   end
 
   def require_profile_completion
