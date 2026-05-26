@@ -22,18 +22,43 @@ class Solana::ClientLoggerTest < ActiveSupport::TestCase
     FailingClient.prepend(Solana::ClientLogger) unless FailingClient.ancestors.include?(Solana::ClientLogger)
   end
 
-  test "logs a successful call" do
+  test "logs a successful write call" do
     client = FakeClient.new
     assert_difference -> { OutboundRequest.count }, 1 do
-      result = client.send(:call, "getProgramAccounts", [{ filter: "x" }])
-      assert_equal "ok-for-getProgramAccounts", result["result"]
+      result = client.send(:call, "sendTransaction", ["BASE64SIGNED", { "encoding" => "base64" }])
+      assert_equal "ok-for-sendTransaction", result["result"]
     end
     rec = OutboundRequest.last
     assert_equal "solana_rpc", rec.service
-    assert_equal "getProgramAccounts", rec.method
+    assert_equal "sendTransaction", rec.method
     assert_equal 200, rec.status_code
     assert rec.duration_ms >= 0
     assert_nil rec.error_class
+  end
+
+  test "skips successful high-volume read methods to keep the audit table sane" do
+    # Smell #1 from the 24h log review: getAccountInfo + getBalance + token
+    # account scans were generating ~75 outbound_requests rows/min from one
+    # dev machine. Successful reads are not audit-interesting; failures and
+    # writes still log (see the next two tests).
+    client = FakeClient.new
+    %w[getAccountInfo getBalance getTokenAccountsByOwner getProgramAccounts].each do |m|
+      assert_no_difference -> { OutboundRequest.count }, "expected no row for read method #{m}" do
+        client.send(:call, m, [])
+      end
+    end
+  end
+
+  test "logs read methods when they ERROR (operational signal)" do
+    # An RPC outage on read methods is operationally important — we want
+    # those rows even though the happy-path reads are filtered.
+    client = FailingClient.new
+    assert_difference -> { OutboundRequest.count }, 1 do
+      assert_raises(StandardError) { client.send(:call, "getAccountInfo") }
+    end
+    rec = OutboundRequest.last
+    assert_equal "getAccountInfo", rec.method
+    assert_equal "StandardError", rec.error_class
   end
 
   test "logs and re-raises a failing call" do
