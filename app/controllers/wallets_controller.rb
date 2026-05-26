@@ -190,6 +190,13 @@ class WalletsController < ApplicationController
 
   def require_login
     return if logged_in?
-    redirect_to login_path, alert: "Please log in to access your wallet."
+    # Wallet polling (sync, balance refresh) carries Accept: application/json
+    # after a session lapse; an unconditional redirect would 302 → /login
+    # which has no JSON template. Mirror ApplicationController#require_authentication.
+    respond_to do |format|
+      format.html { redirect_to login_path, alert: "Please log in to access your wallet." }
+      format.json { render json: { error: "unauthenticated" }, status: :unauthorized }
+      format.any  { head :unauthorized }
+    end
   end
 end

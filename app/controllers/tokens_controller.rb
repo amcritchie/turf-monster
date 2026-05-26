@@ -141,7 +141,15 @@ class TokensController < ApplicationController
 
   def require_login
     return if logged_in?
-    redirect_to login_path, alert: "Please log in to buy entry tokens."
+    # JS pollers (e.g. /tokens/status) hit this with Accept: application/json
+    # after a session lapse. Without the format branch we'd 302 → /login,
+    # the fetch would follow it, and SessionsController#new would 500 on
+    # the missing JSON template. Mirror ApplicationController#require_authentication.
+    respond_to do |format|
+      format.html { redirect_to login_path, alert: "Please log in to buy entry tokens." }
+      format.json { render json: { error: "unauthenticated" }, status: :unauthorized }
+      format.any  { head :unauthorized }
+    end
   end
 
   def require_dev_mint_allowed
