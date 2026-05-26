@@ -110,6 +110,12 @@ class ApplicationController < ActionController::Base
   # SessionContext stays pure (identity only); on-chain balances come from
   # @wallet_balances + @entry_token_balance which preload_navbar_solana_data
   # already populated for this request — no extra RPC.
+  #
+  # When the parallel preload's balances_thread silently returns nil (an
+  # RPC flake — see perform_solana_preload), the cents fields are emitted
+  # as null so the client-side eligibility check can recognise "unknown"
+  # and fail open (let the server enforce) instead of zero-blocking a user
+  # who actually has funds.
   def client_session_payload
     wallet_context.to_h.merge(
       usdcCents:       wallet_field_cents(:usdc),
@@ -119,8 +125,9 @@ class ApplicationController < ActionController::Base
   end
 
   def wallet_field_cents(key)
-    dollars = @wallet_balances.is_a?(Hash) ? @wallet_balances[key] : nil
-    ((dollars || 0).to_f * 100).round
+    return 0 unless current_user            # guest — definitively 0
+    return nil unless @wallet_balances.is_a?(Hash)  # logged-in but preload flaked
+    ((@wallet_balances[key] || 0).to_f * 100).round
   end
 
   def detect_geo_state

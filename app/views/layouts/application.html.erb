@@ -185,9 +185,12 @@
               this.phantomLinked = !!ctx.phantomLinked;
               this.userId = ctx.userId || null;
               this.address = ctx.address || '';
-              if (ctx.usdcCents       !== undefined) this.usdcCents       = ctx.usdcCents       | 0;
-              if (ctx.usdtCents       !== undefined) this.usdtCents       = ctx.usdtCents       | 0;
-              if (ctx.tokensAvailable !== undefined) this.tokensAvailable = ctx.tokensAvailable | 0;
+              // null in the payload means "server doesn't know" (preload
+              // RPC flake) — preserve null on the store so eligibilityBlocker
+              // can fail open rather than zero-block a funded user.
+              if (ctx.usdcCents       !== undefined) this.usdcCents       = (ctx.usdcCents       == null) ? null : (ctx.usdcCents       | 0);
+              if (ctx.usdtCents       !== undefined) this.usdtCents       = (ctx.usdtCents       == null) ? null : (ctx.usdtCents       | 0);
+              if (ctx.tokensAvailable !== undefined) this.tokensAvailable = (ctx.tokensAvailable == null) ? 0    : (ctx.tokensAvailable | 0);
             }
           });
           (function() {

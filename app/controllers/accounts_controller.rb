@@ -39,10 +39,16 @@ class AccountsController < ApplicationController
     perform_solana_preload if current_user&.solana_connected?
 
     seeds = @user_seeds.to_i
+    # When the preload's balances thread silently nil'd (RPC flake), emit
+    # null instead of 0 so the client can recognise "unknown" and preserve
+    # whatever value the store last held. The seeds + tokens fields default
+    # to 0 because the preload defaults them on failure, and a 0 there is
+    # an acceptable temporary mis-read (the navbar will just look conservative).
+    has_balances = @wallet_balances.is_a?(Hash)
     render json: {
-      usdc:        @wallet_balances&.dig(:usdc) || 0,
-      usdt:        @wallet_balances&.dig(:usdt) || 0,
-      sol:         @wallet_balances&.dig(:sol)  || 0,
+      usdc:        has_balances ? (@wallet_balances[:usdc] || 0) : nil,
+      usdt:        has_balances ? (@wallet_balances[:usdt] || 0) : nil,
+      sol:         has_balances ? (@wallet_balances[:sol]  || 0) : nil,
       tokens:      (current_user&.entry_token_balance rescue 0),
       seeds:       seeds,
       level:       User.level_for(seeds),

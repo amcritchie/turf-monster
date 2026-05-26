@@ -64,9 +64,9 @@
               this.phantomLinked = !!ctx.phantomLinked;
               this.userId = ctx.userId || null;
               this.address = ctx.address || '';
-              if (ctx.usdcCents       !== undefined) this.usdcCents       = ctx.usdcCents       | 0;
-              if (ctx.usdtCents       !== undefined) this.usdtCents       = ctx.usdtCents       | 0;
-              if (ctx.tokensAvailable !== undefined) this.tokensAvailable = ctx.tokensAvailable | 0;
+              if (ctx.usdcCents       !== undefined) this.usdcCents       = (ctx.usdcCents       == null) ? null : (ctx.usdcCents       | 0);
+              if (ctx.usdtCents       !== undefined) this.usdtCents       = (ctx.usdtCents       == null) ? null : (ctx.usdtCents       | 0);
+              if (ctx.tokensAvailable !== undefined) this.tokensAvailable = (ctx.tokensAvailable == null) ? 0    : (ctx.tokensAvailable | 0);
             }
           });
           (function() {

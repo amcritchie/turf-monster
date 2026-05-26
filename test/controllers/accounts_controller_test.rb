@@ -33,8 +33,8 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   test "session_state carries usdcCents / usdtCents / tokensAvailable for guests" do
     # The synchronous entry-eligibility check (window.eligibilityBlocker)
     # reads these three fields off $store.session and assumes they exist.
-    # The guest shape must still include them — zeros — so the client store
-    # hydrates without missing keys.
+    # Guests have no wallet at all — emit definitive 0s, not the null
+    # "preload flaked" signal that only applies to logged-in users.
     get session_state_account_path, as: :json
     body = JSON.parse(response.body)
     assert_equal 0, body["usdcCents"]
@@ -63,20 +63,24 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert payload[:loggedIn]
   end
 
-  test "session_state carries balance fields for a logged-in user even when @wallet_balances is nil" do
-    # When the navbar preload RPC fails silently (a known flake — see the
-    # parallel balances_thread in ApplicationController#perform_solana_preload),
-    # client_session_payload still has to render the three keys so the
-    # JS hydrate doesn't trip on undefined values. Verifies the nil-safe
-    # branch of wallet_field_cents.
+  test "session_state emits null usdcCents/usdtCents when preload nil'd (flake signal)" do
+    # When the navbar preload's balances_thread silently nils (RPC flake —
+    # see ApplicationController#perform_solana_preload), client_session_payload
+    # emits null for usdcCents / usdtCents so the client can recognise
+    # "unknown" and fail open in the eligibility check. tokensAvailable
+    # still emits an integer because the token thread defaults to 0 on
+    # error, accepting a temporary mis-read in exchange for type stability.
     log_in_as @alex
     get session_state_account_path, as: :json
     body = JSON.parse(response.body)
     assert body.key?("usdcCents"),       "expected usdcCents key in payload"
     assert body.key?("usdtCents"),       "expected usdtCents key in payload"
     assert body.key?("tokensAvailable"), "expected tokensAvailable key in payload"
-    assert_kind_of Integer, body["usdcCents"]
-    assert_kind_of Integer, body["usdtCents"]
+    # In the integration test the preload before_action does NOT run (this
+    # is the JSON session_state endpoint, gated to HTML format) so
+    # @wallet_balances is nil → null fields. Token balance defaults to 0.
+    assert_nil body["usdcCents"], "expected null when @wallet_balances is nil"
+    assert_nil body["usdtCents"], "expected null when @wallet_balances is nil"
     assert_kind_of Integer, body["tokensAvailable"]
   end
 

@@ -96,11 +96,14 @@ export function refreshSession() {
       // Mirror the on-chain values into $store.session so the synchronous
       // entry-eligibility check (runHoldValidations / confirmEntry) sees
       // fresh state without an extra fetch. Dollars → cents at the boundary.
+      // null in the response means "preload RPC flaked" — preserve the
+      // store's prior value rather than overwriting with 0 (false-positive
+      // block); see ApplicationController#wallet_field_cents.
       try {
         var sess = window.Alpine && Alpine.store && Alpine.store('session');
         if (sess) {
-          sess.usdcCents       = Math.round((parseFloat(data.usdc || 0)) * 100);
-          sess.usdtCents       = Math.round((parseFloat(data.usdt || 0)) * 100);
+          if (data.usdc != null) sess.usdcCents = Math.round(parseFloat(data.usdc) * 100);
+          if (data.usdt != null) sess.usdtCents = Math.round(parseFloat(data.usdt) * 100);
           sess.tokensAvailable = parseInt(data.tokens, 10) || 0;
         }
       } catch (_) {}
@@ -269,6 +272,12 @@ export function eligibilityBlocker(session, neededCents) {
     return { reason: 'no_tokens', mode: 'web2', data: {} };
   }
   if (session.mode === 'web3') {
+    // Fail open when balances are unknown — the server-side enter is the
+    // authoritative gate. preload_navbar_solana_data's balances_thread
+    // returns nil on RPC flake, which client_session_payload now emits
+    // as null (not 0). Without this branch the falsy-coalesce would
+    // treat a flaky page-load as "user has $0" and false-positive block.
+    if (session.usdcCents == null && session.usdtCents == null) return null;
     var usdc = session.usdcCents | 0;
     var usdt = session.usdtCents | 0;
     if (usdc >= neededCents || usdt >= neededCents) return null;
