@@ -3,7 +3,7 @@ module Admin
     before_action :require_admin
 
     SEEDS_PER_LEVEL = User::SEEDS_PER_LEVEL # 100
-    PER_PAGE        = 25
+    PER_PAGE        = 10
 
     def index
       scope         = users_with_wallet.order(:id)
@@ -15,6 +15,16 @@ module Admin
       @users_data   = compute_user_data_for(paged_users)
       @page_owed    = @users_data.sum { |d| d[:owed] }
       @page_minted  = @users_data.sum { |d| d[:minted] }
+      @has_next     = @page < @total_pages
+
+      # When the request comes from the auto-loading turbo-frame chain
+      # (one frame per page after page 1), respond with just the next
+      # batch's rows + the next frame in the chain — no layout, no
+      # header. The frame swaps itself in-place, the user sees rows
+      # appear under the previous batch.
+      if turbo_frame_request?
+        render partial: "page_frame", layout: false
+      end
     end
 
     def mint
