@@ -12,21 +12,31 @@
     <%= link_to "+ Custom Contest", new_contest_path, class: "btn btn-outline btn-sm" %>
   </div>
 
-  <%# One-click provisioning of the curated contest + landing-page bundles. %>
+  <%# Phantom-driven provisioning of the curated contest + landing-page bundles.
+      Server builds the partially-signed create_contest TX, operator's Phantom
+      signs the prize-pool USDC transfer, /contests/finalize_bundle persists. %>
   <div class="mb-6 rounded-lg border border-subtle bg-surface p-4">
     <h2 class="text-sm font-bold uppercase tracking-wider text-secondary mb-1">Provision Setup</h2>
     <p class="text-xs text-muted mb-3">
       One-click create a curated contest + its landing page. Idempotent — safe to re-run.
-      A new contest is created on-chain (Alex Bot funds the prize pool).
+      Your Phantom wallet funds the on-chain prize pool when you sign.
     </p>
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="bundle-cards">
       <% ContestBundle::ALL.each do |key, spec| %>
         <% existing = LandingPage.find_by(slug: spec[:landing_page][:slug]) %>
+        <%
+          format = Contest::FORMATS[spec[:contest][:contest_type]] || {}
+          prize_dollars = (format[:payouts]&.values&.sum.to_i / 100).to_i
+        %>
         <div class="rounded-lg border border-subtle p-3">
-          <div class="text-sm font-semibold text-heading mb-2"><%= spec[:label] %></div>
-          <%= button_to "Generate", generate_bundle_contests_path(key: key), method: :post,
-                class: "btn btn-primary btn-sm w-full", form: { class: "block" },
-                data: { turbo_confirm: %(Generate "#{spec[:contest][:name]}" + /l/#{spec[:landing_page][:slug]}? A new contest is funded on-chain.) } %>
+          <div class="text-sm font-semibold text-heading mb-1"><%= spec[:label] %></div>
+          <div class="text-xs text-muted mb-2 font-mono">prize pool: $<%= prize_dollars %></div>
+          <button type="button" class="btn btn-primary btn-sm w-full bundle-generate-btn"
+                  data-bundle-key="<%= key %>"
+                  data-bundle-label="<%= spec[:label] %>"
+                  data-bundle-slug="<%= spec[:landing_page][:slug] %>">
+            Generate
+          </button>
           <% if existing %>
             <%= link_to "✓ live — /l/#{existing.slug}", landing_page_path(existing), target: "_blank", rel: "noopener",
                   class: "block text-xs text-mint mt-2 hover:underline" %>
@@ -37,6 +47,113 @@
       <% end %>
     </div>
   </div>
+
+  <script type="application/json" id="bundle-config">
+    <%= {
+      hasPhantom:           current_user&.phantom_wallet?,
+      userWallet:           current_user&.web3_solana_address,
+      csrfToken:            form_authenticity_token,
+      generateBundlePath:   generate_bundle_contests_path,
+      finalizeBundlePath:   finalize_bundle_contests_path,
+      usdcBalance:          display_balance.to_f
+    }.to_json.html_safe %>
+  </script>
+  <script>
+    (function() {
+      var cfg = JSON.parse(document.getElementById('bundle-config').textContent);
+      var btns = document.querySelectorAll('.bundle-generate-btn');
+
+      function modal() { return Alpine.store('solanaModal'); }
+
+      function showWalletRequired() {
+        var m = modal();
+        m.show('Phantom Wallet Required', '');
+        m.error('Provisioning a bundle is a web3 transaction — log in with a Phantom wallet to provision.', 'Phantom Wallet Required');
+        m.setRecovery('Log in with Phantom', function() { window.location.href = '/login'; }, { phantom: true });
+      }
+
+      async function generate(key, label, slug, btn) {
+        var origLabel = btn.textContent.trim();
+        function setBusy(t) { btn.disabled = true; btn.textContent = t; }
+        function setIdle() { btn.disabled = false; btn.textContent = origLabel; }
+
+        if (!cfg.hasPhantom || !window.walletProvider || !window.walletProvider.isAvailable()) {
+          showWalletRequired();
+          return;
+        }
+
+        if (!confirm('Provision "' + label + '" + /l/' + slug + '?\n\nYour Phantom will sign a TX that funds the prize pool on-chain.')) {
+          return;
+        }
+
+        setBusy('Preparing on-chain TX…');
+        var m = modal();
+        m.show('Preparing Transaction', 'Building the on-chain create_contest instruction…');
+
+        try {
+          var provider = window.walletProvider.detect();
+          var connectResp = await provider.connect();
+          var pubkeyB58 = connectResp.publicKey.toBase58();
+          if (cfg.userWallet && pubkeyB58 !== cfg.userWallet) {
+            throw new Error('Wrong wallet connected. Switch to ' + cfg.userWallet.substring(0, 8) + '… in Phantom and try again.');
+          }
+
+          // Step 1 — server builds partially-signed TX from bundle spec
+          var prepareForm = new FormData();
+          prepareForm.append('key', key);
+          var prepareResp = await fetch(cfg.generateBundlePath, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': cfg.csrfToken, 'Accept': 'application/json' },
+            body: prepareForm
+          });
+          var prepareData = await prepareResp.json();
+          if (!prepareData.success) throw new Error(prepareData.error || 'Failed to build transaction');
+
+          m.show('Sign Transaction', 'Approve the prize-pool USDC transfer in Phantom…');
+
+          // Step 2 — Phantom signs, we broadcast + confirm
+          var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
+          var tx = solanaWeb3.Transaction.from(txBytes);
+          var signedTx = await provider.signTransaction(tx);
+
+          m.show('Broadcasting', 'Submitting to Solana…');
+          var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
+          var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+
+          m.show('Confirming', 'Waiting for Solana confirmation…');
+          await connection.confirmTransaction(txSig, 'confirmed');
+
+          // Step 3 — server persists Contest + LandingPage
+          m.show('Saving', 'Creating the contest + landing page…');
+          var finalizeForm = new FormData();
+          finalizeForm.append('tx_signature', txSig);
+          finalizeForm.append('contest_pda', prepareData.contest_pda);
+          finalizeForm.append('params_token', prepareData.params_token);
+
+          var finalResp = await fetch(cfg.finalizeBundlePath, {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': cfg.csrfToken, 'Accept': 'application/json' },
+            body: finalizeForm
+          });
+          var finalData = await finalResp.json();
+          if (!finalData.success) throw new Error(finalData.error || 'Failed to save bundle');
+
+          m.show('Done', 'Reloading…');
+          window.location.href = finalData.redirect;
+        } catch (err) {
+          console.error('[bundle generate]', err);
+          modal().error(err.message || String(err), 'Provision Failed');
+          setIdle();
+        }
+      }
+
+      btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          generate(btn.dataset.bundleKey, btn.dataset.bundleLabel, btn.dataset.bundleSlug, btn);
+        });
+      });
+    })();
+  </script>
 
   <% if @slates.empty? %>
     <div class="rounded-lg border border-subtle bg-surface p-8 text-center text-secondary">
@@ -114,7 +231,7 @@
     <div class="mt-6 text-xs text-muted space-y-1">
       <div><span class="text-mint">●</span> on-chain contest &nbsp;|&nbsp; <span class="text-yellow-500">●</span> DB-only (on-chain creation failed or was opted out)</div>
       <div>"3/9" = 3 active or complete entries of 9 max.</div>
-      <div>Contests created from this page go through <code>Contest.create!</code> which auto-creates the on-chain PDA via the after_create callback (Alex Bot funds prizes).</div>
+      <div>Contests created from this page use the Phantom-driven create flow (your wallet signs to fund the prize pool on-chain).</div>
     </div>
   <% end %>
 </div>

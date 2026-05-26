@@ -740,12 +740,17 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "generate_bundle provisions a bundle for admins" do
+  # generate_bundle is now Phantom-driven (mirrors #create): admin must have a
+  # Phantom wallet to provision because their wallet signs the prize-pool USDC
+  # transfer. The actual on-chain flow needs Solana RPC + Phantom — covered by
+  # the ContestBundle service test for the persistence half.
+  test "generate_bundle requires a Phantom wallet" do
     log_in_as(users(:alex))
-    assert_difference ["Contest.count", "LandingPage.count"], 1 do
+    assert_no_difference ["Contest.count", "LandingPage.count"] do
       post generate_bundle_contests_path(key: "survivor")
     end
-    assert_redirected_to generator_contests_path
+    assert_response :unprocessable_entity
+    assert_match(/phantom/i, response.parsed_body["error"].to_s)
   end
 
   test "generate_bundle is admin-only" do
@@ -753,6 +758,20 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     post generate_bundle_contests_path(key: "survivor")
     assert_response :redirect
     assert_not LandingPage.exists?(slug: "survivor")
+  end
+
+  test "finalize_bundle is admin-only" do
+    log_in_as(@user) # not an admin
+    post finalize_bundle_contests_path
+    assert_response :redirect
+    assert_not LandingPage.exists?(slug: "survivor")
+  end
+
+  test "finalize_bundle rejects a tampered or expired token" do
+    log_in_as(users(:alex))
+    post finalize_bundle_contests_path, params: { params_token: "garbage", contest_pda: "x", tx_signature: "y" }
+    assert_response :unprocessable_entity
+    assert_match(/invalid or expired/i, response.parsed_body["error"].to_s)
   end
 
   private

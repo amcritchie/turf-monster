@@ -1,9 +1,19 @@
 # Curated contest + landing-page bundles the operator can one-click provision
 # from the contest generator page (ContestsController#generate_bundle).
 #
-# generate! is idempotent (find_or_create) — re-running is safe. A newly
-# created contest builds its on-chain PDA via Contest's after_create callback
-# (server-funded — Alex Bot funds the prize pool).
+# Two provisioning paths:
+#
+#   1. generate! — server-funded via Contest's after_create callback (needs
+#      SOLANA_ADMIN_KEY). Used locally and from Rails console.
+#
+#   2. build_unpersisted_contest + finalize_phantom! — Phantom-driven, mirrors
+#      ContestsController#create / #finalize. The operator's Phantom signs the
+#      create_contest TX (funds the prize pool from their USDC), and the DB
+#      row + landing page are only created after the on-chain TX confirms.
+#      This is the only path that works on prod (SOLANA_ADMIN_KEY is
+#      intentionally absent there per OPSEC-010).
+#
+# Both paths are idempotent (find_or_create) — re-running is safe.
 module ContestBundle
   ALL = {
     "alpha" => {
@@ -62,30 +72,63 @@ module ContestBundle
     }
   }.freeze
 
-  # Idempotently provision a bundle: its contest (+ on-chain PDA on create)
-  # and its landing page. Returns { contest:, landing_page: }.
-  def self.generate!(key, creator: nil)
-    spec = ALL[key]
-    raise ArgumentError, "Unknown bundle: #{key.inspect}" unless spec
+  def self.spec_for(key)
+    ALL[key] || raise(ArgumentError, "Unknown bundle: #{key.inspect}")
+  end
 
+  # Idempotently provision a bundle: its contest (+ on-chain PDA via the
+  # server-funded after_create callback) and its landing page. Returns
+  # { contest:, landing_page: }. Requires SOLANA_ADMIN_KEY — works locally,
+  # not in prod.
+  def self.generate!(key, creator: nil)
+    spec = spec_for(key)
     contest = find_or_create_contest(spec[:contest], creator)
+    landing = find_or_create_landing_page(spec[:landing_page], contest)
+    { contest: contest, landing_page: landing }
+  end
+
+  # Build an UNSAVED Contest with the bundle's attrs filled in. Used by
+  # ContestsController#generate_bundle to build the partially-signed
+  # create_contest TX for the operator's Phantom to sign.
+  def self.build_unpersisted_contest(key, creator)
+    apply_contest_attrs(Contest.new, spec_for(key)[:contest], creator)
+  end
+
+  # Phantom-flow finalize: after the operator's Phantom has signed and
+  # broadcast the create_contest TX, persist the Contest (skipping the
+  # server-funded on-chain callback — the on-chain PDA already exists) and
+  # its LandingPage. Idempotent.
+  def self.finalize_phantom!(key, creator, contest_pda, tx_signature)
+    spec = spec_for(key)
+    contest = Contest.find_or_create_by!(name: spec[:contest][:name]) do |c|
+      apply_contest_attrs(c, spec[:contest], creator)
+      c.onchain_contest_id    = contest_pda
+      c.onchain_tx_signature  = tx_signature
+      c.skip_onchain_callback = true
+    end
     landing = find_or_create_landing_page(spec[:landing_page], contest)
     { contest: contest, landing_page: landing }
   end
 
   def self.find_or_create_contest(spec, creator)
     Contest.find_or_create_by!(name: spec[:name]) do |c|
-      slate = resolve_slate(spec[:slate_name])
-      format = Contest::FORMATS[spec[:contest_type]] || {}
-      c.game_type       = spec[:game_type]
-      c.contest_type    = spec[:contest_type]
-      c.slate           = slate
-      c.status          = "open"
-      c.entry_fee_cents = format[:entry_fee_cents]
-      c.max_entries     = format[:max_entries]
-      c.starts_at       = slate&.starts_at
-      c.user            = creator
+      apply_contest_attrs(c, spec, creator)
     end
+  end
+
+  def self.apply_contest_attrs(contest, spec, creator)
+    slate  = resolve_slate(spec[:slate_name])
+    format = Contest::FORMATS[spec[:contest_type]] || {}
+    contest.name            = spec[:name]
+    contest.game_type       = spec[:game_type]
+    contest.contest_type    = spec[:contest_type]
+    contest.slate           = slate
+    contest.status          = "open"
+    contest.entry_fee_cents = format[:entry_fee_cents]
+    contest.max_entries     = format[:max_entries]
+    contest.starts_at       = slate&.starts_at
+    contest.user            = creator
+    contest
   end
 
   def self.find_or_create_landing_page(spec, contest)

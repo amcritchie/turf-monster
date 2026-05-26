@@ -3,7 +3,7 @@ class ContestsController < ApplicationController
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll]
   before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -44,16 +44,69 @@ class ContestsController < ApplicationController
     @contests_by_cell = Contest.includes(:entries).order(created_at: :desc).group_by { |c| [c.slate_id, c.contest_type] }
   end
 
-  # Provision a curated contest + landing-page bundle (see ContestBundle).
-  # A newly created contest builds its on-chain PDA via the after_create callback.
+  # Phantom-driven provisioning of a curated contest + landing-page bundle.
+  # Mirrors #create / #finalize: server builds a partially-signed create_contest
+  # TX (admin pays rent, operator's Phantom signs the prize-pool USDC transfer),
+  # client signs + broadcasts, then POST /contests/finalize_bundle persists the
+  # Contest + LandingPage. Server-funded path (ContestBundle.generate!) needs
+  # SOLANA_ADMIN_KEY and only runs locally / from Rails console.
   def generate_bundle
-    rescue_and_log do
-      result = ContestBundle.generate!(params[:key], creator: current_user)
-      flash[:notice] = %(Provisioned "#{result[:contest].name}" + /l/#{result[:landing_page].slug}.)
+    return render_create_error("Phantom wallet required to provision bundles") unless current_user.phantom_wallet?
+    return render_create_error("Unknown bundle: #{params[:key].inspect}") unless ContestBundle::ALL.key?(params[:key])
+
+    contest = ContestBundle.build_unpersisted_contest(params[:key], current_user)
+    if (err = onchain_create_precheck(contest, current_user))
+      return render_create_error(err)
     end
-    redirect_to generator_contests_path
+
+    vault  = Solana::Vault.new
+    result = vault.build_create_contest(
+      current_user.web3_solana_address,
+      contest.name_slug,
+      **contest.onchain_params
+    )
+
+    render json: {
+      success:       true,
+      serialized_tx: result[:serialized_tx],
+      contest_pda:   result[:contest_pda],
+      slug:          contest.name_slug,
+      params_token:  sign_bundle_payload(params[:key], contest, current_user)
+    }
   rescue StandardError => e
-    redirect_to generator_contests_path, alert: "Generate failed: #{e.message}"
+    Rails.logger.error("[ContestsController#generate_bundle] #{e.class}: #{e.message}")
+    render_create_error(e.message)
+  end
+
+  def finalize_bundle
+    payload = verify_bundle_payload(params[:params_token])
+    raise "User mismatch — token was issued to a different user" unless payload[:user_id] == current_user.id
+
+    key = payload[:key]
+    raise "Unknown bundle" unless ContestBundle::ALL.key?(key)
+
+    derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(payload[:slug]).first)
+    raise "Contest PDA mismatch — slug=#{payload[:slug]}" unless params[:contest_pda] == derived_pda_b58
+
+    verify_solana_transaction!(
+      params[:tx_signature],
+      instruction: "create_contest",
+      signer: payload[:creator_pubkey],
+      writable: derived_pda_b58
+    )
+
+    result = ContestBundle.finalize_phantom!(key, current_user, derived_pda_b58, params[:tx_signature])
+    render json: {
+      success:  true,
+      redirect: generator_contests_path,
+      contest:  contest_path(result[:contest]),
+      landing:  landing_page_path(result[:landing_page])
+    }
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    render_create_error("Invalid or expired bundle token — restart the provision flow.")
+  rescue StandardError => e
+    Rails.logger.error("[ContestsController#finalize_bundle] #{e.class}: #{e.message}")
+    render_create_error(e.message)
   end
 
   # Phantom-driven contest creation:
@@ -907,6 +960,28 @@ class ContestsController < ApplicationController
 
   def verify_onchain_create_payload(token)
     Rails.application.message_verifier(ONCHAIN_CREATE_TOKEN_KEY)
+         .verify(token)
+         .with_indifferent_access
+  end
+
+  ONCHAIN_BUNDLE_TOKEN_KEY = :onchain_contest_bundle
+  ONCHAIN_BUNDLE_TOKEN_TTL = 10.minutes
+
+  # Bundle token is narrower than the generic create token — the bundle
+  # `key` selects the full spec server-side from ContestBundle::ALL, so the
+  # token only needs to bind (key, slug, user, pubkey) to the issued TX.
+  def sign_bundle_payload(key, contest, creator)
+    Rails.application.message_verifier(ONCHAIN_BUNDLE_TOKEN_KEY)
+         .generate({
+           key:            key,
+           slug:           contest.name_slug,
+           user_id:        creator.id,
+           creator_pubkey: creator.web3_solana_address
+         }, expires_in: ONCHAIN_BUNDLE_TOKEN_TTL)
+  end
+
+  def verify_bundle_payload(token)
+    Rails.application.message_verifier(ONCHAIN_BUNDLE_TOKEN_KEY)
          .verify(token)
          .with_indifferent_access
   end
