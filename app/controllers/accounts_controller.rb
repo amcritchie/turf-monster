@@ -41,6 +41,7 @@ class AccountsController < ApplicationController
     seeds = @user_seeds.to_i
     render json: {
       usdc:        @wallet_balances&.dig(:usdc) || 0,
+      usdt:        @wallet_balances&.dig(:usdt) || 0,
       sol:         @wallet_balances&.dig(:sol)  || 0,
       tokens:      (current_user&.entry_token_balance rescue 0),
       seeds:       seeds,
@@ -56,7 +57,7 @@ class AccountsController < ApplicationController
   # OR get the current truth (this action returns guest/web2/web3 state) and
   # rotate its CSRF for the next POST. No DB writes; cheap to call.
   def session_state
-    render json: wallet_context.to_h.merge(csrf: form_authenticity_token)
+    render json: client_session_payload.merge(csrf: form_authenticity_token)
   end
 
   def complete_profile

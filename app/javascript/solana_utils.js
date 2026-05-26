@@ -93,6 +93,18 @@ export function refreshSession() {
     .then(function(data) {
       if (!data) return null;
 
+      // Mirror the on-chain values into $store.session so the synchronous
+      // entry-eligibility check (runHoldValidations / confirmEntry) sees
+      // fresh state without an extra fetch. Dollars → cents at the boundary.
+      try {
+        var sess = window.Alpine && Alpine.store && Alpine.store('session');
+        if (sess) {
+          sess.usdcCents       = Math.round((parseFloat(data.usdc || 0)) * 100);
+          sess.usdtCents       = Math.round((parseFloat(data.usdt || 0)) * 100);
+          sess.tokensAvailable = parseInt(data.tokens, 10) || 0;
+        }
+      } catch (_) {}
+
       // USDC balance — reuse the same data-balance-display selector +
       // hide-on-$0-with-token rule that refreshBalance applies, so the
       // two helpers agree on what the navbar shows.
@@ -238,6 +250,34 @@ export function fireConfettiFromModal() {
     confetti({ particleCount: 60, angle: 120, spread: 70, origin: { x: Math.min(1, origin.x + 0.18), y: Math.min(1, origin.y + 0.05) }, colors: colors, zIndex: 9999, startVelocity: 40, gravity: 0.9, ticks: 200, scalar: 0.9 });
   }, 180);
 }
+
+// Synchronous entry-eligibility check against the running $store.session.
+// Returns null if the viewer can submit, or { reason, mode, data } describing
+// the blocker. The board's hold + submit paths use this immediately after
+// their loggedIn / isGuest gate so we never let the user complete a hold
+// against state we already know will fail server-side.
+//
+// neededCents is the contest entry fee. session is Alpine.store('session').
+// Either-or USDC/USDT semantics for web3 — pass if EITHER mint covers fee.
+export function eligibilityBlocker(session, neededCents) {
+  if (!session) return null;            // store missing — let server decide
+  if (!session.loggedIn) return { reason: 'not_logged_in', mode: 'guest', data: {} };
+  if ((neededCents | 0) <= 0) return null;  // free contest
+
+  if (session.mode === 'web2') {
+    if ((session.tokensAvailable | 0) >= 1) return null;
+    return { reason: 'no_tokens', mode: 'web2', data: {} };
+  }
+  if (session.mode === 'web3') {
+    var usdc = session.usdcCents | 0;
+    var usdt = session.usdtCents | 0;
+    if (usdc >= neededCents || usdt >= neededCents) return null;
+    return { reason: 'insufficient_balance', mode: 'web3',
+             data: { usdcCents: usdc, usdtCents: usdt, neededCents: neededCents | 0 } };
+  }
+  return null;
+}
+window.eligibilityBlocker = eligibilityBlocker;
 
 window.updateNavTokens = updateNavTokens;
 window.animateFreeEntryBadge = animateFreeEntryBadge;

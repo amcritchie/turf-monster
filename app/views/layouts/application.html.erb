@@ -66,7 +66,7 @@
           }
         });
       </script>
-      <script type="application/json" id="session-context"><%= wallet_context.to_json.html_safe %></script>
+      <script type="application/json" id="session-context"><%= client_session_payload.to_json.html_safe %></script>
       <script>
         // --- Inline Solana stores + components ---
         // Alpine's defer script fires alpine:init BEFORE importmap modules execute.
@@ -167,6 +167,14 @@
             phantomLinked: false,
             userId: null,
             address: '',
+            // On-chain balance fields — populated from #session-context on
+            // page render (server merges already-preloaded @wallet_balances
+            // + entry_token_balance) and refreshed by refreshSession() after
+            // any on-chain success. Integer cents / count; used by the
+            // synchronous entry-eligibility check during the hold gesture.
+            usdcCents: 0,
+            usdtCents: 0,
+            tokensAvailable: 0,
             get isGuest() { return this.mode === 'guest'; },
             get isWeb2() { return this.mode === 'web2'; },
             get isWeb3() { return this.mode === 'web3'; },
@@ -177,6 +185,9 @@
               this.phantomLinked = !!ctx.phantomLinked;
               this.userId = ctx.userId || null;
               this.address = ctx.address || '';
+              if (ctx.usdcCents       !== undefined) this.usdcCents       = ctx.usdcCents       | 0;
+              if (ctx.usdtCents       !== undefined) this.usdtCents       = ctx.usdtCents       | 0;
+              if (ctx.tokensAvailable !== undefined) this.tokensAvailable = ctx.tokensAvailable | 0;
             }
           });
           (function() {

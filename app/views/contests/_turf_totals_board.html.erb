@@ -405,6 +405,38 @@ window.selectionBoard = function() {
       return this._shakeMatchupId === matchupId;
     },
 
+    // Dispatch entry-eligibility blocker → appropriate modal. Driven by
+    // window.eligibilityBlocker (see solana_utils.js) — runs synchronously
+    // off $store.session right after the loggedIn check. Same dispatcher
+    // is reused by the post-execution error interpreter (Layer 2) so the
+    // user sees identical UX whether the block was caught pre-flight or
+    // surfaced from the chain.
+    showEligibilityBlockerModal(blocker) {
+      if (!blocker) return;
+      switch (blocker.reason) {
+        case 'not_logged_in':        this.showLoginModal(); break;
+        case 'no_tokens':            this.showTokensPanel(); break;
+        case 'insufficient_balance': this.showInsufficientBalanceModal(blocker); break;
+        default:                     this.resetHoldButtons();
+      }
+    },
+
+    // Placeholder for the web3 "top up" blocker until the wallet-deposit
+    // modal lands. Uses solanaModal's existing error + recovery shell so
+    // the post-execution insufficient-USDC error and this preflight share
+    // visual language.
+    showInsufficientBalanceModal(blocker) {
+      this.resetHoldButtons();
+      var d = (blocker && blocker.data) || {};
+      var needed = ((d.neededCents || 0) / 100).toFixed(2);
+      var usdc   = ((d.usdcCents   || 0) / 100).toFixed(2);
+      var usdt   = ((d.usdtCents   || 0) / 100).toFixed(2);
+      var sm = Alpine.store('solanaModal');
+      sm.show('Top Up Your Wallet', 'You need $' + needed + ' USDC or USDT to enter. You have $' + usdc + ' USDC and $' + usdt + ' USDT.');
+      sm.error('Top up your wallet to continue.', 'Top Up Your Wallet');
+      sm.setRecovery('Go to Wallet', function() { window.location.href = '/wallet'; });
+    },
+
     // Open the auth wizard at the credentials step (signup mode default).
     // The wizard partial's own x-data owns the email/password fields;
     // submit/error state for the network attempts lives on props so the
@@ -958,6 +990,17 @@ window.selectionBoard = function() {
         return false;
       }
 
+      // Synchronous eligibility check against running $store.session — no
+      // RPC at hold-time. Layer 1 of the entry-blocker design: catches the
+      // 98% case (out of tokens, empty wallet) before the user finishes the
+      // hold. The server-side enter still validates as the source of truth
+      // for the 2% where running state is stale.
+      var blocker = window.eligibilityBlocker(Alpine.store('session'), this.entryFeeCents);
+      if (blocker) {
+        this.showEligibilityBlockerModal(blocker);
+        return false;
+      }
+
       return true;
     },
 
@@ -965,6 +1008,15 @@ window.selectionBoard = function() {
       var sess = Alpine.store('session');
       if (sess.isGuest) {
         this.showLoginModal();
+        return;
+      }
+
+      // Mirror the hold-time eligibility check at submit-time — the user
+      // may have entered via auto-submit (e.g. post-login cart replay) or
+      // their balance / token count may have changed since the hold check.
+      var blocker = window.eligibilityBlocker(sess, this.entryFeeCents);
+      if (blocker) {
+        this.showEligibilityBlockerModal(blocker);
         return;
       }
 

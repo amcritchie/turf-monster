@@ -10,7 +10,7 @@ class ApplicationController < ActionController::Base
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context
+  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
   # session_token in the cookie. The verify_session_token before_action
@@ -104,6 +104,23 @@ class ApplicationController < ActionController::Base
   # mirrored client-side by Alpine.store('session'). See SessionContext.
   def wallet_context
     @wallet_context ||= SessionContext.new(user: current_user, onchain_session: onchain_session?)
+  end
+
+  # Payload serialised into #session-context for Alpine.store('session').
+  # SessionContext stays pure (identity only); on-chain balances come from
+  # @wallet_balances + @entry_token_balance which preload_navbar_solana_data
+  # already populated for this request — no extra RPC.
+  def client_session_payload
+    wallet_context.to_h.merge(
+      usdcCents:       wallet_field_cents(:usdc),
+      usdtCents:       wallet_field_cents(:usdt),
+      tokensAvailable: (current_user&.entry_token_balance.to_i rescue 0)
+    )
+  end
+
+  def wallet_field_cents(key)
+    dollars = @wallet_balances.is_a?(Hash) ? @wallet_balances[key] : nil
+    ((dollars || 0).to_f * 100).round
   end
 
   def detect_geo_state
