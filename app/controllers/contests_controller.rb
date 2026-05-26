@@ -312,6 +312,12 @@ class ContestsController < ApplicationController
     entry ||= @contest.entries.find_or_create_by!(user: current_user, status: :cart) if @contest.world_cup_survivor?
     return redirect_to root_path, alert: "No cart entry found" unless entry
 
+    # Attribute any RPC writes spawned by this action to the cart entry —
+    # OutboundRequestLogger falls back to Current.outbound_source so future
+    # audit-table hunts (cf. project_0xbc4_send_burst_2026_05_26) can trace
+    # sendTransaction rows back to the specific entry instead of source:nil.
+    Current.outbound_source = entry
+
     # Onchain sessions MUST provide a wallet signature proof
     if onchain_session?
       raise "Wallet signature required" unless params[:signature].present?
@@ -444,6 +450,8 @@ class ContestsController < ApplicationController
     # Survivor contests have no pick-building phase — see #enter.
     entry ||= @contest.entries.find_or_create_by!(user: current_user, status: :cart) if @contest.world_cup_survivor?
     return render json: { error: "No cart entry found" }, status: :unprocessable_entity unless entry
+
+    Current.outbound_source = entry  # audit-log attribution; see #enter
 
     # Single-signature entry flow (2026-05-24): the per-entry SIWS
     # signMessage check was removed because the on-chain TX signed in
@@ -612,6 +620,8 @@ class ContestsController < ApplicationController
   def confirm_onchain_entry
     entry = @contest.entries.find_by(id: params[:entry_id], user: current_user, status: :cart)
     return render json: { error: "Entry not found" }, status: :not_found unless entry
+
+    Current.outbound_source = entry  # audit-log attribution; see #enter
 
     rescue_and_log(target: entry, parent: @contest) do
       raise "Wallet not linked" unless current_user.web3_solana_address.present?
