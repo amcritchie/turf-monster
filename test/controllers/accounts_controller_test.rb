@@ -30,6 +30,56 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert body["csrf"].present?, "expected a fresh CSRF token in the response"
   end
 
+  test "session_state carries usdcCents / usdtCents / tokensAvailable for guests" do
+    # The synchronous entry-eligibility check (window.eligibilityBlocker)
+    # reads these three fields off $store.session and assumes they exist.
+    # The guest shape must still include them — zeros — so the client store
+    # hydrates without missing keys.
+    get session_state_account_path, as: :json
+    body = JSON.parse(response.body)
+    assert_equal 0, body["usdcCents"]
+    assert_equal 0, body["usdtCents"]
+    assert_equal 0, body["tokensAvailable"]
+  end
+
+  test "client_session_payload converts uiAmount dollars to integer cents" do
+    # Direct check of the conversion math — uses an inline controller subclass
+    # so we can inject @wallet_balances without going through the RPC preload.
+    user = @alex
+    user.instance_variable_set(:@entry_token_balance, 4)
+    ctl = ApplicationController.new
+    ctl.instance_variable_set(:@wallet_balances, { usdc: 12.34, usdt: 0.5, sol: 1.0 })
+    ctl.define_singleton_method(:current_user)     { user }
+    ctl.define_singleton_method(:onchain_session?) { false }
+
+    payload = ctl.send(:client_session_payload)
+    assert_equal 1234, payload[:usdcCents],
+                 "12.34 USDC should round to 1234 cents"
+    assert_equal 50,   payload[:usdtCents],
+                 "0.5 USDT should round to 50 cents"
+    assert_equal 4,    payload[:tokensAvailable]
+    # SessionContext identity fields still present.
+    assert_equal user.id, payload[:userId]
+    assert payload[:loggedIn]
+  end
+
+  test "session_state carries balance fields for a logged-in user even when @wallet_balances is nil" do
+    # When the navbar preload RPC fails silently (a known flake — see the
+    # parallel balances_thread in ApplicationController#perform_solana_preload),
+    # client_session_payload still has to render the three keys so the
+    # JS hydrate doesn't trip on undefined values. Verifies the nil-safe
+    # branch of wallet_field_cents.
+    log_in_as @alex
+    get session_state_account_path, as: :json
+    body = JSON.parse(response.body)
+    assert body.key?("usdcCents"),       "expected usdcCents key in payload"
+    assert body.key?("usdtCents"),       "expected usdtCents key in payload"
+    assert body.key?("tokensAvailable"), "expected tokensAvailable key in payload"
+    assert_kind_of Integer, body["usdcCents"]
+    assert_kind_of Integer, body["usdtCents"]
+    assert_kind_of Integer, body["tokensAvailable"]
+  end
+
   test "session_state returns web2 shape for an email-logged-in user" do
     log_in_as @alex
     get session_state_account_path, as: :json

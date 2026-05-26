@@ -510,6 +510,14 @@
       <template x-if="$store.modals.current().id === 'crop-photo'">
         <%= render "modals/crop_photo" %>
       </template>
+      <%# wallet-deposit — opened by the entry-eligibility blocker when a
+          web3 user lacks USDC/USDT for the entry fee. Symmetric to the
+          tokens-picker step inside auth for the web2 path. %>
+      <% if logged_in? %>
+        <template x-if="$store.modals.current().id === 'wallet-deposit'">
+          <%= render "modals/wallet_deposit" %>
+        </template>
+      <% end %>
 
       <%# Template reference modals — registered in non-production only so
           they don't add JS surface area to prod. Surfaced at the top of

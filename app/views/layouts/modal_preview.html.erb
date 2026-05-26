@@ -128,6 +128,9 @@
       <template x-if="$store.modals.current().id === 'crop-photo'">
         <%= render "modals/crop_photo" %>
       </template>
+      <template x-if="$store.modals.current().id === 'wallet-deposit'">
+        <%= render "modals/wallet_deposit" %>
+      </template>
       <% if logged_in? %>
         <template x-if="$store.modals.current().id === 'profile'">
           <%= render "modals/profile" %>

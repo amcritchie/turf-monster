@@ -405,6 +405,20 @@ window.selectionBoard = function() {
       return this._shakeMatchupId === matchupId;
     },
 
+    // Server-error → blocker dispatcher used by every entry-flow JSON
+    // response (enter, prepare_entry, confirm_onchain_entry). Returns true
+    // iff the response carried a structured blocker and routing happened;
+    // the caller bails on true so the generic error UI doesn't fire on
+    // top of the modal. Closes solanaModal if it's mid-flight so the
+    // blocker modal isn't stacked underneath an on-chain-tx card.
+    _handleBlockerResponse(data) {
+      if (!data || !data.blocker) return false;
+      if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
+      this.submitting = false;
+      this.showEligibilityBlockerModal(data.blocker);
+      return true;
+    },
+
     // Dispatch entry-eligibility blocker → appropriate modal. Driven by
     // window.eligibilityBlocker (see solana_utils.js) — runs synchronously
     // off $store.session right after the loggedIn check. Same dispatcher
@@ -421,20 +435,20 @@ window.selectionBoard = function() {
       }
     },
 
-    // Placeholder for the web3 "top up" blocker until the wallet-deposit
-    // modal lands. Uses solanaModal's existing error + recovery shell so
-    // the post-execution insufficient-USDC error and this preflight share
-    // visual language.
+    // Open the standalone wallet-deposit modal. Hands the blocker's data
+    // through as props so the modal can render the shortfall + needed
+    // amount. Layer 2 (interpreter) doesn't know the client's current
+    // balances, so we fall back to $store.session — that way the modal
+    // always shows real numbers regardless of which layer triggered it.
     showInsufficientBalanceModal(blocker) {
       this.resetHoldButtons();
       var d = (blocker && blocker.data) || {};
-      var needed = ((d.neededCents || 0) / 100).toFixed(2);
-      var usdc   = ((d.usdcCents   || 0) / 100).toFixed(2);
-      var usdt   = ((d.usdtCents   || 0) / 100).toFixed(2);
-      var sm = Alpine.store('solanaModal');
-      sm.show('Top Up Your Wallet', 'You need $' + needed + ' USDC or USDT to enter. You have $' + usdc + ' USDC and $' + usdt + ' USDT.');
-      sm.error('Top up your wallet to continue.', 'Top Up Your Wallet');
-      sm.setRecovery('Go to Wallet', function() { window.location.href = '/wallet'; });
+      var sess = Alpine.store('session');
+      Alpine.store('modals').open('wallet-deposit', {
+        neededCents: d.neededCents | 0,
+        usdcCents:   (d.usdcCents !== undefined ? d.usdcCents : (sess ? sess.usdcCents : 0)) | 0,
+        usdtCents:   (d.usdtCents !== undefined ? d.usdtCents : (sess ? sess.usdtCents : 0)) | 0
+      });
     },
 
     // Open the auth wizard at the credentials step (signup mode default).
@@ -1057,7 +1071,10 @@ window.selectionBoard = function() {
           if (!prepareResp) return; // 401 — authedFetch surfaced the login modal
           var prepareData = await prepareResp.json();
           var ptxSlug = prepareData.ptx_slug;
-          if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
+          if (!prepareData.success) {
+            if (this._handleBlockerResponse(prepareData)) return;
+            throw new Error(prepareData.error || 'Failed to prepare entry');
+          }
 
           Alpine.store('solanaModal').show('Sign Transaction', 'Approve the USDC transfer in your wallet...');
           var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
@@ -1095,7 +1112,10 @@ window.selectionBoard = function() {
           });
           if (!confirmResp) return; // 401 — authedFetch surfaced the login modal
           var confirmData = await confirmResp.json();
-          if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm entry');
+          if (!confirmData.success) {
+            if (this._handleBlockerResponse(confirmData)) return;
+            throw new Error(confirmData.error || 'Failed to confirm entry');
+          }
           this.setHoldSuccess();
 
           if (confirmData.seeds_earned) {
@@ -1245,9 +1265,12 @@ window.selectionBoard = function() {
                 window.location.href = data.redirect || '/';
               }
             }
+          } else if (this._handleBlockerResponse(data)) {
+            // Layer 2 — handled by _handleBlockerResponse.
           } else if (/entry token/i.test(data.error || '')) {
-            // Out of entry tokens — surface the buy-tokens panel instead of
-            // a dead-end error so the user can pay and finish.
+            // Defense-in-depth — older string-match for the "no tokens"
+            // raise from the server. Kept so a deploy of the controller
+            // ahead of the interpreter doesn't lose the buy-tokens panel.
             if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
             this.resetHoldButtons();
             this.submitting = false;

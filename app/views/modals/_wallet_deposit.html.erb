@@ -1,0 +1,79 @@
+<%#
+  Wallet deposit modal — opened via
+  $store.modals.open('wallet-deposit', { neededCents, usdcCents, usdtCents }).
+  Surfaced by the entry-eligibility blocker (Layer 1 preflight or Layer 2
+  interpreter) when a web3 user lacks USDC/USDT to cover the entry fee.
+
+  Single-card design — no step machinery. If a multi-step flow grows here
+  later (e.g. "depositing → confirmed → back to hold"), introduce step
+  dispatch at that point. Symmetric to the tokens-picker step inside auth
+  for the web2 path; kept standalone because deposit-related state has
+  nothing to do with auth credentials.
+
+  Cross-scope actions: the Stripe + MoonPay buttons are plain Rails-CSRF
+  forms targeting _blank — no JS to wire, the host stays open while the
+  user finishes payment in the new tab. The "Send to address" copy
+  button uses the Clipboard API.
+%>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }"
+     class="relative">
+
+  <%# Top-right close × — host backdrop close still works too. %>
+  <button @click="$store.modals.close()"
+          class="absolute top-0 right-0 -mt-2 -mr-2 text-secondary hover:text-heading text-xl leading-none z-10"
+          aria-label="Close">&times;</button>
+
+  <div class="text-center pt-1 mb-3">
+    <h3 class="text-heading font-bold text-lg leading-tight">Top Up Your Wallet</h3>
+  </div>
+  <p class="text-xs text-secondary mb-4 text-center">
+    You need $<span class="font-mono"
+                    x-text="((props.neededCents || 0) / 100).toFixed(2)"></span>
+    to enter.
+    You have $<span class="font-mono"
+                    x-text="((props.usdcCents || 0) / 100).toFixed(2)"></span> USDC
+    + $<span class="font-mono"
+                    x-text="((props.usdtCents || 0) / 100).toFixed(2)"></span> USDT.
+  </p>
+
+  <div class="space-y-3">
+    <%# Stripe card payment — opens checkout in a new tab. Default amount
+        rounds the shortfall up to the next dollar with a $20 floor so the
+        user doesn't end up $0.01 short. %>
+    <form method="post" action="<%= stripe_deposit_wallet_path %>" target="_blank" data-turbo="false">
+      <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
+      <input type="hidden" name="amount"
+             :value="Math.max(20, Math.ceil((props.neededCents || 0) / 100))">
+      <button type="submit" class="btn btn-primary btn-lg w-full">
+        Pay with Card
+      </button>
+    </form>
+
+    <%# MoonPay — fiat onramp, supports more countries than Stripe. %>
+    <form method="post" action="<%= moonpay_deposit_wallet_path %>" target="_blank" data-turbo="false">
+      <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
+      <button type="submit" class="btn btn-secondary btn-lg w-full">
+        Buy with MoonPay
+      </button>
+    </form>
+
+    <%# Send-to-address — Phantom users with an existing balance in
+        another wallet can self-fund. Address from $store.session.address. %>
+    <div class="border-t border-strong pt-3" x-data="{ copied: false }">
+      <p class="text-xs text-secondary text-center mb-2">Or send USDC/USDT to your wallet:</p>
+      <div class="flex items-center gap-2">
+        <code class="flex-1 px-2 py-1 bg-surface rounded text-xs font-mono truncate"
+              x-text="$store.session.address"></code>
+        <button type="button"
+                @click="navigator.clipboard && navigator.clipboard.writeText($store.session.address); copied = true; setTimeout(() => copied = false, 1500)"
+                class="btn btn-sm">
+          <span x-text="copied ? 'Copied' : 'Copy'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-center text-xs text-muted mt-4">
+    Come back here once your deposit lands &mdash; we'll refresh the balance.
+  </p>
+</div>

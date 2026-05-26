@@ -381,10 +381,7 @@ class ContestsController < ApplicationController
       end
     end
   rescue StandardError => e
-    respond_to do |format|
-      format.html { redirect_to root_path, alert: e.message }
-      format.json { render json: { success: false, error: e.message }, status: :unprocessable_entity }
-    end
+    render_entry_error(e)
   end
 
   # Build a partially-signed enter_contest_direct transaction for Phantom users.
@@ -461,7 +458,7 @@ class ContestsController < ApplicationController
       }
     end
   rescue StandardError => e
-    render json: { success: false, error: e.message }, status: :unprocessable_entity
+    render_entry_error(e)
   end
 
   # Stamp the on-chain signature onto the PendingTransaction created by
@@ -620,7 +617,7 @@ class ContestsController < ApplicationController
       }
     end
   rescue StandardError => e
-    render json: { success: false, error: e.message }, status: :unprocessable_entity
+    render_entry_error(e)
   end
 
   def clear_picks
@@ -795,6 +792,26 @@ class ContestsController < ApplicationController
   end
 
   private
+
+  # Renders the JSON error response for every entry-flow endpoint (enter,
+  # prepare_entry, confirm_onchain_entry). Runs the raw exception through
+  # Solana::ErrorInterpreter so the client gets a structured `blocker` it
+  # can route through the same showEligibilityBlockerModal dispatcher the
+  # preflight check uses. When the interpreter flags log:true (currently
+  # 0xbbb / AccountDidNotDeserialize — IDL drift signal), the exception is
+  # escalated to Rails.logger.error so ops sees it; rescue_and_log has
+  # already persisted an error_logs row with the full backtrace.
+  def render_entry_error(exception)
+    result = Solana::ErrorInterpreter.interpret(exception, contest: @contest)
+    Rails.logger.error("[entry][escalate] #{exception.class}: #{exception.message}") if result[:log]
+
+    if request.format.json?
+      render json: { success: false, error: result[:message], blocker: result[:blocker] },
+             status: :unprocessable_entity
+    else
+      redirect_to root_path, alert: result[:message]
+    end
+  end
 
   # ── Phantom contest-create helpers ─────────────────────────────────────────
 
