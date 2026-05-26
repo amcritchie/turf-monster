@@ -148,7 +148,10 @@ fi
 # ── Smoke check ────────────────────────────────────────────────────────────
 
 bold "Smoke check"
-URL=$(heroku info --app "$HEROKU_APP" --json 2>/dev/null | grep -o '"web_url":"[^"]*"' | head -1 | cut -d'"' -f4)
+# Heroku CLI's --json output no longer includes web_url; parse the
+# textual output instead. `|| true` so a missing-app error doesn't
+# trip pipefail before the empty-URL guard below catches it.
+URL=$(heroku info --app "$HEROKU_APP" 2>/dev/null | awk '/^Web URL:/ {print $3; exit}' || true)
 if [ -z "$URL" ]; then
   warn "Couldn't determine web URL. Skipping smoke check."
 else
