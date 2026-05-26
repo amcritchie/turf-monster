@@ -16,8 +16,15 @@
           });
         <% end %>
         <% if logged_in? && Solana::Config.devnet? %>
+          // Devnet auto-refresh: server-side preload (ApplicationController
+          // #preload_navbar_solana_data) already gives the page a fresh balance
+          // on render, so this is just a "is anything newer on-chain?" sweep.
+          // Holds 4s so the spinner doesn't compete with first paint or the
+          // initial seeds-bar shimmer; if you need an immediate refresh after
+          // a write (entry confirm / token consume) call refreshBalance()
+          // directly from that success path.
           document.addEventListener('turbo:load', () => {
-            setTimeout(function() { showNavSpinner(); refreshBalance().finally(function() { hideNavSpinner(); }); }, 1500);
+            setTimeout(function() { showNavSpinner(); refreshBalance().finally(function() { hideNavSpinner(); }); }, 4000);
           });
         <% end %>
 
@@ -433,9 +440,19 @@
         var current = document.body.dataset.userId || '';
         var last    = localStorage.getItem('lastUserId') || '';
         if (current === last) return;
+        // Exact user-scoped keys.
         ['seedsNavbar', 'seedsLevelUp', 'show_profile_modal'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch (_) {}
         });
+        // Prefix-scoped: phantom_dl_* holds the mobile-Phantom deeplink
+        // handshake (nonce + secret + pubkey + user_id + step). Per-user,
+        // must NOT survive across a user switch in the same browser.
+        try {
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('phantom_dl_') === 0) localStorage.removeItem(k);
+          }
+        } catch (_) {}
         try {
           if (current) localStorage.setItem('lastUserId', current);
           else         localStorage.removeItem('lastUserId');

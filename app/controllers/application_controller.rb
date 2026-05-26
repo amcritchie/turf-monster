@@ -9,6 +9,7 @@ class ApplicationController < ActionController::Base
   before_action :capture_reference
   before_action :detect_geo_state
   before_action :require_profile_completion
+  before_action :preload_navbar_solana_data
   helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
@@ -31,6 +32,25 @@ class ApplicationController < ActionController::Base
   def clear_app_session
     super
     session.delete(:onchain)
+  end
+
+  # Format-aware override of Studio::ErrorHandling#require_authentication.
+  # The engine version unconditionally `redirect_to login_path`, which makes
+  # Rails return 406 Not Acceptable for any AJAX request with
+  # `Accept: application/json` (the HTML login page doesn't match the
+  # requested format). The JS layer (solana_utils.authedFetch) already
+  # knows how to handle a clean 401 — it opens the login modal — so emit
+  # that for JSON/Turbo-Stream requests and keep the HTML redirect for
+  # full-page navigations.
+  def require_authentication
+    return if logged_in?
+
+    respond_to do |format|
+      format.html         { redirect_to login_path }
+      format.json         { render json: { error: "unauthenticated" }, status: :unauthorized }
+      format.turbo_stream { head :unauthorized }
+      format.any          { head :unauthorized }
+    end
   end
 
   private
@@ -123,9 +143,9 @@ class ApplicationController < ActionController::Base
   # 60s Rails.cache.fetch — which is :null_store in dev — re-issues a
   # Solana RPC chain on every call site.
   #
-  # Reuses @wallet_balances when the controller already populated it (e.g.
-  # AccountsController#show via load_solana_balances). Avoids running
-  # fetch_wallet_balances twice in the same request.
+  # Reuses @wallet_balances when preload_navbar_solana_data already
+  # populated it for this request. Avoids running fetch_wallet_balances
+  # twice in the same request.
   def display_balance
     return @display_balance if defined?(@display_balance)
 
@@ -164,9 +184,8 @@ class ApplicationController < ActionController::Base
   # navbar + seeds_bar partials both ask for this data, and the 60s
   # Rails.cache.fetch is a no-op under dev's :null_store store.
   #
-  # Reuses @user_seeds when the controller already loaded it (e.g.
-  # AccountsController#show via load_solana_balances), avoiding a second
-  # sync_balance RPC.
+  # Reuses @user_seeds when preload_navbar_solana_data already loaded it
+  # for this request, avoiding a second sync_balance RPC.
   def display_seeds_data
     return @display_seeds_data if defined?(@display_seeds_data)
 
@@ -204,6 +223,92 @@ class ApplicationController < ActionController::Base
 
   def invalidate_seeds_cache(user = current_user)
     Rails.cache.delete(seeds_cache_key(user))
+  end
+
+  # Prefetches all on-chain data the navbar (+ admin dropdown) needs in
+  # parallel, so the view phase has zero blocking Solana RPCs. Fires as a
+  # before_action on every HTML request for a logged-in wallet user.
+  # Thin wrapper around perform_solana_preload — only the gating logic
+  # lives here so the underlying parallel fetch is reusable from JSON
+  # endpoints (e.g. AccountsController#session_refresh).
+  def preload_navbar_solana_data
+    return unless request.format.html?
+    return unless current_user&.solana_connected?
+
+    perform_solana_preload
+  end
+
+  # The actual parallel-RPC fetch. Callable directly when a JSON endpoint
+  # needs fresh on-chain state (e.g. after a write, for a client-side
+  # refreshSession() refresh).
+  #
+  # Fans out 3 (or 4 for admins) RPCs in independent threads; total wall
+  # time = max(N) instead of sum(N). Each thread gets its own
+  # Solana::Vault.new (Net::HTTP isn't safe to share across threads) and is
+  # wrapped in Rails.application.executor.wrap so the OutboundRequest
+  # audit write gets a proper AR connection from the pool.
+  #
+  # Results are written to instance variables / Current so view helpers
+  # (display_balance, display_seeds_data, User#entry_token_balance,
+  # Solana::Vault.cached_vault_state) read prefetched values without
+  # firing fresh RPCs.
+  def perform_solana_preload
+    return unless current_user&.solana_connected?
+
+    t_total        = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    wallet_address = current_user.solana_address
+    is_admin       = current_user.admin?
+
+    balances_thread = Thread.new do
+      Rails.application.executor.wrap do
+        Solana::Vault.new.fetch_wallet_balances(wallet_address)
+      rescue => e
+        Rails.logger.warn("[preload] fetch_wallet_balances failed: #{e.message}")
+        nil
+      end
+    end
+
+    sync_thread = Thread.new do
+      Rails.application.executor.wrap do
+        Solana::Vault.new.sync_balance(wallet_address)
+      rescue => e
+        Rails.logger.warn("[preload] sync_balance failed: #{e.message}")
+        nil
+      end
+    end
+
+    tokens_thread = Thread.new do
+      Rails.application.executor.wrap do
+        Solana::Vault.new.list_entry_tokens(wallet_address).count { |tk| !tk[:consumed] }
+      rescue => e
+        Rails.logger.warn("[preload] entry_token_balance failed: #{e.message}")
+        0
+      end
+    end
+
+    vault_state_thread = if is_admin
+      Thread.new do
+        Rails.application.executor.wrap do
+          Rails.cache.fetch("solana:vault_state", expires_in: 1.minute) do
+            Solana::Vault.new.read_vault_state
+          end
+        rescue => e
+          Rails.logger.warn("[preload] vault_state failed: #{e.message}")
+          nil
+        end
+      end
+    end
+
+    @wallet_balances = balances_thread.value
+    @user_seeds      = sync_thread.value&.dig(:seeds)
+    current_user.instance_variable_set(:@entry_token_balance, tokens_thread.value)
+
+    if vault_state_thread
+      Current.vault_state_fetched = true
+      Current.vault_state         = vault_state_thread.value
+    end
+
+    Rails.logger.info("[BENCH] perform_solana_preload total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")
   end
 
   def require_profile_completion

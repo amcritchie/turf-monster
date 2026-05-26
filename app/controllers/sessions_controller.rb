@@ -32,6 +32,16 @@ class SessionsController < ApplicationController
 
   def destroy
     clear_app_session
+    # clear_app_session (engine) deletes the user session key + sso_* fields
+    # but doesn't know about turf-monster's additional per-session state.
+    # Drop everything user-bound so a subsequent login in the same browser
+    # can't inherit stale phantom-auth flags, session-token bindings, or
+    # auth nonces from the prior user.
+    session.delete(:onchain)         # set by SolanaSessionsController#verify
+    session.delete(:session_token)   # OPSEC-045
+    session.delete(:solana_nonce)    # delete-before-verify replay guard
+    session.delete(:solana_nonce_at)
+    session.delete(:return_to)       # require_profile_completion redirect target
     redirect_to login_path, notice: "Logged out."
   end
 end

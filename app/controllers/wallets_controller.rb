@@ -9,16 +9,12 @@ class WalletsController < ApplicationController
     @pending_withdrawals = TransactionLog.where(user: current_user, transaction_type: "withdrawal", status: %w[pending approved]).order(created_at: :desc)
     @recent_transactions = TransactionLog.where(user: current_user).order(created_at: :desc).limit(10)
 
-    # Fetch SOL balance if wallet connected and devnet
-    if current_user.solana_connected? && Solana::Config.devnet?
-      begin
-        client = Solana::Client.new
-        result = client.get_balance(current_user.solana_address)
-        sol_lamports = result.is_a?(Hash) ? result["value"] : result
-        @sol_balance = sol_lamports.to_f / 1_000_000_000
-      rescue => e
-        Rails.logger.warn "Failed to fetch SOL balance: #{e.message}"
-      end
+    # SOL balance comes from @wallet_balances, which
+    # ApplicationController#preload_navbar_solana_data already populated in
+    # parallel with the other on-chain reads. Devnet-only display gate
+    # preserved.
+    if Solana::Config.devnet? && @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:sol)
+      @sol_balance = @wallet_balances[:sol]
     end
   end
 

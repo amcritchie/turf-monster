@@ -1,7 +1,8 @@
 <%# [BENCH] Temporary instrumentation for /account load profiling.
     Pairs with the click-time mark in layouts/application.html.erb and
-    the server-side timing logs in AccountsController#load_solana_balances.
-    Remove this block once the slow-load investigation is done. %>
+    the server-side timing log emitted by
+    ApplicationController#preload_navbar_solana_data. Remove this block
+    once the slow-load investigation is fully closed out. %>
 <script>
   (function() {
     var t0 = performance.now();

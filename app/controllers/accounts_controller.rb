@@ -12,13 +12,42 @@ class AccountsController < ApplicationController
 
   def show
     @user = current_user
-    load_solana_balances if @user.solana_connected?
+    # All on-chain data (@wallet_balances, @user_seeds, the User's
+    # @entry_token_balance memo, Current.vault_state) is prefetched by
+    # ApplicationController#preload_navbar_solana_data — no per-action fetch
+    # needed here.
+    #
     # Referral widget — share URL points at the canonical main contest
     # (admin-set via /admin/site_config). SeasonConfig.main_contest masks
     # the explicit pick when it's settled/locked and falls back to the
     # most recent open contest; nil if nothing is open at all (the widget
     # then degrades to a root-path share URL).
     @referral_share_contest = SeasonConfig.main_contest
+  end
+
+  # Fresh on-chain state (USDC, free-entry tokens, seeds + level) in a
+  # single JSON payload. The client-side refreshSession() helper calls
+  # this after every on-chain success (entry confirm, token mint, token
+  # consume, withdrawal, etc.) so the navbar balance, token badge, and
+  # seeds bar can all converge to truth from one place — instead of each
+  # success path having to know about three separate update mechanisms.
+  #
+  # Uses perform_solana_preload so the four reads (wallet balances, user
+  # account, entry tokens, vault state) run in parallel. Returns the
+  # current values whether the user has a connected wallet or not.
+  def session_refresh
+    perform_solana_preload if current_user&.solana_connected?
+
+    seeds = @user_seeds.to_i
+    render json: {
+      usdc:        @wallet_balances&.dig(:usdc) || 0,
+      sol:         @wallet_balances&.dig(:sol)  || 0,
+      tokens:      (current_user&.entry_token_balance rescue 0),
+      seeds:       seeds,
+      level:       User.level_for(seeds),
+      toward_next: User.seeds_toward_next_level(seeds),
+      progress:    User.seeds_progress_percent(seeds)
+    }
   end
 
   # Lightweight session-state probe for client-side rehydration. Returns the
@@ -276,88 +305,4 @@ class AccountsController < ApplicationController
     end
   end
 
-  # Reads every on-chain view the /account page (and its surrounding
-  # layout) needs in parallel, so total wall-clock time is bounded by the
-  # slowest single RPC instead of their sum:
-  #   - fetch_wallet_balances : SOL + SPL token (USDC/USDT) tiles
-  #   - sync_balance          : UserAccount PDA for the seeds counter
-  #   - list_entry_tokens     : free-entry token count (navbar badge + tile)
-  #   - read_vault_state      : admin dropdown's Vault Init / PAUSED badges
-  # Each thread gets its own Solana::Vault.new (Net::HTTP isn't safe to share
-  # across threads) and is wrapped in Rails.application.executor.wrap so the
-  # OutboundRequest audit write gets a proper AR connection from the pool.
-  # Pre-populates @user's @entry_token_balance memo + Current.vault_state so
-  # downstream view helpers (entry_token_balance, vault_uninitialized?,
-  # vault_paused?) hit the prefetched data instead of firing fresh RPCs.
-  def load_solana_balances
-    t_total = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    wallet_address = @user.solana_address
-    is_admin       = current_user&.admin?
-
-    balances_thread = Thread.new do
-      Rails.application.executor.wrap do
-        t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        result = Solana::Vault.new.fetch_wallet_balances(wallet_address)
-        Rails.logger.info("[BENCH] fetch_wallet_balances took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
-        result
-      rescue => e
-        Rails.logger.warn("fetch_wallet_balances failed: #{e.message}")
-        nil
-      end
-    end
-
-    sync_thread = Thread.new do
-      Rails.application.executor.wrap do
-        t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        result = Solana::Vault.new.sync_balance(wallet_address)
-        Rails.logger.info("[BENCH] sync_balance took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
-        result
-      rescue => e
-        Rails.logger.warn("sync_balance failed: #{e.message}")
-        nil
-      end
-    end
-
-    tokens_thread = Thread.new do
-      Rails.application.executor.wrap do
-        t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        result = Solana::Vault.new.list_entry_tokens(wallet_address).count { |tk| !tk[:consumed] }
-        Rails.logger.info("[BENCH] entry_token_balance took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
-        result
-      rescue => e
-        Rails.logger.warn("entry_token_balance failed: #{e.message}")
-        0
-      end
-    end
-
-    vault_state_thread = if is_admin
-      Thread.new do
-        Rails.application.executor.wrap do
-          t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          result = Rails.cache.fetch("solana:vault_state", expires_in: 1.minute) do
-            Solana::Vault.new.read_vault_state
-          end
-          Rails.logger.info("[BENCH] vault_state took #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round}ms")
-          result
-        rescue => e
-          Rails.logger.warn("vault_state failed: #{e.message}")
-          nil
-        end
-      end
-    end
-
-    @wallet_balances = balances_thread.value
-    @user_seeds      = sync_thread.value&.dig(:seeds)
-    # Pre-populate the User#entry_token_balance memo so the navbar +
-    # entry_token_badge + show body all read the prefetched count instead
-    # of firing fresh list_entry_tokens RPCs (which would block the view).
-    @user.instance_variable_set(:@entry_token_balance, tokens_thread.value)
-
-    if vault_state_thread
-      Current.vault_state_fetched = true
-      Current.vault_state         = vault_state_thread.value
-    end
-
-    Rails.logger.info("[BENCH] load_solana_balances total #{((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t_total) * 1000).round}ms")
-  end
 end

@@ -9,26 +9,28 @@
         <span class="font-mono">owed = floor(seeds / 100) − minted</span>.
       </p>
     </div>
-    <% if @total_owed > 0 %>
-      <%= button_to admin_mint_all_free_entries_path, class: "btn btn-success", data: { turbo_confirm: "Mint #{@total_owed} tokens across all users. This may take a while." } do %>
-        Mint All Owed (<%= @total_owed %>)
+    <% if @page_owed > 0 %>
+      <%= button_to admin_mint_all_free_entries_path, class: "btn btn-success", data: { turbo_confirm: "Mint owed tokens across ALL users (every page). This may take a while." } do %>
+        Mint All Owed
       <% end %>
     <% end %>
   </div>
 
-  <%# Stats row %>
+  <%# Stats row — figures reflect the current page only (each row costs 2
+      Solana RPCs to compute; computing across all #{@total_users} users
+      would re-introduce the N+1). Mint All Owed still sweeps every user. %>
   <div class="grid grid-cols-3 gap-3">
     <div class="card p-4">
-      <div class="text-muted text-[10px] uppercase tracking-wide">Users</div>
-      <div class="text-heading text-2xl font-bold font-mono"><%= @users_data.length %></div>
+      <div class="text-muted text-[10px] uppercase tracking-wide">Users (page <%= @page %> / <%= @total_pages %>)</div>
+      <div class="text-heading text-2xl font-bold font-mono"><%= @users_data.length %> <span class="text-muted text-sm font-normal">of <%= @total_users %></span></div>
     </div>
     <div class="card p-4">
-      <div class="text-muted text-[10px] uppercase tracking-wide">On-chain Minted</div>
-      <div class="text-heading text-2xl font-bold font-mono"><%= @total_minted %></div>
+      <div class="text-muted text-[10px] uppercase tracking-wide">Minted (this page)</div>
+      <div class="text-heading text-2xl font-bold font-mono"><%= @page_minted %></div>
     </div>
-    <div class="card p-4" style="<%= 'border-color: var(--color-cta);' if @total_owed > 0 %>">
-      <div class="text-muted text-[10px] uppercase tracking-wide">Owed</div>
-      <div class="text-2xl font-bold font-mono" style="<%= @total_owed > 0 ? 'color: var(--color-cta);' : '' %>"><%= @total_owed %></div>
+    <div class="card p-4" style="<%= 'border-color: var(--color-cta);' if @page_owed > 0 %>">
+      <div class="text-muted text-[10px] uppercase tracking-wide">Owed (this page)</div>
+      <div class="text-2xl font-bold font-mono" style="<%= @page_owed > 0 ? 'color: var(--color-cta);' : '' %>"><%= @page_owed %></div>
     </div>
   </div>
 
@@ -85,6 +87,24 @@
       </tbody>
     </table>
   </div>
+
+  <%# Pagination — only shown when there's more than one page. Per-user
+      Solana reads are parallelized in compute_user_data_for, but with
+      PER_PAGE = 25 we cap the in-flight thread count to ~50 (2 per user)
+      and bound wall time even on slow devnet RPC. %>
+  <% if @total_pages > 1 %>
+    <nav class="flex items-center justify-between text-sm">
+      <span class="text-muted">Page <%= @page %> of <%= @total_pages %> &middot; <%= @total_users %> users</span>
+      <div class="flex items-center gap-2">
+        <% if @page > 1 %>
+          <%= link_to "← Prev", admin_free_entries_path(page: @page - 1), class: "btn btn-outline btn-sm" %>
+        <% end %>
+        <% if @page < @total_pages %>
+          <%= link_to "Next →", admin_free_entries_path(page: @page + 1), class: "btn btn-outline btn-sm" %>
+        <% end %>
+      </div>
+    </nav>
+  <% end %>
 
   <p class="text-muted text-xs">
     Each mint is a Solana transaction signed by the admin (Alex Bot key). 60-second cache on per-user token list — buttons may take a moment to reflect on the page refresh after minting.

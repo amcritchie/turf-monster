@@ -3,11 +3,18 @@ module Admin
     before_action :require_admin
 
     SEEDS_PER_LEVEL = User::SEEDS_PER_LEVEL # 100
+    PER_PAGE        = 25
 
     def index
-      @users_data = compute_user_data
-      @total_owed = @users_data.sum { |d| d[:owed] }
-      @total_minted = @users_data.sum { |d| d[:minted] }
+      scope         = users_with_wallet.order(:id)
+      @total_users  = scope.count
+      @page         = [params[:page].to_i, 1].max
+      @total_pages  = [(@total_users.to_f / PER_PAGE).ceil, 1].max
+      @page         = @total_pages if @page > @total_pages
+      paged_users   = scope.limit(PER_PAGE).offset((@page - 1) * PER_PAGE)
+      @users_data   = compute_user_data_for(paged_users)
+      @page_owed    = @users_data.sum { |d| d[:owed] }
+      @page_minted  = @users_data.sum { |d| d[:minted] }
     end
 
     def mint
@@ -61,14 +68,35 @@ module Admin
       )
     end
 
-    def compute_user_data
-      users_with_wallet.map do |user|
-        seeds = (vault.sync_balance(user.solana_address) rescue nil)&.dig(:seeds) || 0
-        tokens = (vault.list_entry_tokens(user.solana_address) rescue [])
-        level = (seeds / SEEDS_PER_LEVEL) + 1
-        minted = tokens.length
+    # Fans the 2 Solana reads (sync_balance + list_entry_tokens) per user
+    # out across threads so wall time scales with the slowest single user
+    # rather than the sum. Each thread gets its own Solana::Vault.new (the
+    # Net::HTTP-backed client isn't safe to share) and is wrapped in
+    # Rails.application.executor.wrap so the OutboundRequest audit write
+    # gets a proper AR connection from the pool.
+    def compute_user_data_for(users_scope)
+      users = users_scope.to_a
+      results = users.map do |user|
+        seeds_thread = Thread.new do
+          Rails.application.executor.wrap do
+            (Solana::Vault.new.sync_balance(user.solana_address) rescue nil)&.dig(:seeds) || 0
+          end
+        end
+        tokens_thread = Thread.new do
+          Rails.application.executor.wrap do
+            (Solana::Vault.new.list_entry_tokens(user.solana_address) rescue [])
+          end
+        end
+        [user, seeds_thread, tokens_thread]
+      end
+
+      results.map do |user, seeds_t, tokens_t|
+        seeds      = seeds_t.value
+        tokens     = tokens_t.value
+        level      = (seeds / SEEDS_PER_LEVEL) + 1
+        minted     = tokens.length
         unconsumed = tokens.count { |t| !t[:consumed] }
-        owed = [(seeds / SEEDS_PER_LEVEL) - minted, 0].max
+        owed       = [(seeds / SEEDS_PER_LEVEL) - minted, 0].max
         { user: user, seeds: seeds, level: level, minted: minted, unconsumed: unconsumed, owed: owed }
       end.sort_by { |d| [-d[:owed], -d[:seeds]] }
     end

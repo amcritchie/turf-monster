@@ -74,6 +74,65 @@ export function refreshBalanceDelayed(ms) {
   }, delay);
 }
 
+// Single-call refresh of every on-chain piece the navbar shows: USDC
+// balance, free-entry token count, and the seeds bar (count + level +
+// progress). Server-side route is /account/session_refresh which fans
+// the four Solana RPCs out in parallel; client-side this function then
+// drives the existing UI updaters so the navbar converges to truth
+// from one place.
+//
+// Call after any on-chain success path (entry confirm, token mint,
+// token consume, withdrawal, payout) instead of stitching together
+// refreshBalance + updateNavTokens + seedsNavbar/localStorage by hand.
+// Returns a Promise so callers can chain a spinner around it.
+export function refreshSession() {
+  return lockedFetch('session', '/account/session_refresh', {
+    headers: { 'Accept': 'application/json' }, cache: 'no-store'
+  })
+    .then(function(r) { return r && r.json(); })
+    .then(function(data) {
+      if (!data) return null;
+
+      // USDC balance — reuse the same data-balance-display selector +
+      // hide-on-$0-with-token rule that refreshBalance applies, so the
+      // two helpers agree on what the navbar shows.
+      try {
+        var formatted = '$' + Math.floor(parseFloat(data.usdc || 0));
+        var isZero    = formatted === '$0';
+        var hasTokens = (parseInt(data.tokens, 10) || 0) > 0;
+        document.querySelectorAll('[data-balance-display]').forEach(function(el) {
+          el.textContent = formatted;
+          if (isZero && hasTokens) el.classList.add('hidden');
+          else                     el.classList.remove('hidden');
+        });
+      } catch (_) {}
+
+      // 🎟️ token badge — reuse updateNavTokens for the visibility
+      // toggle + data-token-count + 'entry-tokens-updated' broadcast.
+      try { updateNavTokens(data.tokens); } catch (_) {}
+
+      // Seeds bar — write the canonical localStorage payload the
+      // _seeds_bar Alpine factory reads on level-up animations, then
+      // dispatch the same 'navbar-seeds-update' event the entry-confirm
+      // flow uses so the bar transitions smoothly to the new value
+      // instead of snapping on next reload.
+      try {
+        localStorage.setItem('seedsNavbar', JSON.stringify({
+          seeds_total: data.seeds,
+          level:       data.level,
+          toward_next: data.toward_next,
+          progress:    data.progress
+        }));
+        window.dispatchEvent(new CustomEvent('navbar-seeds-update', {
+          detail: { levelUp: false, level: data.level, progress: data.progress }
+        }));
+      } catch (_) {}
+
+      return data;
+    })
+    .catch(function() { return null; });
+}
+
 // Toggle the navbar's 🎟️ free-entry badge based on the new token count.
 // Called after a mint (count increases) or a token-funded entry submit
 // (count decrements). Also re-applies the "hide $0 balance when the
@@ -151,6 +210,7 @@ window.lockedFetch = lockedFetch;
 window.authedFetch = authedFetch;
 window.refreshBalance = refreshBalance;
 window.refreshBalanceDelayed = refreshBalanceDelayed;
+window.refreshSession = refreshSession;
 // Confetti burst that originates from the currently-open modal card —
 // used for the entry-confirmation celebration where the user is looking
 // at the modal, not the navbar badge. Targets the modal_host's

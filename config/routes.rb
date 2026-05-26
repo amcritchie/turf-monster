@@ -119,6 +119,7 @@ Rails.application.routes.draw do
     post :update_username   # on-chain username edit (custodial server-signs / Phantom co-signs)
     post :confirm_username  # Phantom: confirm the co-signed set_username TX
     get :session_state, defaults: { format: :json } # visibilitychange rehydrate
+    get :session_refresh, defaults: { format: :json } # on-chain state for refreshSession()
     # OPSEC-007: removed `patch :update_level` — client-supplied seeds_total.
   end
 

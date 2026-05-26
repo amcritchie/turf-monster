@@ -991,24 +991,14 @@ class ContestsController < ApplicationController
                       .order(created_at: :desc).first
   end
 
+  # Pre-rendered seeds payload used by the contest show page's slate
+  # progress card. Reuses @user_seeds prefetched by
+  # ApplicationController#preload_navbar_solana_data instead of firing a
+  # duplicate sync_balance RPC. Returns nil for guests / non-wallet users
+  # so the view's `<% if @seeds_data %>` gate keeps the card hidden.
   def load_seeds_data
     return unless logged_in? && current_user.solana_connected?
-
-    begin
-      onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
-      seeds = onchain&.dig(:seeds) || 0
-    rescue => e
-      Rails.logger.warn "Failed to read on-chain seeds: #{e.message}"
-      seeds = 0
-    end
-
-    {
-      seeds: seeds,
-      level: User.level_for(seeds),
-      toward_next: User.seeds_toward_next_level(seeds),
-      progress: User.seeds_progress_percent(seeds),
-      seeds_to_next: User::SEEDS_PER_LEVEL - User.seeds_toward_next_level(seeds)
-    }
+    seeds_payload(@user_seeds.to_i)
   end
 
   def contest_params
