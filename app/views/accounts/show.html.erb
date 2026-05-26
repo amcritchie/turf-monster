@@ -1,37 +1,3 @@
-<%# [BENCH] Temporary instrumentation for /account load profiling.
-    Pairs with the click-time mark in layouts/application.html.erb and
-    the server-side timing log emitted by
-    ApplicationController#preload_navbar_solana_data. Remove this block
-    once the slow-load investigation is fully closed out. %>
-<script>
-  (function() {
-    var t0 = performance.now();
-    var clickT = (window.__accountClickAt != null) ? window.__accountClickAt : null;
-    var dt = function() { return (performance.now() - t0).toFixed(0) + 'ms (script-start)'; };
-    var sinceClick = function() {
-      if (clickT == null) return 'n/a';
-      return (performance.now() - clickT).toFixed(0) + 'ms (since-click)';
-    };
-    console.log('%c[BENCH] /account script first run', 'color:#06D6A0', dt(), '|', sinceClick());
-
-    document.addEventListener('DOMContentLoaded', function() {
-      console.log('%c[BENCH] /account DOMContentLoaded', 'color:#06D6A0', dt(), '|', sinceClick());
-    });
-    window.addEventListener('load', function() {
-      console.log('%c[BENCH] /account window.load', 'color:#06D6A0', dt(), '|', sinceClick());
-    });
-    document.addEventListener('turbo:render', function() {
-      console.log('%c[BENCH] /account turbo:render', 'color:#06D6A0', dt(), '|', sinceClick());
-    });
-    document.addEventListener('turbo:load', function() {
-      console.log('%c[BENCH] /account turbo:load', 'color:#06D6A0', dt(), '|', sinceClick());
-      // Clear the click stamp so a subsequent navigation doesn't get
-      // misleading "since-click" deltas from the previous click.
-      window.__accountClickAt = null;
-    });
-  })();
-</script>
-
 <%# Cropper.js is loaded on this page so the shared crop-photo modal
     (Alpine.store('modals').open('crop-photo', ...)) has its dependency
     when the user clicks the avatar to upload. %>

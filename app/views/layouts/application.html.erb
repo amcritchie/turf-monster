@@ -525,38 +525,5 @@
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>
-
-    <%# [BENCH] Click-time stamp for /account navigation. Pairs with the
-        DOMContentLoaded/load/turbo:* timing logs in views/accounts/show.html.erb
-        and the server-side RPC timing in AccountsController. Remove this
-        block once the slow-load investigation is done. %>
-    <script>
-      document.addEventListener('click', function(e) {
-        var a = e.target && e.target.closest && e.target.closest('a[href]');
-        if (!a) return;
-        try {
-          var url = new URL(a.href, window.location.origin);
-          if (url.pathname !== '/account') return;
-        } catch (_) { return; }
-        window.__accountClickAt = performance.now();
-        console.log('%c[BENCH] /account link clicked', 'color:#FFD700; font-weight:bold',
-                    'at ' + Math.round(window.__accountClickAt) + 'ms');
-      }, true);
-
-      document.addEventListener('turbo:before-fetch-request', function(e) {
-        if (window.__accountClickAt == null) return;
-        if (!e.detail || !e.detail.url || e.detail.url.pathname !== '/account') return;
-        console.log('%c[BENCH] turbo fetch start', 'color:#FFD700',
-                    (performance.now() - window.__accountClickAt).toFixed(0) + 'ms (since-click)');
-      });
-      document.addEventListener('turbo:before-fetch-response', function(e) {
-        if (window.__accountClickAt == null) return;
-        if (!e.detail || !e.detail.fetchResponse) return;
-        var url = e.detail.fetchResponse.response && e.detail.fetchResponse.response.url;
-        if (!url || !url.endsWith('/account')) return;
-        console.log('%c[BENCH] turbo fetch response received', 'color:#FFD700',
-                    (performance.now() - window.__accountClickAt).toFixed(0) + 'ms (since-click)');
-      });
-    </script>
   </body>
 </html>
