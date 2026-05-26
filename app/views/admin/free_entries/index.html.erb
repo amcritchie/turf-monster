@@ -50,17 +50,15 @@
           <th class="text-right px-4 py-3">Action</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="users-tbody">
         <%# Initial batch (first PER_PAGE users). Each subsequent batch
-            streams in via the auto-loading turbo-frame chain below —
-            no Prev/Next clicks required. %>
+            streams in via the auto-loading trigger BELOW the table —
+            no Prev/Next clicks required. The trigger lives outside
+            <tbody> on purpose: HTML parsers hoist non-<tr> children
+            out of table internals, which breaks column alignment for
+            the loaded rows. Stream actions target #users-tbody by id
+            and append cleanly. %>
         <%= render partial: "user_row", collection: @users_data, as: :row %>
-        <% if @has_next %>
-          <%= render "next_page_frame",
-                     page: @page + 1,
-                     total_users: @total_users,
-                     per_page: Admin::FreeEntriesController::PER_PAGE %>
-        <% end %>
         <% if @users_data.empty? %>
           <tr>
             <td colspan="7" class="px-4 py-8 text-center text-muted">No users with Solana wallets.</td>
@@ -69,6 +67,13 @@
       </tbody>
     </table>
   </div>
+
+  <% if @has_next %>
+    <%= render "load_trigger",
+               page: @page + 1,
+               total_users: @total_users,
+               per_page: Admin::FreeEntriesController::PER_PAGE %>
+  <% end %>
 
   <p class="text-muted text-xs">
     Each mint is a Solana transaction signed by the admin (Alex Bot key). 60-second cache on per-user token list — buttons may take a moment to reflect on the page refresh after minting.

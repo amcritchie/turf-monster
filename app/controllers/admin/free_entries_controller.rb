@@ -17,13 +17,16 @@ module Admin
       @page_minted  = @users_data.sum { |d| d[:minted] }
       @has_next     = @page < @total_pages
 
-      # When the request comes from the auto-loading turbo-frame chain
-      # (one frame per page after page 1), respond with just the next
-      # batch's rows + the next frame in the chain — no layout, no
-      # header. The frame swaps itself in-place, the user sees rows
-      # appear under the previous batch.
-      if turbo_frame_request?
-        render partial: "page_frame", layout: false
+      # HTML format → full page render (index.html.erb).
+      # Turbo Stream format → index.turbo_stream.erb appends the new
+      # rows into #users-tbody and replaces #load-trigger with the next
+      # trigger (or removes it on the last page). The trigger has to
+      # live OUTSIDE the table because the HTML parser will hoist a
+      # turbo-frame out of <tbody>, breaking column alignment — see the
+      # earlier turbo-frame attempt for the failure mode.
+      respond_to do |format|
+        format.html
+        format.turbo_stream
       end
     end
 

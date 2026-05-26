@@ -1,0 +1,37 @@
+<%# Auto-loading trigger for the next batch of users. Lives OUTSIDE the
+    <table> (turbo-frames + turbo-streams targeting elements inside
+    <tbody> are unreliable — the HTML parser hoists unknown elements
+    out of table internals).
+    On mount, Alpine fires a fetch with Accept: text/vnd.turbo-stream
+    against the same index action with ?page=N. The response
+    (index.turbo_stream.erb) appends rows into #users-tbody and either
+    replaces this trigger with the next one or removes it entirely.
+
+    Locals: page (next page #), total_users, per_page %>
+<% from = (page - 1) * per_page + 1 %>
+<% to   = [page * per_page, total_users].min %>
+<div id="load-trigger"
+     class="py-6 text-center text-muted"
+     x-data
+     x-init="(async () => {
+       try {
+         const res = await fetch('<%= admin_free_entries_path(page: page) %>', {
+           headers: { 'Accept': 'text/vnd.turbo-stream.html' },
+           credentials: 'same-origin'
+         });
+         if (!res.ok) throw new Error('HTTP ' + res.status);
+         const html = await res.text();
+         window.Turbo.renderStreamMessage(html);
+       } catch (e) {
+         console.error('[free_entries] load_trigger fetch failed:', e);
+         $el.innerHTML = '<span class=&quot;text-red-400 text-xs&quot;>Failed to load next batch — refresh to retry.</span>';
+       }
+     })()">
+  <span class="inline-flex items-center gap-2 text-xs">
+    <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+    </svg>
+    Loading users <%= from %>–<%= to %> of <%= total_users %>…
+  </span>
+</div>

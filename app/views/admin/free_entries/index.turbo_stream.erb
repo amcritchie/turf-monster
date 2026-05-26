@@ -1,0 +1,19 @@
+<%# Turbo Stream response for the auto-loading next-batch fetch.
+    Appends this batch's rows into #users-tbody (which lives inside
+    <table><tbody>, safe target), then either swaps in the next
+    load_trigger (if more pages remain) or removes the trigger to end
+    the chain. %>
+<%= turbo_stream.append "users-tbody" do %>
+  <%= render partial: "user_row", collection: @users_data, as: :row %>
+<% end %>
+
+<% if @has_next %>
+  <%= turbo_stream.replace "load-trigger" do %>
+    <%= render "load_trigger",
+               page: @page + 1,
+               total_users: @total_users,
+               per_page: Admin::FreeEntriesController::PER_PAGE %>
+  <% end %>
+<% else %>
+  <%= turbo_stream.remove "load-trigger" %>
+<% end %>
