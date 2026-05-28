@@ -52,6 +52,41 @@ class TestController < ApplicationController
     render json: { ok: true, cleared: cleared }
   end
 
+  # Phantom-mock admin handoff. The Playwright Phantom mock signs with
+  # MOCK_PUBKEY_B58 (e2e/phantom-mock.js: 6ASf5EcmmEHTgDJ4X4ZT5vT6iHVJBXPg5AN5YoTCpGWt);
+  # the canonical alex user's wallet is the operator's real Phantom
+  # (7ZDJp7FU…) so manual browser auth resolves to alex. To keep both
+  # flows working from the same dev DB:
+  #
+  #   - `use_phantom_mock_admin` — called from Playwright globalSetup.
+  #     Stashes alex's current wallet into a Rails.cache key, then points
+  #     alex at MOCK_PUBKEY so loginViaPhantom resolves to alex.
+  #   - `restore_canonical_admin` — called from Playwright globalTeardown.
+  #     Reads the stashed wallet back. If the cache key is missing
+  #     (crash, container restart, expired), falls back to
+  #     ENV["ADMIN_CANONICAL_WALLET"] or the hard-coded operator wallet.
+  PHANTOM_MOCK_WALLET      = "6ASf5EcmmEHTgDJ4X4ZT5vT6iHVJBXPg5AN5YoTCpGWt".freeze
+  ADMIN_WALLET_STASH_KEY   = "test/canonical_admin_wallet".freeze
+  CANONICAL_ADMIN_FALLBACK = "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr".freeze
+
+  def use_phantom_mock_admin
+    alex = User.find_by!(username: "alex")
+    Rails.cache.write(ADMIN_WALLET_STASH_KEY, alex.web3_solana_address, expires_in: 1.hour)
+    alex.update!(web3_solana_address: PHANTOM_MOCK_WALLET)
+    render json: { ok: true, from: Rails.cache.read(ADMIN_WALLET_STASH_KEY), to: PHANTOM_MOCK_WALLET }
+  end
+
+  def restore_canonical_admin
+    alex = User.find_by!(username: "alex")
+    stashed = Rails.cache.read(ADMIN_WALLET_STASH_KEY)
+    Rails.cache.delete(ADMIN_WALLET_STASH_KEY)
+    canonical = stashed.presence ||
+      ENV["ADMIN_CANONICAL_WALLET"].presence ||
+      CANONICAL_ADMIN_FALLBACK
+    alex.update!(web3_solana_address: canonical)
+    render json: { ok: true, to: canonical, source: (stashed ? "stash" : "fallback") }
+  end
+
   # Set the OmniAuth mock_auth payload for the next /auth/:provider call.
   # Playwright posts to this immediately before navigating to /auth/google_oauth2
   # so the e2e spec controls who "signs in" with Google.

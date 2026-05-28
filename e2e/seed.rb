@@ -181,10 +181,36 @@ matchups.each_with_index do |matchup, i|
   matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, n))
 end
 
-# Test-specific wallet overrides:
-# Alex uses mock keypair (deterministic seed byte 1) so Playwright tests can sign.
-# For devnet smoke tests, SOLANA_BOT_PUBKEY overrides Alex's wallet to Alex Bot's pubkey.
-alex_wallet = ENV.fetch("SOLANA_BOT_PUBKEY", "6ASf5EcmmEHTgDJ4X4ZT5vT6iHVJBXPg5AN5YoTCpGWt")
+# Wallet overrides — three modes:
+#
+#   1. Default (manual dev work): alex keeps the canonical admin wallet
+#      seeded by db/seeds/users.rb (7ZDJp7FU…) — the real Phantom wallet
+#      you connect with in the browser. Without this, every `e2e/seed.rb`
+#      run overwrote your real-wallet linkage with the mock pubkey and
+#      Phantom logins created fresh "viewer" users.
+#
+#   2. PLAYWRIGHT_SEED=true: Playwright's Phantom mock signs with
+#      MOCK_PUBKEY_B58 (e2e/phantom-mock.js). Set this when seeding
+#      for Playwright cold-starts so the mock auth resolves to alex.
+#      playwright.config.js's webServer command passes it.
+#
+#   3. SOLANA_BOT_PUBKEY=<pubkey>: explicit override (e.g. devnet-smoke
+#      tests that sign with Alex Bot's real key). Wins over both above.
+#
+# For the common local Playwright workflow (reuseExistingServer = true),
+# the swap is done at-test-time via POST /test/use_phantom_mock_admin
+# from playwright.config.js's globalSetup, with a corresponding
+# /test/restore_canonical_admin in globalTeardown.
+PHANTOM_MOCK_WALLET = "6ASf5EcmmEHTgDJ4X4ZT5vT6iHVJBXPg5AN5YoTCpGWt".freeze
+
+alex_wallet =
+  if (explicit = ENV["SOLANA_BOT_PUBKEY"]).present?
+    explicit
+  elsif ENV["PLAYWRIGHT_SEED"] == "true"
+    PHANTOM_MOCK_WALLET
+  else
+    alex.web3_solana_address  # keep the canonical wallet from db/seeds/users.rb
+  end
 alex.update!(web3_solana_address: alex_wallet)
 
 # Clear encrypted keypairs so approve/deny tests don't trigger onchain withdrawals.

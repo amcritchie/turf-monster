@@ -308,6 +308,8 @@ Rails.application.routes.draw do
   # the controller stays unreachable in production.
   unless Rails.env.production?
     post "test/reseed",                   to: "test#reseed"
+    post "test/use_phantom_mock_admin",   to: "test#use_phantom_mock_admin"
+    post "test/restore_canonical_admin",  to: "test#restore_canonical_admin"
     post "test/oauth_mock",               to: "test#set_oauth_mock"
     post "test/set_user_referral_counts", to: "test#set_user_referral_counts"
     post "test/create_active_entry",      to: "test#create_active_entry"

@@ -5,6 +5,11 @@ module.exports = defineConfig({
   timeout: 30_000,
   retries: 0,
   workers: 1,
+  // Swap alex's wallet to MOCK_PUBKEY_B58 before tests (so loginViaPhantom
+  // resolves to the admin user) and restore it after. Lets the dev seed
+  // default to the operator's REAL Phantom wallet without breaking e2e.
+  globalSetup: require.resolve("./e2e/global-setup.js"),
+  globalTeardown: require.resolve("./e2e/global-teardown.js"),
   use: {
     baseURL: "http://127.0.0.1:3001",
     headless: true,
@@ -28,6 +33,6 @@ module.exports = defineConfig({
     url: "http://127.0.0.1:3001/up",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
-    env: { RAILS_ENV: "test" },
+    env: { RAILS_ENV: "test", PLAYWRIGHT_SEED: "true" },
   },
 });
