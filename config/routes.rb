@@ -303,9 +303,10 @@ Rails.application.routes.draw do
 
   # Test-only endpoints — exercised by Playwright e2e specs to seed
   # OAuth mock payloads and force referral cache values without staging
-  # full signup flows. Guarded by Rails.env.test? so they never exist
-  # outside the test boot.
-  if Rails.env.test?
+  # full signup flows. Guarded to non-production so Playwright (which runs
+  # against the dev server per playwright.config.js) can also reach them;
+  # the controller stays unreachable in production.
+  unless Rails.env.production?
     post "test/oauth_mock",               to: "test#set_oauth_mock"
     post "test/set_user_referral_counts", to: "test#set_user_referral_counts"
     post "test/create_active_entry",      to: "test#create_active_entry"

@@ -23,7 +23,16 @@ Rails.application.configure do
     config.action_controller.perform_caching = true
     config.action_controller.enable_fragment_cache_logging = true
 
-    config.cache_store = :memory_store
+    # Redis-backed cache so Sidekiq + Rails server share the same store.
+    # bust_entry_tokens_cache! in TokenPurchaseJob (Sidekiq) must propagate
+    # to the Rails server process — :memory_store is process-local and
+    # /tokens/status would serve stale "0 tokens" right after a mint.
+    # Sidekiq already uses this Redis instance.
+    config.cache_store = :redis_cache_store, {
+      url: ENV.fetch("REDIS_URL", "redis://localhost:6379/1"),
+      namespace: "tm-cache",
+      expires_in: 90.minutes
+    }
     config.public_file_server.headers = { "Cache-Control" => "public, max-age=#{2.days.to_i}" }
   else
     config.action_controller.perform_caching = false
@@ -47,6 +56,12 @@ Rails.application.configure do
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log
+
+  # Enable OmniAuth test mode in development so Playwright's OAuth mock
+  # path (POST /test/oauth_mock then GET /auth/google_oauth2) actually
+  # uses the configured mock_auth hash instead of redirecting to Google.
+  # Dev is localhost-only — no exposure risk. Production stays untouched.
+  config.after_initialize { OmniAuth.config.test_mode = true } if defined?(OmniAuth)
 
   # Raise exceptions for disallowed deprecations.
   config.active_support.disallowed_deprecation = :raise
