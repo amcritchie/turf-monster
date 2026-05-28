@@ -69,6 +69,21 @@ class TestController < ApplicationController
       Rails.logger.warn "[reseed] non-core user cleanup failed: #{e.class}: #{e.message[0,160]}"
     end
 
+    # Wipe core users' entries too — survivor.spec.js's "logged-in user
+    # can enter and make a round-1 pick" logs in as mason (core, id=3)
+    # and POSTs /contests/world-cup-survivor/enter. A prior run's entry
+    # rejects the new POST as a duplicate. Same shape as the non-core
+    # cleanup but for entries the user-cascade can't reach.
+    # FK order: survivor_picks → entries → selections.
+    begin
+      survivor_pick_count = SurvivorPick.delete_all
+      selection_count     = Selection.delete_all
+      entry_count         = Entry.delete_all
+      cleared << "core_entries(#{entry_count})" if entry_count > 0
+    rescue => e
+      Rails.logger.warn "[reseed] entry cleanup failed: #{e.class}: #{e.message[0,160]}"
+    end
+
     render json: { ok: true, cleared: cleared }
   end
 
