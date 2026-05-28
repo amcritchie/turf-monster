@@ -43,6 +43,47 @@ module Solana
       @program_id = Keypair.decode_base58(Config::PROGRAM_ID)
     end
 
+    # Raised when the configured PROGRAM_ID doesn't exist on the configured RPC.
+    # Indicates one of:
+    #   - Stale Sidekiq process: its env was loaded before a devnet redeploy
+    #     swapped PROGRAM_ID. Killing + restarting Sidekiq picks up the fresh
+    #     env. Both bugs we hit on 2026-05-27 and 2026-05-28 took this shape.
+    #   - Cluster mismatch: SOLANA_NETWORK=devnet but SOLANA_RPC_URL points at
+    #     a mainnet endpoint (or vice versa).
+    #   - Wrong PROGRAM_ID env var entirely.
+    class StaleEnvError < StandardError; end
+
+    # Defensive guard for callers that are about to mutate on-chain state
+    # (mint, enter, settle, …). One getAccountInfo call against PROGRAM_ID.
+    # Result cached 5 minutes so we don't pay the extra RPC on every job;
+    # negative results raise immediately and are NOT cached, so a fix to
+    # env / config takes effect on the next retry.
+    PROGRAM_ID_LIVE_CACHE_KEY = "solana/program_id_live/v1".freeze
+
+    def self.ensure_program_id_live!(client: nil)
+      cache_key = "#{PROGRAM_ID_LIVE_CACHE_KEY}/#{Config::PROGRAM_ID}/#{Config::RPC_URL[0, 64]}"
+      return if Rails.cache.read(cache_key)
+
+      client ||= Solana::Client.new
+      info = client.get_account_info(Config::PROGRAM_ID)
+      live = info&.dig("value")
+      if live.nil?
+        raise StaleEnvError,
+              "Solana PROGRAM_ID=#{Config::PROGRAM_ID} does not exist on RPC " \
+              "#{Config::RPC_URL.to_s[0, 60]}#{'…' if Config::RPC_URL.to_s.length > 60}. " \
+              "Sidekiq may have a stale env from before a devnet redeploy — " \
+              "restart it. (Set SKIP_PROGRAM_ID_LIVE_CHECK=true to bypass.)"
+      end
+      Rails.cache.write(cache_key, true, expires_in: 5.minutes)
+    rescue StaleEnvError
+      raise
+    rescue => e
+      # Transient RPC errors (429, network blip) shouldn't fail the job —
+      # let the actual mint surface its own error. We only raise on the
+      # definitive "account doesn't exist" response.
+      Rails.logger.warn "[solana] ensure_program_id_live! RPC error (skipping check): #{e.class}: #{e.message[0,120]}"
+    end
+
     # --- PDA helpers ---
 
     def vault_state_pda

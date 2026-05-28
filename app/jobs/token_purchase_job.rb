@@ -21,7 +21,13 @@ class TokenPurchaseJob < ApplicationJob
     pack             = StripePurchase.pack(pack_id)
     quantity         = pack[:quantity]
     pack_price_cents = pack[:price_cents]
-    Rails.logger.info "[tokens] job.start user=#{user_id} pack=#{pack_id} qty=#{quantity} wallet=#{wallet_address[0,12]}... sid=#{sid_short}..."
+    Rails.logger.info "[tokens] job.start user=#{user_id} pack=#{pack_id} qty=#{quantity} wallet=#{wallet_address[0,12]}... sid=#{sid_short}... program_id=#{Solana::Config::PROGRAM_ID[0,12]}..."
+
+    # Catches stale Sidekiq env (mint-to-wrong-program bug, hit twice on devnet
+    # redeploys). Raises StaleEnvError if PROGRAM_ID doesn't exist on the
+    # configured RPC. Cached 5 minutes per (PROGRAM_ID, RPC_URL) tuple, so
+    # the per-job cost amortizes to ~0 RPCs once the first job warms it.
+    Solana::Vault.ensure_program_id_live! unless ENV["SKIP_PROGRAM_ID_LIVE_CHECK"] == "true"
 
     purchase = StripePurchase.for_session(stripe_session_id).first
     if purchase&.status == "minted"
