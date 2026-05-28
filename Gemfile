@@ -82,7 +82,7 @@ gem "sentry-rails"
 gem "studio-engine", "~> 0.4.0"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
-gem "solana-studio", "~> 0.4.0"
+gem "solana-studio", "~> 0.4.3"
 
 # IP geolocation for state-level geo-blocking
 gem "geocoder"

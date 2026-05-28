@@ -129,7 +129,7 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 - bcrypt + Google OAuth + Solana wallet auth (Phantom)
 - **Sidekiq** + Redis for background jobs (web UI at `/admin/jobs`, admin-only)
 - **Studio engine gem** — `gem "studio-engine", "~> 0.4.0"` (RubyGems; current 0.4.10). `Studio.routes(self)` + `Studio.configure` in `config/initializers/studio.rb`.
-- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.0"` (RubyGems; current 0.4.2). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair. **Known bug**: 0.4.2's `Net::HTTP::Post.new(@uri.path)` drops the URL query string — breaks Helius (auth via `?api-key=`). Monkey-patched in `config/initializers/solana_client_query_string_patch.rb`; delete the initializer after bumping to 0.4.3+.
+- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.3"` (RubyGems; current 0.4.3). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair. 0.4.3 fixes the `Net::HTTP::Post.new(@uri.path)` query-string-dropping bug that broke Helius auth in 0.4.2 (see solana-studio PR #1 + CHANGELOG).
 
 ## JS Modules (importmap)
 
