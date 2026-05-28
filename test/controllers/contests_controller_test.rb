@@ -283,7 +283,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
     ptx = PendingTransaction.find_by(slug: body["ptx_slug"])
     assert_equal "pending", ptx.status
-    assert_equal "enter_contest_direct", ptx.tx_type
+    assert_equal "enter_contest", ptx.tx_type
     assert_equal entry, ptx.target
     assert_equal @user.web3_solana_address, ptx.initiator_address
   end
@@ -342,7 +342,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      tx_type: "enter_contest", serialized_tx: "stx",
       status: "submitted", tx_signature: "sig-confirm-1",
       target: entry, initiator_address: @user.web3_solana_address,
       metadata: { entry_pda: "epda-#{@contest.slug}-#{@user.web3_solana_address[0, 4]}-0" }.to_json
@@ -401,7 +401,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: @user, status: :cart)
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct",
+      tx_type: "enter_contest",
       serialized_tx: "fake-stx",
       status: "pending",
       target: entry,
@@ -426,7 +426,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: other_user, status: :cart)
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct",
+      tx_type: "enter_contest",
       serialized_tx: "fake-stx",
       status: "pending",
       target: entry,
@@ -462,7 +462,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
   def stranded_ptx_for(user:, contest:, status: "pending")
     entry = contest.entries.find_or_create_by!(user: user, status: :cart)
     PendingTransaction.create!(
-      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      tx_type: "enter_contest", serialized_tx: "stx",
       status: status, target: entry,
       initiator_address: user.web3_solana_address
     )
@@ -527,7 +527,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: @user, status: :active, onchain_tx_signature: "sig-was-here")
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct",
+      tx_type: "enter_contest",
       serialized_tx: "fake-stx",
       status: "submitted",
       tx_signature: "sig-x",
@@ -550,7 +550,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: @user, status: :cart)
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct",
+      tx_type: "enter_contest",
       serialized_tx: "fake-stx",
       status: "pending",
       target: entry,
@@ -574,7 +574,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: other, status: :cart)
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct",
+      tx_type: "enter_contest",
       serialized_tx: "fake-stx",
       status: "submitted",
       tx_signature: "sig-y",
@@ -606,7 +606,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     entry = @contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      tx_type: "enter_contest", serialized_tx: "stx",
       status: "submitted", tx_signature: "sig-confirmed-1",
       target: entry, initiator_address: @user.web3_solana_address,
       metadata: { entry_pda: "epda-1" }.to_json
@@ -634,7 +634,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: @user, status: :cart)
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      tx_type: "enter_contest", serialized_tx: "stx",
       status: "submitted", tx_signature: "sig-unknown",
       target: entry, initiator_address: @user.web3_solana_address
     )
@@ -655,7 +655,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
     entry = @contest.entries.create!(user: @user, status: :cart)
     ptx = PendingTransaction.create!(
-      tx_type: "enter_contest_direct", serialized_tx: "stx",
+      tx_type: "enter_contest", serialized_tx: "stx",
       status: "submitted", tx_signature: "sig-errored",
       target: entry, initiator_address: @user.web3_solana_address
     )

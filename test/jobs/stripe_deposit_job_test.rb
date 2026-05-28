@@ -10,7 +10,9 @@ class StripeDepositJobTest < ActiveJob::TestCase
     @sid = "cs_test_dep_#{SecureRandom.hex(4)}"
   end
 
-  test "managed-wallet path: ensure_ata + ensure_user_account + fund_user + deposit, records TransactionLog" do
+  test "managed-wallet path: ensure_ata + ensure_user_account + fund_user, records TransactionLog" do
+    # v0.16: deposit-to-vault is gone. Both managed and phantom paths now just
+    # fund the user's own USDC ATA — no custodial vault balance.
     @user.update!(web2_solana_address: @wallet, encrypted_web2_solana_private_key: "ciphertext")
     vault = FakeVault.new
 
@@ -25,14 +27,13 @@ class StripeDepositJobTest < ActiveJob::TestCase
     assert_equal "deposit", log.transaction_type
     assert_equal 2500, log.amount_cents
     assert_equal "credit", log.direction
-    assert_match(/fake-deposit-sig/, log.onchain_tx)
+    assert_match(/fake-fund/, log.onchain_tx)
 
     assert_equal 1, vault.ensure_account_calls.length
     assert_equal 1, vault.fund_calls.length
-    assert_equal 1, vault.deposit_calls.length
   end
 
-  test "phantom-wallet path: ensure_ata + fund_user only (no vault.deposit)" do
+  test "phantom-wallet path: ensure_ata + fund_user only" do
     @user.update!(web3_solana_address: @wallet, web2_solana_address: nil)
     vault = FakeVault.new
 
@@ -45,7 +46,6 @@ class StripeDepositJobTest < ActiveJob::TestCase
     assert_equal 5000, log.amount_cents
     assert_match(/fake-fund/, log.onchain_tx)
     assert_equal 1, vault.fund_calls.length
-    assert_equal 0, vault.deposit_calls.length
   end
 
   test "idempotency: re-delivered webhook does NOT double-credit (early return)" do
@@ -60,7 +60,6 @@ class StripeDepositJobTest < ActiveJob::TestCase
     end
 
     assert_equal 1, TransactionLog.where(stripe_session_id: @sid).count
-    assert_equal 0, vault.deposit_calls.length
     assert_equal 0, vault.fund_calls.length
   end
 

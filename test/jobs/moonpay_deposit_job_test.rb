@@ -9,7 +9,11 @@ class MoonpayDepositJobTest < ActiveJob::TestCase
     @tx_id = "moonpay_#{SecureRandom.hex(4)}"
   end
 
-  test "managed-wallet path: ensure_user_account + deposit, records TransactionLog" do
+  test "managed-wallet path: ensure_user_account + ensure_ata, records TransactionLog with nil onchain_tx" do
+    # v0.16: MoonPay sends USDC straight to the user's ATA. Rails has no
+    # on-chain action to take — just records the TransactionLog. No
+    # vault.deposit (instruction removed); no vault.fund_user (MoonPay
+    # handled the transfer itself).
     @user.update!(web2_solana_address: @wallet, encrypted_web2_solana_private_key: "ciphertext")
     vault = FakeVault.new
 
@@ -23,11 +27,11 @@ class MoonpayDepositJobTest < ActiveJob::TestCase
     assert log
     assert_equal 7500, log.amount_cents
     assert_equal "deposit", log.transaction_type
-    assert_equal 1, vault.deposit_calls.length
+    assert_nil log.onchain_tx
     assert_equal 1, vault.ensure_account_calls.length
   end
 
-  test "phantom-wallet path: no vault.deposit (USDC already in ATA)" do
+  test "phantom-wallet path: no on-chain action (USDC already in ATA)" do
     @user.update!(web3_solana_address: @wallet, web2_solana_address: nil)
     vault = FakeVault.new
 
@@ -38,7 +42,6 @@ class MoonpayDepositJobTest < ActiveJob::TestCase
     log = TransactionLog.find_by(moonpay_tx_id: @tx_id)
     assert log
     assert_nil log.onchain_tx
-    assert_equal 0, vault.deposit_calls.length
   end
 
   test "idempotency: re-delivered webhook does NOT double-credit (early return)" do
@@ -53,7 +56,6 @@ class MoonpayDepositJobTest < ActiveJob::TestCase
     end
 
     assert_equal 1, TransactionLog.where(moonpay_tx_id: @tx_id).count
-    assert_equal 0, vault.deposit_calls.length
   end
 
   test "race: DB unique index catches duplicate when exists? bypassed" do

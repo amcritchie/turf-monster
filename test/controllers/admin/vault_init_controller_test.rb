@@ -8,6 +8,9 @@ class Admin::VaultInitControllerTest < ActionDispatch::IntegrationTest
   ALEX     = Admin::VaultInitController::INIT_AUTHORITY # "7ZDJp7…r2J"
   MASON    = "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR".freeze
   SIGNERS  = [ALEX_BOT, ALEX, MASON].freeze
+  # v0.16 added treasury_authority as a 4th initialize arg (pinned to the
+  # Squads vault PDA — same one that holds the program upgrade authority).
+  TREASURY = "BW13kgfiG2koFn3WRkte21NW9TFygsD1ge2fNJdjH6kC".freeze
 
   setup do
     @admin = users(:alex)
@@ -63,8 +66,8 @@ class Admin::VaultInitControllerTest < ActionDispatch::IntegrationTest
     @ctrl ||= Admin::VaultInitController.new
   end
 
-  def validate!(creator: ALEX, signers: SIGNERS, threshold: 2)
-    ctrl.send(:validate_init_params!, creator, signers, threshold)
+  def validate!(creator: ALEX, signers: SIGNERS, threshold: 2, treasury: TREASURY)
+    ctrl.send(:validate_init_params!, creator, signers, threshold, treasury)
   end
 
   test "validate: happy path" do

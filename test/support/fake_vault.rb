@@ -90,11 +90,12 @@ class FakeVault
   # Used by ContestsController#prepare_entry. Returns the same envelope shape
   # as the real Solana::Vault#build_enter_contest_direct: serialized_tx plus
   # the predicted entry PDA the user's TX will create.
-  def build_enter_contest_direct(wallet_address, contest_slug, entry_num, season_id: nil)
+  # v0.16: renamed from build_enter_contest_direct; now takes currency_idx (0=USDC).
+  def build_enter_contest(wallet_address, contest_slug, entry_num, currency_idx: 0, season_id: nil)
     @enter_calls << {
-      method: :build_enter_contest_direct,
+      method: :build_enter_contest,
       wallet: wallet_address, slug: contest_slug,
-      entry_number: entry_num, season_id: season_id
+      entry_number: entry_num, currency_idx: currency_idx, season_id: season_id
     }
     {
       serialized_tx: "FAKE_TX_#{contest_slug}_#{entry_num}",
@@ -113,8 +114,11 @@ class FakeVault
 
   # --- PDA / ATA bootstrapping (no-op stubs) ---
 
-  def ensure_user_account(wallet)
-    @ensure_account_calls << wallet
+  def ensure_user_account(wallet, username: nil)
+    # v0.16: callers MUST pass username (>= 3 chars) — production Vault
+    # rescues to a Ruby ArgumentError client-side before the chain call.
+    # Test signature mirrors the real one.
+    @ensure_account_calls << { wallet: wallet, username: username }
     { created: false }
   end
 
