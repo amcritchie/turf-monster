@@ -49,6 +49,26 @@ class TestController < ApplicationController
       cleared << "omniauth_mocks"
     end
 
+    # Wipe non-core users (id > 5) that linger from prior signup-flow tests.
+    # Without this, referrals.spec.js's second run finds the existing
+    # Phantom/Google/email-signup user with invited_by_id already set;
+    # set_inviter doesn't re-fire; inviter counters stay at 0; assertions
+    # fail. Core users (alex/alex-bot/mason/mack/turf at IDs 1-5) stay —
+    # specs depend on their slugs being stable.
+    #
+    # destroy_all (not delete_all) so dependent: :destroy on User cascades
+    # to entries, transaction_logs, stripe_purchases.
+    begin
+      victims = User.where("id > ?", 5)
+      count = victims.count
+      if count > 0
+        victims.destroy_all
+        cleared << "non_core_users(#{count})"
+      end
+    rescue => e
+      Rails.logger.warn "[reseed] non-core user cleanup failed: #{e.class}: #{e.message[0,160]}"
+    end
+
     render json: { ok: true, cleared: cleared }
   end
 
