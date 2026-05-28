@@ -1,0 +1,50 @@
+<%#
+  .text byte buckets — horizontal bars sized by largest bucket.
+    locals: text_buckets (Array of { name:, bytes:, color:, detail: })
+%>
+<section class="card p-6 sm:p-8 mb-6">
+  <% text_total = text_buckets.sum { |b| b[:bytes] } %>
+  <% max_bucket = text_buckets.map { |b| b[:bytes] }.max %>
+  <div class="flex flex-col sm:flex-row sm:items-baseline sm:gap-4 mb-2">
+    <h2 class="text-heading font-bold text-xl">What's inside .text</h2>
+    <span class="text-[11px] font-mono text-muted uppercase tracking-wider">
+      code: <%= number_with_delimiter(text_total) %> bytes
+    </span>
+  </div>
+  <p class="text-secondary text-sm mb-5 max-w-3xl">
+    .text is the BPF bytecode that actually runs on chain. Most of it is Anchor's
+    auto-generated account-validation code, not the business logic itself.
+  </p>
+
+  <div class="space-y-3">
+    <% text_buckets.each do |b| %>
+      <% bar_pct = 100.0 * b[:bytes] / max_bucket %>
+      <% share = 100.0 * b[:bytes] / text_total %>
+      <%# Desktop: 4-column row; mobile: stack label above bar %>
+      <div class="grid grid-cols-12 sm:grid-cols-12 items-center gap-2 sm:gap-3 text-sm">
+        <div class="col-span-12 sm:col-span-5 text-heading text-[13px] sm:text-sm leading-snug">
+          <%= b[:name].html_safe %>
+        </div>
+        <div class="col-span-7 sm:col-span-4 bg-surface-alt h-2.5 rounded-full overflow-hidden">
+          <div class="h-full rounded-full"
+               style="width: <%= sprintf("%.1f", bar_pct) %>%; background: <%= b[:color] %>;"></div>
+        </div>
+        <div class="col-span-3 sm:col-span-2 font-mono tabular-nums text-secondary text-right text-[12px] sm:text-sm">
+          <%= sprintf("%.1f", b[:bytes] / 1024.0) %> KB
+        </div>
+        <div class="col-span-2 sm:col-span-1 font-mono tabular-nums text-muted text-right text-[11px]">
+          <%= sprintf("%.1f", share) %>%
+        </div>
+        <%# Detail tooltip — visible on tap (mobile) via details/summary %>
+        <details class="col-span-12 -mt-1">
+          <summary class="text-[12px] text-muted cursor-pointer hover:text-secondary select-none">
+            why this is here
+          </summary>
+          <p class="text-[12px] text-secondary mt-1 pl-1 leading-snug max-w-3xl">
+            <%= b[:detail] %>
+          </p>
+        </details>
+      </div>
+    <% end %>
+  </div>
+</section>

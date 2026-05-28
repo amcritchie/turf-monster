@@ -1,0 +1,106 @@
+<%#
+  SOL → USD cost calculator. Editable SOL price; recomputes the
+  permanent + refundable + total-float costs in dollars.
+    locals: binary_size
+
+  Alpine factory lives in the parent show.html.erb (window.contractCostCalculator)
+  because the factory MUST be defined inline before Alpine processes x-data
+  (importmap modules load too late — feedback_alpine_factory_importmap_timing).
+%>
+<section class="card p-6 sm:p-8 mb-6" x-data="contractCostCalculator()">
+  <div class="flex flex-col sm:flex-row sm:items-baseline sm:gap-4 mb-2">
+    <h2 class="text-heading font-bold text-xl">Deploy-cost calculator</h2>
+    <span class="text-[11px] font-mono text-muted uppercase tracking-wider">SOL &rarr; USD</span>
+  </div>
+  <p class="text-secondary text-sm mb-5 max-w-3xl">
+    Solana rent formula:
+    <code class="font-mono bg-surface-alt px-1.5 py-0.5 rounded text-xs">(data_len + 128) &times; 6960 lamports</code>
+    &mdash; this is the rent-exempt minimum (2 years &times; lamports-per-byte-year &times; 2&times; exemption threshold).
+  </p>
+
+  <%# Live readouts row — wraps to new lines on mobile %>
+  <div class="flex flex-wrap items-center gap-3 sm:gap-5 mb-5 text-sm">
+    <label class="flex items-center gap-2 text-secondary">
+      <span>SOL price:</span>
+      <span class="inline-flex items-center gap-1 bg-surface-alt rounded px-2 py-1 border border-subtle">
+        <span class="text-muted">$</span>
+        <input type="number" min="1" max="10000" step="1" x-model.number="solPrice"
+               class="bg-transparent border-none outline-none w-20 font-mono text-heading tabular-nums text-sm">
+      </span>
+    </label>
+    <span class="font-mono text-secondary text-xs sm:text-sm">
+      Binary: <strong class="text-heading tabular-nums"><%= number_with_delimiter(binary_size) %></strong> bytes
+    </span>
+    <span class="font-mono text-secondary text-xs sm:text-sm">
+      SOL needed: <strong class="text-primary tabular-nums" x-text="fmtSol(floatSol)">--</strong>
+    </span>
+    <span class="font-mono text-secondary text-xs sm:text-sm">
+      &asymp; <strong class="text-heading tabular-nums" x-text="fmtUsd(floatUsd)">--</strong>
+    </span>
+  </div>
+
+  <%# Two side-by-side breakdown blocks %>
+  <div class="grid gap-4 lg:grid-cols-2">
+
+    <%# Permanent block — what you spend forever %>
+    <div class="bg-surface-alt rounded-lg border border-subtle p-4 sm:p-5">
+      <h3 class="text-heading font-semibold text-sm mb-3">PERMANENT (you spend forever)</h3>
+      <dl class="space-y-1.5 font-mono text-xs sm:text-[13px] text-secondary">
+        <div class="flex justify-between items-baseline gap-2">
+          <dt class="truncate">ProgramData rent (<%= number_with_delimiter(binary_size) %> + 128) &times; 6960</dt>
+          <dd class="text-heading tabular-nums whitespace-nowrap" x-text="fmtLamports(pdLamports) + ' &#8467;'">--</dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2">
+          <dt class="truncate">Program account (36 + 128) &times; 6960</dt>
+          <dd class="text-heading tabular-nums whitespace-nowrap">1,141,440 &#8467;</dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2">
+          <dt class="truncate">Deploy TX fees (signatures + compute)</dt>
+          <dd class="text-heading tabular-nums whitespace-nowrap">~1,000,000 &#8467;</dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2 pt-2 mt-2 border-t border-subtle">
+          <dt class="text-heading font-semibold">Permanent SOL spent</dt>
+          <dd class="text-warning tabular-nums font-semibold whitespace-nowrap" x-text="'~' + fmtSol(permSol) + ' SOL'">--</dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2">
+          <dt class="text-muted">&asymp; at current price</dt>
+          <dd class="text-heading tabular-nums whitespace-nowrap" x-text="'~' + fmtUsd(permUsd)">--</dd>
+        </div>
+      </dl>
+    </div>
+
+    <%# Float block — what you need on hand, then refundable %>
+    <div class="bg-surface-alt rounded-lg border border-subtle p-4 sm:p-5">
+      <h3 class="text-heading font-semibold text-sm mb-3">FLOAT (you need on hand, then refundable)</h3>
+      <dl class="space-y-1.5 font-mono text-xs sm:text-[13px] text-secondary">
+        <div class="flex justify-between items-baseline gap-2">
+          <dt class="truncate">Buffer account (same size as binary)</dt>
+          <dd class="text-heading tabular-nums whitespace-nowrap" x-text="fmtLamports(pdLamports) + ' &#8467;'">--</dd>
+        </div>
+        <div class="flex justify-between items-baseline">
+          <dt class="text-muted">&mdash; refunded when you close the buffer</dt>
+          <dd></dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2 pt-2 mt-2 border-t border-subtle">
+          <dt class="text-heading font-semibold">Additional float during deploy</dt>
+          <dd class="text-mint tabular-nums font-semibold whitespace-nowrap" x-text="'~' + fmtSol(bufferSol) + ' SOL'">--</dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2">
+          <dt class="text-muted">&asymp; at current price</dt>
+          <dd class="text-heading tabular-nums whitespace-nowrap" x-text="'~' + fmtUsd(bufferUsd)">--</dd>
+        </div>
+        <div class="flex justify-between items-baseline gap-2 pt-2 mt-2 border-t border-subtle">
+          <dt class="text-secondary">Recommended balance before write-buffer</dt>
+          <dd class="text-primary tabular-nums font-semibold whitespace-nowrap" x-text="'~' + fmtSol(floatSol) + ' SOL'">--</dd>
+        </div>
+      </dl>
+    </div>
+
+  </div>
+
+  <p class="text-secondary text-[13px] mt-5 max-w-3xl leading-relaxed">
+    Subsequent upgrades through the Squad multisig need only the <em>float</em> portion &mdash; a new
+    buffer is written, the program is upgraded in place, then the old buffer is closed.
+    Net cost per upgrade: roughly zero, modulo TX fees and the brief float for the new buffer.
+  </p>
+</section>

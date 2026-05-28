@@ -1,0 +1,25 @@
+<%#
+  Plain-English intro for non-technical readers. The rest of the page
+  dives into bytes, SOL costs, and per-instruction details — this
+  paragraph is the one summary they should be able to read first.
+%>
+<section class="card p-6 sm:p-8 mb-6">
+  <h2 class="text-heading font-bold text-xl mb-3">What this contract does</h2>
+  <div class="space-y-3 text-body text-base leading-relaxed max-w-3xl">
+    <p>
+      Every Turf Monster contest you enter is escrowed by a small program that lives on Solana &mdash;
+      a public, immutable blockchain. The prize pool isn't sitting in a Turf Monster bank account.
+      It's locked in an on-chain account that <strong>only the contract itself can move</strong>,
+      following rules anyone can read.
+    </p>
+    <p>
+      You sign your own entry. Your USDC moves from your wallet to a contest account in one
+      transaction. When the contest settles, the contract pays winners directly from that account
+      to their wallets &mdash; we can't touch the money in between.
+    </p>
+    <p class="text-secondary text-sm">
+      Below: the exact bytes that ship on chain, every instruction the contract exposes,
+      and who is allowed to call each one.
+    </p>
+  </div>
+</section>

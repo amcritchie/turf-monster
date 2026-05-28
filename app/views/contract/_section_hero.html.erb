@@ -1,0 +1,53 @@
+<%#
+  Hero stats — 4 numbers. v0.16, embedded-IDL build.
+    locals: perm_sol, float_sol, buffer_sol, binary_size, v015_perm_sol
+%>
+<section class="mb-8">
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+
+    <div class="card p-4 sm:p-5">
+      <div class="text-[10px] sm:text-xs uppercase tracking-wider text-secondary font-semibold mb-2">Deploy binary</div>
+      <div class="font-mono text-2xl sm:text-3xl tabular-nums text-heading leading-tight">
+        <%= number_with_delimiter(binary_size) %><span class="text-xs sm:text-sm text-secondary ml-1">bytes</span>
+      </div>
+      <div class="text-[11px] sm:text-xs text-muted mt-2 leading-snug">
+        ~<%= (binary_size / 1024.0).round %> KB. The ELF that lands on chain.
+      </div>
+    </div>
+
+    <div class="card p-4 sm:p-5">
+      <div class="text-[10px] sm:text-xs uppercase tracking-wider text-secondary font-semibold mb-2">Permanent rent</div>
+      <div class="font-mono text-2xl sm:text-3xl tabular-nums text-warning leading-tight">
+        <%= sprintf("%.3f", perm_sol) %><span class="text-xs sm:text-sm text-secondary ml-1">SOL</span>
+      </div>
+      <div class="text-[11px] sm:text-xs text-muted mt-2 leading-snug">
+        <%
+          delta = perm_sol - v015_perm_sol
+          delta_word = delta >= 0 ? "more" : "less"
+        %>
+        Forever-locked rent on the ProgramData account. <%= sprintf("%.2f SOL %s than v0.15.1's %.3f", delta.abs, delta_word, v015_perm_sol) %>.
+      </div>
+    </div>
+
+    <div class="card p-4 sm:p-5">
+      <div class="text-[10px] sm:text-xs uppercase tracking-wider text-secondary font-semibold mb-2">Refundable buffer</div>
+      <div class="font-mono text-2xl sm:text-3xl tabular-nums text-mint leading-tight">
+        <%= sprintf("%.3f", buffer_sol) %><span class="text-xs sm:text-sm text-secondary ml-1">SOL</span>
+      </div>
+      <div class="text-[11px] sm:text-xs text-muted mt-2 leading-snug">
+        During-deploy buffer account. Refunded once <code class="font-mono text-secondary">close-buffer</code> runs.
+      </div>
+    </div>
+
+    <div class="card p-4 sm:p-5">
+      <div class="text-[10px] sm:text-xs uppercase tracking-wider text-secondary font-semibold mb-2">Total float at deploy</div>
+      <div class="font-mono text-2xl sm:text-3xl tabular-nums text-primary leading-tight">
+        ~<%= sprintf("%.2f", float_sol) %><span class="text-xs sm:text-sm text-secondary ml-1">SOL</span>
+      </div>
+      <div class="text-[11px] sm:text-xs text-muted mt-2 leading-snug">
+        Both accounts exist simultaneously during deploy. Needed in Alex Bot before write-buffer.
+      </div>
+    </div>
+
+  </div>
+</section>

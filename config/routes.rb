@@ -61,6 +61,12 @@ Rails.application.routes.draw do
   # them next to the Rails-reported figures.
   get "proof-of-reserves", to: "proof_of_reserves#show", as: :proof_of_reserves
 
+  # Public contract transparency page — infographic of the turf-vault
+  # smart contract (binary size, rent cost, per-instruction breakdown,
+  # auth model). Operators see expanded admin-only sections + an
+  # operational playbook when current_user&.admin?.
+  get "contract", to: "contract#show", as: :contract
+
   # Public faucet page
   get  "faucet", to: "faucet#show", as: :faucet
   post "faucet", to: "faucet#claim"

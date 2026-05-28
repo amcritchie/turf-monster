@@ -1,0 +1,101 @@
+<%#
+  Admin-only: full 17-instruction list grouped by signer role, plus an
+  operational playbook for each treasury / lifecycle action sourced
+  from v0.16-spec.md.
+
+    locals: operator_instructions (Hash group_label => Array of {name, bytes, auth_class, playbook})
+%>
+<section class="card border-2 border-primary/30 p-6 sm:p-8 mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-baseline sm:gap-4 mb-2">
+    <h2 class="text-heading font-bold text-xl">Operator playbook</h2>
+    <span class="text-[11px] font-mono text-primary uppercase tracking-wider">admin only</span>
+  </div>
+  <p class="text-secondary text-sm mb-5 max-w-3xl">
+    All 17 instructions, grouped by signer role, with the operational reasoning Carl and
+    Alex agreed on during the v0.16 spec freeze. Sourced from <code class="font-mono text-xs">docs/v0.16-spec.md</code>.
+  </p>
+
+  <div class="space-y-6">
+    <% operator_instructions.each do |group_label, ixs| %>
+      <% group_pill = case group_label
+                      when /init/i      then "bg-warning/10 text-warning border-warning/30"
+                      when /1-of-3/     then "bg-violet/10 text-violet border-violet/30"
+                      when /2-of-3/     then "bg-primary/10 text-primary border-primary/30"
+                      when /user/i      then "bg-mint/10 text-mint border-mint/30"
+                      else "bg-surface-alt text-secondary border-subtle"
+                      end
+      %>
+      <div>
+        <div class="flex items-center gap-3 mb-3">
+          <span class="px-2.5 py-1 rounded-full text-xs font-mono border <%= group_pill %>"><%= group_label %></span>
+          <span class="text-muted text-xs"><%= ixs.size %> instruction<%= "s" unless ixs.size == 1 %></span>
+        </div>
+        <div class="grid gap-2 sm:gap-3">
+          <% ixs.each do |ix| %>
+            <details class="bg-surface-alt rounded-lg border border-subtle overflow-hidden group">
+              <summary class="cursor-pointer list-none p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div class="flex items-center gap-3 min-w-0">
+                  <code class="font-mono text-heading font-semibold text-sm truncate"><%= ix[:name] %></code>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-muted">
+                  <span class="font-mono tabular-nums whitespace-nowrap"><%= number_with_delimiter(ix[:bytes]) %> bytes</span>
+                  <svg class="w-4 h-4 transition-transform group-open:rotate-180 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </div>
+              </summary>
+              <div class="px-3 sm:px-4 pb-3 sm:pb-4">
+                <p class="text-body text-[13px] leading-relaxed"><%= ix[:playbook] %></p>
+              </div>
+            </details>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <%# When to use the destructive / unusual ones — a short bullet ref card %>
+  <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+    <div class="bg-surface-alt border border-subtle border-l-2 border-l-warning rounded-lg p-4">
+      <h4 class="text-heading font-semibold text-sm mb-2">When to pause</h4>
+      <ul class="space-y-1 text-[12px] text-secondary list-disc list-outside pl-4">
+        <li>Active exploit suspected against any entry path</li>
+        <li>Phantom / wallet provider has a known outage causing dropped sigs</li>
+        <li>Oracle / scoring service is broken and bad settles could result</li>
+      </ul>
+      <p class="text-[11px] text-muted mt-2">Reason logged on-chain (UTF-8 zero-padded to 64 bytes).</p>
+    </div>
+
+    <div class="bg-surface-alt border border-subtle border-l-2 border-l-warning rounded-lg p-4">
+      <h4 class="text-heading font-semibold text-sm mb-2">When to cancel a contest</h4>
+      <ul class="space-y-1 text-[12px] text-secondary list-disc list-outside pl-4">
+        <li>Event postponed past a useful window</li>
+        <li>Force majeure invalidates the matchup slate</li>
+        <li>Operator misconfigured prize structure pre-lock</li>
+      </ul>
+      <p class="text-[11px] text-muted mt-2">Entry fees stay in op-revenue; compensate via mint_entry_token.</p>
+    </div>
+
+    <div class="bg-surface-alt border border-subtle border-l-2 border-l-violet rounded-lg p-4">
+      <h4 class="text-heading font-semibold text-sm mb-2">When to sweep operator revenue</h4>
+      <ul class="space-y-1 text-[12px] text-secondary list-disc list-outside pl-4">
+        <li>Quarterly treasury reconciliation</li>
+        <li>Tax-event preparation</li>
+        <li>op_rev_ata balance crosses a configured threshold</li>
+      </ul>
+      <p class="text-[11px] text-muted mt-2">Destination pinned to Squads vault PDA at initialize time.</p>
+    </div>
+
+    <div class="bg-surface-alt border border-subtle border-l-2 border-l-mint rounded-lg p-4">
+      <h4 class="text-heading font-semibold text-sm mb-2">How to register a new currency</h4>
+      <ul class="space-y-1 text-[12px] text-secondary list-disc list-outside pl-4">
+        <li>Pick a free slot (0&hellip;15) in accepted_currencies</li>
+        <li>Build register_currency TX &mdash; 2-of-3 cosign</li>
+        <li>Creates per-currency op_rev_ata under PDA seeds [b"op_rev", mint]</li>
+        <li>New contests can immediately set entry_fee_by_currency[slot]</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
