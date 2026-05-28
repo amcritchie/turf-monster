@@ -372,7 +372,7 @@ class ContestsController < ApplicationController
           entry.save! if entry.entry_number_changed?
 
           vault = Solana::Vault.new
-          vault.ensure_user_account(current_user.solana_address) if current_user.solana_connected?
+          vault.ensure_user_account(current_user.solana_address, username: current_user.username) if current_user.solana_connected?
           # OPSEC-004: pass the managed wallet's keypair — turf-vault v0.12.0
           # requires the token owner to sign the consume.
           result = vault.enter_contest_with_token(
@@ -387,13 +387,28 @@ class ContestsController < ApplicationController
           onchain_entry_id = result[:entry_pda]
           token_consumed = true
         elsif @contest.onchain? && !onchain_session?
-          # Offchain session entering onchain contest: blocking vault entry
+          # Offchain session entering onchain contest: blocking vault entry.
+          # v0.16 unified enter_contest requires the user's keypair to sign
+          # the SPL transfer; managed wallets supply it from the encrypted
+          # `solana_keypair` column. Default to currency_idx 0 (USDC) for
+          # Phase 1 — currency picker is a Phase 2 task.
           entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
           entry.save! if entry.entry_number_changed?
 
+          raise "Managed wallet missing keypair (cannot sign entry)" unless current_user.solana_keypair
+
           vault = Solana::Vault.new
-          vault.ensure_user_account(current_user.solana_address) if current_user.solana_connected?
-          result = vault.enter_contest(current_user.solana_address, @contest.slug, entry.entry_number, season_id: @contest.season_id)
+          vault.ensure_user_account(current_user.solana_address, username: current_user.username) if current_user.solana_connected?
+          vault.ensure_ata(current_user.solana_address, mint: Solana::Config::USDC_MINT)
+
+          result = vault.enter_contest(
+            current_user.solana_address,
+            @contest.slug,
+            entry.entry_number,
+            currency_idx: 0,
+            user_keypair: current_user.solana_keypair,
+            season_id: @contest.season_id
+          )
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
         end
@@ -482,32 +497,36 @@ class ContestsController < ApplicationController
 
       vault = Solana::Vault.new
 
-      # Ensure user's onchain account exists and is current (auto-migrate if needed)
-      vault.ensure_user_account(current_user.web3_solana_address)
+      # Ensure user's onchain account exists and is current (auto-migrate if needed).
+      # v0.16: username is required at PDA creation (validate_username on chain
+      # enforces >= 3 chars). Pass current_user.username through.
+      vault.ensure_user_account(current_user.web3_solana_address, username: current_user.username)
+      # v0.16: user's USDC ATA must exist before they can transfer from it.
+      # init_if_needed isn't used in the instruction so we create it here.
+      vault.ensure_ata(current_user.web3_solana_address, mint: Solana::Config::USDC_MINT)
 
-      result = vault.build_enter_contest_direct(
+      # v0.16 collapsed `enter_contest` + `enter_contest_direct` into a
+      # single unified `enter_contest` instruction. currency_idx 0 = USDC
+      # (only currency surfaced in the UI for Phase 1).
+      result = vault.build_enter_contest(
         current_user.web3_solana_address,
         @contest.slug,
         entry.entry_number,
+        currency_idx: 0,
         season_id: @contest.season_id
       )
 
       # Persist a PendingTransaction so a refresh mid-flight (between sign
-      # and confirm_onchain_entry) leaves a server-side trail. Without it,
-      # the user's first signature can be silently consumed on-chain while
-      # the cart entry stays in `cart` status — and a retry hits Anchor's
-      # `init` constraint, surfacing as a generic error. Status flips to
-      # `submitted` via stamp_entry_signature after broadcast, then
-      # `confirmed` in confirm_onchain_entry. Any pending/submitted PT
-      # found on next page load is recoverable (admin can audit, or future
-      # client logic can auto-retry confirm using the stamped signature).
+      # and confirm_onchain_entry) leaves a server-side trail. Status flips
+      # to `submitted` via stamp_entry_signature after broadcast, then
+      # `confirmed` in confirm_onchain_entry.
       ptx = PendingTransaction.create!(
-        tx_type: "enter_contest_direct",
+        tx_type: "enter_contest",
         serialized_tx: result[:serialized_tx],
         status: "pending",
         target: entry,
         initiator_address: current_user.web3_solana_address,
-        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug }.to_json
+        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug, currency_idx: 0 }.to_json
       )
 
       render json: {
@@ -628,7 +647,7 @@ class ContestsController < ApplicationController
 
       # OPSEC-010: server-derive the entry PDA (we know contest slug, wallet,
       # and entry_number). Reject mismatched client-supplied PDAs, then assert
-      # the on-chain TX is the enter_contest_direct IX writing to that PDA,
+      # the on-chain TX is the v0.16 enter_contest IX writing to that PDA,
       # signed by the user's own wallet.
       derived_entry_pda = Solana::Keypair.encode_base58(
         Solana::Vault.new.entry_pda(@contest.slug, current_user.web3_solana_address, entry.entry_number).first
@@ -637,7 +656,7 @@ class ContestsController < ApplicationController
 
       verify_solana_transaction!(
         params[:tx_signature],
-        instruction: "enter_contest_direct",
+        instruction: "enter_contest",
         signer: current_user.web3_solana_address,
         writable: derived_entry_pda
       )

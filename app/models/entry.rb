@@ -174,10 +174,24 @@ class Entry < ApplicationRecord
 
     vault = Solana::Vault.new
 
-    # Ensure user's onchain account exists before entering
-    vault.ensure_user_account(user.solana_address)
+    # Ensure user's onchain account exists before entering.
+    # v0.16 requires a valid username (>= 3 chars) at PDA creation.
+    vault.ensure_user_account(user.solana_address, username: user.username)
 
-    result = vault.enter_contest(user.solana_address, contest.slug, entry_number)
+    # v0.16: unified enter_contest requires the user's keypair to sign the
+    # SPL transfer from their ATA. This convenience method is only safe for
+    # managed wallets (server holds the keypair); Phantom users must go
+    # through ContestsController#prepare_entry → build_enter_contest path.
+    raise "enter_onchain! requires a managed wallet" unless user.solana_keypair
+
+    result = vault.enter_contest(
+      user.solana_address,
+      contest.slug,
+      entry_number,
+      currency_idx: 0,
+      user_keypair: user.solana_keypair,
+      season_id: contest.season_id
+    )
     update!(
       onchain_entry_id: result[:entry_pda],
       onchain_tx_signature: result[:signature]

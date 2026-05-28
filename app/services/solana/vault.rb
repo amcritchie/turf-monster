@@ -1,8 +1,42 @@
 require "digest"
 
 module Solana
+  # Solana::Vault — Rails-side service layer for the turf-vault Anchor
+  # program (v0.16).
+  #
+  # v0.16 architecture (server-signed self-custody):
+  #   - USDC lives in each user's own ATA (not a vault PDA).
+  #   - Contest entry = SPL transfer from user ATA → per-currency op_rev ATA.
+  #   - Contest payouts = SPL transfer from per-contest prize_pool PDA → winner ATA.
+  #   - No deposit / withdraw / balance / daily cap instructions on-chain.
+  #     Managed-wallet "withdrawals" are handled off-chain (operator flow —
+  #     see PayoutRequest model, coming in Phase 2).
+  #
+  # Instruction surface (15 + pause/unpause = 17):
+  #   initialize, register_currency, deactivate_currency,
+  #   create_user_account, set_username,
+  #   create_season,
+  #   create_contest, lock_contest, unlock_contest,
+  #   enter_contest, enter_contest_with_token,
+  #   settle_contest, cancel_contest, close_contest,
+  #   mint_entry_token, sweep_operator_revenue,
+  #   pause, unpause.
   class Vault
     attr_reader :client
+
+    # Default compute-unit limit for settle_contest. v0.16 settle does an
+    # SPL CPI per winner; the spec recommends 400_000 for headroom up to ~50
+    # winners (spec §3.12, §10.1, §11 Q7).
+    SETTLE_COMPUTE_UNIT_LIMIT = 400_000
+
+    # ComputeBudget program id (deterministic).
+    COMPUTE_BUDGET_PROGRAM_ID = Keypair.decode_base58("ComputeBudget111111111111111111111111111111")
+
+    # Sentinel currency_idx for token-funded entries (spec §3.11 / §11 Q2).
+    TOKEN_FUNDED_CURRENCY_IDX = 255
+
+    # Solana's `Pubkey::default()` (32 zero bytes) base58-encoded.
+    ZERO_PUBKEY_B58 = "11111111111111111111111111111111".freeze
 
     def initialize(client: Solana::Client.new)
       @client = client
@@ -13,14 +47,6 @@ module Solana
 
     def vault_state_pda
       Transaction.find_pda([b("vault")], @program_id)
-    end
-
-    def vault_usdc_pda
-      Transaction.find_pda([b("vault_usdc")], @program_id)
-    end
-
-    def vault_usdt_pda
-      Transaction.find_pda([b("vault_usdt")], @program_id)
     end
 
     def user_account_pda(wallet_address)
@@ -42,13 +68,27 @@ module Solana
 
     def entry_token_pda(wallet_address, sequence)
       wallet_bytes = Keypair.decode_base58(wallet_address)
-      seq_bytes = [sequence].pack("Q<") # u64 LE — matches Anchor's `sequence.to_le_bytes()`
+      seq_bytes = [sequence].pack("Q<") # u64 LE
       Transaction.find_pda([b("entry_token"), wallet_bytes, seq_bytes], @program_id)
     end
 
     def season_pda(season_id)
-      id_bytes = [season_id].pack("V") # u32 LE — matches Anchor's `season_id.to_le_bytes()`
+      id_bytes = [season_id].pack("V") # u32 LE
       Transaction.find_pda([b("season"), id_bytes], @program_id)
+    end
+
+    # Per-contest USDC prize-pool PDA (v0.16). Holds the prize_pool USDC.
+    # Authority = vault_state PDA. Seeds: [b"prize_pool", contest_id].
+    def prize_pool_pda(contest_slug)
+      contest_id = Digest::SHA256.digest(contest_slug)
+      Transaction.find_pda([b("prize_pool"), contest_id], @program_id)
+    end
+
+    # Per-currency operator-revenue ATA (v0.16). Authority = vault_state PDA.
+    # Seeds: [b"op_rev", mint]. Accepts a base58 string or 32-byte buffer.
+    def op_rev_ata_pda(mint)
+      mint_bytes = mint.is_a?(String) ? Keypair.decode_base58(mint) : mint
+      Transaction.find_pda([b("op_rev"), mint_bytes], @program_id)
     end
 
     # --- ATA helpers ---
@@ -82,15 +122,13 @@ module Solana
 
       { ata: ata_base58, created: true, signature: signature }
     rescue Solana::Client::RpcError => e
-      # ATA may have been created concurrently (e.g. by EnsureAtaJob).
-      # Re-check and return if it now exists; otherwise re-raise.
       raise unless e.message.include?("IllegalOwner")
       info = client.get_account_info(ata_base58)
       raise unless info&.dig("value")
       { ata: ata_base58, created: false, signature: nil }
     end
 
-    # Mint SPL tokens (admin must be mint authority). Defaults to admin's ATA.
+    # Mint SPL tokens (admin must be mint authority — devnet test mints).
     def mint_spl(amount_lamports, mint:, to: nil)
       admin = Keypair.admin
 
@@ -119,7 +157,6 @@ module Solana
     def transfer_spl(to_wallet, amount_lamports, mint:)
       admin = Keypair.admin
 
-      # Ensure recipient ATA exists
       ensure_ata(to_wallet, mint: mint)
 
       from_bytes, _ = Solana::SplToken.find_associated_token_address(admin.public_key_bytes, mint)
@@ -137,104 +174,58 @@ module Solana
       { signature: signature, amount: amount_lamports, destination: Keypair.encode_base58(to_bytes) }
     end
 
-    # Transfer USDC from a user's managed wallet to the admin wallet.
-    # Server signs with the user's keypair. Used for entry fee payments.
-    def transfer_from_user(user, amount_lamports, mint:)
-      keypair = user.solana_keypair
-      raise "No managed wallet key" unless keypair
+    # Fund a user's wallet ATA with USDC.
+    # Devnet: mints new tokens (admin holds mint authority on test mints).
+    # Mainnet: transfers from admin's treasury ATA.
+    #
+    # v0.16: there is no vault deposit step after this — USDC lives in the
+    # user's ATA, period. Stripe/MoonPay deposit jobs call this and stop.
+    def fund_user(wallet_address, amount_lamports, mint: :usdc)
+      mint_key = mint == :usdc ? Config::USDC_MINT : Config::USDT_MINT
+      ensure_ata(wallet_address, mint: mint_key)
 
-      admin = Keypair.admin
-      from_pubkey = keypair.public_key_bytes
-      to_pubkey = admin.public_key_bytes
-
-      ensure_ata(Keypair.encode_base58(from_pubkey), mint: mint)
-      ensure_ata(Keypair.encode_base58(to_pubkey), mint: mint)
-
-      from_ata, _ = Solana::SplToken.find_associated_token_address(from_pubkey, mint)
-      to_ata, _ = Solana::SplToken.find_associated_token_address(to_pubkey, mint)
-
-      transfer_ix = Solana::SplToken.transfer_instruction(
-        from: from_ata, to: to_ata,
-        authority: from_pubkey, amount: amount_lamports
-      )
-
-      tx = build_tx(admin)    # admin pays SOL fees
-      tx.add_signer(keypair)  # user authorizes the token transfer
-      tx.add_instruction(**transfer_ix)
-      signature = client.send_and_confirm(tx.serialize_base64)
-
-      { signature: signature, amount: amount_lamports }
+      if Config.devnet?
+        mint_spl(amount_lamports, mint: mint_key, to: wallet_address)
+      else
+        transfer_spl(wallet_address, amount_lamports, mint: mint_key)
+      end
     end
 
-    # --- High-level operations ---
-
-    # Initialize the vault (run once after program deploy)
-    # signers: array of 3 base58 signer addresses
-    # threshold: number of required signatures for treasury ops
-    def initialize_vault(signers:, threshold:)
-      admin = Keypair.admin
-      vault_pda, _ = vault_state_pda
-      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
-      usdt_mint = Keypair.decode_base58(Config::USDT_MINT)
-      vault_usdc, _ = vault_usdc_pda
-      vault_usdt, _ = vault_usdt_pda
-
-      data = Transaction.anchor_discriminator("initialize") +
-             signers.map { |s| Borsh.encode_pubkey(Keypair.decode_base58(s)) }.join +
-             Borsh.encode_u8(threshold)
-
-      tx = build_tx(admin)
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: vault_pda, is_signer: false, is_writable: true },
-          { pubkey: usdc_mint, is_signer: false, is_writable: false },
-          { pubkey: usdt_mint, is_signer: false, is_writable: false },
-          { pubkey: vault_usdc, is_signer: false, is_writable: true },
-          { pubkey: vault_usdt, is_signer: false, is_writable: true },
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
-        ],
-        data: data
-      )
-
-      signature = client.send_and_confirm(tx.serialize_base64)
-      { signature: signature, vault_pda: Keypair.encode_base58(vault_pda) }
-    end
+    # --- Vault initialization (one-time per program deploy) ---
 
     # Build a partially-signed `initialize` transaction for Phantom to cosign.
     #
-    # Mainnet `initialize` requires `admin == INIT_AUTHORITY` — a specific
-    # Phantom keypair we don't (and shouldn't) hold server-side. This variant
-    # puts `creator_pubkey` in the instruction's admin slot (so the on-chain
-    # check sees Alex's Phantom) while the server's bot still fee-pays the TX.
-    # The bot signs server-side; the creator signature slot is left empty for
-    # Phantom to fill via `cosignTransaction()`.
+    # v0.16 signature: signers[3] + threshold + treasury_authority (Squads vault PDA).
+    # Initial accepted_currencies are wired up server-side: slot 0 = USDC (payout),
+    # slot 1 = USDT. Both op_rev ATAs are init'd in the same TX.
     #
-    # Returns { serialized_tx:, vault_pda: } — base64 partial TX + PDA b58.
-    def build_initialize_vault(creator_pubkey:, signers:, threshold:)
+    # Mainnet `initialize` requires admin == INIT_AUTHORITY (a Phantom key
+    # the server doesn't hold), so this builder puts `creator_pubkey` in the
+    # admin slot and the bot only fee-pays.
+    def build_initialize_vault(creator_pubkey:, signers:, threshold:, treasury_authority:)
       creator_bytes = Keypair.decode_base58(creator_pubkey)
       vault_pda, _ = vault_state_pda
       usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
       usdt_mint = Keypair.decode_base58(Config::USDT_MINT)
-      vault_usdc, _ = vault_usdc_pda
-      vault_usdt, _ = vault_usdt_pda
+      treasury_authority_bytes = Keypair.decode_base58(treasury_authority)
+
+      payout_op_rev, _ = op_rev_ata_pda(Config::USDC_MINT)
+      second_op_rev,  _ = op_rev_ata_pda(Config::USDT_MINT)
 
       data = Transaction.anchor_discriminator("initialize") +
              signers.map { |s| Borsh.encode_pubkey(Keypair.decode_base58(s)) }.join +
-             Borsh.encode_u8(threshold)
+             Borsh.encode_u8(threshold) +
+             Borsh.encode_pubkey(treasury_authority_bytes)
 
       serialized = build_partial_signed(
         accounts: [
-          { pubkey: creator_bytes, is_signer: true, is_writable: true },  # admin = Phantom (INIT_AUTHORITY on mainnet)
-          { pubkey: vault_pda, is_signer: false, is_writable: true },
-          { pubkey: usdc_mint, is_signer: false, is_writable: false },
-          { pubkey: usdt_mint, is_signer: false, is_writable: false },
-          { pubkey: vault_usdc, is_signer: false, is_writable: true },
-          { pubkey: vault_usdt, is_signer: false, is_writable: true },
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
+          { pubkey: creator_bytes,         is_signer: true,  is_writable: true  }, # admin (== INIT_AUTHORITY on mainnet)
+          { pubkey: vault_pda,             is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,             is_signer: false, is_writable: false }, # payout_mint
+          { pubkey: usdt_mint,             is_signer: false, is_writable: false }, # second_currency_mint
+          { pubkey: payout_op_rev,         is_signer: false, is_writable: true  }, # payout_op_rev_ata (init)
+          { pubkey: second_op_rev,         is_signer: false, is_writable: true  }, # second_op_rev_ata (init)
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,  is_signer: false, is_writable: false },
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false },
           { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
         ],
@@ -244,51 +235,127 @@ module Solana
       { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
-    # Read the on-chain VaultState account. Returns nil if not yet initialized.
-    # VaultState layout (v0.15.0): 8 disc + 3*32 signers + 1 threshold + 32 usdc_mint
-    # + 32 usdt_mint + 32 vault_usdc + 32 vault_usdt + 1 bump + 1 paused = 235 bytes.
+    # Server-signed `initialize` — devnet / dev builds only.
+    # Used by `bin/rails solana:init_vault INIT=true`. Mainnet always uses
+    # the Phantom co-sign path (build_initialize_vault).
+    def initialize_vault(signers:, threshold:, treasury_authority:)
+      admin = Keypair.admin
+      vault_pda, _ = vault_state_pda
+      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
+      usdt_mint = Keypair.decode_base58(Config::USDT_MINT)
+      treasury_authority_bytes = Keypair.decode_base58(treasury_authority)
+
+      payout_op_rev, _ = op_rev_ata_pda(Config::USDC_MINT)
+      second_op_rev,  _ = op_rev_ata_pda(Config::USDT_MINT)
+
+      data = Transaction.anchor_discriminator("initialize") +
+             signers.map { |s| Borsh.encode_pubkey(Keypair.decode_base58(s)) }.join +
+             Borsh.encode_u8(threshold) +
+             Borsh.encode_pubkey(treasury_authority_bytes)
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: vault_pda,              is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,              is_signer: false, is_writable: false },
+          { pubkey: usdt_mint,              is_signer: false, is_writable: false },
+          { pubkey: payout_op_rev,          is_signer: false, is_writable: true  },
+          { pubkey: second_op_rev,          is_signer: false, is_writable: true  },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,   is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID,  is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      signature = client.send_and_confirm(tx.serialize_base64)
+      { signature: signature, vault_pda: Keypair.encode_base58(vault_pda) }
+    end
+
+    # --- VaultState reads (zero-copy / bytemuck layout) ---
+    #
+    # v0.16 VaultState is #[account(zero_copy(unsafe))] + #[repr(C)]:
+    #   offset  field                    size
+    #      0    discriminator              8
+    #      8    signers[3]                96
+    #    104    threshold                  1
+    #    105    bump                       1
+    #    106    paused (u8 0/1)            1
+    #    107    payout_mint               32
+    #    139    treasury_authority        32
+    #    171    accepted_currencies[16] 1280  (each slot = 80 bytes)
+    #   1451    _reserved                 64
+    #   1515    end
+    #
+    # Each AcceptedCurrency slot (80 bytes):
+    #     0    mint                       32
+    #    32    op_rev_ata                 32
+    #    64    kind                        1
+    #    65    active (u8 0/1)             1
+    #    66    _pad                       14
+    #
+    # Returns nil if the account doesn't exist (vault uninitialized).
+    #
+    # Compatibility: callers (admin views, navbar) still read
+    # `:usdc_mint` / `:usdt_mint`. Those are sourced from slots 0/1 of the
+    # accepted_currencies array.
     def read_vault_state(commitment: "confirmed")
       pda, _ = vault_state_pda
       info = client.get_account_info(Keypair.encode_base58(pda), commitment: commitment)
       return nil unless info&.dig("value")
 
       data = Base64.decode64(info["value"]["data"][0])
-      offset = 8
 
-      signers = 3.times.map do
-        pk, offset = Borsh.decode_pubkey(data, offset)
-        Keypair.encode_base58(pk)
+      signers = 3.times.map do |i|
+        Keypair.encode_base58(data.byteslice(8 + i * 32, 32))
       end
-      threshold, offset  = Borsh.decode_u8(data, offset)
-      usdc_mint, offset  = Borsh.decode_pubkey(data, offset)
-      usdt_mint, offset  = Borsh.decode_pubkey(data, offset)
-      vault_usdc, offset = Borsh.decode_pubkey(data, offset)
-      vault_usdt, offset = Borsh.decode_pubkey(data, offset)
-      bump, offset       = Borsh.decode_u8(data, offset)
-      paused = data.length > offset ? data[offset].ord == 1 : false  # `paused` added v0.15.0
+      threshold = data.byteslice(104, 1).unpack1("C")
+      bump      = data.byteslice(105, 1).unpack1("C")
+      paused    = data.byteslice(106, 1).unpack1("C") == 1
+      payout_mint        = Keypair.encode_base58(data.byteslice(107, 32))
+      treasury_authority = Keypair.encode_base58(data.byteslice(139, 32))
+
+      currencies = 16.times.map do |i|
+        off = 171 + i * 80
+        {
+          slot:       i,
+          mint:       Keypair.encode_base58(data.byteslice(off, 32)),
+          op_rev_ata: Keypair.encode_base58(data.byteslice(off + 32, 32)),
+          kind:       data.byteslice(off + 64, 1).unpack1("C"),
+          active:     data.byteslice(off + 65, 1).unpack1("C") == 1
+        }
+      end
+      # Pubkey::default().to_base58 == "11111111111111111111111111111111".
+      registered = currencies.select { |c| c[:mint] != ZERO_PUBKEY_B58 }
+
+      # Back-compat keys for admin views written against the v0.15.1 shape.
+      slot0 = registered.find { |c| c[:slot] == 0 }
+      slot1 = registered.find { |c| c[:slot] == 1 }
 
       {
-        pda: Keypair.encode_base58(pda),
-        signers: signers,
-        threshold: threshold,
-        usdc_mint: Keypair.encode_base58(usdc_mint),
-        usdt_mint: Keypair.encode_base58(usdt_mint),
-        vault_usdc: Keypair.encode_base58(vault_usdc),
-        vault_usdt: Keypair.encode_base58(vault_usdt),
-        bump: bump,
-        paused: paused
+        pda:                 Keypair.encode_base58(pda),
+        signers:             signers,
+        threshold:           threshold,
+        bump:                bump,
+        paused:              paused,
+        payout_mint:         payout_mint,
+        treasury_authority:  treasury_authority,
+        accepted_currencies: currencies,
+        registered_currencies: registered,
+        # Back-compat: admin views read these directly.
+        usdc_mint:           slot0 ? slot0[:mint] : nil,
+        usdt_mint:           slot1 ? slot1[:mint] : nil,
+        # v0.16 removed pooled USDC/USDT vault PDAs; surface op_rev as the
+        # closest analog so existing views don't 500 on a nil read.
+        vault_usdc:          slot0 ? slot0[:op_rev_ata] : nil,
+        vault_usdt:          slot1 ? slot1[:op_rev_ata] : nil
       }
     end
 
-    # Per-request memoized read of the VaultState account. Used by the admin
-    # dropdown to answer both "is the vault uninitialized?" and "is the vault
-    # paused?" off a single RPC. Falls back to Rails.cache (1-minute TTL) for
-    # cross-request caching in prod; dev's :null_store no-ops, so the
-    # Current-level memo is the real saver on every admin page render.
-    #
-    # On RPC failure, sets Current.vault_state_error so callers that need to
-    # distinguish "we know it's nil" from "we don't know" (vault_uninitialized?)
-    # can fail safe instead of treating the nil as truth.
+    # Per-request memoized VaultState read. See ApplicationController's
+    # perform_solana_preload for the canonical caller.
     def self.cached_vault_state
       return Current.vault_state if Current.vault_state_fetched
 
@@ -302,13 +369,8 @@ module Solana
       Current.vault_state = nil
     end
 
-    # Build a partially-signed `pause` transaction for Phantom to cosign.
-    #
-    # turf-vault v0.15.0 emergency stop. Requires 2-of-3 multisig — admin
-    # signs server-side (bot key), cosigner slot is left empty for Phantom
-    # to fill. `reason` is logged on-chain (UTF-8 zero-padded to 64 bytes).
-    #
-    # Returns { serialized_tx: base64, vault_pda: b58 }.
+    # --- Pause / unpause (2-of-3) ---
+
     def build_pause_vault(cosigner_pubkey:, reason:)
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
       vault_pda, _ = vault_state_pda
@@ -320,9 +382,9 @@ module Solana
 
       serialized = build_partial_signed(
         accounts: [
-          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: cosigner_bytes,                 is_signer: true, is_writable: false },
-          { pubkey: vault_pda,                      is_signer: false, is_writable: true }
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: true  }
         ],
         data: data,
         additional_signers: [cosigner_bytes]
@@ -330,8 +392,6 @@ module Solana
       { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
-    # Build a partially-signed `unpause` transaction for Phantom to cosign.
-    # Same 2-of-3 auth as pause; no reason arg.
     def build_unpause_vault(cosigner_pubkey:)
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
       vault_pda, _ = vault_state_pda
@@ -340,9 +400,9 @@ module Solana
 
       serialized = build_partial_signed(
         accounts: [
-          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: cosigner_bytes,                 is_signer: true, is_writable: false },
-          { pubkey: vault_pda,                      is_signer: false, is_writable: true }
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: true  }
         ],
         data: data,
         additional_signers: [cosigner_bytes]
@@ -350,64 +410,74 @@ module Solana
       { serialized_tx: serialized, vault_pda: Keypair.encode_base58(vault_pda) }
     end
 
-    # Force-close the vault account (migration only — closes old-schema vault)
-    # Requires 2-of-3 multisig: cosigner_keypair must be a second signer
-    def force_close_vault(cosigner_keypair: nil)
-      admin = Keypair.admin
-      vault_pda, _ = vault_state_pda
+    # --- Currency registry (2-of-3) ---
 
-      data = Transaction.anchor_discriminator("force_close_vault")
+    # Build a partially-signed register_currency TX. Admin signs (pays
+    # ATA rent), cosigner slot left for Phantom. `kind` is informational
+    # (0 = stablecoin).
+    def build_register_currency(cosigner_pubkey:, mint:, kind: 0)
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      mint_bytes     = Keypair.decode_base58(mint)
+      vault_pda, _   = vault_state_pda
+      op_rev,    _   = op_rev_ata_pda(mint)
 
-      accounts = [
-        { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-      ]
+      data = Transaction.anchor_discriminator("register_currency") + Borsh.encode_u8(kind)
 
-      # Add cosigner if provided (multisig vault), otherwise single-admin (legacy)
-      if cosigner_keypair
-        accounts << { pubkey: cosigner_keypair.public_key_bytes, is_signer: true, is_writable: false }
-      end
-
-      accounts << { pubkey: vault_pda, is_signer: false, is_writable: true }
-
-      tx = build_tx(admin)
-      tx.add_signer(cosigner_keypair) if cosigner_keypair
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: accounts,
-        data: data
+      serialized = build_partial_signed(
+        accounts: [
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: true  },
+          { pubkey: mint_bytes,                     is_signer: false, is_writable: false },
+          { pubkey: op_rev,                         is_signer: false, is_writable: true  },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,   is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID,  is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
+        ],
+        data: data,
+        additional_signers: [cosigner_bytes]
       )
-
-      signature = client.send_and_confirm(tx.serialize_base64)
-      { signature: signature }
+      { serialized_tx: serialized, op_rev_ata: Keypair.encode_base58(op_rev) }
     end
 
-    # Check status of a UserAccount PDA: :ok, :needs_migration, or :not_found
+    # Build a partially-signed deactivate_currency TX (2-of-3).
+    def build_deactivate_currency(cosigner_pubkey:, currency_idx:)
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      vault_pda, _   = vault_state_pda
+
+      data = Transaction.anchor_discriminator("deactivate_currency") +
+             Borsh.encode_u8(currency_idx)
+
+      serialized = build_partial_signed(
+        accounts: [
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: true  }
+        ],
+        data: data,
+        additional_signers: [cosigner_bytes]
+      )
+      { serialized_tx: serialized }
+    end
+
+    # --- User account ---
+
+    # UserAccount layout (v0.16): 8 disc + 32 wallet + 32 username + 8 seeds +
+    # 4 entries + 4 wins + 4 cashes + 8 total_won + 1 bump + 32 _reserved = 133.
+    USER_ACCOUNT_LEN = 133
+
     def check_user_account_status(wallet_address)
       user_pda, _ = user_account_pda(wallet_address)
       info = client.get_account_info(Keypair.encode_base58(user_pda))
       return :not_found unless info&.dig("value")
 
       data = Base64.decode64(info["value"]["data"][0])
-      # 8 discriminator + 121 UserAccount fields = 129 bytes (v0.15.0+):
-      # adds daily_withdrawn (u64) + daily_window_start (i64) on top of the
-      # v0.14.0 username[32]. Pre-v0.15.0 accounts (113 / 81 / 73 bytes) can
-      # no longer be migrated — v0.15.1 removed migrate_user_account
-      # (prelaunch audit C1) — and the deployed program won't deserialize
-      # them anyway, so they correctly report :needs_migration here.
-      expected_len = 129
-      data.length == expected_len ? :ok : :needs_migration
+      data.length == USER_ACCOUNT_LEN ? :ok : :needs_migration
     end
 
     # Ensure user's onchain account exists, creating it if missing.
-    # `username` is used only on the create path (new account).
-    #
-    # `:needs_migration` was previously handled by calling migrate_user_account.
-    # As of turf-vault v0.15.1 (prelaunch audit C1), that instruction is
-    # removed — no mainnet accounts exist to migrate, and the instruction's
-    # missing wallet-Signer / wallet-binding constraints made it a drain
-    # vector. If this method ever sees :needs_migration in practice, it
-    # signals real schema drift between Rails and turf-vault and must be
-    # investigated manually rather than auto-migrated.
+    # `:needs_migration` indicates schema drift (old v0.15.1 UserAccount layout
+    # at a different size) — bail loudly rather than auto-migrating.
     def ensure_user_account(wallet_address, username: nil)
       status = check_user_account_status(wallet_address)
       case status
@@ -415,14 +485,21 @@ module Solana
       when :not_found then create_user_account(wallet_address, username: username)
       when :needs_migration
         raise "UserAccount at unexpected size for #{wallet_address} — turf-vault " \
-              "schema drift; v0.15.1 removed the migrate_user_account instruction. " \
-              "Investigate manually."
+              "v0.16 schema drift; investigate manually (devnet teardown may be needed)."
       end
     end
 
-    # Create a UserAccount PDA for a wallet (admin pays rent).
-    # `username` is stored on-chain (turf-vault v0.14.0+) — UTF-8, padded to 32 bytes.
     def create_user_account(wallet_address, username: nil)
+      # v0.16: validate_username runs on-chain in handle_create_user_account
+      # and rejects < 3 non-null bytes with `UsernameTooShort` (0x1786).
+      # Catch this client-side with a clearer error than the on-chain code.
+      if username.nil? || username.to_s.strip.length < 3
+        raise ArgumentError,
+              "create_user_account requires a username of >= 3 chars " \
+              "(got: #{username.inspect}). v0.16 enforces this on-chain " \
+              "(VaultError::UsernameTooShort). Pass username: user.username."
+      end
+
       admin = Keypair.admin
       user_pda, _bump = user_account_pda(wallet_address)
       wallet_bytes = Keypair.decode_base58(wallet_address)
@@ -435,8 +512,8 @@ module Solana
       tx.add_instruction(
         program_id: @program_id,
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: user_pda, is_signer: false, is_writable: true },
+          { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  },
+          { pubkey: user_pda,                       is_signer: false, is_writable: true  },
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
         data: data
@@ -446,9 +523,7 @@ module Solana
       { signature: signature, pda: Keypair.encode_base58(user_pda) }
     end
 
-    # Set the username on a wallet's UserAccount — server-signed, for custodial
-    # (managed) wallets. `user_keypair` is the managed wallet's keypair; the
-    # server co-signs as the account owner. turf-vault v0.14.0+.
+    # Server-signed set_username for custodial users (web2).
     def set_username(wallet_address, username, user_keypair:)
       raise "user_keypair required for a server-signed set_username" unless user_keypair
       admin = Keypair.admin
@@ -457,13 +532,13 @@ module Solana
 
       data = Transaction.anchor_discriminator("set_username") + username_bytes32(username)
 
-      tx = build_tx(admin)         # admin pays the fee
-      tx.add_signer(user_keypair)  # the account owner authorizes the rename
+      tx = build_tx(admin)
+      tx.add_signer(user_keypair)
       tx.add_instruction(
         program_id: @program_id,
         accounts: [
           { pubkey: wallet_bytes, is_signer: true,  is_writable: false },
-          { pubkey: user_pda,     is_signer: false, is_writable: true }
+          { pubkey: user_pda,     is_signer: false, is_writable: true  }
         ],
         data: data
       )
@@ -471,9 +546,6 @@ module Solana
       { signature: signature }
     end
 
-    # Build a partially-signed set_username transaction for a Phantom user to
-    # co-sign. Admin signs (pays the fee); the wallet's signature slot is left
-    # empty for the client. Returns base64 serialized TX. turf-vault v0.14.0+.
     def build_set_username(wallet_address, username)
       user_pda, _ = user_account_pda(wallet_address)
       wallet_bytes = Keypair.decode_base58(wallet_address)
@@ -483,7 +555,7 @@ module Solana
       serialized = build_partial_signed(
         accounts: [
           { pubkey: wallet_bytes, is_signer: true,  is_writable: false },
-          { pubkey: user_pda,     is_signer: false, is_writable: true }
+          { pubkey: user_pda,     is_signer: false, is_writable: true  }
         ],
         data: data,
         additional_signers: [wallet_bytes]
@@ -491,120 +563,104 @@ module Solana
       { serialized_tx: serialized }
     end
 
-    # Fund a user's wallet ATA with USDC.
-    # Devnet: mints new tokens (admin has mint authority).
-    # Mainnet: would transfer from treasury.
-    def fund_user(wallet_address, amount_lamports, mint: :usdc)
-      mint_key = mint == :usdc ? Config::USDC_MINT : Config::USDT_MINT
-      ensure_ata(wallet_address, mint: mint_key)
-
-      if Config.devnet?
-        mint_spl(amount_lamports, mint: mint_key, to: wallet_address)
-      else
-        transfer_spl(wallet_address, amount_lamports, mint: mint_key)
-      end
-    end
-
-    # Withdraw from vault back to user's ATA (server signs with managed wallet keypair)
-    def withdraw(user_keypair, amount_lamports, mint: :usdc)
-      admin = Keypair.admin
-      wallet_address = user_keypair.to_base58
+    # Read on-chain UserAccount (v0.16 layout).
+    #
+    # v0.16 strips balance/total_deposited/total_withdrawn/daily_window_*.
+    # Replaces them with on-chain stat counters (entries, wins, cashes,
+    # total_won).
+    #
+    # Compatibility shim: callers (display_balance, withdraw gate) expect
+    # `:balance` / `:balance_dollars`. Since custodial balance is gone in
+    # v0.16, we surface the user's USDC ATA balance under the same keys —
+    # functionally what "balance available" means for the user is now their
+    # ATA balance.
+    def sync_balance(wallet_address, commitment: "confirmed")
       user_pda, _ = user_account_pda(wallet_address)
-      vault_pda, _ = vault_state_pda
-      vault_token_pda, _ = mint == :usdc ? vault_usdc_pda : vault_usdt_pda
-      mint_pubkey = mint == :usdc ? Config::USDC_MINT : Config::USDT_MINT
+      pda_base58 = Keypair.encode_base58(user_pda)
 
-      user_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, mint_pubkey)
+      info = client.get_account_info(pda_base58, commitment: commitment)
+      return nil unless info&.dig("value")
 
-      data = Transaction.anchor_discriminator("withdraw") +
-             Borsh.encode_u64(amount_lamports)
+      data = Base64.decode64(info["value"]["data"][0])
 
-      tx = build_tx(user_keypair)
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: [
-          { pubkey: user_keypair.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: Keypair.decode_base58(mint_pubkey), is_signer: false, is_writable: false },
-          { pubkey: user_ata, is_signer: false, is_writable: true },
-          { pubkey: vault_token_pda, is_signer: false, is_writable: true },
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false }
-        ],
-        data: data
-      )
+      offset = 8 # skip discriminator
+      _wallet, offset = Borsh.decode_pubkey(data, offset)
+      raw_username = data.byteslice(offset, 32).to_s
+      username = raw_username.bytes.take_while { |byte| byte != 0 }
+                             .pack("C*").force_encoding("UTF-8").presence
+      offset += 32
+      seeds,       offset = Borsh.decode_u64(data, offset)
+      entries,     offset = Borsh.decode_u32(data, offset)
+      wins,        offset = Borsh.decode_u32(data, offset)
+      cashes,      offset = Borsh.decode_u32(data, offset)
+      total_won,   offset = Borsh.decode_u64(data, offset)
 
-      client.send_and_confirm(tx.serialize_base64)
+      # ATA-side USDC balance — replaces the dropped UserAccount.balance.
+      ata_balance_lamports = fetch_usdc_ata_balance_lamports(wallet_address)
+
+      {
+        # v0.16 fields
+        username:           username,
+        seeds:              seeds,
+        entries:            entries,
+        wins:               wins,
+        cashes:             cashes,
+        total_won:          total_won,
+        total_won_dollars:  Config.lamports_to_dollars(total_won),
+        # Back-compat keys (USDC ATA balance — functionally "available balance")
+        balance:            ata_balance_lamports,
+        balance_dollars:    Config.lamports_to_dollars(ata_balance_lamports),
+        # Legacy v0.15.1 fields callers may still read — surface zero so
+        # nil-safety holds without lying about behavior.
+        total_deposited:    0,
+        total_withdrawn:    0,
+        daily_withdrawn:    0,
+        daily_window_start: 0
+      }
     end
 
-    # Deposit for managed wallet users (server signs with their keypair)
-    def deposit(user_keypair, amount_lamports, mint: :usdc)
-      admin = Keypair.admin
-      wallet_address = user_keypair.to_base58
-      user_pda, _ = user_account_pda(wallet_address)
-      vault_pda, _ = vault_state_pda
-      vault_token_pda, _ = mint == :usdc ? vault_usdc_pda : vault_usdt_pda
-      mint_pubkey = mint == :usdc ? Config::USDC_MINT : Config::USDT_MINT
+    # --- Contest creation ---
 
-      user_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, mint_pubkey)
-
-      data = Transaction.anchor_discriminator("deposit") +
-             Borsh.encode_u64(amount_lamports)
-
-      # For managed: user_keypair signs, admin pays fees
-      tx = build_tx(user_keypair)
-      tx.add_instruction(
-        program_id: @program_id,
-        accounts: [
-          { pubkey: user_keypair.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: Keypair.decode_base58(mint_pubkey), is_signer: false, is_writable: false },
-          { pubkey: user_ata, is_signer: false, is_writable: true },
-          { pubkey: vault_token_pda, is_signer: false, is_writable: true },
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false }
-        ],
-        data: data
-      )
-
-      client.send_and_confirm(tx.serialize_base64)
-    end
-
-    # Build a partially-signed create_contest transaction.
-    # Admin signs (pays PDA rent), creator must sign client-side (authorizes prizes USDC transfer).
-    # Returns base64-encoded transaction for the creator to co-sign and submit.
-    def build_create_contest(wallet_address, contest_slug, entry_fee:, max_entries:, payout_amounts:, prizes:, season_id: nil)
-      wallet_bytes = Keypair.decode_base58(wallet_address)
-      contest_id = Digest::SHA256.digest(contest_slug)
+    # v0.16 build_create_contest. Admin pays SOL rent (payer slot), creator
+    # signs the prize-pool USDC transfer (creator slot). `entry_fee_by_currency`
+    # is a 16-element array of u64 lamports — index = currency_idx, 0 = not
+    # accepted for this contest.
+    def build_create_contest(wallet_address, contest_slug,
+                             entry_fee_by_currency:, max_entries:,
+                             payout_amounts:, prize_pool:, season_id: nil)
+      wallet_bytes  = Keypair.decode_base58(wallet_address)
+      contest_id    = Digest::SHA256.digest(contest_slug)
       contest_pda_addr, _ = contest_pda(contest_slug)
-      vault_pda, _ = vault_state_pda
+      prize_pool_addr,  _ = prize_pool_pda(contest_slug)
+      vault_pda,    _ = vault_state_pda
 
-      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
+      usdc_mint   = Keypair.decode_base58(Config::USDC_MINT)
       creator_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
-      vault_usdc, _ = vault_usdc_pda
 
-      # OPSEC-023: create_contest now records the season the contest is bound to.
       season_id ||= SeasonConfig.current_season_id
+
+      fee_array = pad_fee_array(entry_fee_by_currency)
 
       data = Transaction.anchor_discriminator("create_contest") +
              Borsh.encode_bytes32(contest_id) +
              Borsh.encode_u32(season_id) +
-             Borsh.encode_u64(entry_fee) +
+             fee_array.map { |amt| Borsh.encode_u64(amt) }.join +
              Borsh.encode_u32(max_entries) +
              Borsh.encode_vec(payout_amounts) { |amt| Borsh.encode_u64(amt) } +
-             Borsh.encode_u64(prizes)
+             Borsh.encode_u64(prize_pool)
 
       serialized = build_partial_signed(
         accounts: [
-          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
-          { pubkey: wallet_bytes, is_signer: true, is_writable: true },              # creator (signs USDC transfer)
-          { pubkey: vault_pda, is_signer: false, is_writable: false },               # vault_state
-          { pubkey: contest_pda_addr, is_signer: false, is_writable: true },         # contest (init)
-          { pubkey: usdc_mint, is_signer: false, is_writable: false },               # mint
-          { pubkey: creator_ata, is_signer: false, is_writable: true },              # creator_token_account
-          { pubkey: vault_usdc, is_signer: false, is_writable: true },               # vault_token_account
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  }, # payer
+          { pubkey: wallet_bytes,                   is_signer: true,  is_writable: true  }, # creator
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false }, # vault_state
+          { pubkey: contest_pda_addr,               is_signer: false, is_writable: true  }, # contest (init)
+          { pubkey: prize_pool_addr,                is_signer: false, is_writable: true  }, # prize_pool (init)
+          { pubkey: usdc_mint,                      is_signer: false, is_writable: false }, # payout_mint
+          { pubkey: creator_ata,                    is_signer: false, is_writable: true  }, # creator_token_account
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,   is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID,  is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
         ],
         data: data,
         additional_signers: [wallet_bytes]
@@ -613,59 +669,55 @@ module Solana
       { serialized_tx: serialized, contest_pda: Keypair.encode_base58(contest_pda_addr) }
     end
 
-    # Server-funded `create_contest` — admin signs as BOTH payer AND creator.
-    # The Anchor program dedupes signers by pubkey so the single admin sig
-    # covers both required signatures. Prize-pool USDC is transferred from
-    # the admin's own ATA into the vault PDA.
-    #
-    # Use this for operator-run contests (no human creator). For contests
-    # where a different human funds the prize pool from their Phantom wallet,
-    # use `build_create_contest` + the partial-sign / co-sign UI flow instead.
-    #
-    # Submits the TX synchronously and waits for confirmation.
-    # Returns { tx_signature:, contest_pda: } (both base58 strings).
-    def create_contest_server_funded(contest_slug:, entry_fee:, max_entries:, payout_amounts:, prizes:, season_id: nil)
+    # Server-funded create_contest — admin signs both payer and creator slots.
+    # Used by operator scripts / Rails console. Funds prize pool from admin
+    # USDC ATA → prize_pool PDA.
+    def create_contest_server_funded(contest_slug:, entry_fee_by_currency:,
+                                     max_entries:, payout_amounts:, prize_pool:,
+                                     season_id: nil)
       admin = Keypair.admin
       contest_id = Digest::SHA256.digest(contest_slug)
       contest_pda_addr, _ = contest_pda(contest_slug)
-      vault_pda, _ = vault_state_pda
+      prize_pool_addr,  _ = prize_pool_pda(contest_slug)
+      vault_pda,    _ = vault_state_pda
 
-      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
-      admin_b58 = Keypair.encode_base58(admin.public_key_bytes)
+      usdc_mint  = Keypair.decode_base58(Config::USDC_MINT)
+      admin_b58  = Keypair.encode_base58(admin.public_key_bytes)
       creator_ata, _ = Solana::SplToken.find_associated_token_address(admin_b58, Config::USDC_MINT)
-      vault_usdc, _ = vault_usdc_pda
 
-      # OPSEC-023: create_contest now records the season the contest is bound to.
       season_id ||= SeasonConfig.current_season_id
+
+      fee_array = pad_fee_array(entry_fee_by_currency)
 
       data = Transaction.anchor_discriminator("create_contest") +
              Borsh.encode_bytes32(contest_id) +
              Borsh.encode_u32(season_id) +
-             Borsh.encode_u64(entry_fee) +
+             fee_array.map { |amt| Borsh.encode_u64(amt) }.join +
              Borsh.encode_u32(max_entries) +
              Borsh.encode_vec(payout_amounts) { |amt| Borsh.encode_u64(amt) } +
-             Borsh.encode_u64(prizes)
+             Borsh.encode_u64(prize_pool)
 
       tx = build_tx(admin)
       tx.add_instruction(
         program_id: @program_id,
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },   # creator (= admin; dedup'd by Solana)
-          { pubkey: vault_pda, is_signer: false, is_writable: false },              # vault_state
-          { pubkey: contest_pda_addr, is_signer: false, is_writable: true },        # contest (init)
-          { pubkey: usdc_mint, is_signer: false, is_writable: false },              # mint
-          { pubkey: creator_ata, is_signer: false, is_writable: true },             # creator_token_account (admin's ATA)
-          { pubkey: vault_usdc, is_signer: false, is_writable: true },              # vault_token_account
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  }, # payer
+          { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  }, # creator (== admin, dedup'd)
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+          { pubkey: contest_pda_addr,               is_signer: false, is_writable: true  },
+          { pubkey: prize_pool_addr,                is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,                      is_signer: false, is_writable: false },
+          { pubkey: creator_ata,                    is_signer: false, is_writable: true  },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,   is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID,  is_signer: false, is_writable: false },
+          { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
         ],
         data: data
       )
 
       serialized = tx.serialize_base64
       tx_sig = client.send_transaction(serialized)
-      # Wait for finalization so callers can immediately use the contest_pda.
+
       deadline = Time.now + 30
       loop do
         sleep 1
@@ -677,43 +729,131 @@ module Solana
         raise "create_contest TX confirmation timeout (sig=#{tx_sig})" if Time.now > deadline
       end
 
-      contest_pda_b58 = Keypair.encode_base58(contest_pda_addr)
-      { tx_signature: tx_sig, contest_pda: contest_pda_b58 }
+      { tx_signature: tx_sig, contest_pda: Keypair.encode_base58(contest_pda_addr) }
     end
 
-    # Enter contest (admin signs, deducts from user balance onchain).
-    # `season_id` defaults to SeasonConfig.current_season_id — the active season's
-    # seed_schedule drives how many seeds are awarded.
-    def enter_contest(wallet_address, contest_slug, entry_num, season_id: nil)
+    # --- Contest lifecycle ---
+
+    # Build lock_contest TX (1-of-3, admin alone signs server-side).
+    def lock_contest(contest_slug)
       admin = Keypair.admin
-      contest_id = Digest::SHA256.digest(contest_slug)
-      wallet_bytes = Keypair.decode_base58(wallet_address)
-      vault_pda, _ = vault_state_pda
-      user_pda, _ = user_account_pda(wallet_address)
       c_pda, _ = contest_pda(contest_slug)
-      e_pda, _ = entry_pda(contest_slug, wallet_address, entry_num)
+      vault_pda, _ = vault_state_pda
+
+      data = Transaction.anchor_discriminator("lock_contest")
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: vault_pda,              is_signer: false, is_writable: false },
+          { pubkey: c_pda,                  is_signer: false, is_writable: true  }
+        ],
+        data: data
+      )
+      signature = client.send_and_confirm(tx.serialize_base64)
+      { signature: signature }
+    end
+
+    # Build unlock_contest TX (2-of-3). Returns base64 partial-signed TX.
+    def build_unlock_contest(contest_slug, cosigner_pubkey:)
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      c_pda, _ = contest_pda(contest_slug)
+      vault_pda, _ = vault_state_pda
+
+      data = Transaction.anchor_discriminator("unlock_contest")
+
+      serialized = build_partial_signed(
+        accounts: [
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+          { pubkey: c_pda,                          is_signer: false, is_writable: true  }
+        ],
+        data: data,
+        additional_signers: [cosigner_bytes]
+      )
+      { serialized_tx: serialized }
+    end
+
+    # Build cancel_contest TX (2-of-3). Refunds prize_pool → creator ATA.
+    def build_cancel_contest(contest_slug, creator_pubkey:, cosigner_pubkey:)
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      c_pda, _ = contest_pda(contest_slug)
+      prize_pool_addr, _ = prize_pool_pda(contest_slug)
+      vault_pda, _ = vault_state_pda
+      usdc_mint   = Keypair.decode_base58(Config::USDC_MINT)
+      creator_ata, _ = Solana::SplToken.find_associated_token_address(creator_pubkey, Config::USDC_MINT)
+
+      data = Transaction.anchor_discriminator("cancel_contest")
+
+      serialized = build_partial_signed(
+        accounts: [
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+          { pubkey: c_pda,                          is_signer: false, is_writable: true  },
+          { pubkey: prize_pool_addr,                is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,                      is_signer: false, is_writable: false },
+          { pubkey: creator_ata,                    is_signer: false, is_writable: true  },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,  is_signer: false, is_writable: false }
+        ],
+        data: data,
+        additional_signers: [cosigner_bytes]
+      )
+      { serialized_tx: serialized }
+    end
+
+    # --- Entries ---
+
+    # v0.16 unified enter_contest. Handles both web2 and web3:
+    #   - web3: server builds a partial-signed TX with admin (payer) pre-signed;
+    #     Phantom signs as `user` and broadcasts (use `build_enter_contest` below).
+    #   - web2: server signs BOTH as payer (admin keypair) and user (custodial
+    #     keypair) and broadcasts directly (this method).
+    #
+    # `currency_idx` selects the on-chain currency slot to spend from (0 = USDC,
+    # 1 = USDT, etc.). Defaults to 0 for the v1 UX. The contest's
+    # entry_fee_by_currency[idx] determines the amount.
+    def enter_contest(wallet_address, contest_slug, entry_num, currency_idx: 0,
+                      user_keypair:, season_id: nil)
+      raise "user_keypair required for managed-wallet entry (v0.16 OPSEC)" unless user_keypair
+
+      admin = Keypair.admin
+      vault_pda, _ = vault_state_pda
+      user_pda,  _ = user_account_pda(wallet_address)
+      c_pda,     _ = contest_pda(contest_slug)
+      e_pda,     _ = entry_pda(contest_slug, wallet_address, entry_num)
       season_id ||= SeasonConfig.current_season_id
-      s_pda, _ = season_pda(season_id)
+      s_pda,     _ = season_pda(season_id)
+
+      mint_b58    = mint_for_currency_idx(currency_idx)
+      currency_mint_bytes = Keypair.decode_base58(mint_b58)
+      user_ata,   _ = Solana::SplToken.find_associated_token_address(wallet_address, mint_b58)
+      op_rev,     _ = op_rev_ata_pda(mint_b58)
 
       data = Transaction.anchor_discriminator("enter_contest") +
-             Borsh.encode_u32(entry_num)
+             Borsh.encode_u32(entry_num) +
+             Borsh.encode_u8(currency_idx)
 
-      # First-time entrant's UserAccount may have just been created — retry if
-      # its PDA hasn't reached the preflight node yet (Anchor 3012 / 0xbc4).
       signature = with_account_init_retry do
         tx = build_tx(admin)
+        tx.add_signer(user_keypair)
         tx.add_instruction(
           program_id: @program_id,
-          accounts: [
-            { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-            { pubkey: wallet_bytes, is_signer: false, is_writable: false },
-            { pubkey: vault_pda, is_signer: false, is_writable: false },
-            { pubkey: user_pda, is_signer: false, is_writable: true },
-            { pubkey: c_pda, is_signer: false, is_writable: true },
-            { pubkey: e_pda, is_signer: false, is_writable: true },
-            { pubkey: s_pda, is_signer: false, is_writable: false },
-            { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
-          ],
+          accounts: enter_contest_accounts(
+            payer_bytes:       admin.public_key_bytes,
+            user_bytes:        user_keypair.public_key_bytes,
+            user_pda:          user_pda,
+            vault_pda:         vault_pda,
+            contest_pda:       c_pda,
+            entry_pda:         e_pda,
+            currency_mint:     currency_mint_bytes,
+            user_token_account: user_ata,
+            op_rev_ata:        op_rev,
+            season_pda:        s_pda
+          ),
           data: data
         )
         client.send_and_confirm(tx.serialize_base64)
@@ -721,44 +861,78 @@ module Solana
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
-    # Enter contest using an unconsumed on-chain entry token (turf-vault v0.10.0+).
-    # Atomic: creates the entry, consumes the token, awards seeds per the season's
-    # seed_schedule[entry_num.min(4)]. No USDC charged.
-    # `entry_token_pda_b58` is the base58 PDA of the EntryTokenAccount being consumed.
-    # OPSEC-004: `user_keypair` is now required — turf-vault v0.12.0 makes the
-    # `wallet` account a Signer on enter_contest_with_token. For managed (web2)
-    # wallets the server holds the custodial keypair and co-signs; this means a
-    # leaked admin key alone can no longer burn a user's entry token.
-    def enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58, user_keypair:, season_id: nil)
+    # Build a partially-signed enter_contest TX for Phantom co-sign. Admin
+    # signs (pays rent), user slot left empty for client-side Phantom signing.
+    # Replaces v0.15.1's build_enter_contest_direct.
+    def build_enter_contest(wallet_address, contest_slug, entry_num, currency_idx: 0, season_id: nil)
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+      vault_pda,   _ = vault_state_pda
+      user_pda,    _ = user_account_pda(wallet_address)
+      c_pda,       _ = contest_pda(contest_slug)
+      e_pda,       _ = entry_pda(contest_slug, wallet_address, entry_num)
+      season_id ||= SeasonConfig.current_season_id
+      s_pda,       _ = season_pda(season_id)
+
+      mint_b58    = mint_for_currency_idx(currency_idx)
+      currency_mint_bytes = Keypair.decode_base58(mint_b58)
+      user_ata,   _ = Solana::SplToken.find_associated_token_address(wallet_address, mint_b58)
+      op_rev,     _ = op_rev_ata_pda(mint_b58)
+
+      data = Transaction.anchor_discriminator("enter_contest") +
+             Borsh.encode_u32(entry_num) +
+             Borsh.encode_u8(currency_idx)
+
+      serialized = build_partial_signed(
+        accounts: enter_contest_accounts(
+          payer_bytes:        Keypair.admin.public_key_bytes,
+          user_bytes:         wallet_bytes,
+          user_pda:           user_pda,
+          vault_pda:          vault_pda,
+          contest_pda:        c_pda,
+          entry_pda:          e_pda,
+          currency_mint:      currency_mint_bytes,
+          user_token_account: user_ata,
+          op_rev_ata:         op_rev,
+          season_pda:         s_pda
+        ),
+        data: data,
+        additional_signers: [wallet_bytes]
+      )
+      { serialized_tx: serialized, entry_pda: Keypair.encode_base58(e_pda) }
+    end
+
+    # Atomic token-funded entry (no SPL transfer; consumes EntryTokenAccount).
+    # `user_keypair` required: token owner must sign the consume (OPSEC-004).
+    # Used by ContestsController#enter for web2 users.
+    def enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58,
+                                 user_keypair:, season_id: nil)
       raise "user_keypair required (OPSEC-004)" unless user_keypair
       admin = Keypair.admin
-      wallet_bytes = Keypair.decode_base58(wallet_address)
-      vault_pda, _ = vault_state_pda
-      user_pda, _ = user_account_pda(wallet_address)
-      c_pda, _ = contest_pda(contest_slug)
-      e_pda, _ = entry_pda(contest_slug, wallet_address, entry_num)
+      vault_pda,   _ = vault_state_pda
+      user_pda,    _ = user_account_pda(wallet_address)
+      c_pda,       _ = contest_pda(contest_slug)
+      e_pda,       _ = entry_pda(contest_slug, wallet_address, entry_num)
       token_pda_bytes = Keypair.decode_base58(entry_token_pda_b58)
       season_id ||= SeasonConfig.current_season_id
-      s_pda, _ = season_pda(season_id)
+      s_pda,       _ = season_pda(season_id)
 
       data = Transaction.anchor_discriminator("enter_contest_with_token") +
              Borsh.encode_u32(entry_num)
 
-      # See enter_contest — same first-entry UserAccount propagation race.
       signature = with_account_init_retry do
         tx = build_tx(admin)
-        tx.add_signer(user_keypair)  # OPSEC-004: server co-signs as the managed user
+        tx.add_signer(user_keypair)
         tx.add_instruction(
           program_id: @program_id,
           accounts: [
-            { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-            { pubkey: wallet_bytes, is_signer: true, is_writable: false },
-            { pubkey: vault_pda, is_signer: false, is_writable: false },
-            { pubkey: user_pda, is_signer: false, is_writable: true },
-            { pubkey: c_pda, is_signer: false, is_writable: true },
-            { pubkey: e_pda, is_signer: false, is_writable: true },
-            { pubkey: token_pda_bytes, is_signer: false, is_writable: true },
-            { pubkey: s_pda, is_signer: false, is_writable: false },
+            { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  }, # payer
+            { pubkey: user_keypair.public_key_bytes,  is_signer: true,  is_writable: true  }, # user
+            { pubkey: user_pda,                       is_signer: false, is_writable: true  },
+            { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+            { pubkey: c_pda,                          is_signer: false, is_writable: true  },
+            { pubkey: e_pda,                          is_signer: false, is_writable: true  },
+            { pubkey: token_pda_bytes,                is_signer: false, is_writable: true  },
+            { pubkey: s_pda,                          is_signer: false, is_writable: false },
             { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
           ],
           data: data
@@ -769,88 +943,83 @@ module Solana
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
-    # Build a partially-signed enter_contest_direct transaction.
-    # Admin signs (pays rent), user must sign client-side (authorizes USDC transfer).
-    # Returns base64-encoded transaction for the client to co-sign and submit.
-    def build_enter_contest_direct(wallet_address, contest_slug, entry_num, season_id: nil)
+    # Build a partially-signed enter_contest_with_token TX (Phantom wallet).
+    # Admin signs (payer), Phantom signs (user). Server holds the partial TX
+    # until the client co-signs and broadcasts.
+    def build_enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58,
+                                       season_id: nil)
       wallet_bytes = Keypair.decode_base58(wallet_address)
-      user_pda, _ = user_account_pda(wallet_address)
-      vault_pda, _ = vault_state_pda
-      c_pda, _ = contest_pda(contest_slug)
-      e_pda, _ = entry_pda(contest_slug, wallet_address, entry_num)
-
-      usdc_mint = Keypair.decode_base58(Config::USDC_MINT)
-      user_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
-      vault_usdc, _ = vault_usdc_pda
-
-      # Season PDA — v0.11.0+ enter_contest_direct reads seed_schedule from it
+      vault_pda,   _ = vault_state_pda
+      user_pda,    _ = user_account_pda(wallet_address)
+      c_pda,       _ = contest_pda(contest_slug)
+      e_pda,       _ = entry_pda(contest_slug, wallet_address, entry_num)
+      token_pda_bytes = Keypair.decode_base58(entry_token_pda_b58)
       season_id ||= SeasonConfig.current_season_id
-      s_pda, _ = season_pda(season_id)
+      s_pda,       _ = season_pda(season_id)
 
-      data = Transaction.anchor_discriminator("enter_contest_direct") +
+      data = Transaction.anchor_discriminator("enter_contest_with_token") +
              Borsh.encode_u32(entry_num)
 
       serialized = build_partial_signed(
         accounts: [
-          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },   # payer
-          { pubkey: wallet_bytes, is_signer: true, is_writable: true },              # user (signs token transfer)
-          { pubkey: user_pda, is_signer: false, is_writable: true },                 # user_account (seeds awarded)
-          { pubkey: vault_pda, is_signer: false, is_writable: false },               # vault_state
-          { pubkey: c_pda, is_signer: false, is_writable: true },                    # contest
-          { pubkey: e_pda, is_signer: false, is_writable: true },                    # contest_entry (init)
-          { pubkey: usdc_mint, is_signer: false, is_writable: false },               # mint
-          { pubkey: user_ata, is_signer: false, is_writable: true },                 # user_token_account
-          { pubkey: vault_usdc, is_signer: false, is_writable: true },               # vault_token_account
-          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false },
-          { pubkey: s_pda, is_signer: false, is_writable: false },                   # season (seed_schedule)
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: wallet_bytes,                   is_signer: true,  is_writable: true  },
+          { pubkey: user_pda,                       is_signer: false, is_writable: true  },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+          { pubkey: c_pda,                          is_signer: false, is_writable: true  },
+          { pubkey: e_pda,                          is_signer: false, is_writable: true  },
+          { pubkey: token_pda_bytes,                is_signer: false, is_writable: true  },
+          { pubkey: s_pda,                          is_signer: false, is_writable: false },
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
         data: data,
         additional_signers: [wallet_bytes]
       )
-
       { serialized_tx: serialized, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
-    # Settle contest — requires 2-of-3 multisig (admin + cosigner_keypair)
-    # Used in rake tasks / E2E tests where server has both keys.
+    # --- Settle ---
+
+    # Settle a contest (2-of-3). v0.16 changes:
+    #   - remaining_accounts pattern is now TRIPLES: [user_account_pda,
+    #     contest_entry_pda, winner_usdc_ata] per winner.
+    #   - SPL CPI per winner from prize_pool → winner's USDC ATA.
+    #   - TX prepends a set_compute_unit_limit(400_000) instruction to handle
+    #     the increased CU cost (spec §10.1 / §11 Q7).
     def settle_contest(contest_slug, settlements, cosigner_keypair: nil)
       admin = Keypair.admin
-      cosigner = cosigner_keypair || admin  # fallback for tests
+      cosigner = cosigner_keypair || admin
       c_pda, _ = contest_pda(contest_slug)
       vault_pda, _ = vault_state_pda
+      prize_pool_addr, _ = prize_pool_pda(contest_slug)
+      usdc_mint  = Keypair.decode_base58(Config::USDC_MINT)
 
-      # Build settlement data
       settlement_data = settlements.map do |s|
         Borsh.encode_pubkey(Keypair.decode_base58(s[:wallet])) +
-        Borsh.encode_u32(s[:entry_num]) +
-        Borsh.encode_u32(s[:rank]) +
-        Borsh.encode_u64(s[:payout])
+          Borsh.encode_u32(s[:entry_num]) +
+          Borsh.encode_u32(s[:rank]) +
+          Borsh.encode_u64(s[:payout])
       end
 
       data = Transaction.anchor_discriminator("settle_contest") +
              Borsh.encode_u32(settlements.length) +
              settlement_data.join
 
-      # Build remaining accounts (pairs of user_account + contest_entry)
-      remaining = settlements.flat_map do |s|
-        user_pda, _ = user_account_pda(s[:wallet])
-        e_pda, _ = entry_pda(contest_slug, s[:wallet], s[:entry_num])
-        [
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: e_pda, is_signer: false, is_writable: true }
-        ]
-      end
+      remaining = settle_remaining_accounts(contest_slug, settlements)
 
       tx = build_tx(admin)
       tx.add_signer(cosigner) if cosigner != admin
+      tx.add_instruction(**compute_unit_limit_ix(SETTLE_COMPUTE_UNIT_LIMIT))
       tx.add_instruction(
         program_id: @program_id,
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: cosigner.public_key_bytes, is_signer: true, is_writable: false },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: c_pda, is_signer: false, is_writable: true }
+          { pubkey: admin.public_key_bytes,        is_signer: true,  is_writable: true  },
+          { pubkey: cosigner.public_key_bytes,     is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                     is_signer: false, is_writable: false },
+          { pubkey: c_pda,                         is_signer: false, is_writable: true  },
+          { pubkey: prize_pool_addr,               is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,                     is_signer: false, is_writable: false },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false }
         ] + remaining,
         data: data
       )
@@ -859,50 +1028,122 @@ module Solana
       { signature: signature }
     end
 
-    # Build a partially-signed settle_contest transaction for multisig cosigning.
-    # Admin signs, cosigner_pubkey slot left empty for client-side signing.
-    # Returns base64-encoded partially-signed TX.
+    # Build a partially-signed settle_contest TX for multisig cosigning.
     def build_settle_contest(contest_slug, settlements, cosigner_pubkey:)
       c_pda, _ = contest_pda(contest_slug)
       vault_pda, _ = vault_state_pda
+      prize_pool_addr, _ = prize_pool_pda(contest_slug)
+      usdc_mint  = Keypair.decode_base58(Config::USDC_MINT)
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
 
-      # Build settlement data
       settlement_data = settlements.map do |s|
         Borsh.encode_pubkey(Keypair.decode_base58(s[:wallet])) +
-        Borsh.encode_u32(s[:entry_num]) +
-        Borsh.encode_u32(s[:rank]) +
-        Borsh.encode_u64(s[:payout])
+          Borsh.encode_u32(s[:entry_num]) +
+          Borsh.encode_u32(s[:rank]) +
+          Borsh.encode_u64(s[:payout])
       end
 
       data = Transaction.anchor_discriminator("settle_contest") +
              Borsh.encode_u32(settlements.length) +
              settlement_data.join
 
-      # Build remaining accounts (pairs of user_account + contest_entry)
-      remaining = settlements.flat_map do |s|
-        user_pda, _ = user_account_pda(s[:wallet])
-        e_pda, _ = entry_pda(contest_slug, s[:wallet], s[:entry_num])
-        [
-          { pubkey: user_pda, is_signer: false, is_writable: true },
-          { pubkey: e_pda, is_signer: false, is_writable: true }
-        ]
-      end
+      remaining = settle_remaining_accounts(contest_slug, settlements)
 
-      serialized = build_partial_signed(
+      tx = build_tx(Keypair.admin)
+      tx.add_instruction(**compute_unit_limit_ix(SETTLE_COMPUTE_UNIT_LIMIT))
+      tx.add_instruction(
+        program_id: @program_id,
         accounts: [
-          { pubkey: Keypair.admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: cosigner_bytes, is_signer: true, is_writable: false },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: c_pda, is_signer: false, is_writable: true }
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+          { pubkey: c_pda,                          is_signer: false, is_writable: true  },
+          { pubkey: prize_pool_addr,                is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,                      is_signer: false, is_writable: false },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,  is_signer: false, is_writable: false }
         ] + remaining,
-        data: data,
-        additional_signers: [cosigner_bytes]
+        data: data
       )
+      serialized = tx.serialize_partial_base64(additional_signers: [cosigner_bytes])
       { serialized_tx: serialized, contest_slug: contest_slug }
     end
 
-    # Read onchain Contest account
+    # --- Close ---
+
+    # close_contest (v0.16): 1-of-3 vault signer. Sweeps any prize-pool dust
+    # to the op_rev USDC ATA, then closes both the prize_pool ATA and the
+    # Contest PDA. Reclaims rent to admin.
+    def close_contest(contest_slug)
+      admin = Keypair.admin
+      c_pda,            _ = contest_pda(contest_slug)
+      prize_pool_addr,  _ = prize_pool_pda(contest_slug)
+      vault_pda,        _ = vault_state_pda
+      op_rev_usdc,      _ = op_rev_ata_pda(Config::USDC_MINT)
+      usdc_mint           = Keypair.decode_base58(Config::USDC_MINT)
+
+      data = Transaction.anchor_discriminator("close_contest")
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes,        is_signer: true,  is_writable: true  },
+          { pubkey: vault_pda,                     is_signer: false, is_writable: false },
+          { pubkey: c_pda,                         is_signer: false, is_writable: true  },
+          { pubkey: prize_pool_addr,               is_signer: false, is_writable: true  },
+          { pubkey: usdc_mint,                     is_signer: false, is_writable: false },
+          { pubkey: op_rev_usdc,                   is_signer: false, is_writable: true  },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID, is_signer: false, is_writable: false }
+        ],
+        data: data
+      )
+
+      signature = client.send_and_confirm(tx.serialize_base64)
+      { signature: signature }
+    end
+
+    # --- Sweep operator revenue (2-of-3) ---
+
+    # Build a partially-signed sweep_operator_revenue TX. `amount` of 0
+    # sweeps the whole op_rev ATA. `treasury_ata_pubkey` must be a USDC ATA
+    # owned by VaultState.treasury_authority (the Squads vault PDA).
+    def build_sweep_operator_revenue(cosigner_pubkey:, currency_mint:, treasury_ata_pubkey:, amount: 0)
+      cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
+      mint_bytes     = Keypair.decode_base58(currency_mint)
+      vault_pda,    _ = vault_state_pda
+      op_rev,       _ = op_rev_ata_pda(currency_mint)
+      treasury_ata  = Keypair.decode_base58(treasury_ata_pubkey)
+
+      data = Transaction.anchor_discriminator("sweep_operator_revenue") +
+             Borsh.encode_u64(amount.to_i)
+
+      serialized = build_partial_signed(
+        accounts: [
+          { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: cosigner_bytes,                 is_signer: true,  is_writable: false },
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false },
+          { pubkey: mint_bytes,                     is_signer: false, is_writable: false },
+          { pubkey: op_rev,                         is_signer: false, is_writable: true  },
+          { pubkey: treasury_ata,                   is_signer: false, is_writable: true  },
+          { pubkey: Transaction::TOKEN_PROGRAM_ID,  is_signer: false, is_writable: false }
+        ],
+        data: data,
+        additional_signers: [cosigner_bytes]
+      )
+      { serialized_tx: serialized }
+    end
+
+    # --- Contest read (v0.16 borsh layout) ---
+    #
+    # Contest v0.16 fields (in order):
+    #   contest_id [u8;32], admin Pubkey, creator Pubkey, season_id u32,
+    #   prize_pool u64,
+    #   entry_fee_by_currency [u64;16]   (128 bytes),
+    #   entry_fees [u64;16]              (128 bytes),
+    #   max_entries u32, current_entries u32,
+    #   status (u8 enum: 0=Open 1=Locked 2=Settled 3=Cancelled),
+    #   payout_amounts Vec<u64>(max 10),
+    #   bump u8, _reserved [u8;32]
     def read_contest(contest_slug, commitment: "confirmed")
       pda, _ = contest_pda(contest_slug)
       pda_base58 = Keypair.encode_base58(pda)
@@ -913,110 +1154,65 @@ module Solana
       data = Base64.decode64(info["value"]["data"][0])
       offset = 8 # skip Anchor discriminator
 
-      _contest_id, offset = Borsh.decode_pubkey(data, offset) # [u8; 32] same size as pubkey
-      prizes, offset = Borsh.decode_u64(data, offset)
-      entry_fee, offset = Borsh.decode_u64(data, offset)
-      entry_fees, offset = Borsh.decode_u64(data, offset)
-      max_entries, offset = Borsh.decode_u32(data, offset)
-      current_entries, offset = Borsh.decode_u32(data, offset)
-      status_byte, offset = Borsh.decode_u8(data, offset)
-      # Vec<u64> payout_amounts
-      vec_len, offset = Borsh.decode_u32(data, offset)
-      payout_amounts = vec_len.times.map { |_| v, offset = Borsh.decode_u64(data, offset); v }
-      admin_bytes, offset = Borsh.decode_pubkey(data, offset)
-      creator_bytes, offset = Borsh.decode_pubkey(data, offset)
+      _contest_id,        offset = Borsh.decode_pubkey(data, offset)
+      admin_bytes,        offset = Borsh.decode_pubkey(data, offset)
+      creator_bytes,      offset = Borsh.decode_pubkey(data, offset)
+      season_id,          offset = Borsh.decode_u32(data, offset)
+      prize_pool,         offset = Borsh.decode_u64(data, offset)
 
-      status_name = %w[Open Locked Settled][status_byte] || "Unknown"
+      entry_fee_by_currency = []
+      16.times do
+        v, offset = Borsh.decode_u64(data, offset)
+        entry_fee_by_currency << v
+      end
+      entry_fees = []
+      16.times do
+        v, offset = Borsh.decode_u64(data, offset)
+        entry_fees << v
+      end
+
+      max_entries,        offset = Borsh.decode_u32(data, offset)
+      current_entries,    offset = Borsh.decode_u32(data, offset)
+      status_byte,        offset = Borsh.decode_u8(data, offset)
+      vec_len,            offset = Borsh.decode_u32(data, offset)
+      payout_amounts = vec_len.times.map { v, offset = Borsh.decode_u64(data, offset); v }
+
+      status_name = %w[Open Locked Settled Cancelled][status_byte] || "Unknown"
+
+      total_fees_collected = entry_fees.sum
 
       {
-        pda: pda_base58,
-        entry_fee: entry_fee,
-        entry_fee_dollars: Config.lamports_to_dollars(entry_fee),
-        max_entries: max_entries,
-        current_entries: current_entries,
-        entry_fees: entry_fees,
-        entry_fees_dollars: Config.lamports_to_dollars(entry_fees),
-        prizes: prizes,
-        prizes_dollars: Config.lamports_to_dollars(prizes),
-        status: status_name,
-        payout_amounts: payout_amounts.map { |a| Config.lamports_to_dollars(a) },
-        admin: Keypair.encode_base58(admin_bytes),
-        creator: Keypair.encode_base58(creator_bytes)
+        pda:                   pda_base58,
+        admin:                 Keypair.encode_base58(admin_bytes),
+        creator:               Keypair.encode_base58(creator_bytes),
+        season_id:             season_id,
+        prize_pool:            prize_pool,
+        prize_pool_dollars:    Config.lamports_to_dollars(prize_pool),
+        entry_fee_by_currency: entry_fee_by_currency,
+        entry_fees:            entry_fees,
+        entry_fees_dollars:    entry_fees.map { |c| Config.lamports_to_dollars(c) },
+        total_entry_fees_collected:         total_fees_collected,
+        total_entry_fees_collected_dollars: Config.lamports_to_dollars(total_fees_collected),
+        max_entries:           max_entries,
+        current_entries:       current_entries,
+        status:                status_name,
+        payout_amounts:        payout_amounts.map { |a| Config.lamports_to_dollars(a) },
+        # Back-compat keys (v0.15.1 shape). USDC-only world had a single
+        # entry_fee scalar — surface slot 0 (USDC) here so existing callers
+        # don't need to learn about the array yet.
+        entry_fee:             entry_fee_by_currency[0],
+        entry_fee_dollars:     Config.lamports_to_dollars(entry_fee_by_currency[0]),
+        prizes:                prize_pool,
+        prizes_dollars:        Config.lamports_to_dollars(prize_pool)
       }
     end
 
-    # Read onchain UserAccount balance. Handles every UserAccount layout this
-    # program has shipped:
-    #   - v0.4.x (73 bytes): wallet + 4 totals
-    #   - v0.5.0 (81 bytes): + seeds
-    #   - v0.14.0 (113 bytes): + username[32]
-    #   - v0.15.0 (129 bytes): + daily_withdrawn (u64) + daily_window_start (i64)
-    # Older accounts return default-zero values for fields they don't have.
-    def sync_balance(wallet_address, commitment: "confirmed")
-      user_pda, _ = user_account_pda(wallet_address)
-      pda_base58 = Keypair.encode_base58(user_pda)
-
-      info = client.get_account_info(pda_base58, commitment: commitment)
-      return nil unless info&.dig("value")
-
-      account_data = Base64.decode64(info["value"]["data"][0])
-      # Skip 8-byte discriminator
-      offset = 8
-      _wallet, offset = Borsh.decode_pubkey(account_data, offset)
-      balance, offset = Borsh.decode_u64(account_data, offset)
-      total_deposited, offset = Borsh.decode_u64(account_data, offset)
-      total_withdrawn, offset = Borsh.decode_u64(account_data, offset)
-      total_won, offset = Borsh.decode_u64(account_data, offset)
-
-      # Seeds field added in v0.5.0 — old accounts (73 bytes) don't have it
-      seeds = 0
-      if account_data.length >= 81
-        seeds, offset = Borsh.decode_u64(account_data, offset)
-      end
-
-      # Username added in v0.14.0 — 32-byte zero-padded UTF-8 array after seeds.
-      # Advance offset even if the username read happens, so the v0.15.0 block
-      # below starts at the right byte.
-      username = nil
-      if account_data.length >= 113
-        raw = account_data[offset, 32].to_s
-        username = raw.bytes.take_while { |byte| byte != 0 }.pack("C*").force_encoding("UTF-8").presence
-        offset += 32
-      end
-
-      # Daily withdraw cap fields added v0.15.0. Zero on fresh accounts — the
-      # first withdraw initializes daily_window_start to the current time and
-      # daily_withdrawn to the withdrawal amount. `daily_window_start` is i64
-      # on-chain; we decode as u64 (same trick as decode_season's start_at —
-      # real Unix timestamps never set the sign bit).
-      daily_withdrawn = 0
-      daily_window_start = 0
-      if account_data.length >= 129
-        daily_withdrawn, offset = Borsh.decode_u64(account_data, offset)
-        daily_window_start, offset = Borsh.decode_u64(account_data, offset)
-      end
-
-      {
-        balance: balance,
-        total_deposited: total_deposited,
-        total_withdrawn: total_withdrawn,
-        total_won: total_won,
-        seeds: seeds,
-        username: username,
-        daily_withdrawn: daily_withdrawn,
-        daily_window_start: daily_window_start,
-        balance_dollars: Config.lamports_to_dollars(balance)
-      }
-    end
-
-    # ── Entry tokens (turf-vault v0.9.0+) ────────────────────────────────────
+    # ── Entry tokens (turf-vault v0.9.0+) ───────────────────────────────────
     # On-chain EntryTokenAccount PDAs per token. Source enum: 0=operator, 1=stripe, 2=moonpay.
 
     ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2 }.freeze
     ENTRY_TOKEN_LEN = 124 # bytes — 8 disc + 32 owner + 1 source + 64 source_ref + 1 consumed + 9 consumed_at + 8 created_at + 1 bump
 
-    # Admin mints an EntryTokenAccount for `wallet_address`. Auto-picks the next sequence
-    # if not supplied. source: symbol or u8; source_ref: arbitrary string, padded/truncated to 64 bytes.
     def mint_entry_token(wallet_address:, source:, source_ref:, sequence: nil)
       sequence ||= next_entry_token_sequence(wallet_address)
       source_u8 = source.is_a?(Symbol) ? ENTRY_TOKEN_SOURCE.fetch(source) : source.to_i
@@ -1025,7 +1221,6 @@ module Solana
       pda, _ = entry_token_pda(wallet_address, sequence)
       wallet_bytes = Keypair.decode_base58(wallet_address)
 
-      # Pad/truncate source_ref to exactly 64 bytes
       ref_bytes = source_ref.to_s.b.bytes.first(64)
       ref_bytes += [0] * (64 - ref_bytes.length)
 
@@ -1039,14 +1234,12 @@ module Solana
       tx = build_tx(admin)
       tx.add_instruction(
         program_id: @program_id,
-        # Order must match MintEntryToken<'info> in
-        # turf-vault/programs/turf_vault/src/instructions/mint_entry_token.rs.
         accounts: [
-          { pubkey: admin.public_key_bytes,        is_signer: true,  is_writable: true  }, # admin (Signer, mut)
-          { pubkey: vault_pda,                     is_signer: false, is_writable: false }, # vault_state (Account<VaultState>)
-          { pubkey: wallet_bytes,                  is_signer: false, is_writable: false }, # user_wallet (Unchecked)
-          { pubkey: pda,                           is_signer: false, is_writable: true  }, # entry_token (init)
-          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false } # system_program
+          { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  }, # admin
+          { pubkey: vault_pda,                      is_signer: false, is_writable: false }, # vault_state
+          { pubkey: wallet_bytes,                   is_signer: false, is_writable: false }, # user_wallet
+          { pubkey: pda,                            is_signer: false, is_writable: true  }, # entry_token (init)
+          { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
         data: data
       )
@@ -1056,15 +1249,10 @@ module Solana
       { signature: signature, pda: Keypair.encode_base58(pda), sequence: sequence }
     end
 
-    # List all on-chain EntryTokenAccounts owned by `wallet_address`. 60s cache.
-    # Returns array of hashes: { pda, owner, source, source_ref, consumed, consumed_at, created_at }.
     def list_entry_tokens(wallet_address, commitment: "confirmed")
       Rails.cache.fetch(entry_tokens_cache_key(wallet_address), expires_in: 60.seconds) do
         owner_b58 = wallet_address
         program_id_b58 = Keypair.encode_base58(@program_id)
-        # `getProgramAccounts` isn't wrapped in solana-studio yet — bridge via the
-        # private JSON-RPC call. Remove this `send` once `get_program_accounts` is
-        # added to the gem's public API.
         result = client.send(:call, "getProgramAccounts", [
           program_id_b58,
           {
@@ -1080,7 +1268,6 @@ module Solana
       end
     end
 
-    # Next sequence number = current count of tokens for this user.
     def next_entry_token_sequence(wallet_address)
       list_entry_tokens(wallet_address).length
     end
@@ -1094,14 +1281,10 @@ module Solana
     end
 
     # ── Seasons (turf-vault v0.11.0+) ────────────────────────────────────────
-    # On-chain Season PDAs hold the per-season seed schedule that entry instructions
-    # use to award seeds (replaces the old hardcoded +65).
 
     SEASON_LEN = 101 # bytes — 8 disc + 4 season_id + 32 name + 40 schedule + 8 start_at + 8 created_at + 1 bump
     SEASON_DEFAULT_SCHEDULE = [25, 19, 14, 10, 7].freeze
 
-    # Admin creates an on-chain Season. `schedule` must be a 5-element array of u64.
-    # `name` is truncated/padded to 32 bytes. `start_at` defaults to now.
     def create_season(season_id:, name:, schedule:, start_at: nil)
       raise ArgumentError, "schedule must have 5 elements" unless schedule.is_a?(Array) && schedule.length == 5
       schedule.each { |v| raise ArgumentError, "schedule values must be non-negative" if v.to_i.negative? }
@@ -1124,9 +1307,9 @@ module Solana
       tx.add_instruction(
         program_id: @program_id,
         accounts: [
-          { pubkey: admin.public_key_bytes, is_signer: true, is_writable: true },
-          { pubkey: vault_pda, is_signer: false, is_writable: false },
-          { pubkey: pda, is_signer: false, is_writable: true },
+          { pubkey: admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: vault_pda,              is_signer: false, is_writable: false },
+          { pubkey: pda,                    is_signer: false, is_writable: true  },
           { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
         ],
         data: data
@@ -1137,10 +1320,8 @@ module Solana
       { signature: signature, pda: Keypair.encode_base58(pda), season_id: season_id }
     end
 
-    # List every Season account on the program. 60s cache.
     def list_seasons(commitment: "confirmed")
       Rails.cache.fetch("seasons:all", expires_in: 60.seconds) do
-        # Same gem-API gap as list_entry_tokens — bridge via private JSON-RPC.
         result = client.send(:call, "getProgramAccounts", [
           Keypair.encode_base58(@program_id),
           {
@@ -1160,9 +1341,6 @@ module Solana
       decode_season({ "pubkey" => Keypair.encode_base58(pda), "account" => info["value"] })
     end
 
-    # How many seeds will the on-chain program award for `entry_num` under the given
-    # (or current) season? Falls back to SEASON_DEFAULT_SCHEDULE if the season can't
-    # be read — keeps the modal response sensible even mid-deploy or in tests.
     def seeds_for_entry(entry_num, season_id: nil)
       season_id ||= SeasonConfig.current_season_id
       season = season_id.to_i.positive? ? (get_season(season_id) rescue nil) : nil
@@ -1170,7 +1348,6 @@ module Solana
       schedule[[entry_num.to_i, 4].min]
     end
 
-    # Fetch native SOL and SPL token balances for a wallet address
     def fetch_wallet_balances(wallet_address)
       sol_result = client.get_balance(wallet_address)
       sol_lamports = sol_result.is_a?(Hash) ? sol_result["value"] : sol_result
@@ -1189,7 +1366,6 @@ module Solana
           end
         end
       rescue Solana::Client::RpcError
-        # Token accounts may not exist yet — that's fine
       end
 
       {
@@ -1202,6 +1378,94 @@ module Solana
 
     private
 
+    # Pad/truncate a fee array to 16 elements (MAX_CURRENCIES). Accepts:
+    #   - Array of u64 lamport amounts (e.g. [1_900_000, 0, 0, ...])
+    #   - Hash of currency_idx => amount (e.g. { 0 => 1_900_000 })
+    def pad_fee_array(fees)
+      arr = Array.new(16, 0)
+      if fees.is_a?(Hash)
+        fees.each { |idx, amt| arr[idx.to_i] = amt.to_i }
+      else
+        Array(fees).each_with_index { |amt, idx| arr[idx] = amt.to_i }
+      end
+      arr
+    end
+
+    def mint_for_currency_idx(idx)
+      case idx.to_i
+      when 0 then Config::USDC_MINT
+      when 1 then Config::USDT_MINT
+      else
+        # Slots 2-15 require an on-chain lookup via read_vault_state. Keep the
+        # service interface honest and bail loudly until the UI surfaces
+        # currency choice (Phase 2).
+        state = read_vault_state
+        slot = state&.dig(:accepted_currencies)&.dig(idx.to_i)
+        raise "Unknown currency_idx #{idx} — slot empty or vault unread" unless slot && slot[:mint] != ZERO_PUBKEY_B58
+        slot[:mint]
+      end
+    end
+
+    # Account list for enter_contest. Shared between the server-signed
+    # (managed wallet) and partial-signed (Phantom) builders.
+    def enter_contest_accounts(payer_bytes:, user_bytes:, user_pda:, vault_pda:, contest_pda:,
+                               entry_pda:, currency_mint:, user_token_account:, op_rev_ata:,
+                               season_pda:)
+      [
+        { pubkey: payer_bytes,                    is_signer: true,  is_writable: true  }, # payer
+        { pubkey: user_bytes,                     is_signer: true,  is_writable: true  }, # user
+        { pubkey: user_pda,                       is_signer: false, is_writable: true  }, # user_account
+        { pubkey: vault_pda,                      is_signer: false, is_writable: false }, # vault_state
+        { pubkey: contest_pda,                    is_signer: false, is_writable: true  }, # contest
+        { pubkey: entry_pda,                      is_signer: false, is_writable: true  }, # contest_entry (init)
+        { pubkey: currency_mint,                  is_signer: false, is_writable: false }, # currency_mint
+        { pubkey: user_token_account,             is_signer: false, is_writable: true  }, # user_token_account
+        { pubkey: op_rev_ata,                     is_signer: false, is_writable: true  }, # op_rev_ata
+        { pubkey: season_pda,                     is_signer: false, is_writable: false }, # season
+        { pubkey: Transaction::TOKEN_PROGRAM_ID,  is_signer: false, is_writable: false },
+        { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+      ]
+    end
+
+    # remaining_accounts for settle: triples per winner [user_account_pda,
+    # contest_entry_pda, winner_usdc_ata]. v0.16 added the USDC ATA so the
+    # SPL CPI can pay each winner directly.
+    def settle_remaining_accounts(contest_slug, settlements)
+      settlements.flat_map do |s|
+        user_pda, _   = user_account_pda(s[:wallet])
+        e_pda,    _   = entry_pda(contest_slug, s[:wallet], s[:entry_num])
+        winner_ata, _ = Solana::SplToken.find_associated_token_address(s[:wallet], Config::USDC_MINT)
+        [
+          { pubkey: user_pda,   is_signer: false, is_writable: true },
+          { pubkey: e_pda,      is_signer: false, is_writable: true },
+          { pubkey: winner_ata, is_signer: false, is_writable: true }
+        ]
+      end
+    end
+
+    # ComputeBudgetInstruction::set_compute_unit_limit. Discriminator = 0x02,
+    # followed by a little-endian u32 of the requested CU limit.
+    def compute_unit_limit_ix(units)
+      data = "\x02".b + [units].pack("V")
+      {
+        program_id: COMPUTE_BUDGET_PROGRAM_ID,
+        accounts: [],
+        data: data
+      }
+    end
+
+    # Fetch the user's USDC ATA balance in lamports. Returns 0 if the ATA
+    # doesn't exist (user hasn't been funded yet).
+    def fetch_usdc_ata_balance_lamports(wallet_address)
+      ata_bytes, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
+      ata_base58 = Keypair.encode_base58(ata_bytes)
+      info = client.get_token_account_balance(ata_base58) rescue nil
+      amount = info&.dig("value", "amount")
+      amount ? amount.to_i : 0
+    rescue StandardError
+      0
+    end
+
     def build_tx(signer)
       blockhash = client.get_latest_blockhash
       tx = Transaction.new
@@ -1210,26 +1474,12 @@ module Solana
       tx
     end
 
-    # Build + partially sign a single-instruction anchor TX. Admin bot is the
-    # fee payer and signs server-side; every pubkey in `additional_signers`
-    # gets its signature slot zero-filled for client-side Phantom cosign.
-    # Returns the base64-encoded TX, ready for cosignTransaction().
-    #
-    # Shared backbone for every `build_*` partial-sign builder — the
-    # fee-payer + signer-slot + serialization mechanics live here so a new
-    # cosign instruction only needs to declare its accounts + data.
     def build_partial_signed(accounts:, data:, additional_signers:)
       tx = build_tx(Keypair.admin)
       tx.add_instruction(program_id: @program_id, accounts: accounts, data: data)
       tx.serialize_partial_base64(additional_signers: additional_signers)
     end
 
-    # Anchor error 3012 (AccountNotInitialized — "custom program error: 0xbc4")
-    # surfaces transiently when a just-created PDA — e.g. a first-time entrant's
-    # UserAccount — hasn't reached the RPC node running the next transaction's
-    # preflight simulation. Retry with backoff; it clears within seconds once
-    # the account is cluster-visible. The block rebuilds the TX each attempt so
-    # it picks up a fresh blockhash.
     def with_account_init_retry(attempts: 4)
       tries = 0
       begin
@@ -1248,18 +1498,15 @@ module Solana
       str.b
     end
 
-    # A username encoded as a 32-byte zero-padded UTF-8 array — matches the
-    # on-chain `username: [u8; 32]` field on UserAccount (turf-vault v0.14.0+).
     def username_bytes32(username)
       bytes = username.to_s.b.bytes.first(32)
       bytes += [0] * (32 - bytes.length)
       bytes.pack("C*")
     end
 
-    # Decode a single Season account from getProgramAccounts / getAccountInfo result.
     def decode_season(account)
       data = Base64.decode64(account.dig("account", "data", 0))
-      offset = 8 # skip discriminator
+      offset = 8
       season_id, offset = Borsh.decode_u32(data, offset)
       name_bytes = data[offset, 32]; offset += 32
       name = name_bytes.bytes.take_while { |b| b != 0 }.pack("C*").force_encoding("UTF-8")
@@ -1268,7 +1515,7 @@ module Solana
         v, offset = Borsh.decode_u64(data, offset)
         schedule << v
       end
-      start_at, offset = Borsh.decode_u64(data, offset)  # i64 stored as 8 bytes; for any real timestamp the sign bit is 0
+      start_at, offset = Borsh.decode_u64(data, offset)
       created_at, offset = Borsh.decode_u64(data, offset)
       {
         pda: account["pubkey"],
@@ -1280,22 +1527,18 @@ module Solana
       }
     end
 
-    # Decode a single EntryTokenAccount from getProgramAccounts result.
-    # Anchor Option<i64> serialization: 1-byte tag (0=None, 1=Some), followed by 8-byte i64
-    # in either case — the payload slot is always allocated. We always advance 9 bytes.
     def decode_entry_token(account)
       data = Base64.decode64(account.dig("account", "data", 0))
-      offset = 8 # skip Anchor account discriminator
+      offset = 8
       owner_bytes, offset = Borsh.decode_pubkey(data, offset)
       source = data[offset].ord; offset += 1
       ref_slice = data[offset, 64]; offset += 64
-      # source_ref is a 64-byte fixed array padded with 0x00 — trim trailing zeros for display
       source_ref = ref_slice.bytes.take_while { |b| b != 0 }.pack("C*").force_encoding("UTF-8")
       consumed = data[offset].ord == 1; offset += 1
       consumed_at_tag = data[offset].ord; offset += 1
       consumed_at_value, _ = Borsh.decode_u64(data, offset)
       consumed_at = consumed_at_tag == 1 ? consumed_at_value : nil
-      offset += 8 # payload slot is always 8 bytes regardless of tag
+      offset += 8
       created_at, offset = Borsh.decode_u64(data, offset)
       {
         pda: account["pubkey"],

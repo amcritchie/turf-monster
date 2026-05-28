@@ -139,12 +139,12 @@ class Contest < ApplicationRecord
 
     vault = Solana::Vault.new
     result = vault.create_contest_server_funded(
-      contest_slug:   slug,
-      entry_fee:      Solana::Config.dollars_to_lamports(entry_fee_cents / 100.0),
-      max_entries:    max_entries,
-      payout_amounts: payouts.values.map { |c| Solana::Config.dollars_to_lamports(c / 100.0) },
-      prizes:         Solana::Config.dollars_to_lamports(guaranteed_prize_cents / 100.0),
-      season_id:      season_id || SeasonConfig.current_season_id
+      contest_slug:          slug,
+      entry_fee_by_currency: onchain_params[:entry_fee_by_currency],
+      max_entries:           max_entries,
+      payout_amounts:        onchain_params[:payout_amounts],
+      prize_pool:            onchain_params[:prize_pool],
+      season_id:             season_id || SeasonConfig.current_season_id
     )
     update!(
       onchain_contest_id:   result[:contest_pda],
@@ -360,17 +360,23 @@ class Contest < ApplicationRecord
   end
 
   def onchain_params
-    fee_cents = entry_fee_cents.to_i
+    fee_cents  = entry_fee_cents.to_i
     guaranteed = guaranteed_prize_cents
-    # Payout amounts in USDC lamports (6 decimals) — human-readable onchain
     payout_amounts = payouts.values.map { |c| Solana::Config.dollars_to_lamports(c / 100.0) }
 
+    # v0.16: per-currency entry-fee schedule. Index = currency_idx.
+    # Slot 0 = USDC (only currency the UI surfaces in Phase 1). When the
+    # currency-picker ships in Phase 2, replace this with a hash keyed by
+    # currency_idx.
+    entry_fee_by_currency = Array.new(16, 0)
+    entry_fee_by_currency[0] = Solana::Config.dollars_to_lamports(fee_cents / 100.0)
+
     {
-      entry_fee: Solana::Config.dollars_to_lamports(fee_cents / 100.0),
-      max_entries: max_entries || format_config[:max_entries],
-      payout_amounts: payout_amounts,
-      prizes: Solana::Config.dollars_to_lamports(guaranteed / 100.0),
-      season_id: season_id || SeasonConfig.current_season_id
+      entry_fee_by_currency: entry_fee_by_currency,
+      max_entries:           max_entries || format_config[:max_entries],
+      payout_amounts:        payout_amounts,
+      prize_pool:            Solana::Config.dollars_to_lamports(guaranteed / 100.0),
+      season_id:             season_id || SeasonConfig.current_season_id
     }
   end
 

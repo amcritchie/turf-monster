@@ -1,17 +1,132 @@
 {
-  "address": "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT",
+  "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.15.1",
+    "version": "0.16.0",
     "spec": "0.1.0",
-    "description": "Solana escrow program for contest entry fees and prize distribution"
+    "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
   "instructions": [
     {
+      "name": "cancel_contest",
+      "docs": [
+        "Refund the prize pool to the creator. Open / Locked → Cancelled. 2-of-3."
+      ],
+      "discriminator": [
+        255,
+        250,
+        141,
+        71,
+        184,
+        141,
+        109,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "prize_pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  122,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payout_mint"
+        },
+        {
+          "name": "creator_token_account",
+          "docs": [
+            "Creator's USDC ATA — destination of the prize pool refund.",
+            "Constrained to belong to the contest's creator (via token::authority)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "close_contest",
       "docs": [
-        "Close a settled contest's account, reclaiming rent to the admin.",
-        "1-of-3 vault signer."
+        "Close a settled or cancelled contest's PDA + prize_pool ATA,",
+        "reclaiming rent to the admin. Sweeps residual prize_pool dust to",
+        "the operator-revenue USDC ATA first (decided 2026-05-27, §11 Q8).",
+        "1-of-3."
       ],
       "discriminator": [
         139,
@@ -48,7 +163,94 @@
         },
         {
           "name": "contest",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "prize_pool",
+          "docs": [
+            "Prize pool ATA — closed in this instruction. Any residual balance",
+            "is swept to op_rev_usdc_ata first (decided §11 Q8)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  122,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payout_mint"
+        },
+        {
+          "name": "op_rev_usdc_ata",
+          "docs": [
+            "Operator-revenue USDC ATA — destination for any residual prize_pool",
+            "USDC. PDA-bound to the payout mint at [b\"op_rev\", payout_mint]."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  95,
+                  114,
+                  101,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "payout_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
@@ -56,8 +258,9 @@
     {
       "name": "create_contest",
       "docs": [
-        "Create a new contest. Dual-signer: payer (admin bot, pays SOL rent) +",
-        "creator (Phantom wallet, signs prize-pool USDC transfer from their ATA)."
+        "Create a new contest with a per-currency entry-fee schedule and a",
+        "USDC prize pool. Dual-signer: payer (admin bot, pays SOL rent) +",
+        "creator (Phantom wallet, signs prize-pool USDC transfer)."
       ],
       "discriminator": [
         129,
@@ -73,7 +276,7 @@
         {
           "name": "payer",
           "docs": [
-            "Admin bot — pays SOL rent for Contest PDA"
+            "1-of-3 vault signer — pays SOL rent for Contest PDA + prize_pool PDA."
           ],
           "writable": true,
           "signer": true
@@ -81,7 +284,7 @@
         {
           "name": "creator",
           "docs": [
-            "Creator's Phantom wallet — signs USDC transfer for prizes"
+            "Creator's wallet — signs USDC transfer for the prize pool."
           ],
           "writable": true,
           "signer": true
@@ -128,19 +331,47 @@
           }
         },
         {
-          "name": "mint"
+          "name": "prize_pool",
+          "docs": [
+            "Per-contest USDC prize pool. PDA at [b\"prize_pool\", contest_id],",
+            "authority = vault_state. Drained on settle_contest, cancel_contest,",
+            "or close_contest (dust sweep)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  122,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "contest_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payout_mint",
+          "docs": [
+            "Must equal vault_state.payout_mint (canonical USDC)."
+          ]
         },
         {
           "name": "creator_token_account",
           "docs": [
-            "Creator's USDC token account (ATA) — source of prizes"
-          ],
-          "writable": true
-        },
-        {
-          "name": "vault_token_account",
-          "docs": [
-            "Vault's USDC token account — destination for prizes"
+            "Creator's USDC ATA — source of the prize pool."
           ],
           "writable": true
         },
@@ -151,6 +382,10 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
         }
       ],
       "args": [
@@ -168,8 +403,13 @@
           "type": "u32"
         },
         {
-          "name": "entry_fee",
-          "type": "u64"
+          "name": "entry_fee_by_currency",
+          "type": {
+            "array": [
+              "u64",
+              16
+            ]
+          }
         },
         {
           "name": "max_entries",
@@ -182,7 +422,7 @@
           }
         },
         {
-          "name": "prizes",
+          "name": "prize_pool",
           "type": "u64"
         }
       ]
@@ -289,9 +529,7 @@
     {
       "name": "create_user_account",
       "docs": [
-        "Create a new per-wallet UserAccount PDA. Permissionless payer (any",
-        "wallet can pay rent for any user's account); the username is set at",
-        "creation time and can later be changed via `set_username`."
+        "Create a new per-wallet UserAccount PDA. Permissionless payer."
       ],
       "discriminator": [
         146,
@@ -352,50 +590,34 @@
       ]
     },
     {
-      "name": "deposit",
+      "name": "deactivate_currency",
       "docs": [
-        "User → vault SPL token transfer. Credits UserAccount.balance.",
-        "Blocked when vault is paused."
+        "Flip `accepted_currencies[idx].active = 0`. The slot is never",
+        "reclaimed — preserves currency_idx stability. 2-of-3."
       ],
       "discriminator": [
-        242,
-        35,
-        198,
-        137,
-        82,
-        225,
-        242,
-        182
+        121,
+        136,
+        102,
+        100,
+        24,
+        6,
+        24,
+        115
       ],
       "accounts": [
         {
-          "name": "user",
+          "name": "admin",
           "writable": true,
           "signer": true
         },
         {
-          "name": "user_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          }
+          "name": "cosigner",
+          "signer": true
         },
         {
           "name": "vault_state",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -410,35 +632,21 @@
               }
             ]
           }
-        },
-        {
-          "name": "mint"
-        },
-        {
-          "name": "user_token_account",
-          "writable": true
-        },
-        {
-          "name": "vault_token_account",
-          "writable": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
         {
-          "name": "amount",
-          "type": "u64"
+          "name": "currency_idx",
+          "type": "u8"
         }
       ]
     },
     {
       "name": "enter_contest",
       "docs": [
-        "Managed-wallet entry: debits UserAccount.balance for the entry fee",
-        "and creates the ContestEntry. 1-of-3 vault signer pays rent.",
+        "Generic single-canonical entry handler. User signs an SPL transfer",
+        "from their ATA → the chosen currency's operator-revenue ATA. Creates",
+        "a ContestEntry PDA, awards seeds, increments stat counters.",
         "Blocked when vault is paused."
       ],
       "discriminator": [
@@ -454,34 +662,25 @@
       "accounts": [
         {
           "name": "payer",
+          "docs": [
+            "Admin pays rent for the ContestEntry PDA."
+          ],
           "writable": true,
           "signer": true
         },
         {
-          "name": "wallet",
+          "name": "user",
           "docs": [
-            "The wallet that owns the user account (may differ from payer for custodial)"
-          ]
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
+            "The user's wallet — signs the token transfer."
+          ],
+          "writable": true,
+          "signer": true
         },
         {
           "name": "user_account",
+          "docs": [
+            "Per-user stat counter PDA."
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -496,7 +695,24 @@
               },
               {
                 "kind": "account",
-                "path": "wallet"
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
               }
             ]
           }
@@ -548,7 +764,7 @@
               },
               {
                 "kind": "account",
-                "path": "wallet"
+                "path": "user"
               },
               {
                 "kind": "arg",
@@ -558,11 +774,51 @@
           }
         },
         {
+          "name": "currency_mint",
+          "docs": [
+            "The mint corresponding to `currency_idx`. Anchor's `token::mint`",
+            "constraints on the ATAs already gate this, but we still pull it in",
+            "so the user's ATA + op_rev_ata can be checked against the same mint."
+          ]
+        },
+        {
+          "name": "user_token_account",
+          "docs": [
+            "User's ATA for the chosen currency."
+          ],
+          "writable": true
+        },
+        {
+          "name": "op_rev_ata",
+          "docs": [
+            "Operator-revenue ATA for the chosen currency.",
+            "PDA-seed-bind via [b\"op_rev\", currency_mint.key()]."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  95,
+                  114,
+                  101,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "currency_mint"
+              }
+            ]
+          }
+        },
+        {
           "name": "season",
           "docs": [
-            "Season whose seed_schedule controls per-entry seed awards.",
-            "OPSEC-023: seeds-pinned to the contest's bound season so a caller",
-            "can't substitute a richer-reward season."
+            "Pinned-season seed schedule (OPSEC-023)."
           ],
           "pda": {
             "seeds": [
@@ -584,196 +840,12 @@
               }
             ]
           }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "entry_num",
-          "type": "u32"
-        }
-      ]
-    },
-    {
-      "name": "enter_contest_direct",
-      "docs": [
-        "Phantom-wallet entry: user signs an SPL transfer from their ATA →",
-        "vault USDC PDA. Admin pays SOL rent. Blocked when vault is paused."
-      ],
-      "discriminator": [
-        72,
-        147,
-        30,
-        102,
-        43,
-        120,
-        206,
-        95
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "docs": [
-            "Admin pays rent for the ContestEntry PDA"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "user",
-          "docs": [
-            "The user's Phantom wallet — signs the token transfer"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "user_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.contest_id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest_entry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  116,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.contest_id",
-                "account": "Contest"
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              },
-              {
-                "kind": "arg",
-                "path": "entry_num"
-              }
-            ]
-          }
-        },
-        {
-          "name": "mint"
-        },
-        {
-          "name": "user_token_account",
-          "docs": [
-            "User's USDC token account (ATA) — source of entry fee"
-          ],
-          "writable": true
-        },
-        {
-          "name": "vault_token_account",
-          "docs": [
-            "Vault's USDC token account — destination for entry fee"
-          ],
-          "writable": true
         },
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "name": "season",
-          "docs": [
-            "Season whose seed_schedule controls per-entry seed awards.",
-            "OPSEC-023: seeds-pinned to the contest's bound season so a caller",
-            "can't substitute a richer-reward season."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  97,
-                  115,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.season_id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -782,30 +854,34 @@
         {
           "name": "entry_num",
           "type": "u32"
+        },
+        {
+          "name": "currency_idx",
+          "type": "u8"
         }
       ]
     },
     {
-      "name": "enter_contest_direct_with_token",
+      "name": "enter_contest_with_token",
       "docs": [
-        "Phantom-wallet entry funded by consuming an EntryTokenAccount.",
-        "User signs; admin pays SOL rent. Blocked when vault is paused."
+        "Entry funded by consuming an EntryTokenAccount instead of paying",
+        "any currency. Wallet co-signs (OPSEC-004). Blocked when vault is paused."
       ],
       "discriminator": [
-        164,
-        30,
-        197,
-        24,
-        212,
-        125,
-        248,
-        17
+        226,
+        96,
+        42,
+        1,
+        205,
+        218,
+        206,
+        231
       ],
       "accounts": [
         {
           "name": "payer",
           "docs": [
-            "Admin pays rent for the ContestEntry PDA"
+            "Admin pays rent for the ContestEntry PDA."
           ],
           "writable": true,
           "signer": true
@@ -813,7 +889,7 @@
         {
           "name": "user",
           "docs": [
-            "The user's Phantom wallet — signs to authorize token consumption"
+            "The user's wallet — signs to authorize token consumption (OPSEC-004)."
           ],
           "writable": true,
           "signer": true
@@ -923,9 +999,7 @@
         {
           "name": "season",
           "docs": [
-            "Season whose seed_schedule controls per-entry seed awards.",
-            "OPSEC-023: seeds-pinned to the contest's bound season so a caller",
-            "can't substitute a richer-reward season."
+            "Pinned-season seed schedule (OPSEC-023)."
           ],
           "pda": {
             "seeds": [
@@ -959,240 +1033,15 @@
           "type": "u32"
         }
       ]
-    },
-    {
-      "name": "enter_contest_with_token",
-      "docs": [
-        "Managed-wallet entry funded by consuming an EntryTokenAccount",
-        "(no USDC charged). Wallet must co-sign to consent (OPSEC-004).",
-        "Blocked when vault is paused."
-      ],
-      "discriminator": [
-        226,
-        96,
-        42,
-        1,
-        205,
-        218,
-        206,
-        231
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "wallet",
-          "docs": [
-            "The wallet that owns the user account + the entry token being consumed.",
-            "OPSEC-004: now a required Signer. Previously an UncheckedAccount, which",
-            "let any 1-of-3 vault signer (e.g. a compromised Alex Bot key) burn ANY",
-            "user's entry token without the owner's consent. For managed (web2)",
-            "wallets the server co-signs with the user's custodial keypair — so a",
-            "leaked admin key alone is no longer sufficient to consume tokens."
-          ],
-          "signer": true
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "user_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "wallet"
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.contest_id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest_entry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  116,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.contest_id",
-                "account": "Contest"
-              },
-              {
-                "kind": "account",
-                "path": "wallet"
-              },
-              {
-                "kind": "arg",
-                "path": "entry_num"
-              }
-            ]
-          }
-        },
-        {
-          "name": "entry_token",
-          "docs": [
-            "EntryTokenAccount being consumed to fund this entry.",
-            "Must be owned (logically) by `wallet` and not yet consumed."
-          ],
-          "writable": true
-        },
-        {
-          "name": "season",
-          "docs": [
-            "Season whose seed_schedule controls per-entry seed awards.",
-            "OPSEC-023: seeds-pinned to the contest's bound season so a caller",
-            "can't substitute a richer-reward season."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  97,
-                  115,
-                  111,
-                  110
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.season_id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "entry_num",
-          "type": "u32"
-        }
-      ]
-    },
-    {
-      "name": "force_close_vault",
-      "docs": [
-        "Close the existing VaultState account to enable a schema migration.",
-        "Requires 2-of-3. Only succeeds if the on-chain data is at a DIFFERENT",
-        "size than the current schema (won't brick a healthy vault)."
-      ],
-      "discriminator": [
-        229,
-        45,
-        206,
-        4,
-        96,
-        129,
-        140,
-        24
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "cosigner",
-          "signer": true
-        },
-        {
-          "name": "vault_state",
-          "docs": [
-            "The existing vault account (old layout). We verify PDA seeds manually."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        }
-      ],
-      "args": []
     },
     {
       "name": "initialize",
       "docs": [
-        "One-time setup of the singleton vault. Only callable by INIT_AUTHORITY",
-        "with the canonical USDC + USDT mints for this build."
+        "One-time setup of the singleton vault. Pins payout mint to USDC,",
+        "registers slot 0 (USDC) + slot 1 (USDT) in the currency registry,",
+        "stores the Squads vault PDA as treasury authority, and locks in the",
+        "multisig signer set + threshold. Only callable by INIT_AUTHORITY",
+        "on a mainnet build."
       ],
       "discriminator": [
         175,
@@ -1209,7 +1058,7 @@
           "name": "admin",
           "docs": [
             "Must be INIT_AUTHORITY in mainnet builds (any signer in dev/test).",
-            "Pays SOL rent for VaultState + the two token accounts."
+            "Pays SOL rent for VaultState + the two operator-revenue ATAs."
           ],
           "writable": true,
           "signer": true
@@ -1217,7 +1066,8 @@
         {
           "name": "vault_state",
           "docs": [
-            "The new VaultState account. PDA at [b\"vault\"]."
+            "The new VaultState account. PDA at [b\"vault\"].",
+            "Zero-copy: size_of<VaultState>() instead of INIT_SPACE."
           ],
           "writable": true,
           "pda": {
@@ -1236,21 +1086,24 @@
           }
         },
         {
-          "name": "usdc_mint",
+          "name": "payout_mint",
           "docs": [
-            "USDC mint. In mainnet builds, must equal EXPECTED_USDC_MINT."
+            "Payout mint — pinned to canonical Circle USDC at mainnet build time.",
+            "Also registered as `accepted_currencies[0]`."
           ]
         },
         {
-          "name": "usdt_mint",
+          "name": "second_currency_mint",
           "docs": [
-            "USDT mint. In mainnet builds, must equal EXPECTED_USDT_MINT."
+            "Second accepted entry-fee currency (USDT). In mainnet builds,",
+            "pinned to EXPECTED_USDT_MINT. Registered as `accepted_currencies[1]`."
           ]
         },
         {
-          "name": "vault_usdc",
+          "name": "payout_op_rev_ata",
           "docs": [
-            "Vault's USDC token account. PDA at [b\"vault_usdc\"], authority = vault_state."
+            "Operator-revenue ATA for the payout currency (USDC).",
+            "PDA at [b\"op_rev\", payout_mint.key()]. Authority = vault_state."
           ],
           "writable": true,
           "pda": {
@@ -1258,25 +1111,26 @@
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
+                  111,
+                  112,
                   95,
-                  117,
-                  115,
-                  100,
-                  99
+                  114,
+                  101,
+                  118
                 ]
+              },
+              {
+                "kind": "account",
+                "path": "payout_mint"
               }
             ]
           }
         },
         {
-          "name": "vault_usdt",
+          "name": "second_op_rev_ata",
           "docs": [
-            "Vault's USDT token account. PDA at [b\"vault_usdt\"], authority = vault_state."
+            "Operator-revenue ATA for the second currency (USDT).",
+            "PDA at [b\"op_rev\", second_currency_mint.key()]. Authority = vault_state."
           ],
           "writable": true,
           "pda": {
@@ -1284,17 +1138,17 @@
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
+                  111,
+                  112,
                   95,
-                  117,
-                  115,
-                  100,
-                  116
+                  114,
+                  101,
+                  118
                 ]
+              },
+              {
+                "kind": "account",
+                "path": "second_currency_mint"
               }
             ]
           }
@@ -1325,15 +1179,83 @@
         {
           "name": "threshold",
           "type": "u8"
+        },
+        {
+          "name": "treasury_authority",
+          "type": "pubkey"
         }
       ]
     },
     {
+      "name": "lock_contest",
+      "docs": [
+        "Flip Contest.status: Open → Locked. 1-of-3."
+      ],
+      "discriminator": [
+        124,
+        155,
+        70,
+        224,
+        136,
+        196,
+        104,
+        207
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "mint_entry_token",
       "docs": [
-        "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer.",
-        "`sequence` is supplied by the caller to avoid PDA collisions when",
-        "minting multiple tokens per user."
+        "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer."
       ],
       "discriminator": [
         182,
@@ -1437,8 +1359,8 @@
     {
       "name": "pause",
       "docs": [
-        "Emergency stop: blocks deposit / withdraw / enter_contest*. 2-of-3.",
-        "`reason` is logged on-chain (UTF-8 zero-padded to 64 bytes)."
+        "Emergency stop: blocks enter_contest{,_with_token}. 2-of-3. `reason`",
+        "is logged on-chain (UTF-8 zero-padded to 64 bytes)."
       ],
       "discriminator": [
         211,
@@ -1492,10 +1414,104 @@
       ]
     },
     {
+      "name": "register_currency",
+      "docs": [
+        "Add a currency to `accepted_currencies` at the first empty slot.",
+        "Creates the per-currency operator-revenue ATA. 2-of-3."
+      ],
+      "discriminator": [
+        247,
+        229,
+        115,
+        204,
+        45,
+        36,
+        179,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "op_rev_ata",
+          "docs": [
+            "Per-currency operator-revenue ATA. Anchor's `init` rejects this if",
+            "the PDA already exists, which gives us defense in depth against",
+            "re-registering a previously-deactivated mint (the ATA still exists)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  95,
+                  114,
+                  101,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "kind",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "set_username",
       "docs": [
-        "Set / overwrite the username on a UserAccount. Signed by the",
-        "account owner — no admin involvement."
+        "Set / overwrite the username on a UserAccount. Owner signs."
       ],
       "discriminator": [
         103,
@@ -1549,9 +1565,8 @@
     {
       "name": "settle_contest",
       "docs": [
-        "Grade a contest: assign ranks + credit payouts to winners' UserAccounts.",
-        "2-of-3 (admin + cosigner). Uses remaining_accounts for variable-length",
-        "settlement arrays. Cap: total payouts ≤ entry_fees + prizes."
+        "Grade a contest. Per-winner SPL transfer from the contest's USDC",
+        "prize-pool PDA → winner's USDC ATA. 2-of-3."
       ],
       "discriminator": [
         79,
@@ -1614,6 +1629,44 @@
               }
             ]
           }
+        },
+        {
+          "name": "prize_pool",
+          "docs": [
+            "Contest's USDC prize pool PDA — source of payouts."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  122,
+                  101,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payout_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
@@ -1628,6 +1681,170 @@
           }
         }
       ]
+    },
+    {
+      "name": "sweep_operator_revenue",
+      "docs": [
+        "Drain a per-currency operator-revenue ATA to the pinned treasury",
+        "wallet's ATA. `amount = 0` sweeps all. 2-of-3."
+      ],
+      "discriminator": [
+        163,
+        47,
+        11,
+        182,
+        146,
+        33,
+        128,
+        132
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "currency_mint"
+        },
+        {
+          "name": "op_rev_ata",
+          "docs": [
+            "Operator-revenue ATA for the given currency.",
+            "PDA-bound to [b\"op_rev\", currency_mint.key()]."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  95,
+                  114,
+                  101,
+                  118
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "currency_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury_ata",
+          "docs": [
+            "Destination ATA — treasury wallet's ATA for this currency.",
+            "`treasury_ata.owner` is verified in the handler against",
+            "`vault_state.treasury_authority` (Squads vault PDA)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "unlock_contest",
+      "docs": [
+        "Flip Contest.status: Locked → Open. 2-of-3 (safety hatch)."
+      ],
+      "discriminator": [
+        228,
+        181,
+        174,
+        51,
+        67,
+        245,
+        60,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
     },
     {
       "name": "unpause",
@@ -1674,152 +1891,6 @@
         }
       ],
       "args": []
-    },
-    {
-      "name": "update_signers",
-      "docs": [
-        "Rotate the multisig signer set or change the threshold. 2-of-3",
-        "required; at least one of the two cosigners must remain in the new",
-        "set (OPSEC-027 continuity)."
-      ],
-      "discriminator": [
-        228,
-        82,
-        68,
-        150,
-        92,
-        66,
-        140,
-        174
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "cosigner",
-          "signer": true
-        },
-        {
-          "name": "vault_state",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "new_signers",
-          "type": {
-            "array": [
-              "pubkey",
-              3
-            ]
-          }
-        },
-        {
-          "name": "new_threshold",
-          "type": "u8"
-        }
-      ]
-    },
-    {
-      "name": "withdraw",
-      "docs": [
-        "Vault → user SPL token transfer. Debits UserAccount.balance.",
-        "Capped at $100 per rolling 24h window per user (v0.15.0).",
-        "Blocked when vault is paused."
-      ],
-      "discriminator": [
-        183,
-        18,
-        70,
-        156,
-        148,
-        109,
-        161,
-        34
-      ],
-      "accounts": [
-        {
-          "name": "user",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "user_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  117,
-                  115,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mint"
-        },
-        {
-          "name": "user_token_account",
-          "writable": true
-        },
-        {
-          "name": "vault_token_account",
-          "writable": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        }
-      ],
-      "args": [
-        {
-          "name": "amount",
-          "type": "u64"
-        }
-      ]
     }
   ],
   "accounts": [
@@ -1946,7 +2017,7 @@
     {
       "code": 6008,
       "name": "SettlementOverflow",
-      "msg": "Settlement payouts exceed entry fees plus prizes"
+      "msg": "Settlement payouts exceed prize pool"
     },
     {
       "code": 6009,
@@ -1956,7 +2027,7 @@
     {
       "code": 6010,
       "name": "InvalidPayoutTiers",
-      "msg": "Payout amounts must sum to prizes amount"
+      "msg": "Payout amounts must sum to prize_pool amount"
     },
     {
       "code": 6011,
@@ -2001,7 +2072,7 @@
     {
       "code": 6019,
       "name": "WithdrawDailyCapExceeded",
-      "msg": "Withdrawal would exceed the $100 / 24h per-user cap"
+      "msg": "Withdrawal would exceed the per-user daily cap"
     },
     {
       "code": 6020,
@@ -2017,14 +2088,139 @@
       "code": 6022,
       "name": "UsernameTooShort",
       "msg": "Username must be at least 3 characters"
+    },
+    {
+      "code": 6023,
+      "name": "CurrencyAlreadyRegistered",
+      "msg": "Currency mint is already registered in the vault registry"
+    },
+    {
+      "code": 6024,
+      "name": "CurrencyRegistryFull",
+      "msg": "Vault currency registry is full"
+    },
+    {
+      "code": 6025,
+      "name": "InvalidCurrencyIndex",
+      "msg": "Currency index is out of range or refers to an unused slot"
+    },
+    {
+      "code": 6026,
+      "name": "CurrencyNotActive",
+      "msg": "Currency is registered but deactivated"
+    },
+    {
+      "code": 6027,
+      "name": "EntryFeeNotSet",
+      "msg": "Contest does not accept this currency (entry fee is zero)"
+    },
+    {
+      "code": 6028,
+      "name": "ContestNotLocked",
+      "msg": "Contest is not locked"
+    },
+    {
+      "code": 6029,
+      "name": "ContestNotCancellable",
+      "msg": "Contest cannot be cancelled in its current status"
+    },
+    {
+      "code": 6030,
+      "name": "PrizePoolNotEmpty",
+      "msg": "Prize pool account still holds tokens — cannot close contest"
+    },
+    {
+      "code": 6031,
+      "name": "EmptyRevenueAccount",
+      "msg": "Operator-revenue account is empty — nothing to sweep"
+    },
+    {
+      "code": 6032,
+      "name": "TreasuryAuthorityMismatch",
+      "msg": "Treasury ATA owner does not match the pinned treasury authority"
+    },
+    {
+      "code": 6033,
+      "name": "FeeAndPrizeBothZero",
+      "msg": "Contest must have at least one entry fee or a non-zero prize pool"
     }
   ],
   "types": [
     {
+      "name": "AcceptedCurrency",
+      "docs": [
+        "One slot in the on-chain currency registry. `mint == Pubkey::default()`",
+        "means the slot is unused. `active == 0` means the slot is registered",
+        "but disabled for new entries / new contests (slot is never reclaimed —",
+        "preserves currency_idx stability across the program's life).",
+        "",
+        "`kind` is an operator tag (0 = stablecoin, 1 = sol-wrapped, etc.) —",
+        "informational only, never consulted by program logic. `_pad` reserves",
+        "14 bytes for future fields (per-currency fee-cap, display ticker, etc.).",
+        "",
+        "Zero-copy (Pod-safe): `active` is u8 (0/1) rather than bool — bool is",
+        "not Pod-safe because non-{0,1} byte values cause undefined behavior.",
+        "We provide unsafe Pod + Zeroable impls so this struct can sit inside",
+        "`VaultState`'s `accepted_currencies: [AcceptedCurrency; 16]` and be",
+        "re-interpreted from the account's raw bytes via bytemuck."
+      ],
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "SPL mint for this currency. `Pubkey::default()` for unused slots."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "op_rev_ata",
+            "docs": [
+              "Per-currency operator-revenue ATA (PDA at [b\"op_rev\", mint])."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "kind",
+            "docs": [
+              "Operator tag (0 = stablecoin, 1 = sol-wrapped, ...). Informational."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "active",
+            "docs": [
+              "1 == active; 0 == deactivated. Flip to 0 via `deactivate_currency`.",
+              "u8 instead of bool for Pod safety (zero-copy compatibility)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "docs": [
+              "Reserved padding for forward-compat. 14 bytes brings the struct to",
+              "80 bytes total for clean alignment + future field expansion."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                14
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Contest",
       "docs": [
-        "One per contest. Holds entry-fee schedule, payout tiers, accumulated",
-        "fees, status, and the season the contest is bound to.",
+        "One per contest. Holds the per-currency entry-fee schedule, accumulated",
+        "per-currency fee tallies (operator revenue, separate from prize pool),",
+        "payout tiers, status, season binding, and the creator/admin pubkeys.",
         "",
         "PDA seeds: [b\"contest\", contest_id]  (contest_id = SHA256 of Rails slug)"
       ],
@@ -2044,26 +2240,58 @@
             }
           },
           {
-            "name": "prizes",
+            "name": "admin",
             "docs": [
-              "Guaranteed prize amount the creator pre-funds at create time."
+              "Payer pubkey from create_contest (admin bot, pays SOL rent)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "Creator pubkey (signs the prize_pool USDC transfer from their ATA)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "season_id",
+            "docs": [
+              "Season this contest is bound to (OPSEC-023). Pins the seed schedule."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "prize_pool",
+            "docs": [
+              "USDC prize pool — pre-funded by creator at create time. Immutable."
             ],
             "type": "u64"
           },
           {
-            "name": "entry_fee",
+            "name": "entry_fee_by_currency",
             "docs": [
-              "Entry fee per entry, 6-decimal USDC."
+              "Per-currency entry-fee schedule. `entry_fee_by_currency[i] = 0`",
+              "means currency `i` is NOT accepted for this contest."
             ],
-            "type": "u64"
+            "type": {
+              "array": [
+                "u64",
+                16
+              ]
+            }
           },
           {
             "name": "entry_fees",
             "docs": [
-              "Total entry fees collected so far. Increments on every paid entry.",
-              "Settlement is capped at `entry_fees + prizes`."
+              "Per-currency collected fees (operator revenue). Increments by the",
+              "fee on every paid entry of currency `i`."
             ],
-            "type": "u64"
+            "type": {
+              "array": [
+                "u64",
+                16
+              ]
+            }
           },
           {
             "name": "max_entries",
@@ -2093,34 +2321,11 @@
           {
             "name": "payout_amounts",
             "docs": [
-              "USDC paid per rank, 6-decimal. Must sum to `prizes` (validated at",
-              "create_contest). Max 10 ranks."
+              "USDC paid per rank, 6-decimal. Must sum to `prize_pool`. Max 10 ranks."
             ],
             "type": {
               "vec": "u64"
             }
-          },
-          {
-            "name": "admin",
-            "docs": [
-              "Payer pubkey from create_contest (admin bot, pays SOL rent)."
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "creator",
-            "docs": [
-              "Creator pubkey (signs the prizes USDC transfer from their ATA)."
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "season_id",
-            "docs": [
-              "Season this contest is bound to (OPSEC-023). Pins the seed schedule",
-              "so a caller can't substitute a richer-reward season at entry time."
-            ],
-            "type": "u32"
           },
           {
             "name": "bump",
@@ -2128,6 +2333,18 @@
               "PDA bump."
             ],
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved padding for forward-compat."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2177,8 +2394,26 @@
             "type": "u64"
           },
           {
+            "name": "currency_idx",
+            "docs": [
+              "Index into `vault_state.accepted_currencies` of the currency this",
+              "entry was paid in. `u8::MAX` is the sentinel for token-funded entries",
+              "(no SPL transfer occurred)."
+            ],
+            "type": "u8"
+          },
+          {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
           }
         ]
       }
@@ -2187,9 +2422,10 @@
       "name": "ContestStatus",
       "docs": [
         "Lifecycle of a Contest.",
-        "Open    — accepting entries",
-        "Locked  — entries closed, awaiting results (no instruction sets this yet)",
-        "Settled — graded, payouts credited"
+        "Open      — accepting entries",
+        "Locked    — entries closed, awaiting results (set by lock_contest)",
+        "Settled   — graded, payouts disbursed",
+        "Cancelled — refunded to creator, no further state transitions allowed"
       ],
       "type": {
         "kind": "enum",
@@ -2202,6 +2438,9 @@
           },
           {
             "name": "Settled"
+          },
+          {
+            "name": "Cancelled"
           }
         ]
       }
@@ -2329,24 +2568,38 @@
     {
       "name": "Settlement",
       "docs": [
-        "`settle_contest` — grade a contest and credit payouts.",
+        "`settle_contest` — grade a contest, disburse USDC payouts.",
         "",
-        "Takes a `Vec<Settlement>` (one per entry, including losers with payout=0)",
-        "and a pair of remaining_accounts per Settlement: [user_account, contest_entry].",
-        "Verifies each pair against the expected PDA seeds, then:",
-        "- Adds `payout` to UserAccount.balance + total_won",
-        "- Sets ContestEntry rank + payout, transitions Active → Won/Lost",
+        "For each Settlement entry, performs an SPL transfer of `payout` USDC",
+        "from the contest's prize_pool PDA → the winner's USDC ATA (signed by",
+        "vault_state PDA), then updates the ContestEntry and UserAccount stats.",
         "",
-        "Cap: total payouts ≤ contest.entry_fees + contest.prizes. Anchor's",
-        "remaining_accounts pattern lets us settle a variable number of entries",
-        "in one TX (up to compute-budget limits — ~25-30 entries per call on mainnet).",
+        "remaining_accounts pattern: per settlement, 3 accounts in order:",
+        "[user_account_pda, contest_entry_pda, winner_usdc_ata]",
         "",
-        "Auth: 2-of-3 (admin + cosigner). Settle is the only path that credits",
-        "balances to users, so it requires the highest authorization.",
+        "Validation:",
+        "- 2-of-3 multisig (constraint).",
+        "- contest.status is Open or Locked.",
+        "- payout_mint == vault_state.payout_mint (USDC pin).",
+        "- sum(payouts) <= contest.prize_pool. Entry fees are NOT included",
+        "anymore — they sit in op_rev ATAs, separate from the prize pool.",
+        "- No duplicate (wallet, entry_num) in the vec.",
+        "- remaining_accounts.len() == settlements.len() * 3.",
         "",
-        "Refusals:",
-        "- Duplicate (wallet, entry_num) in the Vec — would double-credit a user",
-        "- A ContestEntry already settled (status != Active) — defense in depth"
+        "Per winner:",
+        "- SPL Transfer (PDA-signed): prize_pool → winner_usdc_ata.",
+        "- ContestEntry: status Active → Won (if payout > 0) or Lost.",
+        "- UserAccount: total_won += payout, cashes += (payout > 0),",
+        "wins += (rank == 1).",
+        "",
+        "Final: contest.status = Settled.",
+        "",
+        "CU budget: roughly 5k base + 7k per winner; ≤ 25 winners fits the",
+        "default 200k budget. Rails sets `set_compute_unit_limit(400_000)`",
+        "on every settle TX (decided §11 Q7).",
+        "",
+        "VaultState is zero-copy (v0.16). Vault is read via `load()?` for",
+        "signer-seed derivation; the multisig check stays in the constraint."
       ],
       "type": {
         "kind": "struct",
@@ -2373,8 +2626,10 @@
     {
       "name": "UserAccount",
       "docs": [
-        "One per user wallet. Holds the user's vault balance plus lifetime",
-        "accounting and v0.15.0's daily-withdraw circuit breaker.",
+        "One per user wallet. Holds on-chain stat counters (entries / wins /",
+        "cashes / total_won) plus the loyalty seeds counter and the user's",
+        "chosen display name. v0.16 dropped the custodial balance / deposit /",
+        "withdraw / daily-cap fields — funds now live in user ATAs.",
         "",
         "PDA seeds: [b\"user\", wallet.as_ref()]"
       ],
@@ -2389,49 +2644,9 @@
             "type": "pubkey"
           },
           {
-            "name": "balance",
-            "docs": [
-              "Current spendable balance, 6-decimal USDC. Credited on deposit and",
-              "on `settle_contest` winnings; debited on withdraw and on",
-              "`enter_contest` (managed-wallet entry fee)."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "total_deposited",
-            "docs": [
-              "Lifetime cumulative deposits. Audit/UX only — never decremented."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "total_withdrawn",
-            "docs": [
-              "Lifetime cumulative withdrawals. Audit/UX only — never decremented."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "total_won",
-            "docs": [
-              "Lifetime cumulative winnings credited via settle_contest. Audit/UX only."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "seeds",
-            "docs": [
-              "Loyalty points awarded per entry from the contest's Season schedule.",
-              "Rails derives \"level\" client-side from this value (level = seeds/100 + 1)."
-            ],
-            "type": "u64"
-          },
-          {
             "name": "username",
             "docs": [
-              "On-chain master copy of the user's display name (v0.14.0). UTF-8,",
-              "zero-padded. Rails mirrors it; only the wallet owner can change via",
-              "`set_username`."
+              "On-chain master copy of the user's display name. UTF-8 zero-padded."
             ],
             "type": {
               "array": [
@@ -2441,20 +2656,40 @@
             }
           },
           {
-            "name": "daily_withdrawn",
+            "name": "seeds",
             "docs": [
-              "Lamports withdrawn in the current 24h window (v0.15.0). Resets to",
-              "zero when DAILY_WINDOW_SECONDS elapses since daily_window_start."
+              "Loyalty points awarded per entry from the contest's Season schedule.",
+              "Rails derives \"level\" client-side from this value."
             ],
             "type": "u64"
           },
           {
-            "name": "daily_window_start",
+            "name": "entries",
             "docs": [
-              "Unix timestamp of the current window's start (v0.15.0). Zero on",
-              "fresh accounts — the first withdraw initializes it."
+              "Lifetime contests entered. Increments on every successful entry."
             ],
-            "type": "i64"
+            "type": "u32"
+          },
+          {
+            "name": "wins",
+            "docs": [
+              "Lifetime 1st-place finishes (rank == 1 in settle_contest)."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "cashes",
+            "docs": [
+              "Lifetime any-payout finishes (payout > 0 in settle_contest)."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "total_won",
+            "docs": [
+              "Lifetime USDC payouts received. Increments by `payout` on settle."
+            ],
+            "type": "u64"
           },
           {
             "name": "bump",
@@ -2462,6 +2697,18 @@
               "PDA bump."
             ],
             "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved padding for forward-compat (referral, kyc tier, etc.)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2469,12 +2716,24 @@
     {
       "name": "VaultState",
       "docs": [
-        "Singleton vault account. Holds the 2-of-3 multisig signer set, the two",
-        "accepted token mints, the vault's token accounts, a bump, and a pause",
-        "flag (v0.15.0).",
+        "Singleton vault account. Holds the 2-of-3 multisig signer set, the",
+        "pinned payout mint (USDC), the per-currency registry, a treasury",
+        "authority pin (Squads vault PDA), and a pause flag.",
         "",
-        "PDA seeds: [b\"vault\"]"
+        "PDA seeds: [b\"vault\"]",
+        "",
+        "Zero-copy: VaultState is too large (~1475 data bytes) to deserialize",
+        "onto BPF's 4KB stack via borsh. Anchor's `#[account(zero_copy)]` maps",
+        "the account data buffer directly as a typed reference via bytemuck::Pod,",
+        "avoiding the full-struct stack alloc that borsh's deserialize_reader",
+        "would perform.",
+        "",
+        "`paused` is u8 (0/1) rather than bool for Pod safety."
       ],
+      "serialization": "bytemuckunsafe",
+      "repr": {
+        "kind": "c"
+      },
       "type": {
         "kind": "struct",
         "fields": [
@@ -2482,8 +2741,8 @@
             "name": "signers",
             "docs": [
               "The three multisig signers. 1-of-3 can run routine ops; 2-of-3",
-              "needed for treasury ops (settle, force_close, update_signers,",
-              "pause, unpause)."
+              "needed for treasury ops (settle, register/deactivate_currency,",
+              "cancel_contest, sweep_operator_revenue, unlock_contest, pause/unpause)."
             ],
             "type": {
               "array": [
@@ -2500,36 +2759,6 @@
             "type": "u8"
           },
           {
-            "name": "usdc_mint",
-            "docs": [
-              "USDC mint this vault accepts. Set once at init; verified against",
-              "EXPECTED_USDC_MINT."
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "usdt_mint",
-            "docs": [
-              "USDT mint this vault accepts. Set once at init; verified against",
-              "EXPECTED_USDT_MINT."
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "vault_usdc",
-            "docs": [
-              "Vault's USDC token account (PDA, authority = this vault_state)."
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "vault_usdt",
-            "docs": [
-              "Vault's USDT token account (PDA, authority = this vault_state)."
-            ],
-            "type": "pubkey"
-          },
-          {
             "name": "bump",
             "docs": [
               "PDA bump."
@@ -2539,13 +2768,59 @@
           {
             "name": "paused",
             "docs": [
-              "Emergency pause flag (v0.15.0). When true, deposit / withdraw /",
-              "enter_contest* are rejected. Settle, close, mint_entry_token,",
-              "migrate, set_username, create_user_account, create_season,",
-              "update_signers, force_close, pause, unpause remain available.",
-              "Flipped via the `pause` / `unpause` instructions (2-of-3)."
+              "Emergency pause flag. When 1, enter_contest and",
+              "enter_contest_with_token return VaultPaused. Other ops remain",
+              "available so operators can wind down in-flight state.",
+              "u8 instead of bool for Pod safety (zero-copy compatibility)."
             ],
-            "type": "bool"
+            "type": "u8"
+          },
+          {
+            "name": "payout_mint",
+            "docs": [
+              "Payout mint — pinned at `initialize`, immutable thereafter.",
+              "All `settle_contest` / `cancel_contest` / `close_contest` flows",
+              "constrain this. In a mainnet build, must equal EXPECTED_USDC_MINT."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury_authority",
+            "docs": [
+              "Squads vault PDA — pinned at `initialize`. `sweep_operator_revenue`",
+              "enforces `treasury_ata.owner == treasury_authority`, so leaked admin",
+              "keys can't drain swept revenue elsewhere."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "accepted_currencies",
+            "docs": [
+              "On-chain currency registry. Slot 0 holds the payout currency (USDC),",
+              "slot 1 holds USDT, slots 2-15 are populated via `register_currency`."
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "AcceptedCurrency"
+                  }
+                },
+                16
+              ]
+            }
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved padding for forward-compat (governance, fee policy, etc.)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }

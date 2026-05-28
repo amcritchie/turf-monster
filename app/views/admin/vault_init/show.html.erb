@@ -81,6 +81,17 @@
                  class="input input-bordered w-24" />
         </div>
 
+        <div>
+          <label class="label-upper text-xs">Treasury authority (Squads vault PDA)</label>
+          <input type="text" name="treasury_authority" value="<%= @default_treasury_authority %>"
+                 class="input input-bordered w-full font-mono text-xs" />
+          <p class="text-muted text-xs mt-1">
+            Pinned at init — sweep_operator_revenue refuses any treasury_ata
+            whose owner is not this pubkey. Changing it post-init requires a
+            future update_treasury_authority instruction (not in v0.16).
+          </p>
+        </div>
+
         <div class="flex items-center gap-3 pt-2">
           <button id="vault-init-btn" type="button" onclick="initVault()" class="btn btn-primary">
             Connect Phantom + Sign
@@ -130,7 +141,8 @@
       signer_1: fd.get('signer_1'),
       signer_2: fd.get('signer_2'),
       signer_3: fd.get('signer_3'),
-      threshold: fd.get('threshold')
+      threshold: fd.get('threshold'),
+      treasury_authority: fd.get('treasury_authority')
     };
 
     disableBtn(true);

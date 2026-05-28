@@ -22,37 +22,52 @@ class TransactionLogsController < ApplicationController
     return redirect_to admin_transactions_path, alert: "Transaction not found" unless @transaction_log
   end
 
+  # v0.16: the `withdraw` on-chain instruction has been removed alongside
+  # the custodial-balance model. Managed-wallet USDC now lives in the user's
+  # own ATA — there's no pooled vault balance to debit. The replacement is
+  # an off-chain payout flow handled by the operator (Kraken/Coinbase + bank
+  # wire / Zelle).
+  #
+  # This action becomes an operator-handoff stub: it flips the TransactionLog
+  # to "approved" so it appears in the admin "needs payout" queue, but does
+  # NOT execute an on-chain TX. The operator processes the off-ramp manually,
+  # then clicks "Complete" (the existing :complete action) to mark fiat-sent.
+  #
+  # Phase 2 task (separate engagement): replace this stub with a proper
+  # PayoutRequest model + Stripe Connect/Zelle/Kraken integration. The
+  # TransactionLog row's metadata is the audit trail for that work.
   def approve
     txn = TransactionLog.find_by(slug: params[:slug])
     return redirect_to admin_transactions_path, alert: "Transaction not found" unless txn
 
     rescue_and_log(target: txn) do
-      # OPSEC-030: serialize so two admin clicks can't both pass the
-      # "pending?" check and both execute the on-chain withdrawal.
       txn.with_lock do
         raise "Only pending transactions can be approved" unless txn.status == "pending"
 
-        # OPSEC-031: re-check balance at approve time. Balance may have
-        # drained between request submission and approval (e.g., user
-        # spent USDC entering a contest in between). Don't trust the
-        # already-validated request — verify against current on-chain state.
+        # OPSEC-031: re-check balance at approve time. The user's USDC ATA
+        # may have drained between request submission and approval (e.g.
+        # the user spent USDC entering a contest in between).
         amount_dollars = txn.amount_cents / 100.0
         onchain = Solana::Vault.new.sync_balance(txn.user.solana_address)
         available_dollars = onchain&.dig(:balance_dollars).to_f
         if amount_dollars > available_dollars
-          raise "Withdrawal exceeds current on-chain balance ($#{format('%.2f', available_dollars)} available; user may have spent down since request)"
+          raise "Withdrawal exceeds current ATA balance ($#{format('%.2f', available_dollars)} available; user may have spent down since request)"
         end
 
-        onchain_tx = nil
-        if txn.user.managed_wallet? && txn.user.solana_keypair
-          vault = Solana::Vault.new
-          amount_lamports = Solana::Config.dollars_to_lamports(amount_dollars)
-          onchain_tx = vault.withdraw(txn.user.solana_keypair, amount_lamports)
-        end
+        # No on-chain TX — operator off-ramps via Kraken/Coinbase + wires
+        # the user via Zelle. Phase 2 will plumb this through a PayoutRequest
+        # model with proper status tracking.
+        new_description = "#{txn.description} (operator off-ramp queued)"
+        txn.update!(status: "approved", description: new_description)
 
-        txn.update!(status: "approved", onchain_tx: onchain_tx)
+        Rails.logger.warn("[v0.16-payout] manual operator action required: " \
+          "TransactionLog ##{txn.id} (#{txn.slug}) for user=#{txn.user.id} " \
+          "amount=$#{format('%.2f', amount_dollars)} — process off-ramp manually, " \
+          "then mark complete at /admin/transactions/#{txn.slug}/complete")
       end
-      redirect_to admin_transactions_path(status: "pending"), notice: "Withdrawal approved for #{txn.user.display_name}. Onchain withdrawal executed."
+      redirect_to admin_transactions_path(status: "pending"),
+                  notice: "Withdrawal queued for off-ramp (operator handles manually). " \
+                          "Mark complete after wire confirms."
     end
   rescue StandardError => e
     redirect_to admin_transactions_path, alert: "Approve failed: #{e.message}"

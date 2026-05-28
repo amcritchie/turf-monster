@@ -46,14 +46,14 @@ module Solana
       { users_checked: users.count, discrepancies: @discrepancies }
     end
 
-    # Verify onchain contest state matches DB
+    # Verify onchain contest state matches DB. v0.16 Contest layout has
+    # per-currency entry_fee_by_currency + entry_fees arrays — for the
+    # USDC-only Phase 1 we reconcile against slot 0 (USDC) totals.
     def reconcile_contest(contest)
       return unless contest.onchain?
 
-      # Read onchain contest account
-      client = vault.client
-      info = client.get_account_info(contest.onchain_contest_id)
-      unless info&.dig("value")
+      onchain = vault.read_contest(contest.slug)
+      unless onchain
         @discrepancies << {
           type: :missing_onchain_contest,
           contest_id: contest.id,
@@ -63,16 +63,12 @@ module Solana
         return
       end
 
-      account_data = Base64.decode64(info["value"]["data"][0])
-      # Skip 8-byte discriminator + 32-byte contest_id + 8-byte prizes
-      offset = 8 + 32 + 8
-      entry_fee, offset = Borsh.decode_u64(account_data, offset)
-      entry_fees, offset = Borsh.decode_u64(account_data, offset)
-      max_entries, offset = Borsh.decode_u32(account_data, offset)
-      current_entries, offset = Borsh.decode_u32(account_data, offset)
+      current_entries = onchain[:current_entries]
+      slot0_fees       = onchain[:entry_fees].is_a?(Array) ? onchain[:entry_fees][0].to_i : 0
+      slot0_fee        = onchain[:entry_fee_by_currency].is_a?(Array) ? onchain[:entry_fee_by_currency][0].to_i : 0
 
       db_entries = contest.entries.where(status: [:active, :complete]).count
-      db_pool = Solana::Config.dollars_to_lamports(contest.pool_dollars)
+      db_pool    = Solana::Config.dollars_to_lamports(contest.pool_dollars)
 
       if current_entries.to_i != db_entries
         @discrepancies << {
@@ -84,17 +80,23 @@ module Solana
         }
       end
 
-      if entry_fees.to_i != db_pool
+      if slot0_fees != db_pool
         @discrepancies << {
           type: :entry_fees_mismatch,
           contest_id: contest.id,
           contest_name: contest.name,
           db_pool_lamports: db_pool,
-          onchain_pool_lamports: entry_fees
+          onchain_pool_lamports: slot0_fees
         }
       end
 
-      { entry_fee: entry_fee, max_entries: max_entries, current_entries: current_entries, entry_fees: entry_fees }
+      {
+        entry_fee:       slot0_fee,
+        max_entries:     onchain[:max_entries],
+        current_entries: current_entries,
+        entry_fees:      slot0_fees,
+        prize_pool:      onchain[:prize_pool]
+      }
     end
 
     private

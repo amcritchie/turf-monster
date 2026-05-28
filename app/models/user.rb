@@ -181,6 +181,21 @@ class User < ApplicationRecord
     provider == "google_oauth2" && uid.present?
   end
 
+  # v0.16 / Phase 2 stub. The self-custody export flow lets a managed
+  # wallet user prove ownership of their keypair (e.g. via a Phantom
+  # challenge-sign) and elect to have the server delete its copy of the
+  # encrypted key. Once `self_custodied_at` is set, the daily key-deletion
+  # sweep job will wipe `encrypted_web2_solana_private_key` for them, and
+  # ContestsController#enter must refuse to sign on their behalf.
+  #
+  # Hook is here so existing call sites can branch on the predicate before
+  # the rest of the flow ships. Schema migration (export_initiated_at,
+  # self_custodied_at) is a Phase 2 task; this returns false unconditionally
+  # until then.
+  def self_custodied?
+    false
+  end
+
   def has_password?
     password_digest.present? && password_digest != ""
   end
@@ -286,33 +301,54 @@ class User < ApplicationRecord
   # --- Entry tokens (on-chain EntryTokenAccount PDAs, turf-vault v0.9.0+) ---
   # Balance comes from on-chain RPC; consumption happens atomically inside the
   # enter_contest_with_token Anchor instruction (no spend_entry_token! needed).
+  #
+  # 60s Rails.cache layer wraps the getProgramAccounts RPC because public
+  # devnet rate-limits it to ~1/sec/IP and the navbar+modal+badge can all
+  # request it in the same pageview. Cache key includes the deployed
+  # program ID so a program-redeploy implicitly invalidates. Writers
+  # (TokenPurchaseJob mint, enter_contest_with_token consume) should call
+  # `User#bust_entry_tokens_cache!` after the chain TX confirms.
+
+  def entry_tokens_cache_key
+    "entry_tokens/v1/#{Solana::Config::PROGRAM_ID[0, 8]}/#{solana_address}"
+  end
+
+  # Per-request memoized AND Rails-cached for 60s. Returns the full list
+  # (including consumed) so both #entry_token_balance and
+  # #next_unconsumed_entry_token can derive from one RPC call.
+  def cached_entry_tokens
+    return @cached_entry_tokens if defined?(@cached_entry_tokens)
+
+    @cached_entry_tokens =
+      if solana_connected?
+        Rails.cache.fetch(entry_tokens_cache_key, expires_in: 60.seconds) do
+          Solana::Vault.new.list_entry_tokens(solana_address)
+        end
+      else
+        []
+      end
+  rescue => e
+    Rails.logger.warn "cached_entry_tokens fetch failed for user=#{id}: #{e.message}"
+    @cached_entry_tokens = []
+  end
+
+  def bust_entry_tokens_cache!
+    Rails.cache.delete(entry_tokens_cache_key)
+    remove_instance_variable(:@cached_entry_tokens) if defined?(@cached_entry_tokens)
+    remove_instance_variable(:@entry_token_balance) if defined?(@entry_token_balance)
+  end
 
   # Per-request memoized — views call this from the navbar, the entry-token
   # badge, and the action body all in the same render. The User instance is
   # the same `current_user` reference across the request, so the memo holds.
-  # Write paths that consume/mint tokens should also `user.instance_variable_set(:@entry_token_balance, nil)`
-  # if the count needs to refresh mid-request (no current callers do this).
   def entry_token_balance
-    @entry_token_balance ||= if solana_connected?
-      begin
-        Solana::Vault.new.list_entry_tokens(solana_address).count { |t| !t[:consumed] }
-      rescue => e
-        Rails.logger.warn "entry_token_balance fetch failed for user=#{id}: #{e.message}"
-        0
-      end
-    else
-      0
-    end
+    @entry_token_balance ||= cached_entry_tokens.count { |t| !t[:consumed] }
   end
 
   # Returns the first unconsumed EntryTokenAccount PDA for this user, or nil.
   # Used by ContestsController#enter to decide between USDC-funded and token-funded entry paths.
   def next_unconsumed_entry_token
-    return nil unless solana_connected?
-    Solana::Vault.new.list_entry_tokens(solana_address).find { |t| !t[:consumed] }
-  rescue => e
-    Rails.logger.warn "next_unconsumed_entry_token fetch failed for user=#{id}: #{e.message}"
-    nil
+    cached_entry_tokens.find { |t| !t[:consumed] }
   end
 
   private

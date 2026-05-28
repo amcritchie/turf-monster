@@ -10,15 +10,25 @@ module Admin
     # Delegate to Solana::Config so the hardcoded values live in exactly one
     # place. INIT_AUTHORITY mirrors `state.rs::INIT_AUTHORITY`; the signer
     # set + threshold mirror what `initialize` writes into VaultState.
-    INIT_AUTHORITY    = Solana::Config::INIT_AUTHORITY
-    DEFAULT_SIGNERS   = Solana::Config::MULTISIG_SIGNERS
-    DEFAULT_THRESHOLD = Solana::Config::MULTISIG_THRESHOLD
+    INIT_AUTHORITY     = Solana::Config::INIT_AUTHORITY
+    DEFAULT_SIGNERS    = Solana::Config::MULTISIG_SIGNERS
+    DEFAULT_THRESHOLD  = Solana::Config::MULTISIG_THRESHOLD
+    # v0.16: treasury_authority is pinned at initialize time so leaked admin
+    # keys can't drain swept operator revenue to anywhere but the Squads
+    # vault. Mainnet uses a fresh mainnet Squads vault — devnet uses the
+    # existing one (BW13…6kC). Configurable via env so the mainnet runbook
+    # can override.
+    DEFAULT_TREASURY_AUTHORITY = ENV.fetch(
+      "SOLANA_SQUADS_VAULT_PDA",
+      "BW13kgfiG2koFn3WRkte21NW9TFygsD1ge2fNJdjH6kC"
+    )
 
     def show
       @vault = Solana::Vault.new.read_vault_state
       @init_authority = INIT_AUTHORITY
       @default_signers = DEFAULT_SIGNERS
       @default_threshold = DEFAULT_THRESHOLD
+      @default_treasury_authority = DEFAULT_TREASURY_AUTHORITY
       @rpc_url = Solana::Config::RPC_URL
       @network = Solana::Config::NETWORK
     end
@@ -30,16 +40,18 @@ module Admin
         creator   = params[:creator_pubkey].to_s.strip
         signers   = [params[:signer_1], params[:signer_2], params[:signer_3]].map { |s| s.to_s.strip }
         threshold = params[:threshold].to_i
+        treasury  = params[:treasury_authority].presence&.strip || DEFAULT_TREASURY_AUTHORITY
 
-        validate_init_params!(creator, signers, threshold)
+        validate_init_params!(creator, signers, threshold, treasury)
 
         result = Solana::Vault.new.build_initialize_vault(
-          creator_pubkey: creator,
-          signers: signers,
-          threshold: threshold
+          creator_pubkey:     creator,
+          signers:            signers,
+          threshold:          threshold,
+          treasury_authority: treasury
         )
 
-        render json: result.merge(creator_pubkey: creator)
+        render json: result.merge(creator_pubkey: creator, treasury_authority: treasury)
       end
     rescue StandardError => e
       render json: { error: e.message }, status: :unprocessable_entity
@@ -95,13 +107,14 @@ module Admin
 
     private
 
-    def validate_init_params!(creator, signers, threshold)
+    def validate_init_params!(creator, signers, threshold, treasury)
       raise "creator_pubkey required" if creator.blank?
       raise "Three signer addresses required" if signers.any?(&:blank?)
+      raise "treasury_authority required" if treasury.blank?
 
       # Validate base58 BEFORE distinctness — three identical garbage strings
       # should report the invalid pubkey, not "must be distinct".
-      ([creator] + signers).each do |pk|
+      ([creator, treasury] + signers).each do |pk|
         raise "Invalid pubkey: #{pk}" unless valid_base58_pubkey?(pk)
       end
 
