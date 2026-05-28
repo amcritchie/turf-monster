@@ -40,9 +40,13 @@ load Rails.root.join("db/seeds.rb")
 # between Playwright runs. Order matters for FK constraints.
 puts "Resetting test-volatile state..."
 
-Selection.delete_all
+SurvivorPick.delete_all          # FK → entries; must precede Entry.delete_all
+Selection.delete_all              # FK → entries + slate_matchups
 Entry.delete_all
-SurvivorPick.delete_all
+# Sever games → survivor_rounds FK before nuking SurvivorRound rows. db/seeds.rb
+# creates Games (and find_or_create_by leaves their survivor_round_id pointing
+# at the previous run's SurvivorRound). Game rows themselves stay.
+Game.update_all(survivor_round_id: nil)
 SurvivorRound.delete_all
 Contest.delete_all
 TransactionLog.delete_all
@@ -83,6 +87,13 @@ contest.skip_onchain_callback = true
 contest.save!
 contest.update_column(:slug, "world-cup-2026") unless contest.slug == "world-cup-2026"
 contest.update!(onchain_contest_id: nil)
+
+# Pin world-cup-2026 as the main contest so `/` always redirects here
+# regardless of newer contests the operator creates via /contests/generator.
+# Without this, SeasonConfig.main_contest picks the most-recently-created
+# open contest — an operator-scaffolded test contest blocks Playwright's
+# smoke specs that navigate to `/` expecting selection cards.
+SeasonConfig.set_main_contest!(contest)
 
 # ── World Cup Survivor ───────────────────────────────────────────────
 # 8 global rounds; round 1 reuses Group-1's Matchday-1 games as its fixtures.
