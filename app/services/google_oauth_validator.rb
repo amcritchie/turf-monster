@@ -36,13 +36,19 @@ class GoogleOauthValidator
   end
 
   def validate!
-    # Test-env affordance: OmniAuth.config.test_mode replaces the real OAuth
-    # flow with mock_auth, which doesn't carry a real id_token. The gem
-    # already verifies the mock signature/state internally; this validator
-    # has nothing real to re-check. Production paths always have id_token
-    # set by the real OAuth bounce — so blank means we're in test, not in
-    # a real-world request, and we don't fail those tests open.
-    return Result.new(ok: true, email: nil, email_verified: true, reason: :test_skip) if @id_token.blank? && Rails.env.test?
+    # Test-mode affordance: OmniAuth.config.test_mode replaces the real
+    # OAuth flow with mock_auth, which doesn't carry a real id_token. The
+    # gem already verifies the mock signature/state internally; this
+    # validator has nothing real to re-check.
+    #
+    # We bypass on `OmniAuth.config.test_mode` (NOT just Rails.env.test?)
+    # because Playwright runs the full e2e suite against the DEV server
+    # (per playwright.config.js), and test_mode is the canonical "we are
+    # in a mock OAuth flow" signal. Production NEVER enables test_mode
+    # (development.rb sets it via after_initialize only), so this widens
+    # the test surface without weakening the production guard.
+    test_mode = (defined?(OmniAuth) && OmniAuth.config.respond_to?(:test_mode) && OmniAuth.config.test_mode)
+    return Result.new(ok: true, email: nil, email_verified: true, reason: :test_skip) if @id_token.blank? && (Rails.env.test? || test_mode)
 
     return Result.new(ok: false, reason: :missing_id_token) if @id_token.blank?
     return Result.new(ok: false, reason: :missing_expected_aud) if @expected_aud.blank?
