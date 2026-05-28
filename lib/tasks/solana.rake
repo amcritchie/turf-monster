@@ -373,6 +373,90 @@ namespace :solana do
     end
   end
 
+  desc "End-to-end Solana health check (run on every Heroku flip before traffic)"
+  task health: :environment do
+    exit_code = 0
+    pass = ->(msg) { puts "  ✓ #{msg}" }
+    fail = ->(msg) { puts "  ✗ #{msg}"; exit_code = 1 }
+
+    puts "=== Solana health check ==="
+    puts "  NETWORK    = #{Solana::Config::NETWORK}"
+    puts "  RPC_URL    = #{Solana::Config::RPC_URL.to_s.sub(/api-key=[^&]+/, 'api-key=***')}"
+    puts "  PROGRAM_ID = #{Solana::Config::PROGRAM_ID}"
+    puts
+
+    # 1. NETWORK is recognized
+    known = %w[mainnet-beta devnet testnet]
+    if known.include?(Solana::Config::NETWORK)
+      pass.("NETWORK is a known cluster")
+    else
+      fail.("NETWORK=#{Solana::Config::NETWORK.inspect} is not one of #{known.inspect}")
+    end
+
+    # 2. Genesis-hash alignment (the same check solana_network_alignment.rb
+    # runs at boot, but on-demand for pre-flight + post-flip validation).
+    expected = {
+      "mainnet-beta" => "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+      "devnet"       => "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+      "testnet"      => "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY"
+    }[Solana::Config::NETWORK]
+
+    client = Solana::Client.new(rpc_url: Solana::Config::RPC_URL)
+    begin
+      actual = client.get_genesis_hash
+      if expected && actual == expected
+        pass.("RPC genesis matches #{Solana::Config::NETWORK}")
+      elsif expected
+        fail.("RPC genesis mismatch: expected #{expected}, got #{actual}")
+      end
+    rescue Solana::Client::RpcError => e
+      fail.("getGenesisHash failed: #{e.message[0,120]}")
+    end
+
+    # 3. PROGRAM_ID exists at this RPC. Reuses the same guard
+    # TokenPurchaseJob runs at job start (Solana::Vault.ensure_program_id_live!).
+    Rails.cache.delete_matched("solana/program_id_live/v1/*") rescue nil
+    begin
+      Solana::Vault.ensure_program_id_live!(client: client)
+      pass.("PROGRAM_ID exists on RPC")
+    rescue Solana::Vault::StaleEnvError => e
+      fail.(e.message)
+    end
+
+    # 4. EXPECTED_IDL_HASH alignment (production-only gate; surfaced in all envs
+    # so a dev can flip it and verify before a Heroku release).
+    if Solana::Config::EXPECTED_IDL_HASH.blank?
+      puts "  · EXPECTED_IDL_HASH is unset (OK in dev; required in production)"
+    else
+      committed = Solana::Config.idl_hash
+      if committed == Solana::Config::EXPECTED_IDL_HASH
+        pass.("Committed IDL matches EXPECTED_IDL_HASH")
+      else
+        fail.("Committed IDL hash (#{committed}) ≠ EXPECTED_IDL_HASH (#{Solana::Config::EXPECTED_IDL_HASH})")
+      end
+    end
+
+    # 5. Helius rate-limit headers (informational — flag if we're close to the
+    # quota ceiling on free tier).
+    begin
+      response = client.send_rpc("getHealth")
+      if response.respond_to?(:headers)
+        rl = response.headers.transform_keys(&:downcase).slice(*%w[x-ratelimit-remaining x-rl-remaining])
+        puts "  · Helius rate-limit remaining: #{rl.inspect}" if rl.any?
+      end
+    rescue
+      # Optional; don't fail the health check on missing rate-limit headers.
+    end
+
+    puts
+    if exit_code.zero?
+      puts "OK — Solana stack is healthy on #{Solana::Config::NETWORK}."
+    else
+      puts "FAIL — fix the above before flipping traffic."
+    end
+    exit exit_code
+  end
+
   # OPSEC-015: migrate managed-wallet private keys from the legacy encryption
   # scheme (secret_key_base[0,32], ~128-bit) to the current v2 scheme
   # (MANAGED_WALLET_ENCRYPTION_KEY via KeyGenerator, 256-bit). Safe to run
