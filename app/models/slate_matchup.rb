@@ -17,8 +17,14 @@ class SlateMatchup < ApplicationRecord
   # ─── Centralized Formulas ───────────────────────────────────
   # JS mirrors live in show.html.erb and formula_report.html.erb
 
+  # Hardcoded fallback (no per-slate config available). Mirrors the
+  # Slate::FORMULA_DEFAULTS turf-score defaults: base 1.0, scale 2.0.
+  # Per-slate overrides live on Slate.formula_mult_base / mult_scale and
+  # are resolved at render time via Slate#resolved_formula; the JS
+  # mirrors in slates/show.html.erb + slates/formula_report.html.erb
+  # use those resolved values.
   def self.turf_score_for(rank, n)
-    (1.0 + 3.0 * Math.log(rank) / Math.log(n)).round(1)
+    (1.0 + 2.0 * Math.log(rank) / Math.log(n)).round(1)
   end
 
   def self.goals_distribution_for(rank, n)

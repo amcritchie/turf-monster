@@ -3,7 +3,7 @@ class Slate < ApplicationRecord
 
   FORMULA_DEFAULTS = {
     formula_a: 1.65, formula_line_exp: 1.24, formula_prob_exp: 1.18,
-    formula_mult_base: 1.0, formula_mult_scale: 3.0,
+    formula_mult_base: 1.0, formula_mult_scale: 2.0,
     formula_goal_base: 0.2, formula_goal_scale: 4.3
   }.freeze
 

@@ -154,7 +154,7 @@
     scored.forEach(function(r, i) {
       var rank = i + 1;
       r.rank = rank;
-      r.mult = Math.round((1.0 + 3.0 * Math.log(rank) / lnN) * 10) / 10;
+      r.mult = Math.round((1.0 + 2.0 * Math.log(rank) / lnN) * 10) / 10;
       r.pts1g = Math.round(r.mult * 100) / 100;
       r.goal = 0.5 + 3.5 * Math.log(N / rank) / lnN;
       r.goalAsc = 1.0 + 3.0 * Math.log(rank) / lnN;

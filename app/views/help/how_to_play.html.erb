@@ -34,11 +34,11 @@
         <svg class="w-5 h-5 text-secondary transition-transform" :class="open === 'turfScores' && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </button>
       <div x-show="open === 'turfScores'" x-collapse class="px-4 pb-4 text-body">
-        <p>Every team gets a Turf Score based on their world ranking. The formula: <code class="bg-surface-alt px-1.5 py-0.5 rounded text-sm">1.0 + 3.0 &times; ln(rank) / ln(N)</code></p>
+        <p>Every team gets a Turf Score based on their world ranking. The formula: <code class="bg-surface-alt px-1.5 py-0.5 rounded text-sm">1.0 + 2.0 &times; ln(rank) / ln(N)</code></p>
         <ul class="list-disc list-inside mt-2 space-y-1">
           <li><strong>Rank 1</strong> (best team) &rarr; x1.0 Turf Score</li>
-          <li><strong>Middle ranks</strong> &rarr; x2.0&ndash;x3.0 Turf Scores</li>
-          <li><strong>Rank N</strong> (lowest team) &rarr; x4.0 Turf Score</li>
+          <li><strong>Middle ranks</strong> &rarr; x1.5&ndash;x2.5 Turf Scores</li>
+          <li><strong>Rank N</strong> (lowest team) &rarr; x3.0 Turf Score</li>
         </ul>
         <p class="mt-2">Picking underdogs is riskier but scores much higher if they score goals.</p>
       </div>
