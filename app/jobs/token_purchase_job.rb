@@ -78,6 +78,7 @@ class TokenPurchaseJob < ApplicationJob
     end
 
     purchase.mark_minted!(signatures)
+    user.bust_entry_tokens_cache!
     Rails.logger.info "[tokens] job.minted purchase_id=#{purchase.id} signatures=#{signatures.length}"
 
     TransactionLog.record!(

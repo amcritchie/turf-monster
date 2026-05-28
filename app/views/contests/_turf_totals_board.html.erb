@@ -838,6 +838,15 @@ window.selectionBoard = function() {
                 // of it. A second burst fires later when the entry
                 // actually confirms ('tokens-submitted').
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
+                // Also mirror the new count into $store.session so the
+                // next confirmEntry()'s eligibilityBlocker reads fresh
+                // state. updateNavTokens only touches the DOM badge;
+                // the synchronous hold-time check reads from the Alpine
+                // store directly (window.eligibilityBlocker in solana_utils.js).
+                try {
+                  var sess = window.Alpine && Alpine.store && Alpine.store('session');
+                  if (sess) sess.tokensAvailable = parseInt(d.balance, 10) || 0;
+                } catch (_) {}
                 try { if (window.animateFreeEntryBadge) setTimeout(window.animateFreeEntryBadge, 60); } catch (_) {}
                 try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 180); } catch (_) {}
               });
@@ -1019,6 +1028,14 @@ window.selectionBoard = function() {
     },
 
     async confirmEntry() {
+      // Re-entry guard: hold-button completes can fire 2+ events in the
+      // same tick (debug-net 2026-05-27 caught 3 simultaneous POSTs from
+      // a single user hold). Without this guard, the first POST wins,
+      // the others 422 because the entry is already created on-chain,
+      // and Alpine routes the 422 response into the "Get Entry Tokens"
+      // fallback — visually masking the actual success.
+      if (this.submitting) return;
+
       var sess = Alpine.store('session');
       if (sess.isGuest) {
         this.showLoginModal();

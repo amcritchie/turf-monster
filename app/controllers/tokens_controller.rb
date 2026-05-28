@@ -100,6 +100,15 @@ class TokensController < ApplicationController
     return render json: { ready: false }, status: :bad_request if session_id.blank?
 
     purchase = current_user.stripe_purchases.for_session(session_id).first
+
+    # Bypass the entry-tokens cache for polling: we're specifically watching
+    # for a brand-new on-chain mint, and Helius's getProgramAccounts indexer
+    # can lag a few hundred ms behind a confirmed mint TX. If TokenPurchaseJob's
+    # bust runs before the index catches up, a 0-token fetch lands in the cache
+    # for 60s and the modal renders "0 available" even though the token exists
+    # on chain (see screenshot test on 2026-05-27).
+    current_user.bust_entry_tokens_cache!
+
     payload = {
       ready: purchase&.status == "minted",
       minted: purchase&.tx_signatures&.length.to_i,
