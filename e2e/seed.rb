@@ -1,23 +1,40 @@
-# Seed test database for Playwright smoke tests.
-# Run with: RAILS_ENV=test bin/rails runner e2e/seed.rb
+# Seed dev (or test) database for Playwright specs.
+# Run with: bin/rails runner e2e/seed.rb
 #
-# Idempotent — clears and recreates all test data.
+# Playwright runs against the dev server (per playwright.config.js — see
+# the "Dev server gotcha" note in CLAUDE.md), so this seed is normally
+# invoked against the dev DB, not the test DB. Idempotent — clears and
+# recreates all test data, including a sequence reset on `users` so the
+# inviter slugs (mason-3, mack-4, turf-5) referrals.spec.js hardcodes
+# stay stable across reseeds.
 
 puts "Seeding test database for Playwright..."
 
-# Clear in dependency order
+# Clear in dependency order. v0.16 added write-side tables that reference
+# User (stripe_purchases, pending_transactions, outbound_requests, error_logs,
+# messages). They must be cleared before User.delete_all or the FK
+# constraint fires (PG::ForeignKeyViolation on stripe_purchases etc).
+StripePurchase.delete_all if defined?(StripePurchase)
+PendingTransaction.delete_all if defined?(PendingTransaction)
+OutboundRequest.delete_all if defined?(OutboundRequest)
+ErrorLog.delete_all if defined?(ErrorLog)
+Message.delete_all if defined?(Message)
 TransactionLog.delete_all
 GeoSetting.delete_all
 SurvivorPick.delete_all
 Selection.delete_all
 Entry.delete_all
 SlateMatchup.delete_all
+Goal.delete_all if defined?(Goal)
 Contest.delete_all
 Slate.delete_all
 Game.delete_all
 SurvivorRound.delete_all
 Team.delete_all
 User.delete_all
+# Reset the users primary-key sequence so seeded users land at IDs 1..5
+# (mason-3, mack-4, turf-5 etc — referrals.spec.js hardcodes these slugs).
+ActiveRecord::Base.connection.execute("ALTER SEQUENCE users_id_seq RESTART WITH 1")
 
 # Users (shared definitions across all seed files)
 load Rails.root.join("db/seeds/users.rb")
@@ -98,8 +115,9 @@ slate = Slate.create!(
   starts_at: 1.week.from_now
 )
 
-# Contest
-contest = Contest.create!(
+# Contest — skip the on-chain create_contest callback (these test contests
+# stay off-chain; on-chain entry coverage lives in e2e/devnet-smoke.spec.js)
+contest = Contest.new(
   name: "World Cup 2026",
   entry_fee_cents: 1900,
   status: "open",
@@ -109,6 +127,8 @@ contest = Contest.create!(
   slate: slate,
   rank: 100
 )
+contest.skip_onchain_callback = true
+contest.save!
 
 # Matchday 1 games (24 games → 48 slate matchups)
 MATCHDAY_1_GAMES = [
@@ -171,8 +191,12 @@ alex.update!(web3_solana_address: alex_wallet)
 # Keep web2_solana_address so managed_wallet? stays true (needed for deposits).
 User.update_all(encrypted_web2_solana_private_key: nil)
 
-# Enable onchain path for the seeded contest (directOnchain check needs this)
-contest.update!(onchain_contest_id: "MockContestPDA11111111111111111111111111111")
+# Tests against the seeded contest go through the non-onchain Rails-only
+# entry path (Entry row + Selections). v0.16 + the program-ID swap mean
+# any on-chain Contest PDA referenced here would be orphaned — the real
+# on-chain entry flow is covered by e2e/devnet-smoke.spec.js, which sets
+# up its own fresh PDAs against the live deployed program.
+contest.update!(onchain_contest_id: nil)
 
 # Pre-seed a faucet transaction so admin transaction log tests work without real Solana
 TransactionLog.create!(
@@ -205,7 +229,7 @@ survivor_rounds = [
 end
 Game.update_all(survivor_round_id: survivor_rounds.first.id)
 
-Contest.create!(
+survivor = Contest.new(
   name: "World Cup Survivor",
   game_type: "world_cup_survivor",
   contest_type: "survivor_wc_free",
@@ -216,5 +240,7 @@ Contest.create!(
   # still redirects there (existing smoke tests depend on it).
   created_at: 1.day.ago
 )
+survivor.skip_onchain_callback = true
+survivor.save!
 
 puts "Seeded: #{User.count} users, #{Team.count} teams, #{Slate.count} slates, #{Contest.count} contests, #{SlateMatchup.count} matchups, #{SurvivorRound.count} survivor rounds, #{GeoSetting.count} geo_settings"
