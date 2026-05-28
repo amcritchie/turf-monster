@@ -5,7 +5,9 @@
 // - Phase C4:     admin/pending_transactions empty state uses engine partial
 
 const { test, expect } = require("@playwright/test");
-const { login, loginAdmin } = require("./helpers");
+const { login, loginAdmin, reseed } = require("./helpers");
+
+test.beforeEach(async ({ request }) => await reseed(request));
 
 test.describe("Audit consolidation (2026-05-23)", () => {
   test.beforeEach(async ({ page }) => {

@@ -1,4 +1,7 @@
 const { test, expect } = require("@playwright/test");
+const { reseed } = require("./helpers");
+
+test.beforeEach(async ({ request }) => await reseed(request));
 
 async function doLogin(page) {
   await page.goto("/login");

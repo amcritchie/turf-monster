@@ -14,7 +14,9 @@
 // path would.
 
 const { test, expect } = require("@playwright/test");
-const { login, loginViaPhantom, setupPhantomMock } = require("./helpers");
+const { login, loginViaPhantom, setupPhantomMock, reseed } = require("./helpers");
+
+test.beforeEach(async ({ request }) => await reseed(request));
 
 const CONTEST_SLUG = "world-cup-2026";
 

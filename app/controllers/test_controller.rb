@@ -1,9 +1,56 @@
 # Test-only endpoints used by Playwright specs. Routes are guarded in
-# config/routes.rb with `if Rails.env.test?` so this controller is
-# unreachable in dev/staging/production.
+# config/routes.rb with `unless Rails.env.production?` so this controller is
+# reachable in dev (Playwright's default boot) but unreachable in production.
 class TestController < ApplicationController
   skip_before_action :require_authentication
   skip_before_action :verify_authenticity_token
+
+  # Fast inter-spec reset. Playwright spec files call this in test.beforeAll
+  # to drop the most common cross-spec pollution sources without re-running
+  # the full e2e/seed.rb. Specifically:
+  #
+  #   - rack-attack throttle counters: a previous spec's repeated logins
+  #     push `login/email` over its 5/min limit; the next spec's
+  #     loginAdmin then hangs at form-submit and times out.
+  #   - Entry-token Rails.cache (entry_tokens/v1/...): a stale post-mint
+  #     cache lingers ~60s and the next spec reads "0 available" even
+  #     after the chain shows a token.
+  #   - OmniAuth.config.mock_auth: stale provider hashes from
+  #     set_oauth_mock leak into the next spec and sign in the wrong user.
+  #
+  # Returns counts so flake hunts can grep the spec output.
+  def reseed
+    cleared = []
+
+    # Rails.cache.delete_matched under the Redis cache store returns the
+    # underlying Redis client array (circular ref) — don't render its return
+    # value or to_json recurses to SystemStackError. We discard the return
+    # and just note that we ran the call.
+    #
+    # rack-attack writes throttle counters under `rack::attack:<epoch>:<name>:<discriminator>`
+    # (DOUBLE colon) — NOT `rack-attack:*`. Get the pattern wrong and the
+    # counters survive the reseed and the next spec's login times out.
+    begin
+      Rails.cache.delete_matched("rack::attack:*")
+      cleared << "rack::attack"
+    rescue => e
+      Rails.logger.warn "[reseed] delete_matched rack::attack:* failed: #{e.message}"
+    end
+
+    begin
+      Rails.cache.delete_matched("entry_tokens/v1/*")
+      cleared << "entry_tokens"
+    rescue => e
+      Rails.logger.warn "[reseed] delete_matched entry_tokens/v1/* failed: #{e.message}"
+    end
+
+    if defined?(OmniAuth) && OmniAuth.config.respond_to?(:mock_auth)
+      OmniAuth.config.mock_auth.clear
+      cleared << "omniauth_mocks"
+    end
+
+    render json: { ok: true, cleared: cleared }
+  end
 
   # Set the OmniAuth mock_auth payload for the next /auth/:provider call.
   # Playwright posts to this immediately before navigating to /auth/google_oauth2

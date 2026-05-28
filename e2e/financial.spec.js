@@ -1,5 +1,7 @@
 const { test, expect } = require("@playwright/test");
-const { login, loginAdmin } = require("./helpers");
+const { login, loginAdmin, reseed } = require("./helpers");
+
+test.beforeEach(async ({ request }) => await reseed(request));
 
 test.describe("Wallet & Transactions", () => {
   test("wallet page loads with USDC balance", async ({ page }) => {

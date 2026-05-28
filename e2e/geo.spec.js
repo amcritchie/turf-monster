@@ -1,5 +1,7 @@
 const { test, expect } = require("@playwright/test");
-const { loginAdmin } = require("./helpers");
+const { loginAdmin, reseed } = require("./helpers");
+
+test.beforeEach(async ({ request }) => await reseed(request));
 
 test.describe("Geo Settings", () => {
   test("geo settings page loads for admin", async ({ page }) => {
