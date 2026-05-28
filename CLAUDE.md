@@ -101,8 +101,13 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 ## Dev Server
 
 - **Port 3001** — `bin/rails server -p 3001`
-- `bin/dev` starts web (port 3001), CSS watcher, and Sidekiq worker via Procfile.dev
-- **Redis required** — `brew services start redis` before running. Sidekiq connects to `redis://localhost:6379/0` by default.
+- `bin/dev` self-destructs as a long-lived background process (foreman exits when the foreground stops). Start Rails + Sidekiq separately for any session that outlives the terminal: `bin/rails server -p 3001` and `bundle exec sidekiq -q default -q mailers`.
+- **Redis required** — `brew services start redis`. Used by:
+  - Sidekiq (db 0) — background jobs
+  - Rails.cache (db 1, namespace `tm-cache`) — `:redis_cache_store` is the dev backend so Sidekiq + Rails server share the same cache (required for `User#bust_entry_tokens_cache!` to propagate across processes; `:memory_store` is per-process and breaks the post-mint refresh).
+  - `rack-attack` throttle counters — flooding `/login` during E2E runs trips the throttle and locks tests out. Clear with: `redis-cli --scan --pattern 'rack-attack:*' | xargs redis-cli del`.
+- **Stripe listener** — token-purchase + USDC-deposit flows depend on webhook delivery. Without it, `/tokens/processing` polling never resolves. Run in a separate terminal: `stripe listen --forward-to localhost:3001/webhooks/stripe --api-key $STRIPE_SECRET_KEY`. The session-printed `whsec_…` must match `STRIPE_WEBHOOK_SECRET` in `.env`.
+- **Solana RPC** — set `SOLANA_RPC_URL` to a Helius endpoint (`https://devnet.helius-rpc.com/?api-key=…`). Public devnet RPC rate-limits `getProgramAccounts` (the call behind `User#entry_token_balance`) to ~1/sec/IP and produces silent UI bugs ("$0 / Buy Tokens" even when the user has tokens). Helius URLs are in 1Password at `agent.helius`.
 
 ## Deployment
 
@@ -122,7 +127,7 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 - bcrypt + Google OAuth + Solana wallet auth (Phantom)
 - **Sidekiq** + Redis for background jobs (web UI at `/admin/jobs`, admin-only)
 - **Studio engine gem** — `gem "studio-engine", "~> 0.4.0"` (RubyGems; current 0.4.10). `Studio.routes(self)` + `Studio.configure` in `config/initializers/studio.rb`.
-- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.0"` (RubyGems; current 0.4.2). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair.
+- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.0"` (RubyGems; current 0.4.2). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair. **Known bug**: 0.4.2's `Net::HTTP::Post.new(@uri.path)` drops the URL query string — breaks Helius (auth via `?api-key=`). Monkey-patched in `config/initializers/solana_client_query_string_patch.rb`; delete the initializer after bumping to 0.4.3+.
 
 ## JS Modules (importmap)
 
@@ -176,7 +181,8 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 
 - Money stored in cents, displayed in dollars via `dollars()` helper
 - **6 selections per entry** — `Contest#picks_required` returns 6. All views use this dynamically. Max 3 entries per user per contest (`Contest#max_entries_per_user`).
-- **Balance system**: On-chain USDC is the single source of truth. All balance reads come from on-chain wallet via `display_balance` helper. Entry fees transfer USDC on-chain via `Vault#transfer_from_user`.
+- **Balance system (v0.16)**: USDC lives in each user's own ATA — no custodial vault balance. Web2/managed-wallet users have their keypair server-held (`encrypted_web2_solana_private_key`), but the USDC destination is still their ATA. `display_balance` reads the ATA directly via Helius RPC; `User#entry_token_balance` reads on-chain `EntryTokenAccount` PDAs. Both reads cached 60s in Redis (`User#cached_entry_tokens` + `usdc_cache_key`); callers that mint/consume tokens MUST follow up with `user.bust_entry_tokens_cache!` to propagate to the navbar + eligibility blocker in the same request cycle.
+- **Token purchases ($19 / 3-for-$49)** mint on-chain `EntryTokenAccount` PDAs via `TokenPurchaseJob`. **No USDC top-up** — the token IS the value; redemption goes through `enter_contest_with_token` which skips the USDC transfer. (Pre-v0.10 the flow ALSO topped up $19 of USDC per token; that was dropped when tokens moved on-chain.)
 - **Slug-based foreign keys**: Teams, Games, Players use slug columns as FKs (e.g. `team_slug`, `home_team_slug`). Associations use `foreign_key: :*_slug, primary_key: :slug`.
 - **Turf Score formula**: `1.0 + 3.0 * ln(rank) / ln(N)` — x1.0 at rank 1 to x4.0 at rank N. Centralized on `SlateMatchup.turf_score_for(rank, n)`.
 - **Seeds system**: 65 seeds per entry on-chain. No DB columns. See `docs/SOLANA.md`.
@@ -296,15 +302,24 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - Test helper: `log_in_as(user)` defaults to password "password"
 
 ### Playwright E2E Tests
-- `npm test` — **42 tests** across 8 spec files (chromium project), plus 17 devnet tests
+- `npm test` — **72 tests** across 9 spec files (chromium project), plus 17 devnet tests
 - `npm run test:headed` / `npm run test:ui` — visual modes
 - Config: `playwright.config.js` — Chromium only, port 3001
-- Seed: `e2e/seed.rb` — 5 users (shared from `db/seeds/users.rb`), 1 contest, 48 matchups
+- Seed: `e2e/seed.rb` — 5 users (shared from `db/seeds/users.rb`), 2 contests (turf-totals + survivor), 48 matchups, 1 faucet TransactionLog. Run with `bin/rails runner e2e/seed.rb` (against the dev server's DB by default).
 - Helper: `e2e/helpers.js` — `login(page, email, password)`
-- **Dev server gotcha**: Local runs hit dev DB, not test seed
+- **`/test/*` routes** (`test/oauth_mock`, `test/set_user_referral_counts`, `test/create_active_entry`, `test/user_info/:slug`) — gated `unless Rails.env.production?` so Playwright (which runs against the dev server) can reach them. Implemented by `TestController`; never reachable in prod.
+- **OmniAuth mocks** — `OmniAuth.config.test_mode = true` is set in `development.rb` after_initialize (gated to dev only) so the `referrals.spec.js` Google-OAuth path uses the mock_auth hash POSTed by Playwright instead of redirecting to Google.
+- **Test contests are off-chain** — `e2e/seed.rb` creates the test contests with `skip_onchain_callback = true`. On-chain entry coverage lives in `e2e/devnet-smoke.spec.js`, which sets up its own fresh on-chain Contest PDAs.
+- **User sequence reset** — seed runs `ALTER SEQUENCE users_id_seq RESTART WITH 1` so seeded users land at IDs 1..5. `referrals.spec.js` hardcodes inviter slugs (`mason-3`, `mack-4`, `turf-5`) that depend on this.
+- **`rack-attack` throttle pollution between runs** — heavy login traffic accumulates throttle counters in Redis. If `loginAdmin` starts timing out across many specs, clear with: `redis-cli --scan --pattern 'rack-attack:*' | xargs redis-cli del`. Worth wrapping in a `globalSetup` in `playwright.config.js` (tracked TODO).
+- **State pollution across spec files** — the dev DB accumulates entries / TransactionLogs / GeoSettings across the full suite. Same tests pass in isolation but fail in full-suite runs. Re-running `e2e/seed.rb` between spec files would isolate them (tracked TODO).
 
 ## Known Gotchas
 
+- **Helius RPC required, not optional**: any deployment (dev included, mainnet definitely) MUST set `SOLANA_RPC_URL` to a private endpoint. Public `api.devnet.solana.com` rate-limits `getProgramAccounts` aggressively → `entry_token_balance` rescues to 0 → navbar shows "$0 / Buy Tokens" even when the user has tokens. See the Solana RPC bullet under Dev Server.
+- **`bust_entry_tokens_cache!` is required after on-chain mint/consume**: `Solana::Vault.list_entry_tokens` is cached for 60s in Redis. `TokenPurchaseJob` and `enter_contest_with_token` consumers MUST call `user.bust_entry_tokens_cache!` once the chain TX confirms, or `$store.session.tokensAvailable` (and therefore `eligibilityBlocker`) sees stale 0 right after a successful purchase.
+- **`/tokens/status` busts the cache before reading** — Helius's index can lag a few hundred ms behind a confirmed mint TX. If a polling fetch lands in that window with a stale cache, the empty array gets cached for 60s and the modal renders "0 available". The polling endpoint forces a fresh fetch on every poll.
+- **Post-mint UI fanout — three things to update, not one**: `updateNavTokens(balance)` updates the navbar DOM. `Alpine.store('session').tokensAvailable = balance` is what `eligibilityBlocker` reads at hold-time. `bust_entry_tokens_cache!` is what subsequent server-side balance reads need. ALL THREE must happen post-mint or the next user action sees stale state.
 - **Theme toggle store**: Engine refactored `Alpine.store('theme')` to an object with `toggle()` method and `isDark` getter. Toggle icons now use Heroicons v2.
 - **Hold button guard**: Use `<%== %>` (raw output) in `<script>` tags, NOT `<%= %>` which HTML-escapes `>` to `&gt;`
 - **Selection count = 6**: Dynamic via `Contest#picks_required` — all views reference this method
