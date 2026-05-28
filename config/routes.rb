@@ -127,7 +127,16 @@ Rails.application.routes.draw do
     get :session_state, defaults: { format: :json } # visibilitychange rehydrate
     get :session_refresh, defaults: { format: :json } # on-chain state for refreshSession()
     # OPSEC-007: removed `patch :update_level` — client-supplied seeds_total.
+    post :initiate_wallet_export   # task #11 Stage 1: mint signed token + email magic link
   end
+
+  # Wallet export reveal page (task #11 Stage 2). Token is a signed payload
+  # from AccountsController#initiate_wallet_export; constraints stop Rails
+  # from interpreting embedded periods as URL format extensions.
+  get  "account/wallet/export/:token",          to: "wallet_exports#show",     as: :wallet_export,
+       constraints: { token: %r{[^/]+} }, format: false
+  post "account/wallet/export/:token/complete", to: "wallet_exports#complete", as: :complete_wallet_export,
+       constraints: { token: %r{[^/]+} }, format: false
 
   resources :slates, only: [:index, :show] do
     member do
@@ -143,6 +152,11 @@ Rails.application.routes.draw do
   end
 
   get "c/:id/leaderboard_poll", to: "contests#leaderboard_poll", as: :contest_leaderboard_poll
+
+  # Admin view of a contest — same show template, but skips the "hide picks
+  # while open" guard so operators can see every entry's selections for
+  # moderation. Auth via require_admin (studio-engine).
+  get "contests/:id/admin", to: "contests#admin", as: :admin_contest
 
   resources :contests, only: [:index, :show, :new, :create, :edit, :update] do
     collection do
@@ -177,6 +191,12 @@ Rails.application.routes.draw do
 
     # Contest chat — create (entrants/admins) + destroy (admin soft-delete).
     resources :messages, only: [:create, :destroy]
+
+    # Edit picks on an existing entry (DB-only — chain has no opinion on
+    # selections per turf-vault state.rs ContestEntry). The GET edit form
+    # is served inline by contests#show via params[:edit_entry], so only
+    # the update verb needs a dedicated route.
+    resources :entries, only: [:update], param: :slug
   end
 
   resources :teams, only: [:index, :show]

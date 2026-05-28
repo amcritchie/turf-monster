@@ -1,0 +1,23 @@
+<h1>Your wallet export link</h1>
+
+<p>Hi <%= @user.display_name %>,</p>
+
+<p>You just asked to export your Turf Monster wallet so you can take self-custody.
+   Click the link below to view your private key on a dedicated reveal page.
+   The link expires in 30 minutes and can only be used once.</p>
+
+<p><%= link_to "Show me my private key", @export_url %></p>
+
+<p style="color:#b91c1c;"><strong>Read this carefully before clicking.</strong>
+   Once you copy your private key out of Turf Monster, anyone who gets a copy of
+   it can take everything in that wallet — and we cannot recover it for you.
+   Only continue when you're at a private screen, ready to paste the key into
+   a wallet you trust.</p>
+
+<p>If the button doesn't work, copy and paste this URL into your browser:</p>
+<p style="word-break:break-all;"><%= @export_url %></p>
+
+<p>If you didn't request this, ignore this message — your wallet stays
+   custodial. You can reply to this email to reach <%= @support_email %>.</p>
+
+<p>— Turf Monster</p>

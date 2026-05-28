@@ -181,19 +181,19 @@ class User < ApplicationRecord
     provider == "google_oauth2" && uid.present?
   end
 
-  # v0.16 / Phase 2 stub. The self-custody export flow lets a managed
-  # wallet user prove ownership of their keypair (e.g. via a Phantom
-  # challenge-sign) and elect to have the server delete its copy of the
-  # encrypted key. Once `self_custodied_at` is set, the daily key-deletion
-  # sweep job will wipe `encrypted_web2_solana_private_key` for them, and
-  # ContestsController#enter must refuse to sign on their behalf.
+  # The user has completed the self-custody export flow: they've been
+  # shown their encrypted_web2_solana_private_key, copied it into a wallet
+  # they control, and clicked through the prove-custody confirmation. From
+  # this moment the server stops auto-signing on their behalf — every
+  # managed-path call site (ContestsController#enter token path,
+  # Solana::Vault#build_enter_contest_with_token, etc.) MUST check this
+  # predicate first and refuse to sign if true.
   #
-  # Hook is here so existing call sites can branch on the predicate before
-  # the rest of the flow ships. Schema migration (export_initiated_at,
-  # self_custodied_at) is a Phase 2 task; this returns false unconditionally
-  # until then.
+  # We do NOT yet delete the encrypted_web2_solana_private_key (decision
+  # deferred — see docs/SELF_CUSTODY.md). The column is the behavior
+  # gate; the key stays as an operator-side backup until a future sweep.
   def self_custodied?
-    false
+    self_custodied_at.present?
   end
 
   def has_password?

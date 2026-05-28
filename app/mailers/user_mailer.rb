@@ -12,6 +12,16 @@ class UserMailer < ApplicationMailer
     mail(to: user.email, subject: "Verify your Turf Monster email")
   end
 
+  # Self-custody wallet export (task #11). Token is a signed payload from
+  # AccountsController#initiate_wallet_export, valid 30 min. The recipient
+  # clicks the link to land on the reveal page (Stage 2 — WalletExportsController#show).
+  def wallet_export(user, token)
+    @user = user
+    @export_url = url_for(controller: "wallet_exports", action: "show", token: token, only_path: false)
+    @support_email = "alex@turfmonster.media"
+    mail(to: user.email, subject: "Your Turf Monster wallet export link")
+  end
+
   # OPSEC-046: notify the OLD email address when a user changes their email.
   # If the change wasn't authorized by the legit user, this gives them an
   # out-of-band channel to notice + take action before the attacker has time

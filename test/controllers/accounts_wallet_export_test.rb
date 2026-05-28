@@ -1,0 +1,170 @@
+require "test_helper"
+
+class AccountsWalletExportTest < ActionDispatch::IntegrationTest
+  setup do
+    # Build users inline to control wallet state precisely; the global
+    # fixtures don't include a managed-wallet user and adding one would
+    # ripple through unrelated suites.
+    @managed = User.create!(
+      name: "Maggie Managed", username: "maggie-managed",
+      email: "managed-#{SecureRandom.hex(2)}@example.test",
+      password: "password",
+      email_verified_at: Time.current
+    )
+    # generate_managed_wallet! ran in after_create — confirm.
+    assert @managed.reload.managed_wallet?, "fixture setup: expected managed wallet"
+
+    # Use Solana::Keypair to mint a fresh base58 address — the test fixtures
+    # include a phantom user (sam) and the column has a uniqueness validator.
+    phantom_kp = Solana::Keypair.generate
+    @phantom = User.create!(
+      name: "Penny Phantom", username: "penny-phantom",
+      email: "phantom-#{SecureRandom.hex(2)}@example.test",
+      password: "password",
+      web3_solana_address: phantom_kp.address,
+      email_verified_at: Time.current
+    )
+    # User#after_create :generate_managed_wallet! is unconditional for
+    # non-admins, so the phantom user picks up a managed key on top. The
+    # "managed-only export" rule keys off managed_wallet? — and the
+    # canonical "phantom user" in our flows is one without server-held
+    # key material. Null it out to match.
+    @phantom.update_columns(web2_solana_address: nil, encrypted_web2_solana_private_key: nil)
+  end
+
+  test "initiate requires login" do
+    # XHR/JSON callers (the in-modal initiate button) get a 401 JSON; HTML
+    # redirects to /login per ApplicationController#require_authentication.
+    post initiate_wallet_export_account_path, as: :json
+    assert_response :unauthorized
+  end
+
+  test "initiate refuses phantom-only (no managed key to export)" do
+    login(@phantom)
+    post initiate_wallet_export_account_path
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_match(/managed-wallet/i, body["error"])
+  end
+
+  test "initiate refuses already-self-custodied" do
+    @managed.update!(self_custodied_at: 1.minute.ago)
+    login(@managed)
+    post initiate_wallet_export_account_path
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_match(/already self-custodied/i, body["error"])
+  end
+
+  test "initiate refuses without recent password reauth" do
+    login(@managed)
+    # Travel past the 5-minute reauth window. The stamp set by login() is
+    # absolute time, so traveling forward 6 minutes makes
+    # password_recently_verified? return false on the next request.
+    travel 6.minutes do
+      post initiate_wallet_export_account_path
+      assert_response :unauthorized
+      body = JSON.parse(response.body)
+      assert_match(/confirm your password/i, body["error"])
+    end
+  end
+
+  test "initiate refuses without verified email" do
+    @managed.update!(email_verified_at: nil)
+    login(@managed)
+    post initiate_wallet_export_account_path
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_match(/verify an email/i, body["error"])
+  end
+
+  test "happy path stamps export_initiated_at + enqueues mailer" do
+    login(@managed)
+    assert_nil @managed.export_initiated_at
+
+    assert_enqueued_emails 1 do
+      post initiate_wallet_export_account_path
+    end
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["success"]
+    assert_match(/magic link/i, body["message"])
+
+    @managed.reload
+    assert_not_nil @managed.export_initiated_at
+    assert_in_delta Time.current, @managed.export_initiated_at, 5.seconds
+  end
+
+  test "second initiate refreshes export_initiated_at + invalidates the first token" do
+    login(@managed)
+
+    post initiate_wallet_export_account_path
+    @managed.reload
+    first_initiated = @managed.export_initiated_at
+
+    # Build a token for the first initiate
+    first_token = Rails.application.message_verifier("wallet_export_v1").generate(
+      { user_id: @managed.id, email: @managed.email, initiated_at: first_initiated.to_i },
+      expires_in: 30.minutes
+    )
+
+    travel 2.seconds do
+      post initiate_wallet_export_account_path
+      @managed.reload
+      assert_operator @managed.export_initiated_at, :>, first_initiated, "second initiate should bump the timestamp"
+    end
+
+    # The first token now refers to a stale initiated_at — show should refuse.
+    get wallet_export_path(token: first_token)
+    assert_response :gone
+    assert_match(/newer export link/i, response.body)
+  end
+
+  test "WalletExportsController#show accepts a fresh token and 503s as Stage 2 stub" do
+    login(@managed)
+    post initiate_wallet_export_account_path
+    @managed.reload
+
+    token = Rails.application.message_verifier("wallet_export_v1").generate(
+      { user_id: @managed.id, email: @managed.email, initiated_at: @managed.export_initiated_at.to_i },
+      expires_in: 30.minutes
+    )
+
+    get wallet_export_path(token: token)
+    assert_response 503
+    assert_match(/Stage 2 not implemented/i, response.body)
+    assert_match(/token verified/i, response.body)
+  end
+
+  test "WalletExportsController#show rejects garbage tokens" do
+    get wallet_export_path(token: "not-a-real-token")
+    assert_response :gone
+    assert_match(/invalid or expired/i, response.body)
+  end
+
+  test "token bound to email — changing email after invalidates" do
+    login(@managed)
+    post initiate_wallet_export_account_path
+    @managed.reload
+    token = Rails.application.message_verifier("wallet_export_v1").generate(
+      { user_id: @managed.id, email: @managed.email, initiated_at: @managed.export_initiated_at.to_i },
+      expires_in: 30.minutes
+    )
+
+    # Operator-side rename to a different (verified) email after token issue
+    @managed.update!(email: "new-#{@managed.email}", email_verified_at: Time.current)
+
+    get wallet_export_path(token: token)
+    assert_response :gone
+    assert_match(/different email/i, response.body)
+  end
+
+  private
+
+  def login(user)
+    post login_path, params: { email: user.email, password: "password" }
+    # SessionsController#create stamps session[:password_verified_at] on
+    # success — the tests that need a stale stamp use `travel` to jump
+    # past the 5-minute window.
+  end
+end

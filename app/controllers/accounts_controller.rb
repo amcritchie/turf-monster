@@ -278,7 +278,54 @@ class AccountsController < ApplicationController
     render json: { success: false, error: e.message }, status: :unprocessable_entity
   end
 
+  # POST /account/initiate_wallet_export
+  #
+  # Stage 1 of the self-custody export flow. Validates eligibility, stamps
+  # export_initiated_at, mints a 30-min signed token, and emails the user a
+  # magic link to /account/wallet/export/:token (rendered by
+  # WalletExportsController#show — Stage 2).
+  #
+  # Eligibility:
+  #   - must be a managed-wallet user (admins are blocked at sign-up; users
+  #     with a Phantom wallet linked have no server-held key to export)
+  #   - must not be already self_custodied? (one-way flow)
+  #   - must have a verified email (we won't email a magic link to an
+  #     unverified address)
+  #   - must have entered password within the last 5 min
+  #     (ApplicationController#password_recently_verified?)
+  def initiate_wallet_export
+    return render_export_error(:forbidden, "Self-custody export is only available for managed-wallet accounts.") unless current_user.managed_wallet?
+    return render_export_error(:forbidden, "Wallet is already self-custodied.") if current_user.self_custodied?
+    return render_export_error(:unprocessable_entity, "Add and verify an email address before exporting your wallet.") if current_user.email.blank? || current_user.email_verified_at.blank?
+    return render_export_error(:unauthorized, "Confirm your password to continue.") unless password_recently_verified?
+
+    current_user.update!(export_initiated_at: Time.current)
+
+    token = Rails.application.message_verifier(WALLET_EXPORT_TOKEN_KEY).generate(
+      { user_id: current_user.id, email: current_user.email, initiated_at: current_user.export_initiated_at.to_i },
+      expires_in: WALLET_EXPORT_TOKEN_TTL
+    )
+    UserMailer.wallet_export(current_user, token).deliver_later
+
+    Rails.logger.info "[wallet-export] initiated user=#{current_user.id} email=#{current_user.email}"
+    render json: { success: true, message: "Magic link sent. Check #{current_user.email}." }
+  rescue StandardError => e
+    Rails.logger.error "[wallet-export] initiate failed user=#{current_user.id}: #{e.class}: #{e.message}"
+    render_export_error(:unprocessable_entity, "Could not send the export link. Please try again.")
+  end
+
   private
+
+  # Signed token for the wallet-export magic link. Distinct key from
+  # email-verification so a stolen email-verify token can't be reused for
+  # the more destructive wallet-export flow.
+  WALLET_EXPORT_TOKEN_KEY = "wallet_export_v1".freeze
+  WALLET_EXPORT_TOKEN_TTL = 30.minutes
+
+  def render_export_error(status, message)
+    render json: { success: false, error: message }, status: status
+  end
+
 
   def account_params
     params.require(:user).permit(:name, :email, :avatar)

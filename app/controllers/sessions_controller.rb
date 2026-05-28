@@ -15,6 +15,10 @@ class SessionsController < ApplicationController
     user = User.find_by(email: params[:email])
     if user&.authenticate(params[:password])
       set_app_session(user)
+      # Stamp the moment of password proof. Sensitive actions (wallet export,
+      # other future destructive-and-irreversible flows) require this stamp
+      # to be recent. See ApplicationController#password_recently_verified?.
+      session[:password_verified_at] = Time.current.to_i
       redirect_to root_path, notice: "Welcome back, #{user.display_name}!"
     else
       flash.now[:alert] = "Invalid email or password."
