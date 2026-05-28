@@ -53,6 +53,42 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
     assert r[:toast]
   end
 
+  test "0x1789 InvalidCurrencyIndex maps to currency_unavailable blocker" do
+    r = interp("custom program error: 0x1789")
+    assert_equal "currency_unavailable", r[:blocker][:reason]
+    assert_nil r[:blocker][:mode]
+  end
+
+  test "CurrencyNotActive Anchor name maps to currency_unavailable blocker" do
+    r = interp("Error: CurrencyNotActive")
+    assert_equal "currency_unavailable", r[:blocker][:reason]
+    assert_match(/no longer accepted/i, r[:message])
+  end
+
+  test "0x178b EntryFeeNotSet maps to currency_unavailable blocker" do
+    r = interp("custom program error: 0x178b")
+    assert_equal "currency_unavailable", r[:blocker][:reason]
+    assert_match(/doesn't accept/i, r[:message])
+  end
+
+  test "operator-only codes set log:true with no blocker" do
+    [
+      ["0x1787", /already registered/i],     # 6023 CurrencyAlreadyRegistered
+      ["0x1788", /registry is full/i],       # 6024 CurrencyRegistryFull
+      ["0x178c", /not locked/i],             # 6028 ContestNotLocked
+      ["0x178d", /cannot be cancelled/i],    # 6029 ContestNotCancellable
+      ["0x178e", /still has tokens/i],       # 6030 PrizePoolNotEmpty
+      ["0x178f", /revenue account is empty/i], # 6031 EmptyRevenueAccount
+      ["0x1790", /pinned treasury authority/i], # 6032 TreasuryAuthorityMismatch
+      ["0x1791", /at least one entry fee/i]    # 6033 FeeAndPrizeBothZero
+    ].each do |code, msg_pattern|
+      r = interp("custom program error: #{code}")
+      assert_nil r[:blocker], "#{code} should not have a blocker"
+      assert r[:log], "#{code} should set log:true"
+      assert_match msg_pattern, r[:message], "#{code} message: #{r[:message]}"
+    end
+  end
+
   test "unknown errors pass through the message with no blocker" do
     r = interp("Something unrecognized")
     assert_equal "Something unrecognized", r[:message]

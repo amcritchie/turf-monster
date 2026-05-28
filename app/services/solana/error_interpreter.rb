@@ -77,6 +77,64 @@ module Solana
         )
       end
 
+      # ── v0.16 codes (6023-6033) ──────────────────────────────────────
+
+      # InvalidCurrencyIndex (6025 / 0x1789) — currency_idx in enter_contest
+      # points at an unused slot. Almost certainly a stale client.
+      if stripped.match?(/0x1789|\b6025\b|invalidcurrencyindex/i)
+        return ok(
+          message: "Currency option is unavailable. Refresh and try again.",
+          blocker: { reason: "currency_unavailable", mode: nil, data: {} }
+        )
+      end
+
+      # CurrencyNotActive (6026 / 0x178a) — currency was active at page load
+      # but deactivated before the user submitted.
+      if stripped.match?(/0x178a|\b6026\b|currencynotactive/i)
+        return ok(
+          message: "This currency is no longer accepted. Refresh and try a different one.",
+          blocker: { reason: "currency_unavailable", mode: nil, data: {} }
+        )
+      end
+
+      # EntryFeeNotSet (6027 / 0x178b) — this contest doesn't accept the
+      # selected currency. Effectively wrong-currency-picked.
+      if stripped.match?(/0x178b|\b6027\b|entryfeenotset/i)
+        return ok(
+          message: "This contest doesn't accept the selected currency.",
+          blocker: { reason: "currency_unavailable", mode: nil, data: {} }
+        )
+      end
+
+      # Operator-only codes — shouldn't reach a user. If they do (bug or
+      # admin UI flow), surface a clean message and log so it doesn't
+      # vanish into a generic 500.
+      if stripped.match?(/0x1787|\b6023\b|currencyalreadyregistered/i)
+        return ok(message: "Currency is already registered.", log: true)
+      end
+      if stripped.match?(/0x1788|\b6024\b|currencyregistryfull/i)
+        return ok(message: "Currency registry is full.", log: true)
+      end
+      if stripped.match?(/0x178c|\b6028\b|contestnotlocked/i)
+        return ok(message: "Contest is not locked.", log: true)
+      end
+      if stripped.match?(/0x178d|\b6029\b|contestnotcancellable/i)
+        return ok(message: "Contest cannot be cancelled in its current status.", log: true)
+      end
+      if stripped.match?(/0x178e|\b6030\b|prizepoolnotempty/i)
+        return ok(message: "Prize pool still has tokens — settle or refund first.", log: true)
+      end
+      if stripped.match?(/0x178f|\b6031\b|emptyrevenueaccount/i)
+        return ok(message: "Operator revenue account is empty.", log: true)
+      end
+      # OPSEC: a sweep aimed at the wrong destination — log loud.
+      if stripped.match?(/0x1790|\b6032\b|treasuryauthoritymismatch/i)
+        return ok(message: "Treasury ATA does not belong to the pinned treasury authority.", log: true)
+      end
+      if stripped.match?(/0x1791|\b6033\b|feeandprizebothzero/i)
+        return ok(message: "Contest must have at least one entry fee or a non-zero prize pool.", log: true)
+      end
+
       # Network / RPC flakes — transient, user can just retry.
       if stripped.match?(/blockhash not found|block height exceeded|connection refused|timed out|connection reset/i)
         return ok(message: "Network blip — please try again.", toast: true)
