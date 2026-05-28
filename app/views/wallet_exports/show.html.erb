@@ -1,0 +1,153 @@
+<%# Self-custody wallet export — reveal page (task #11 Stage 2).
+%>
+<% content_for :page_title, "Export wallet — Turf Monster" %>
+
+<div class="max-w-2xl mx-auto px-4 py-10" x-data="walletExportPage()" x-cloak>
+  <%# ── Warning banner ────────────────────────────────────────────── %>
+  <div class="rounded-2xl border-2 border-rose-500/60 bg-rose-500/10 p-6 mb-6">
+    <h1 class="text-2xl font-bold text-rose-200 mb-2">Read this carefully</h1>
+    <p class="text-rose-100 text-sm leading-relaxed">
+      Below is your wallet's <strong>private key</strong>. Anyone with a copy of it
+      controls everything in that wallet — your USDC, your entry tokens, your contest
+      entries. <strong>We cannot recover it for you</strong> if you lose it.
+    </p>
+    <ul class="text-rose-100 text-sm mt-3 space-y-1 list-disc list-inside">
+      <li>Only continue when you're at a private screen.</li>
+      <li>Paste the key into a wallet you trust (Phantom, Solflare, the Solana CLI).</li>
+      <li>Never share this key by email, message, or with support staff.</li>
+      <li>Once you click <em>I've imported my key</em>, Turf Monster will stop auto-signing on your behalf.</li>
+    </ul>
+  </div>
+
+  <%# ── Wallet address (for cross-check after import) ─────────────── %>
+  <div class="rounded-2xl border border-subtle bg-surface p-5 mb-6">
+    <p class="text-xs uppercase tracking-wider text-muted mb-1">Wallet address</p>
+    <code class="font-mono text-sm break-all text-heading select-all"><%= @address %></code>
+    <p class="text-xs text-muted mt-2">After importing, your wallet app should show this exact address.</p>
+  </div>
+
+  <%# ── Secret key, two formats ────────────────────────────────────── %>
+  <div class="rounded-2xl border border-subtle bg-surface p-5 mb-6">
+    <p class="text-xs uppercase tracking-wider text-muted mb-3">Private key</p>
+
+    <div class="mb-4">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm text-heading font-semibold">Base58 — for Phantom / Solflare</span>
+        <button type="button" @click="toggle('b58')"
+                class="text-xs text-primary hover:underline" x-text="reveal.b58 ? 'Hide' : 'Reveal'"></button>
+      </div>
+      <code class="font-mono text-xs break-all block p-3 bg-surface-alt rounded-lg"
+            x-show="reveal.b58"
+            x-text="$el.textContent"><%= @secret_base58 %></code>
+      <div x-show="!reveal.b58"
+           class="p-3 bg-surface-alt rounded-lg text-muted text-xs italic">Click Reveal to show.</div>
+      <button type="button" @click="copy('b58')"
+              class="text-xs text-primary hover:underline mt-1"
+              x-show="reveal.b58" x-text="copied.b58 ? 'Copied!' : 'Copy base58'"></button>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm text-heading font-semibold">Solana CLI JSON array</span>
+        <button type="button" @click="toggle('json')"
+                class="text-xs text-primary hover:underline" x-text="reveal.json ? 'Hide' : 'Reveal'"></button>
+      </div>
+      <code class="font-mono text-xs break-all block p-3 bg-surface-alt rounded-lg"
+            x-show="reveal.json"
+            x-text="$el.textContent"><%= @secret_json_array %></code>
+      <div x-show="!reveal.json"
+           class="p-3 bg-surface-alt rounded-lg text-muted text-xs italic">Click Reveal to show.</div>
+      <button type="button" @click="copy('json')"
+              class="text-xs text-primary hover:underline mt-1"
+              x-show="reveal.json" x-text="copied.json ? 'Copied!' : 'Copy JSON array'"></button>
+    </div>
+  </div>
+
+  <%# ── Prove-custody Phantom-sign step ───────────────────────────── %>
+  <div class="rounded-2xl border border-subtle bg-surface p-5 mb-6"
+       x-show="status !== 'done'">
+    <p class="text-xs uppercase tracking-wider text-muted mb-2">Step 2: prove you imported the key</p>
+    <p class="text-body text-sm mb-3">
+      Once you've imported the key into Phantom (or another wallet that controls the
+      address above), sign the message below to confirm. Turf Monster will then mark
+      your account as self-custodied and stop server-signing on your behalf.
+    </p>
+    <details class="text-xs text-muted mb-3">
+      <summary class="cursor-pointer">Show the exact message you'll be signing</summary>
+      <pre class="whitespace-pre-wrap font-mono mt-2 p-3 bg-surface-alt rounded-lg"><%= @sign_message %></pre>
+    </details>
+    <button type="button" @click="proveCustody()"
+            :disabled="status === 'signing'"
+            class="btn btn-primary w-full">
+      <span x-show="status === 'idle'">I've imported my key — sign to confirm</span>
+      <span x-show="status === 'signing'">Waiting for Phantom…</span>
+      <span x-show="status === 'error'">Try again</span>
+    </button>
+    <p class="text-xs text-rose-300 mt-2" x-show="errorText" x-text="errorText"></p>
+  </div>
+
+  <%# ── Success state ─────────────────────────────────────────────── %>
+  <div class="rounded-2xl border-2 border-emerald-500/60 bg-emerald-500/10 p-6"
+       x-show="status === 'done'" x-cloak>
+    <h2 class="text-xl font-bold text-emerald-200 mb-2">You're self-custodied 🎉</h2>
+    <p class="text-emerald-100 text-sm mb-4">
+      Turf Monster will no longer auto-sign on your behalf. From now on, your wallet
+      app signs every on-chain action. Welcome to self-custody.
+    </p>
+    <a :href="redirectTo" class="btn btn-primary">Back to my account</a>
+  </div>
+</div>
+
+<script>
+  // Defined inline (not in shared/_alpine_factories) so the page works
+  // even when Alpine's importmap-deferred factories haven't loaded yet.
+  // See feedback_alpine_factory_importmap_timing.
+  window.walletExportPage = function () {
+    return {
+      reveal: { b58: false, json: false },
+      copied: { b58: false, json: false },
+      status: 'idle',   // 'idle' | 'signing' | 'error' | 'done'
+      errorText: '',
+      redirectTo: '/account',
+
+      toggle: function (key) { this.reveal[key] = !this.reveal[key]; },
+
+      copy: function (key) {
+        var el = this.$el.querySelector('code[x-show="reveal.' + key + '"]');
+        var text = el ? el.textContent : '';
+        navigator.clipboard.writeText(text).then(function () {
+          this.copied[key] = true;
+          setTimeout(function () { this.copied[key] = false; }.bind(this), 1500);
+        }.bind(this));
+      },
+
+      proveCustody: async function () {
+        this.status = 'signing';
+        this.errorText = '';
+        try {
+          var provider = window.walletProvider && window.walletProvider.detect();
+          if (!provider) throw new Error("Phantom not detected. Make sure Phantom is installed and unlocked, then refresh.");
+
+          var message = <%= raw @sign_message.to_json %>;
+          var encoded = new TextEncoder().encode(message);
+          var signed = await provider.signMessage(encoded, 'utf8');
+          var signatureB58 = window.encodeBase58(signed.signature);
+
+          var response = await fetch(window.location.pathname + "/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message, signature: signatureB58 })
+          });
+          var data = await response.json();
+          if (!data.success) throw new Error(data.error || "Signature didn't verify.");
+
+          this.status = 'done';
+          this.redirectTo = data.redirect || '/account';
+        } catch (e) {
+          this.status = 'error';
+          this.errorText = (e && e.message) || String(e);
+        }
+      }
+    };
+  };
+</script>

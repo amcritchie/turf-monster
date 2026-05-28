@@ -120,7 +120,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     assert_match(/newer export link/i, response.body)
   end
 
-  test "WalletExportsController#show accepts a fresh token and 503s as Stage 2 stub" do
+  test "WalletExportsController#show renders the reveal page with both key formats" do
     login(@managed)
     post initiate_wallet_export_account_path
     @managed.reload
@@ -131,9 +131,16 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     )
 
     get wallet_export_path(token: token)
-    assert_response 503
-    assert_match(/Stage 2 not implemented/i, response.body)
-    assert_match(/token verified/i, response.body)
+    assert_response :success
+    # The address shows so the user can verify it matches the wallet they
+    # import into.
+    assert_includes response.body, @managed.solana_address
+    # Both formats appear in the rendered HTML.
+    keypair      = @managed.solana_keypair
+    expected_b58 = Solana::Keypair.encode_base58(keypair.to_bytes)
+    expected_arr = "[" + keypair.to_bytes.bytes.join(",") + "]"
+    assert_includes response.body, expected_b58, "base58 secret should render"
+    assert_includes response.body, expected_arr, "JSON array secret should render"
   end
 
   test "WalletExportsController#show rejects garbage tokens" do
