@@ -1,0 +1,76 @@
+<%# Web2 withdraw card — managed-wallet users only.
+    Visible for: managed_wallet? && !self_custodied? && !phantom_wallet?
+    Self-custodied users see the "you control your own funds" callout
+    instead (see _withdraw_self_custody_callout). Phantom-only users
+    don't see anything — they manage withdrawals in their wallet app.
+
+    Behavior: collapsed by default; clicking the header reveals the
+    amount + destination-info form. Submit POSTs to /wallet/withdraw,
+    which validates against the on-chain balance, refuses self-custody,
+    and creates a pending TransactionLog row for the admin queue.
+
+    Behind the scenes (TODO Phase 2 — task tracked in
+    project_turf_mainnet_launch_in_progress): a Stripe Connect or
+    Bridge.xyz integration consumes the pending rows + sweeps the
+    user's managed-wallet ATA to the off-ramp provider. For now the
+    operator processes manually and clicks "Complete" in the admin
+    transaction-log page once fiat lands.
+%>
+<div class="card shadow p-6 mb-6"
+     x-data="{ open: false, amount: '', destination: '' }"
+     x-cloak>
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-bold text-heading mb-1">Cash out</h2>
+      <p class="text-sm text-muted">Send your USDC balance to a bank, PayPal, or exchange account.</p>
+    </div>
+    <button type="button" @click="open = !open"
+            class="btn btn-outline btn-sm"
+            x-text="open ? 'Cancel' : 'Withdraw'"></button>
+  </div>
+
+  <div x-show="open" x-transition class="mt-4">
+    <%= form_with url: withdraw_wallet_path, method: :post, local: true, class: "space-y-4" do |f| %>
+      <div>
+        <%= f.label :amount, "Amount (USD)", class: "block text-sm font-semibold text-heading mb-1" %>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span>
+          <%= f.number_field :amount,
+                step: "0.01",
+                min: "1",
+                placeholder: "0.00",
+                required: true,
+                x: "model: amount",
+                class: "input-field w-full pl-7",
+                "x-model": "amount" %>
+        </div>
+        <% if @onchain_balance %>
+          <p class="text-xs text-muted mt-1">
+            Available: <span class="font-mono"><%= dollars(@onchain_balance[:balance_dollars]) %></span>
+          </p>
+        <% end %>
+      </div>
+
+      <div>
+        <%= f.label :destination_info, "Where should we send it?", class: "block text-sm font-semibold text-heading mb-1" %>
+        <%= f.text_area :destination_info,
+              rows: 3,
+              required: true,
+              placeholder: "e.g. Stripe-linked email alex@example.com  /  Chase routing 021000021 acct 1234  /  PayPal @yourhandle",
+              class: "input-field w-full",
+              maxlength: 500,
+              "x-model": "destination" %>
+        <p class="text-xs text-muted mt-1">
+          We'll match against an off-ramp provider (Stripe / Bridge / Kraken) and email you when funds land. Settlement is typically 1–3 business days.
+        </p>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <p class="text-xs text-muted">Reviewed by an operator before send.</p>
+        <%= f.submit "Submit withdrawal",
+              class: "btn btn-primary",
+              "x-bind:disabled": "!amount || !destination" %>
+      </div>
+    <% end %>
+  </div>
+</div>

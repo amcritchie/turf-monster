@@ -71,6 +71,20 @@
     </div>
   </div>
 
+  <%# -- Cash out (web2 managed-wallet users only) -- %>
+  <% if @user.managed_wallet? && !@user.self_custodied? && !@user.phantom_wallet? %>
+    <%= render "withdraw_card" %>
+  <% elsif @user.self_custodied? %>
+    <div class="card shadow p-6 mb-6 border border-emerald-600/30">
+      <h2 class="text-lg font-bold text-heading mb-2">Cash out</h2>
+      <p class="text-sm text-muted">
+        You're self-custodied — Turf Monster doesn't sign for you anymore.
+        Send USDC directly from the wallet you imported your key into
+        (Phantom, Solflare, etc.) to wherever you want to settle.
+      </p>
+    </div>
+  <% end %>
+
   <%# -- Pending Withdrawals -- %>
   <% if @pending_withdrawals&.any? %>
     <div class="card shadow p-6 mb-6 border border-yellow-600/30">

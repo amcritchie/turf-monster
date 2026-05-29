@@ -95,13 +95,24 @@ class WalletsController < ApplicationController
   end
 
   def withdraw
-    amount_dollars = params[:amount].to_f
+    amount_dollars   = params[:amount].to_f
+    destination_info = params[:destination_info].to_s.strip
     return redirect_to wallet_path, alert: "Invalid amount" if amount_dollars <= 0
+    return redirect_to wallet_path, alert: "Tell us where to send your money."  if destination_info.blank?
+    return redirect_to wallet_path, alert: "Destination info too long (max 500 chars)." if destination_info.length > 500
 
     amount_cents = (amount_dollars * 100).to_i
 
     rescue_and_log(target: current_user) do
       raise "No wallet connected" unless current_user.solana_connected?
+
+      # Self-custodied users hold their own key — the server can't sign for
+      # them, so an off-ramp service we'd integrate (Stripe / Bridge / etc.)
+      # has no funding source to draw against. Point them at the wallet
+      # they exported into instead. See task #11 + WalletExportsController.
+      if current_user.self_custodied?
+        raise "Your wallet is self-custodied. Send USDC directly from the wallet you imported into."
+      end
 
       # OPSEC-031: cap at on-chain balance at request time. Previously the
       # action accepted any params[:amount] and an admin approving the
@@ -114,15 +125,27 @@ class WalletsController < ApplicationController
         raise "Withdrawal exceeds on-chain balance ($#{format('%.2f', available_dollars)} available)"
       end
 
+      # Store the operator-facing routing info in metadata. Stage 1
+      # (now): operator reads this off the admin transaction-log page
+      # and processes the off-ramp manually (Kraken/Bridge/Stripe).
+      # Stage 2 (separate engagement): a Bridge::Withdrawal (or Stripe
+      # Connect equivalent) service consumes these rows + signs the
+      # on-chain SPL transfer from the user's managed-wallet ATA to
+      # the off-ramp provider's deposit address.
       TransactionLog.record!(
         user: current_user,
         type: "withdrawal",
         amount_cents: amount_cents,
         direction: "debit",
         description: "Withdrawal request $#{'%.2f' % amount_dollars}",
-        status: "pending"
+        status: "pending",
+        metadata: {
+          destination_info: destination_info,
+          requested_at: Time.current.iso8601,
+          requested_from_ip: request.remote_ip
+        }
       )
-      redirect_to wallet_path, notice: "Withdrawal of $#{'%.2f' % amount_dollars} submitted for review."
+      redirect_to wallet_path, notice: "Withdrawal of $#{'%.2f' % amount_dollars} submitted for review. We'll email you when funds are sent."
     end
   rescue StandardError => e
     redirect_to wallet_path, alert: "Withdrawal failed: #{e.message}"
