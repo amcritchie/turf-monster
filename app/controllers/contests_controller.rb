@@ -428,6 +428,11 @@ class ContestsController < ApplicationController
           )
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
+          # The on-chain EntryTokenAccount.consumed flag just flipped to true.
+          # Bust the 60s entry-tokens cache so a follow-up entry within the
+          # same TTL doesn't re-pick this token and trip 0x177f
+          # (EntryTokenAlreadyConsumed) when the chain rejects the consume.
+          current_user.bust_entry_tokens_cache!
           token_consumed = true
         elsif @contest.onchain? && !onchain_session?
           # Offchain session entering onchain contest: blocking vault entry.
@@ -462,26 +467,10 @@ class ContestsController < ApplicationController
       respond_to do |format|
         format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
         format.json {
-          seeds_earned = 0
-          seeds_total = 0
-          seeds_level = 0
-          if entry.onchain_tx_signature.present? && entry.entry_number.present?
-            begin
-              seeds_earned = Solana::Vault.new.seeds_for_entry(entry.entry_number)
-            rescue => e
-              Rails.logger.warn "Failed to read seeds_for_entry: #{e.message}"
-            end
-            if current_user.solana_connected?
-              begin
-                onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
-                seeds_total = onchain&.dig(:seeds) || 0
-              rescue => e
-                Rails.logger.warn "Failed to read seeds after entry: #{e.message}"
-              end
-            end
-            seeds_level = User.level_for(seeds_total)
-          end
-
+          seeds = post_entry_seeds_payload(entry,
+                                          path: "managed",
+                                          tx_signature: entry.onchain_tx_signature,
+                                          token_consumed: token_consumed)
           render json: {
             success: true,
             redirect: contest_path(@contest),
@@ -490,9 +479,7 @@ class ContestsController < ApplicationController
             # an on-chain EntryTokenAccount consumption. Drives the
             # navbar 🎟️ punch animation (animateFreeEntryBadge).
             token_consumed: token_consumed,
-            seeds_earned: seeds_earned,
-            seeds_total: seeds_total,
-            seeds_level: seeds_level
+            **seeds
           }
         }
       end
@@ -719,26 +706,14 @@ class ContestsController < ApplicationController
                                      initiator_address: current_user.web3_solana_address).order(:created_at).last
       ptx&.update!(tx_signature: params[:tx_signature], status: "confirmed")
 
-      # Seeds awarded are determined on-chain by the active Season's seed_schedule.
-      # Mirror that schedule here so the modal shows the same number the program awarded.
-      seeds_earned = Solana::Vault.new.seeds_for_entry(entry.entry_number)
-      seeds_total = 0
-      if current_user.solana_connected?
-        begin
-          onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
-          seeds_total = onchain&.dig(:seeds) || 0
-        rescue => e
-          Rails.logger.warn "Failed to read seeds after entry: #{e.message}"
-        end
-      end
-
+      seeds = post_entry_seeds_payload(entry,
+                                      path: "phantom-direct",
+                                      tx_signature: params[:tx_signature])
       render json: {
         success: true,
         redirect: contest_path(@contest),
         tx_signature: params[:tx_signature],
-        seeds_earned: seeds_earned,
-        seeds_total: seeds_total,
-        seeds_level: User.level_for(seeds_total)
+        **seeds
       }
     end
   rescue StandardError => e
@@ -917,6 +892,59 @@ class ContestsController < ApplicationController
   end
 
   private
+
+  # Build the post-confirm seeds payload for the entry-confirm JSON responses
+  # in #enter (managed wallet) and #confirm_onchain_entry (Phantom direct).
+  # Reads the seeds awarded for this entry's number off-chain (Season schedule
+  # mirror) plus the user's current lifetime seeds via sync_balance, derives
+  # the level, then handles the post-confirm fanout housekeeping:
+  #
+  #   1. `Rails.logger.info "[entry][confirmed] path=… seeds_earned=… …"` so
+  #      production debugging has a grep-able trail (pair with the
+  #      `[state-fanout][seeds]` console line on the client).
+  #   2. invalidate_seeds_cache + invalidate_usdc_cache so the next page
+  #      render sees fresh chain state without waiting for the 60s TTL.
+  #
+  # Returns `{ seeds_earned:, seeds_total:, seeds_level: }` for splat into
+  # the JSON response.
+  def post_entry_seeds_payload(entry, path:, tx_signature:, token_consumed: nil)
+    seeds_earned = 0
+    seeds_total  = 0
+    seeds_level  = 0
+
+    if entry.onchain_tx_signature.present? && entry.entry_number.present?
+      begin
+        seeds_earned = Solana::Vault.new.seeds_for_entry(entry.entry_number)
+      rescue => e
+        Rails.logger.warn "Failed to read seeds_for_entry: #{e.message}"
+      end
+      if current_user.solana_connected?
+        begin
+          onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
+          seeds_total = onchain&.dig(:seeds) || 0
+        rescue => e
+          Rails.logger.warn "Failed to read seeds after entry: #{e.message}"
+        end
+      end
+      seeds_level = User.level_for(seeds_total)
+    end
+
+    tx_prefix = tx_signature.to_s.first(8)
+    token_part = token_consumed.nil? ? "" : " token_consumed=#{token_consumed}"
+    Rails.logger.info(
+      "[entry][confirmed] path=#{path} user_id=#{current_user.id} " \
+      "entry_id=#{entry.id} contest=#{@contest.slug} tx=#{tx_prefix}... " \
+      "seeds_earned=#{seeds_earned} seeds_total=#{seeds_total} " \
+      "seeds_level=#{seeds_level}#{token_part}"
+    )
+
+    if current_user.solana_connected?
+      invalidate_seeds_cache
+      invalidate_usdc_cache
+    end
+
+    { seeds_earned: seeds_earned, seeds_total: seeds_total, seeds_level: seeds_level }
+  end
 
   # Renders the JSON error response for every entry-flow endpoint (enter,
   # prepare_entry, confirm_onchain_entry). Runs the raw exception through

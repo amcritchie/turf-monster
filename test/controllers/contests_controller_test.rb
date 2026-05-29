@@ -112,6 +112,62 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to contest_path(contest)
   end
 
+  # --- post_entry_seeds_payload tests ---
+  #
+  # The shared seeds-payload helper extracted in the R1 refactor is the
+  # single place that emits the `[entry][confirmed]` log line + busts the
+  # navbar seeds/USDC caches after a confirmed entry. These tests pin that
+  # contract so the structured log line stays grep-able in prod and the
+  # caches actually get invalidated.
+
+  test "enter emits structured [entry][confirmed] log on success" do
+    log_in_as(@user)
+    contest = free_contest
+
+    entry = contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    captured = StringIO.new
+    original_logger = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(captured)
+    begin
+      post enter_contest_path(contest), headers: { "Accept" => "application/json" }
+    ensure
+      Rails.logger = original_logger
+    end
+
+    assert_response :success
+    log = captured.string
+    assert_match(/\[entry\]\[confirmed\] path=managed/, log)
+    assert_match(/user_id=#{@user.id}/, log)
+    assert_match(/entry_id=#{entry.id}/, log)
+    assert_match(/contest=#{contest.slug}/, log)
+    assert_match(/seeds_earned=\d+/, log)
+    assert_match(/seeds_total=\d+/, log)
+    assert_match(/seeds_level=\d+/, log)
+    assert_match(/token_consumed=/, log)
+  end
+
+  test "enter invalidates seeds and USDC caches on success for solana-connected user" do
+    log_in_as(@user)
+    contest = free_contest
+
+    entry = contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    # Pre-populate both caches with sentinels so we can verify they got cleared.
+    Rails.cache.write("user_seeds:#{@user.id}", { seeds: 999 })
+    Rails.cache.write("usdc_balance:#{@user.id}", 999.0)
+
+    post enter_contest_path(contest), headers: { "Accept" => "application/json" }
+
+    assert_response :success
+    assert_nil Rails.cache.read("user_seeds:#{@user.id}"),
+               "seeds cache should be cleared after a successful entry"
+    assert_nil Rails.cache.read("usdc_balance:#{@user.id}"),
+               "USDC cache should be cleared after a successful entry"
+  end
+
   # --- onchain session entry tests ---
 
   test "enter rejects onchain session without signature" do
