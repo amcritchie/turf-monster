@@ -12,6 +12,16 @@
 <% lvl = 1 if lvl < 1 %>
 <% toward_next = seeds_data[:toward_next].to_i %>
 <% pct = seeds_data[:progress].to_i %>
+<%# Absolute total used by normalStart() to break ties against the
+    `seedsNavbar` localStorage cache. The cache is updated only on the
+    client-side confirmEntry path; any other on-chain seed delta (admin
+    actions, Phantom-direct entries, RPC lag at confirm time, level-ups
+    that happened in a different browser) leaves the cache trailing the
+    chain truth until the next confirm. The server-rendered total is the
+    fresh-from-chain number this request just read via sync_balance, so
+    passing it down lets the JS pick max(server, cache) and self-heal
+    the cache when it's behind. %>
+<% server_total_seeds = seeds_data[:seeds].to_i %>
 <% shimmer_anim = "seedsShimmer 2.5s ease-in-out #{shimmer_interval.to_f}s 1 both" %>
 
 <%# seedsBar factory — MUST be inline because Alpine processes x-data
@@ -34,6 +44,7 @@
       init() {
         var initialToward = parseInt(this.$root.dataset.initialToward, 10) || 0;
         var initialLevel = parseInt(this.$root.dataset.initialLevel, 10) || 1;
+        this._serverSeedsTotal = parseInt(this.$root.dataset.initialSeedsTotal, 10) || 0;
         this.displaySeeds = initialToward;
         this.displayLevel = initialLevel;
         this.finalToward = initialToward;
@@ -57,11 +68,38 @@
       },
 
       normalStart() {
+        // Reconcile two sources of seed truth:
+        //   - server: this._serverSeedsTotal (fresh sync_balance for THIS request)
+        //   - cache:  readNavData() (last confirmEntry-side optimistic update)
+        // Pick the higher value — server wins when the cache is stale (the
+        // common case after Phantom direct entry, admin actions, or a long
+        // gap), and cache wins for the ~hundreds-of-ms Helius lag right after
+        // a confirm where on-chain reads still trail the just-confirmed TX.
+        // Then write the winner back to localStorage so the cache self-heals
+        // on first render — subsequent tabs / reloads stop seeing the stale
+        // value without any further intervention.
         var data = this.readNavData();
-        if (data) {
+        var cacheTotal  = (data && typeof data.seeds_total === "number") ? data.seeds_total : 0;
+        var serverTotal = this._serverSeedsTotal || 0;
+
+        if (cacheTotal > serverTotal && data) {
           this.displayLevel = data.level;
           this.finalToward = data.toward_next;
+        } else if (serverTotal > cacheTotal) {
+          // Server is fresher — displayLevel / finalToward already carry the
+          // server's value from init(). Sync localStorage so other tabs +
+          // future loads converge.
+          try {
+            var perLevel = <%= User::SEEDS_PER_LEVEL %>;
+            localStorage.setItem("seedsNavbar", JSON.stringify({
+              seeds_total: serverTotal,
+              level: this.displayLevel,
+              toward_next: this.finalToward,
+              progress: Math.round(this.finalToward / perLevel * 100)
+            }));
+          } catch (_) {}
         }
+
         this.displaySeeds = 0;
         var self = this;
         this._schedule(function () { self.displaySeeds = self.finalToward; }, 150);
@@ -163,6 +201,7 @@
 <div x-data="seedsBar()"
      data-initial-toward="<%= toward_next %>"
      data-initial-level="<%= lvl %>"
+     data-initial-seeds-total="<%= server_total_seeds %>"
      @navbar-replay-level.window="replay()"
      @navbar-seeds-update.window="handleSeedsUpdate($event.detail)">
 
