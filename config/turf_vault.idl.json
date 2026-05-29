@@ -2,7 +2,7 @@
   "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.17.0",
+    "version": "0.18.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
@@ -1447,6 +1447,80 @@
       ]
     },
     {
+      "name": "set_contest_conclusion_time",
+      "docs": [
+        "Set (or clear) a contest's conclusion timestamp (v0.18). 1-of-3. Once",
+        "chain time passes it the contest has concluded — set_contest_lock_time",
+        "then rejects. `new_conclusion_timestamp == 0` clears it. Rejected once",
+        "the contest has already concluded or is settled/cancelled."
+      ],
+      "discriminator": [
+        195,
+        150,
+        193,
+        44,
+        20,
+        239,
+        189,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_conclusion_timestamp",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "set_contest_lock_time",
       "docs": [
         "Set (or clear) a contest's derived lock timestamp. 1-of-3.",
@@ -2091,6 +2165,11 @@
       "code": 6034,
       "name": "ContestLocked",
       "msg": "Contest is locked — the lock timestamp has passed"
+    },
+    {
+      "code": 6035,
+      "name": "ContestConcluded",
+      "msg": "Contest has concluded — the conclusion timestamp has passed"
     }
   ],
   "types": [
@@ -2295,6 +2374,18 @@
             "type": "i64"
           },
           {
+            "name": "conclusion_timestamp",
+            "docs": [
+              "Derived conclusion marker (Unix seconds, chain Clock). `now >=",
+              "conclusion_timestamp` ⇒ the contest has concluded: its lock time can no",
+              "longer change (`set_contest_lock_time` rejects). `0` = no conclusion",
+              "scheduled. Carved out of `_reserved` (32 → 24 → 16) so total",
+              "`INIT_SPACE` stays UNCHANGED — v0.17 Contest PDAs need no re-init",
+              "(their zeroed bytes decode as `conclusion_timestamp == 0`)."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Reserved padding for forward-compat."
@@ -2302,7 +2393,7 @@
             "type": {
               "array": [
                 "u8",
-                24
+                16
               ]
             }
           }
