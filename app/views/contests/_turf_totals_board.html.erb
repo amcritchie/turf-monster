@@ -1082,6 +1082,12 @@ window.selectionBoard = function() {
 
       var seedsPerLevel = cfg.seedsPerLevel;
 
+      // Seeds fanout (localStorage + navbar event + structured log) is now
+      // owned by the StateFanout registry — see app/javascript/state_fanout.js
+      // and the "State fanout pattern" section in CLAUDE.md. Two call sites
+      // below (phantom-direct + managed-wallet) hand off the server payload
+      // and the source label; the handler does the rest.
+
       try {
         if (useOnchainFlow) {
           var provider = window.walletProvider.detect();
@@ -1160,41 +1166,14 @@ window.selectionBoard = function() {
           if (confirmData.seeds_earned) {
             var m = Alpine.store('solanaModal');
             m.seedsEarned = confirmData.seeds_earned;
-            m.seedsTotal = confirmData.seeds_total;
-            m.seedsLevel = confirmData.seeds_level;
-
-            localStorage.setItem('seedsNavbar', JSON.stringify({
-              seeds_total: confirmData.seeds_total,
-              level: confirmData.seeds_level,
-              toward_next: confirmData.seeds_total % seedsPerLevel,
-              progress: Math.round((confirmData.seeds_total % seedsPerLevel) / seedsPerLevel * 100)
-            }));
-
-            var oldSeeds = confirmData.seeds_total - confirmData.seeds_earned;
-            var oldLevel = Math.floor(oldSeeds / seedsPerLevel) + 1;
-            var newLevel = Math.floor(confirmData.seeds_total / seedsPerLevel) + 1;
-            var newPct = Math.round((confirmData.seeds_total % seedsPerLevel) / seedsPerLevel * 100);
-            if (newLevel > oldLevel) {
-              var oldPct = Math.round((oldSeeds % seedsPerLevel) / seedsPerLevel * 100);
-              localStorage.setItem('seedsLevelUp', JSON.stringify({
-                oldLevel: oldLevel,
-                newLevel: newLevel,
-                oldPct: oldPct,
-                oldToward: oldSeeds % seedsPerLevel
-              }));
-              // OPSEC-007: removed client→server PATCH /account/update_level. The
-              // navbar reads seeds/level from `seedsNavbar` localStorage above —
-              // already populated from `confirmData` which the server returned.
-              // Delay the visible navbar animation 2s so the user sees the +X seeds badge in the modal first
-              setTimeout(function() {
-                window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: true, oldLevel: oldLevel, oldPct: oldPct, newLevel: newLevel, progress: newPct } }));
-              }, 2000);
-            } else {
-              setTimeout(function() {
-                window.dispatchEvent(new CustomEvent('navbar-seeds-update', { detail: { levelUp: false, level: newLevel, progress: newPct } }));
-              }, 2000);
-            }
+            m.seedsTotal  = confirmData.seeds_total;
+            m.seedsLevel  = confirmData.seeds_level;
           }
+          // OPSEC-007: removed client→server PATCH /account/update_level. The
+          // navbar reads seeds/level from `seedsNavbar` localStorage which the
+          // StateFanout handler writes below — already populated from the
+          // server response.
+          window.StateFanout.apply('seeds', confirmData, { source: 'phantom-direct', seedsPerLevel: seedsPerLevel });
           // 999s auto-close while reviewing seeds animation. Restore to a normal countdown when shipping (e.g. 8s).
           var modal = Alpine.store('solanaModal');
           modal.success(txSig, 'Entry Confirmed', 999);
@@ -1230,6 +1209,13 @@ window.selectionBoard = function() {
             if (data.token_consumed) {
               try { if (window.animateFreeEntryBadge) window.animateFreeEntryBadge(); } catch (_) {}
             }
+            // Navbar seed-bar tick-up. Previously only fired on the Phantom
+            // direct path; the managed-wallet path used to update the success
+            // modal's display but left the navbar bar untouched. One call here
+            // covers every managed-wallet branch (tokens modal w/ tx, tokens
+            // modal w/o tx, plain hold-to-confirm) — they all flow through
+            // `data.success`.
+            window.StateFanout.apply('seeds', data, { source: 'managed-wallet', seedsPerLevel: seedsPerLevel });
             // Re-fetch the wizard props in case the entry submit took
             // long enough for the modal to be dismissed.
             var p = this._authProps();
