@@ -2,7 +2,7 @@
   "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.16.0",
+    "version": "0.17.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
@@ -424,6 +424,10 @@
         {
           "name": "prize_pool",
           "type": "u64"
+        },
+        {
+          "name": "lock_timestamp",
+          "type": "i64"
         }
       ]
     },
@@ -1187,72 +1191,6 @@
       ]
     },
     {
-      "name": "lock_contest",
-      "docs": [
-        "Flip Contest.status: Open → Locked. 1-of-3."
-      ],
-      "discriminator": [
-        124,
-        155,
-        70,
-        224,
-        136,
-        196,
-        104,
-        207
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.contest_id",
-                "account": "Contest"
-              }
-            ]
-          }
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "mint_entry_token",
       "docs": [
         "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer."
@@ -1505,6 +1443,81 @@
         {
           "name": "kind",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "set_contest_lock_time",
+      "docs": [
+        "Set (or clear) a contest's derived lock timestamp. 1-of-3.",
+        "`new_lock_timestamp == 0` clears the lock (enterable indefinitely); any",
+        "non-zero Unix-seconds value locks entries once chain time passes it.",
+        "\"Lock now\" = pass the current chain time. Rejected once the contest is",
+        "concluded (interim guard: Settled/Cancelled)."
+      ],
+      "discriminator": [
+        69,
+        119,
+        242,
+        199,
+        127,
+        5,
+        114,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.contest_id",
+                "account": "Contest"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_lock_timestamp",
+          "type": "i64"
         }
       ]
     },
@@ -1775,76 +1788,6 @@
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "unlock_contest",
-      "docs": [
-        "Flip Contest.status: Locked → Open. 2-of-3 (safety hatch)."
-      ],
-      "discriminator": [
-        228,
-        181,
-        174,
-        51,
-        67,
-        245,
-        60,
-        251
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "cosigner",
-          "signer": true
-        },
-        {
-          "name": "vault_state",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.contest_id",
-                "account": "Contest"
-              }
-            ]
-          }
-        }
-      ],
-      "args": []
     },
     {
       "name": "unpause",
@@ -2143,6 +2086,11 @@
       "code": 6033,
       "name": "FeeAndPrizeBothZero",
       "msg": "Contest must have at least one entry fee or a non-zero prize pool"
+    },
+    {
+      "code": 6034,
+      "name": "ContestLocked",
+      "msg": "Contest is locked — the lock timestamp has passed"
     }
   ],
   "types": [
@@ -2335,6 +2283,18 @@
             "type": "u8"
           },
           {
+            "name": "lock_timestamp",
+            "docs": [
+              "Derived time-lock (Unix seconds, chain Clock). `now >= lock_timestamp`",
+              "⇒ contest locked (no new entries). `0` = no lock scheduled (enterable",
+              "until a lock time is set). Carved out of the former `[u8; 32]`",
+              "`_reserved` padding (i64 = 8 bytes, `_reserved` 32 → 24) so total",
+              "`INIT_SPACE` is UNCHANGED — existing Contest PDAs need no re-init:",
+              "their zeroed reserved bytes decode as `lock_timestamp == 0`."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "_reserved",
             "docs": [
               "Reserved padding for forward-compat."
@@ -2342,7 +2302,7 @@
             "type": {
               "array": [
                 "u8",
-                32
+                24
               ]
             }
           }
@@ -2422,8 +2382,11 @@
       "name": "ContestStatus",
       "docs": [
         "Lifecycle of a Contest.",
-        "Open      — accepting entries",
-        "Locked    — entries closed, awaiting results (set by lock_contest)",
+        "Open      — accepting entries (locking is now DERIVED from",
+        "`lock_timestamp` vs chain time, not this status — see",
+        "set_contest_lock_time + the enter_contest time gate)",
+        "Locked    — vestigial (v0.17 retired lock_contest/unlock_contest); kept",
+        "for enum-discriminant stability. No instruction sets it.",
         "Settled   — graded, payouts disbursed",
         "Cancelled — refunded to creator, no further state transitions allowed"
       ],
@@ -2742,7 +2705,7 @@
             "docs": [
               "The three multisig signers. 1-of-3 can run routine ops; 2-of-3",
               "needed for treasury ops (settle, register/deactivate_currency,",
-              "cancel_contest, sweep_operator_revenue, unlock_contest, pause/unpause)."
+              "cancel_contest, sweep_operator_revenue, pause/unpause)."
             ],
             "type": {
               "array": [
