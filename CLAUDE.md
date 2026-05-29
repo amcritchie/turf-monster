@@ -143,6 +143,7 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 
 > `fireSuccessConfetti()` lives in `solana_utils.js`, not a separate `wallet_connect` module (the file `app/javascript/wallet_connect.js` exists but is not pinned in `config/importmap.rb` — flag for cleanup).
 - `turf_board` — `shrinkTeamNames()` utility for auto-sizing long team names.
+- `state_fanout` — `window.StateFanout.apply(stateType, payload, opts)`. See "State fanout pattern" below for the contract. Registered handlers: `seeds`. Add a new handler when the next on-chain state delta needs to fan out to localStorage + a navbar event.
 
 ### JSON Config Pattern (ERB→JS data passing)
 
@@ -164,6 +165,61 @@ Alpine's `defer` script evaluates `x-data` attributes BEFORE importmap modules l
 - `selectionBoard()` — full matchup board component, inline in `_turf_totals_board.html.erb` partial. Reads config from `#board-config` JSON element.
 - `solanaModal` Alpine store — inline in layout, registered on `alpine:init`
 - `walletProvider` stub — minimal stub for `isAvailable()`/`isMobile()`/`detect()`, overwritten by full module on import
+
+### State fanout pattern
+
+When the server confirms an on-chain state change, three things have to happen on the client to keep the UI consistent:
+
+1. **localStorage write** — the navbar (seeds bar, token badge, etc.) reads its initial value from localStorage on the next render. Forgetting this leaves the bar stuck at a stale value until the 60s `Rails.cache` TTL expires.
+2. **Window event dispatch** — long-lived Alpine components animate to the new value without a page reload. The seeds bar listens on `navbar-seeds-update`, etc.
+3. **Structured console log** — `[state-fanout][<key>] { source, ... }` so LogRocket session replays + Sentry breadcrumbs can triage staleness in prod. Pair this with the server-side log (e.g. `[entry][confirmed]`) — same `tx_signature` correlates the two sides.
+
+`window.StateFanout.apply(stateType, payload, opts)` (defined in `app/javascript/state_fanout.js`) handles all three for any registered state type. Each handler owns the localStorage key shape, the event name + detail, and what counts as a no-op (`seeds` skips when `seeds_earned` is 0).
+
+**Handler contract** — to add a new on-chain state type, register a handler in `state_fanout.js`:
+
+```js
+register("tokens", function (payload, source, opts) {
+  // 1. Validate payload + extract canonical value
+  // 2. Write the localStorage key the navbar/badge reads
+  // 3. setTimeout(() => window.dispatchEvent(new CustomEvent("navbar-tokens-update", { detail })), opts.dispatchDelay || 2000)
+  // 4. console.log("[state-fanout][tokens]", { source, ... })
+});
+```
+
+The `source` param identifies which code path called `apply()` (e.g. `phantom-direct` vs `managed-wallet` for the seeds handler). It appears in every log line so a stuck navbar in prod can be triaged to a specific entry-flow path.
+
+**Currently registered:**
+
+| stateType | server endpoints | localStorage keys | event |
+|---|---|---|---|
+| `seeds` | `/contests/:id/enter`, `/confirm_onchain_entry` | `seedsNavbar`, `seedsLevelUp` (on level-up) | `navbar-seeds-update` |
+
+### CSS Grid card layout — drop inner `mb-*`
+
+A card that sits in a CSS Grid row (`grid-cols-2` etc.) with `align-items: stretch` (the default) will be stretched to match its row-neighbour's height — but if it carries its own `mb-*` class, that margin reduces the visible box size INSIDE the grid cell. You get the cell at the right height with the visible card 16-24px shorter, breaking parity with the neighbour.
+
+**Rule:** cards rendered directly as grid children must NOT carry `mb-*` on themselves. The parent of the grid is the right place for any bottom spacing.
+
+Burned by this three times so far:
+
+- `_share_invite.html.erb` (was `card shadow p-5 mb-6`)
+- `_slate_progress_xp.html.erb` (was `card shadow p-5 mb-6`)
+- `_your_entries.html.erb` (never had it; built clean from the start)
+
+If a card needs `mb-*` outside grid contexts, wrap it in a `<div class="mb-6">` at the *call site* rather than baking it into the partial.
+
+### Named Tailwind breakpoints (semantic > pixel)
+
+The `min-[Npx]:` arbitrary syntax works but reads as a magic number. When a breakpoint captures a *layout* decision (a specific component's column width gating which content fits), promote it to a named entry in `tailwind.config.js → theme.extend.screens`:
+
+```js
+screens: {
+  'pill-narrow': '530px',  // smallest Your Entries pill cell that fits emoji+short_name
+}
+```
+
+Then the markup reads `pill-narrow:inline` instead of `min-[530px]:inline` — and the next caller wanting the same boundary (other compact pill grids, etc.) has a discoverable name to reach for. Don't name a breakpoint after a device (`tablet`, `phone`) — that's what `sm`/`md`/`lg` are for; name it after the layout constraint it represents.
 
 ## Studio Engine
 
