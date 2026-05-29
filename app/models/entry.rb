@@ -28,6 +28,9 @@ class Entry < ApplicationRecord
 
   def toggle_selection!(slate_matchup)
     raise "Game has already started" if slate_matchup.locked?
+    # v0.17: locking is derived (no status flip), so guard the contest lock
+    # time here too — otherwise picks stay editable after lock until kickoff.
+    raise "Contest has locked — entries closed" if contest.locks_at && Time.current >= contest.locks_at
 
     existing = selections.find_by(slate_matchup: slate_matchup)
 
@@ -59,6 +62,9 @@ class Entry < ApplicationRecord
   def update_picks!(matchup_ids)
     raise "Editing is not supported for this contest type" if survivor?
     raise "Contest is not open" unless contest.open?
+    # v0.17: derived lock — block edits once the contest lock time has passed
+    # (status stays `open`, so `open?` alone no longer closes this window).
+    raise "Contest has locked — entries closed" if contest.locks_at && Time.current >= contest.locks_at
 
     new_ids = matchup_ids.map(&:to_i).uniq
     raise "Exactly #{contest.picks_required} selections required" unless new_ids.size == contest.picks_required

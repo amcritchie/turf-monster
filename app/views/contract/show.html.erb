@@ -125,14 +125,13 @@
     "1-of-3 routine ops" => [
       { name: "create_season",      bytes:  8_400, auth_class: "auth1", playbook: "Open a new season with an immutable seed-award schedule. Locked at season-creation time so contests can't be retroactively re-rewarded." },
       { name: "create_contest",     bytes: 13_800, auth_class: "auth1", playbook: "User-facing — see above. Any single vault signer can pay rent; the creator funds prizes." },
-      { name: "lock_contest",       bytes:  2_000, auth_class: "auth1", playbook: "Stop accepting entries when games are about to kick off. Open → Locked. Pure status flip." },
+      { name: "set_contest_lock_time", bytes: 2_000, auth_class: "auth1", playbook: "Set or clear a contest's derived lock timestamp. enter_contest{,_with_token} reject entries once chain Clock time passes it. 'Lock now' = pass the current time; 0 clears the lock. Replaces lock_contest/unlock_contest (v0.17)." },
       { name: "mint_entry_token",   bytes:  9_200, auth_class: "auth1", playbook: "Issue a free-entry voucher (EntryTokenAccount PDA). Sources: OPERATOR (manual), STRIPE (post-purchase mint), MOONPAY. Idempotent on source_ref so Sidekiq retries are safe." },
       { name: "close_contest",      bytes:  3_400, auth_class: "auth1", playbook: "Reclaim SOL rent from a settled or cancelled contest's PDA AND its prize-pool ATA. Sweeps any dust to operator-revenue before closing the ATA (v0.16 added this — see spec §10.4)." }
     ],
     "2-of-3 treasury ops" => [
       { name: "register_currency",       bytes:  8_000, auth_class: "auth2", playbook: "Add a new currency to accepted_currencies + create its operator-revenue ATA. Rejects duplicates (active or deactivated). Run when expanding past USDC + USDT." },
       { name: "deactivate_currency",     bytes:  3_000, auth_class: "auth2", playbook: "Flip a currency to active = false. Existing open contests using that currency keep working until their natural lifecycle ends; new contests cannot specify it as an entry fee. No re-activation — if you need it back, register in a new slot." },
-      { name: "unlock_contest",          bytes:  3_000, auth_class: "auth2", playbook: "Locked → Open. Higher auth than lock because re-opening can surprise entrants who saw the contest as locked. 2-of-3 cosign required." },
       { name: "settle_contest",          bytes: 10_000, auth_class: "auth2", playbook: "Final scores in, payouts out. Pays from the contest's prize-pool PDA directly to each winner's ATA via per-entry CPI. Rails sets compute-unit limit to 400,000 to cover up to ~50 winners in a single TX." },
       { name: "cancel_contest",          bytes: 12_000, auth_class: "auth2", playbook: "Refund the prize pool to the creator. Entry fees STAY in operator revenue — entrant compensation happens off-chain via mint_entry_token goodwill credits." },
       { name: "sweep_operator_revenue",  bytes: 10_000, auth_class: "auth2", playbook: "Drain a per-currency operator-revenue ATA to the treasury wallet (Squads vault PDA, pinned at initialize). One currency per call. amount = 0 sweeps everything." },

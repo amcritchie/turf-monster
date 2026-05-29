@@ -11,7 +11,11 @@ class Contest < ApplicationRecord
   # Turf Totals contests run off a Slate; World Cup Survivor contests don't.
   validates :slate, presence: true, if: :turf_totals?
 
-  enum :status, { pending: "pending", open: "open", locked: "locked", settled: "settled" }
+  # v0.17: locking is DERIVED from the on-chain lock_timestamp (mirrored to
+  # starts_at), not a status. A contest stays `open` right up to `settled`;
+  # `locked?` below computes the gate. The on-chain Contest PDA keeps a vestigial
+  # `Locked` enum slot, but nothing sets it. (Pre-v0.17 had a `locked` status.)
+  enum :status, { pending: "pending", open: "open", settled: "settled" }
   enum :game_type, { turf_totals: "turf_totals", world_cup_survivor: "world_cup_survivor" }
 
   # "All contests on chain" enforcement (2026-05-17 GTM principle):
@@ -144,7 +148,8 @@ class Contest < ApplicationRecord
       max_entries:           max_entries,
       payout_amounts:        onchain_params[:payout_amounts],
       prize_pool:            onchain_params[:prize_pool],
-      season_id:             season_id || SeasonConfig.current_season_id
+      season_id:             season_id || SeasonConfig.current_season_id,
+      lock_timestamp:        onchain_params[:lock_timestamp]
     )
     update!(
       onchain_contest_id:   result[:contest_pda],
@@ -245,7 +250,6 @@ class Contest < ApplicationRecord
         end
       end
 
-      update!(status: :locked) if open?
       grade!
     end
   end
@@ -376,7 +380,10 @@ class Contest < ApplicationRecord
       max_entries:           max_entries || format_config[:max_entries],
       payout_amounts:        payout_amounts,
       prize_pool:            Solana::Config.dollars_to_lamports(guaranteed / 100.0),
-      season_id:             season_id || SeasonConfig.current_season_id
+      season_id:             season_id || SeasonConfig.current_season_id,
+      # Derived lock (v0.17): mirror starts_at → on-chain lock_timestamp.
+      # nil starts_at → 0 = no scheduled lock (manual-only).
+      lock_timestamp:        starts_at&.to_i || 0
     }
   end
 
@@ -414,6 +421,15 @@ class Contest < ApplicationRecord
 
   def locks_at
     starts_at
+  end
+
+  # Derived lock state (v0.17). The authoritative lock lives on-chain
+  # (enter_contest rejects once Clock time >= lock_timestamp); this mirrors it
+  # from `starts_at` for UI + advisory pre-checks. nil starts_at = no scheduled
+  # lock (manual-only) → never derived-locked. A settled contest reads locked.
+  def locked?
+    return true if settled?
+    starts_at.present? && Time.current >= starts_at
   end
 
   def lock_time_display

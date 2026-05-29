@@ -51,6 +51,14 @@
             <% end %>
             <%= link_to "Admin View", admin_contest_path(@contest),
                   class: "block px-4 py-2 text-sm text-secondary hover:text-heading hover:bg-surface-alt transition" %>
+            <% if @contest.open? && !@contest.locked? %>
+              <%# Testing aid: schedule the lock 30s out (Phantom-signed) to watch the countdown engage. %>
+              <button type="button"
+                      onclick="lockContestViaPhantom('<%= @contest.slug %>', 30)"
+                      class="block w-full text-left px-4 py-2 text-sm text-yellow-500 hover:bg-surface-alt transition">
+                Lock in 30s
+              </button>
+            <% end %>
           <% end %>
         </div>
       </div>
@@ -62,6 +70,8 @@
     <span class="mx-1">&middot;</span>
     <span><%= @contest.lock_time_display %></span>
   </p>
+
+  <%= render "contests/lock_countdown" %>
 
   <!-- Stats row -->
   <div class="flex items-center gap-4 mt-3 flex-wrap">

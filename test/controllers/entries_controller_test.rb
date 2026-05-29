@@ -72,14 +72,15 @@ class EntriesControllerTest < ActionDispatch::IntegrationTest
 
   test "update rejects when contest is locked" do
     log_in_as(@owner)
-    @contest.update!(status: "locked")
+    # v0.17: locking is derived — a past lock time, not a status, closes edits.
+    @contest.update!(starts_at: 1.hour.ago)
 
     patch contest_entry_path(@contest, @entry),
           params: { matchup_ids: [@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, @m6.id] },
           as: :json
 
     assert_response :unprocessable_entity
-    assert_match(/not open/i, JSON.parse(response.body)["error"])
+    assert_match(/locked/i, JSON.parse(response.body)["error"])
   end
 
   test "update rejects fewer than picks_required matchups" do
