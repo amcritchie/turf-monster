@@ -43,6 +43,19 @@ module.exports = {
     ...studioColors.theme,
     extend: {
       ...studioColors.theme.extend,
+      // Named breakpoints that capture a *semantic* layout boundary, not a
+      // device class. Use these when the boundary is driven by a layout
+      // constraint (a card's column width gating which content fits) rather
+      // than "phone vs tablet" — that's what `sm` / `md` / `lg` are for.
+      //
+      // - pill-narrow (530px): smallest viewport that gives a Your Entries
+      //   pill cell enough room for emoji + 3-letter team code. Below this
+      //   the labels are suppressed (emoji only). Paired with `md:hidden
+      //   lg:inline` to also hide labels in the md half-width-card range.
+      screens: {
+        ...(studioColors.theme.extend.screens || {}),
+        'pill-narrow': '530px',
+      },
       colors: {
         ...studioColors.theme.extend.colors,
         // primary palette is now dynamic from shared studio config (CSS vars)

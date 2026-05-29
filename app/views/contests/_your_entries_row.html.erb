@@ -12,10 +12,15 @@
     <% t = sel.slate_matchup.team %>
     <% c1 = t.color_primary || "#666" %>
     <% c2 = t.color_secondary || c1 %>
+    <%# Two ranges drop the short_name to keep pills from truncating:
+        - < 530px  (mobile, single-col card but viewport too narrow)
+        - 768-1023px (md kicks the parent into 2 cols, so the card is half-
+          width and the pills get squeezed again until lg gives them back
+          enough room). Full team name still surfaces via the title tooltip. %>
     <span class="flex items-center justify-center min-w-0 px-1 py-0.5 rounded text-[10px] font-semibold text-white border border-white/15"
           style="background: linear-gradient(135deg, <%= c1 %>cc, <%= c2 %>99)"
           title="<%= t.name %>">
-      <span class="truncate"><%= t.emoji %> <%= t.short_name %></span>
+      <span class="truncate"><%= t.emoji %><span class="hidden pill-narrow:inline md:hidden lg:inline"> <%= t.short_name %></span></span>
     </span>
   <% end %>
 </div>

@@ -1,7 +1,13 @@
 <%# locals: (seeds_data:) %>
 <% return unless seeds_data %>
 
-<div class="card shadow p-5 mb-6">
+<%# `mb-6` was previously here for standalone bottom-spacing, but the only
+    caller (contests/show.html.erb) wraps the whole grid in `<div class="mb-6">`
+    so the internal margin was double-counted. Worse, in CSS Grid the item's
+    own margin shrinks its visible box within the cell — same bug pattern as
+    _share_invite — so this card was rendering ~24px shorter than the share
+    card next to it. Dropping mb-6 lets stretch parity hold. %>
+<div class="card shadow p-5">
   <%= render "components/seeds_bar",
         seeds_data: seeds_data,
         compact: false,
