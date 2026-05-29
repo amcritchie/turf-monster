@@ -3,12 +3,17 @@
     the viewer's wall clock. Inline x-data (no named factory) to dodge the
     importmap-timing trap. Renders nothing when target is nil.
     Locals:
-      target     (Time|nil) — the timestamp to count down to
-      label      (String)   — shown while counting, e.g. "Locks in"
-      done_label (String)   — shown once passed, e.g. "🔒 Entries closed"
-      tone       (String)   — "yellow" (lock) | "orange" (conclusion) %>
+      target        (Time|nil) — the timestamp to count down to
+      label         (String)   — shown while counting, e.g. "Locks in"
+      done_label    (String)   — shown once passed, e.g. "🔒 Entries closed"
+      tone          (String)   — "yellow" (lock) | "orange" (conclusion)
+      on_done_modal (String?)  — modal id to open the instant the timer crosses
+                                 zero LIVE (skipped if already done on load)
+      on_done_url   (String?)  — lobbyUrl prop passed to that modal %>
 <% if target.present? %>
   <% done_classes = tone.to_s == "orange" ? "border-orange-700 bg-orange-900/50 text-orange-400" : "border-yellow-700 bg-yellow-900/50 text-yellow-400" %>
+  <% on_done_modal = local_assigns[:on_done_modal] %>
+  <% on_done_url   = local_assigns[:on_done_url] %>
   <div
     class="mt-2"
     x-data="{
@@ -22,7 +27,7 @@
       get s() { return Math.floor((this.diff % 60000) / 1000); },
       p(n) { return String(n).padStart(2, '0'); }
     }"
-    x-init="if (target - now > 0) { const t = setInterval(() => { now = Date.now(); if (target - now <= 0) clearInterval(t); }, 1000); }"
+    x-init="if (target - now > 0) { const t = setInterval(() => { now = Date.now(); if (target - now <= 0) { clearInterval(t); <% if on_done_modal.present? %>if (window.Alpine && Alpine.store('modals')) { Alpine.store('modals').open('<%= j on_done_modal %>', { lobbyUrl: '<%= j on_done_url.to_s %>' }); }<% end %> } }, 1000); }"
   >
     <div x-show="!done" x-cloak
          class="inline-flex items-center gap-2 rounded-lg border border-subtle bg-surface-alt px-3 py-1.5">

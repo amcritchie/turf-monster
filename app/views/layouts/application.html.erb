@@ -498,6 +498,12 @@
       <template x-if="$store.modals.current().id === 'onchain-tx'">
         <%= render "modals/onchain_tx" %>
       </template>
+      <%# "It Begins" — fired client-side when a contest's lock countdown hits
+          zero (contests/_timestamp_countdown). Celebratory; the draining CTA
+          reloads the lobby into its locked/leaderboard view. %>
+      <template x-if="$store.modals.current().id === 'it-begins'">
+        <%= render "modals/it_begins" %>
+      </template>
       <% if logged_in? %>
         <template x-if="$store.modals.current().id === 'profile'">
           <%= render "modals/profile" %>

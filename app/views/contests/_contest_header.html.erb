@@ -81,7 +81,8 @@
 
   <% unless @contest.settled? %>
     <div class="flex flex-wrap items-center gap-2">
-      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Locks in", done_label: "🔒 Entries closed", tone: "yellow" %>
+      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Locks in", done_label: "🔒 Entries closed", tone: "yellow",
+            on_done_modal: "it-begins", on_done_url: contest_path(@contest) %>
       <%= render "contests/timestamp_countdown", target: @contest.concludes_at, label: "Concludes in", done_label: "🏁 Concluded", tone: "orange" %>
     </div>
   <% end %>
