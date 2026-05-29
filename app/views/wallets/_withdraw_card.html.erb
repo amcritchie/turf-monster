@@ -1,5 +1,6 @@
 <%# Web2 withdraw card — managed-wallet users only.
-    Visible for: managed_wallet? && !self_custodied? && !phantom_wallet?
+    Visible iff User#can_use_managed_withdraw?
+    (managed_wallet? && !self_custodied? && !phantom_wallet?).
     Self-custodied users see the "you control your own funds" callout
     instead (see _withdraw_self_custody_callout). Phantom-only users
     don't see anything — they manage withdrawals in their wallet app.

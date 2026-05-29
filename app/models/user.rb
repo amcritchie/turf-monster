@@ -196,6 +196,21 @@ class User < ApplicationRecord
     self_custodied_at.present?
   end
 
+  # Web2 managed-withdraw eligibility — the single source of truth shared
+  # between WalletsController#withdraw, the inline /wallet card, and the
+  # /account "Cash out" shortcut button.
+  #
+  # The flow lets the server sign an SPL transfer from the user's
+  # managed-wallet ATA → off-ramp provider (Stripe / Bridge / etc.). That
+  # requires three things:
+  #   - managed_wallet?    — there's an encrypted key the server can sign with
+  #   - !self_custodied?   — the user hasn't taken custody; we still sign
+  #   - !phantom_wallet?   — Phantom users cash out from their own wallet app;
+  #                          no need to route them through our queue
+  def can_use_managed_withdraw?
+    managed_wallet? && !self_custodied? && !phantom_wallet?
+  end
+
   def has_password?
     password_digest.present? && password_digest != ""
   end

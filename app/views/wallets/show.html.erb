@@ -72,7 +72,7 @@
   </div>
 
   <%# -- Cash out (web2 managed-wallet users only) -- %>
-  <% if @user.managed_wallet? && !@user.self_custodied? && !@user.phantom_wallet? %>
+  <% if @user.can_use_managed_withdraw? %>
     <%= render "withdraw_card" %>
   <% elsif @user.self_custodied? %>
     <div class="card shadow p-6 mb-6 border border-emerald-600/30">

@@ -40,7 +40,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   end
 
   test "initiate refuses phantom-only (no managed key to export)" do
-    login(@phantom)
+    log_in_as(@phantom)
     post initiate_wallet_export_account_path
     assert_response :forbidden
     body = JSON.parse(response.body)
@@ -49,7 +49,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
 
   test "initiate refuses already-self-custodied" do
     @managed.update!(self_custodied_at: 1.minute.ago)
-    login(@managed)
+    log_in_as(@managed)
     post initiate_wallet_export_account_path
     assert_response :forbidden
     body = JSON.parse(response.body)
@@ -57,7 +57,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   end
 
   test "initiate refuses without recent password reauth" do
-    login(@managed)
+    log_in_as(@managed)
     # Travel past the 5-minute reauth window. The stamp set by login() is
     # absolute time, so traveling forward 6 minutes makes
     # password_recently_verified? return false on the next request.
@@ -71,7 +71,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
 
   test "initiate refuses without verified email" do
     @managed.update!(email_verified_at: nil)
-    login(@managed)
+    log_in_as(@managed)
     post initiate_wallet_export_account_path
     assert_response :unprocessable_entity
     body = JSON.parse(response.body)
@@ -79,7 +79,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   end
 
   test "happy path stamps export_initiated_at + enqueues mailer" do
-    login(@managed)
+    log_in_as(@managed)
     assert_nil @managed.export_initiated_at
 
     assert_enqueued_emails 1 do
@@ -96,7 +96,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   end
 
   test "second initiate refreshes export_initiated_at + invalidates the first token" do
-    login(@managed)
+    log_in_as(@managed)
 
     post initiate_wallet_export_account_path
     @managed.reload
@@ -121,7 +121,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   end
 
   test "WalletExportsController#show renders the reveal page with both key formats" do
-    login(@managed)
+    log_in_as(@managed)
     post initiate_wallet_export_account_path
     @managed.reload
 
@@ -150,7 +150,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   end
 
   test "token bound to email — changing email after invalidates" do
-    login(@managed)
+    log_in_as(@managed)
     post initiate_wallet_export_account_path
     @managed.reload
     token = Rails.application.message_verifier("wallet_export_v1").generate(
@@ -166,12 +166,4 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     assert_match(/different email/i, response.body)
   end
 
-  private
-
-  def login(user)
-    post login_path, params: { email: user.email, password: "password" }
-    # SessionsController#create stamps session[:password_verified_at] on
-    # success — the tests that need a stale stamp use `travel` to jump
-    # past the 5-minute window.
-  end
 end

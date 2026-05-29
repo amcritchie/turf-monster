@@ -29,7 +29,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
   end
 
   test "happy path: managed user submits valid withdrawal" do
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       assert_difference -> { TransactionLog.where(user: @managed, transaction_type: "withdrawal").count }, +1 do
         post withdraw_wallet_path,
@@ -50,7 +50,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
   end
 
   test "missing amount is rejected" do
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       assert_no_difference -> { TransactionLog.count } do
         post withdraw_wallet_path, params: { amount: "", destination_info: "foo" }
@@ -62,7 +62,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
   end
 
   test "missing destination_info is rejected" do
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       assert_no_difference -> { TransactionLog.count } do
         post withdraw_wallet_path, params: { amount: "10.00", destination_info: "" }
@@ -74,7 +74,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
   end
 
   test "overlong destination_info is rejected (operator-side typo guard)" do
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       assert_no_difference -> { TransactionLog.count } do
         post withdraw_wallet_path, params: { amount: "10.00", destination_info: "x" * 501 }
@@ -85,7 +85,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
   end
 
   test "withdrawal exceeding on-chain balance is rejected" do
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       assert_no_difference -> { TransactionLog.count } do
         post withdraw_wallet_path,
@@ -98,7 +98,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
 
   test "self-custodied user is refused" do
     @managed.update!(self_custodied_at: 1.minute.ago)
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       assert_no_difference -> { TransactionLog.count } do
         post withdraw_wallet_path,
@@ -110,7 +110,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
   end
 
   test "wallet page shows the Withdraw button for a managed non-self-custodied user" do
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       get wallet_path
     end
@@ -122,7 +122,7 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
 
   test "wallet page hides the Withdraw card for a self-custodied user and shows the callout" do
     @managed.update!(self_custodied_at: 1.minute.ago)
-    login(@managed)
+    log_in_as(@managed)
     Solana::Vault.stub :new, @fake_vault do
       get wallet_path
     end
@@ -134,9 +134,4 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
     assert_match(/directly from the wallet you imported/i, response.body)
   end
 
-  private
-
-  def login(user)
-    post login_path, params: { email: user.email, password: "password" }
-  end
 end

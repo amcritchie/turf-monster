@@ -32,7 +32,7 @@ class SelfCustodyEnforcementTest < ActionDispatch::IntegrationTest
 
   test "ContestsController#enter refuses with self_custodied flag once the user has exported" do
     @user.update!(self_custodied_at: 1.minute.ago)
-    login(@user)
+    log_in_as(@user)
 
     post enter_contest_path(@contest), params: {}, as: :json
     assert_response :unprocessable_entity
@@ -50,7 +50,7 @@ class SelfCustodyEnforcementTest < ActionDispatch::IntegrationTest
     # test/support/fake_vault); we only assert that the guard added in
     # Stage 3 does NOT engage for users with self_custodied_at = nil.
     refute @user.self_custodied?
-    login(@user)
+    log_in_as(@user)
 
     post enter_contest_path(@contest), params: {}, as: :json
     # Whatever the response is, it MUST NOT be the new self-custody 422 —
@@ -63,7 +63,7 @@ class SelfCustodyEnforcementTest < ActionDispatch::IntegrationTest
     # Give the user an Entry so can_change_username? returns true.
     Entry.create!(user: @user, contest: @contest, status: :active)
     @user.update!(self_custodied_at: 1.minute.ago)
-    login(@user)
+    log_in_as(@user)
 
     # Stub the on-chain transaction-build so the test doesn't need a live
     # Solana RPC. The KEY assertion is that we hit build_set_username
@@ -87,7 +87,7 @@ class SelfCustodyEnforcementTest < ActionDispatch::IntegrationTest
   test "AccountsController#update_username still server-signs for a NON self-custodied managed user" do
     Entry.create!(user: @user, contest: @contest, status: :active)
     refute @user.self_custodied?
-    login(@user)
+    log_in_as(@user)
 
     # Stub the server-sign path. If our guard mis-routes a managed user to
     # build_set_username we'd see needs_signature in the response.
@@ -106,9 +106,4 @@ class SelfCustodyEnforcementTest < ActionDispatch::IntegrationTest
     assert body["success"]
   end
 
-  private
-
-  def login(user)
-    post login_path, params: { email: user.email, password: "password" }
-  end
 end
