@@ -181,6 +181,8 @@ Rails.application.routes.draw do
       post :lock
       post :prepare_lock_time
       post :confirm_lock_time
+      post :prepare_conclusion_time
+      post :confirm_conclusion_time
       post :jump
       post :simulate_game
       post :simulate_batch

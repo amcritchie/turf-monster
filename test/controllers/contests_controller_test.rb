@@ -947,6 +947,61 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_in_delta lock_ts, @contest.reload.starts_at.to_i, 2
   end
 
+  # --- prepare_conclusion_time / confirm_conclusion_time (v0.18) ---
+
+  test "prepare_conclusion_time builds a Phantom-signable set_contest_conclusion_time TX" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3Conc#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conc", season_id: 1)
+    SeasonConfig.set_current!(1)
+    log_in_as_onchain(admin)
+
+    vault = FakeVault.new
+    travel_to Time.current do
+      Solana::Vault.stub :new, vault do
+        post prepare_conclusion_time_contest_path(@contest, in_seconds: 60), as: :json
+      end
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert body["success"]
+      assert body["serialized_tx"].start_with?("FAKE_TX_conclude_")
+      assert_in_delta 60.seconds.from_now.to_i, body["conclusion_timestamp"], 5
+    end
+    assert_equal 1, vault.conclusion_calls.length
+  end
+
+  test "prepare_conclusion_time rejects a non-Phantom session" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3ConcNo#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conc2")
+    log_in_as(admin) # email/password — no onchain session
+    post prepare_conclusion_time_contest_path(@contest, in_seconds: 60), as: :json
+    assert_response :forbidden
+    assert_match(/Phantom session required/, JSON.parse(response.body)["error"])
+  end
+
+  test "confirm_conclusion_time mirrors concludes_at after verifying the on-chain TX" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3ConcC#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conc3")
+    log_in_as_onchain(admin)
+
+    ts = 60.seconds.from_now.to_i
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post confirm_conclusion_time_contest_path(@contest),
+            params: { tx_signature: "conc-sig-1", conclusion_timestamp: ts }, as: :json
+        end
+      end
+    end
+
+    assert_response :success
+    assert JSON.parse(response.body)["success"]
+    assert_in_delta ts, @contest.reload.concludes_at.to_i, 2
+  end
+
   # A free, off-chain contest — the only kind a successful #enter can be
   # exercised against without a Solana RPC mock (paid entries need a real
   # on-chain token consume / vault transfer). Free entries skip the payment gate.

@@ -432,6 +432,14 @@ class Contest < ApplicationRecord
     starts_at.present? && Time.current >= starts_at
   end
 
+  # Derived conclusion state (v0.18). Mirrors the on-chain conclusion_timestamp
+  # (enter is gated by lock; the conclusion gates set_contest_lock_time and
+  # marks "results final"). nil concludes_at = no conclusion scheduled.
+  def concluded?
+    return true if settled?
+    concludes_at.present? && Time.current >= concludes_at
+  end
+
   def lock_time_display
     return "TBD" unless starts_at
     starts_at.strftime("Locks %B %-d, %Y @ %-I:%M %p")

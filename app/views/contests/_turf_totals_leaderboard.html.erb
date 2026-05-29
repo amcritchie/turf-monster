@@ -80,8 +80,8 @@
         <% end %>
         <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 0)"
           class="btn btn-lg bg-yellow-600 hover:bg-yellow-500 text-white">Lock Contest</button>
-        <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 30)"
-          class="btn btn-lg bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 30s</button>
+        <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 60)"
+          class="btn btn-lg bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 60s</button>
       <% end %>
 
       <% next_game = @contest.matchups.pending.includes(:game).select { |m| m.game.present? }.sort_by { |m| m.game.kickoff_at || Time.current }.first %>

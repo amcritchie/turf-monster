@@ -833,6 +833,54 @@ module Solana
       { serialized_tx: serialized }
     end
 
+    # Set (or clear) a contest's conclusion timestamp, server-signed (1-of-3).
+    # Parallel to set_contest_lock_time. Once chain time passes it the contest
+    # has concluded and the lock time can no longer change. 0 clears it.
+    def set_contest_conclusion_time(contest_slug, conclusion_timestamp)
+      admin = Keypair.admin
+      c_pda, _ = contest_pda(contest_slug)
+      vault_pda, _ = vault_state_pda
+
+      data = Transaction.anchor_discriminator("set_contest_conclusion_time") +
+             Borsh.encode_i64(conclusion_timestamp.to_i)
+
+      tx = build_tx(admin)
+      tx.add_instruction(
+        program_id: @program_id,
+        accounts: [
+          { pubkey: admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: vault_pda,              is_signer: false, is_writable: false },
+          { pubkey: c_pda,                  is_signer: false, is_writable: true  }
+        ],
+        data: data
+      )
+      signature = client.send_and_confirm(tx.serialize_base64)
+      { signature: signature }
+    end
+
+    # Phantom-signable set_contest_conclusion_time (1-of-3). Mirrors
+    # build_set_contest_lock_time: bot fee payer, admin's Phantom (a vault
+    # signer) signs the `admin` slot. Returns base64 for the client to sign.
+    def build_set_contest_conclusion_time(contest_slug, conclusion_timestamp, admin_pubkey:)
+      admin_bytes = Keypair.decode_base58(admin_pubkey)
+      c_pda, _ = contest_pda(contest_slug)
+      vault_pda, _ = vault_state_pda
+
+      data = Transaction.anchor_discriminator("set_contest_conclusion_time") +
+             Borsh.encode_i64(conclusion_timestamp.to_i)
+
+      serialized = build_partial_signed(
+        accounts: [
+          { pubkey: admin_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: vault_pda,   is_signer: false, is_writable: false },
+          { pubkey: c_pda,       is_signer: false, is_writable: true  }
+        ],
+        data: data,
+        additional_signers: [admin_bytes]
+      )
+      { serialized_tx: serialized }
+    end
+
     # Build cancel_contest TX (2-of-3). Refunds prize_pool → creator ATA.
     def build_cancel_contest(contest_slug, creator_pubkey:, cosigner_pubkey:)
       cosigner_bytes = Keypair.decode_base58(cosigner_pubkey)
@@ -1199,7 +1247,8 @@ module Solana
     #   max_entries u32, current_entries u32,
     #   status (u8 enum: 0=Open 1=Locked 2=Settled 3=Cancelled),
     #   payout_amounts Vec<u64>(max 10),
-    #   bump u8, lock_timestamp i64 (v0.17), _reserved [u8;24]
+    #   bump u8, lock_timestamp i64 (v0.17), conclusion_timestamp i64 (v0.18),
+    #   _reserved [u8;16]
     def read_contest(contest_slug, commitment: "confirmed")
       pda, _ = contest_pda(contest_slug)
       pda_base58 = Keypair.encode_base58(pda)
@@ -1238,6 +1287,9 @@ module Solana
       # always >= 0 and < 2^63); solana-studio 0.4.3 ships no decode_i64.
       _bump,              offset = Borsh.decode_u8(data, offset)
       lock_ts,            offset = Borsh.decode_u64(data, offset)
+      # v0.18: conclusion_timestamp i64 (Unix seconds; 0 = none). decode_u64 is
+      # exact for non-negative i64 (same rationale as lock_ts above).
+      conclusion_ts,      offset = Borsh.decode_u64(data, offset)
 
       status_name = %w[Open Locked Settled Cancelled][status_byte] || "Unknown"
 
@@ -1260,6 +1312,8 @@ module Solana
         status:                status_name,
         lock_timestamp:        lock_ts,
         locks_at:              (lock_ts.zero? ? nil : Time.at(lock_ts).utc),
+        conclusion_timestamp:  conclusion_ts,
+        concludes_at:          (conclusion_ts.zero? ? nil : Time.at(conclusion_ts).utc),
         payout_amounts:        payout_amounts.map { |a| Config.lamports_to_dollars(a) },
         # Back-compat keys (v0.15.1 shape). USDC-only world had a single
         # entry_fee scalar — surface slot 0 (USDC) here so existing callers

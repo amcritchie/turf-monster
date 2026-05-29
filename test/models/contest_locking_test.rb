@@ -47,4 +47,26 @@ class ContestLockingTest < ActiveSupport::TestCase
     @contest.update!(starts_at: nil)
     assert_equal 0, @contest.onchain_params[:lock_timestamp]
   end
+
+  # --- concluded? (v0.18 derived conclusion) ---
+
+  test "concluded? is false while concludes_at is in the future" do
+    @contest.update!(concludes_at: 1.hour.from_now)
+    assert_not @contest.concluded?
+  end
+
+  test "concluded? is true once concludes_at has passed" do
+    @contest.update!(concludes_at: 1.minute.ago)
+    assert @contest.concluded?
+  end
+
+  test "concluded? is false when concludes_at is nil" do
+    @contest.update!(concludes_at: nil)
+    assert_not @contest.concluded?
+  end
+
+  test "concluded? is true for a settled contest regardless of concludes_at" do
+    @contest.update!(status: "settled", concludes_at: 1.hour.from_now)
+    assert @contest.concluded?
+  end
 end

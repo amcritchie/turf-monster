@@ -140,7 +140,7 @@
       <div class="flex flex-wrap gap-2">
         <% if @contest.open? && !@contest.locked? %>
           <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 0)" class="btn btn-sm bg-yellow-600 hover:bg-yellow-500 text-white">Lock Entries</button>
-          <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 30)" class="btn btn-sm bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 30s</button>
+          <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 60)" class="btn btn-sm bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 60s</button>
         <% end %>
         <% if @current_round %>
           <%= button_to "Grade #{@current_round.name}", grade_round_contest_path(@contest, round_id: @current_round.id), method: :post, class: "btn btn-primary btn-sm" %>
@@ -168,7 +168,7 @@
               <%= button_to "Fill", fill_contest_path(@contest), method: :post, class: "btn btn-secondary btn-sm" %>
             <% end %>
             <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 0)" class="btn btn-sm bg-yellow-600 hover:bg-yellow-500 text-white">Lock</button>
-            <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 30)" class="btn btn-sm bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 30s</button>
+            <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 60)" class="btn btn-sm bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 60s</button>
           <% end %>
           <% if @contest.locked? %>
             <%= button_to "Grade", grade_contest_path(@contest), method: :post, class: "btn btn-primary btn-sm" %>

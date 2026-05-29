@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -921,6 +921,55 @@ class ContestsController < ApplicationController
       @contest.update!(starts_at: Time.at(lock_ts))
 
       render json: { success: true, redirect: contest_path(@contest), locks_at: @contest.locks_at&.iso8601 }
+    end
+  rescue StandardError => e
+    render json: { success: false, error: e.message }, status: :unprocessable_entity
+  end
+
+  # Phantom-prepared conclusion (web3), parallel to prepare/confirm_lock_time.
+  # Sets the on-chain conclusion timestamp; after it passes, the lock time is
+  # final (set_contest_lock_time rejects). Mirrors starts_at handling.
+  def prepare_conclusion_time
+    return render json: { success: false, error: "Phantom session required" }, status: :forbidden unless onchain_session?
+
+    rescue_and_log(target: @contest) do
+      raise "Contest is not onchain" unless @contest.onchain?
+      raise "Phantom wallet required" unless current_user.phantom_wallet?
+      raise "Contest already concluded — conclusion time can't change" if @contest.concluded?
+
+      seconds = params[:in_seconds].to_i.clamp(0, 604_800) # up to a week out
+      conclude_at = Time.current + seconds.seconds
+
+      result = Solana::Vault.new.build_set_contest_conclusion_time(
+        @contest.slug, conclude_at.to_i, admin_pubkey: current_user.web3_solana_address
+      )
+
+      render json: { success: true, serialized_tx: result[:serialized_tx], conclusion_timestamp: conclude_at.to_i }
+    end
+  rescue StandardError => e
+    render json: { success: false, error: e.message }, status: :unprocessable_entity
+  end
+
+  def confirm_conclusion_time
+    rescue_and_log(target: @contest) do
+      raise "Wallet not linked" unless current_user.web3_solana_address.present?
+      ts = params[:conclusion_timestamp].to_i
+      raise "Missing conclusion timestamp" unless ts.positive?
+
+      contest_pda_b58 = Solana::Keypair.encode_base58(
+        Solana::Vault.new.contest_pda(@contest.slug).first
+      )
+      verify_solana_transaction!(
+        params[:tx_signature],
+        instruction: "set_contest_conclusion_time",
+        signer: current_user.web3_solana_address,
+        writable: contest_pda_b58
+      )
+
+      # Chain is master — mirror concludes_at only after the on-chain TX confirms.
+      @contest.update!(concludes_at: Time.at(ts))
+
+      render json: { success: true, redirect: contest_path(@contest), concludes_at: @contest.concludes_at&.iso8601 }
     end
   rescue StandardError => e
     render json: { success: false, error: e.message }, status: :unprocessable_entity
