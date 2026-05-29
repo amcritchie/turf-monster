@@ -16,8 +16,8 @@
     operator processes manually and clicks "Complete" in the admin
     transaction-log page once fiat lands.
 %>
-<div class="card shadow p-6 mb-6"
-     x-data="{ open: false, amount: '', destination: '' }"
+<div id="cash-out" class="card shadow p-6 mb-6"
+     x-data="{ open: window.location.hash === '#cash-out', amount: '', destination: '' }"
      x-cloak>
   <div class="flex items-center justify-between">
     <div>

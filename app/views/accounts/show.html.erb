@@ -156,12 +156,24 @@
         </div>
       </div>
 
-      <% if Solana::Config.devnet? %>
-        <a href="https://explorer.solana.com/address/<%= @user.solana_address %>?cluster=devnet"
-           target="_blank" class="inline-block text-xs text-secondary hover:text-primary transition mb-6">
-          View on Solana Explorer &rarr;
-        </a>
-      <% end %>
+      <%# Wallet actions — Cash out for managed users (the server can sign on
+          their behalf), Manage callout for self-custodied users (server can't
+          sign; they cash out from their imported wallet). Phantom-only users
+          see neither — they cash out in their own wallet app. The actual
+          withdraw form lives at /wallet — #cash-out auto-opens it. %>
+      <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <% if @user.managed_wallet? && !@user.self_custodied? && !@user.phantom_wallet? %>
+          <%= link_to "Cash out", "#{wallet_path}#cash-out", class: "btn btn-outline btn-sm" %>
+        <% elsif @user.self_custodied? %>
+          <span class="text-xs text-emerald-300 px-2 py-0.5 rounded bg-emerald-500/10">Self-custodied — cash out from your own wallet</span>
+        <% end %>
+        <% if Solana::Config.devnet? %>
+          <a href="https://explorer.solana.com/address/<%= @user.solana_address %>?cluster=devnet"
+             target="_blank" class="text-xs text-secondary hover:text-primary transition">
+            View on Solana Explorer &rarr;
+          </a>
+        <% end %>
+      </div>
     <% else %>
       <div class="mb-6">
         <%= render "shared/solana_wallet_connect", link_mode: true %>
