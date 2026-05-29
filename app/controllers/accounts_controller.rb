@@ -230,8 +230,13 @@ class AccountsController < ApplicationController
       return render json: { success: false, error: @user.errors.full_messages.first }, status: :unprocessable_entity
     end
 
-    if @user.phantom_wallet?
-      # Phantom: hand the client a partial set_username TX to co-sign.
+    # Self-custodied users (task #11) hold their own key — the server must
+    # NOT auto-sign for them, even though we still have the encrypted key
+    # on file as backup. Route them through the same co-sign path Phantom
+    # users use; they sign the partial TX with the wallet they imported
+    # into during the export flow.
+    if @user.phantom_wallet? || @user.self_custodied?
+      # Phantom / self-custody: hand the client a partial set_username TX to co-sign.
       result = Solana::Vault.new.build_set_username(@user.solana_address, new_username)
       render json: {
         needs_signature: true,

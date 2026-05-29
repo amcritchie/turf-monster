@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -277,6 +277,27 @@ class ContestsController < ApplicationController
     @has_entry = logged_in? && @contest.entries.where(user: current_user, status: [:active, :complete]).exists?
     @seeds_data = load_seeds_data
 
+    # Current user's entries on this contest — preloaded once so the contest
+    # header (dropdown) and the "Your Entries" navigation card on the show
+    # page don't re-query. Includes complete entries so the card still works
+    # in settled state for read-only reference.
+    @my_active_entries = if logged_in?
+                           current_user.entries
+                                       .where(contest: @contest, status: [:active, :complete])
+                                       .includes(selections: { slate_matchup: [:team, :game] })
+                                       .order(:entry_number, :id)
+                                       .to_a
+                         else
+                           []
+                         end
+
+    # Resolve params[:edit_entry] → an active entry owned by current_user on
+    # this contest. Picked up by the show template to swap the leaderboard
+    # for the selection board in edit mode.
+    if logged_in? && params[:edit_entry].present? && @contest.open?
+      @edit_entry = @my_active_entries.find { |e| e.slug == params[:edit_entry] && e.active? }
+    end
+
     load_contest_board_data
 
     # "More Contests" selector at the bottom of the page.
@@ -289,6 +310,15 @@ class ContestsController < ApplicationController
         Rails.logger.warn "Failed to read onchain contest: #{e.message}"
       end
     end
+  end
+
+  # Admin view of the contest show page — bypasses the "hide picks while
+  # open" guard so operators can see every entry's selections for moderation.
+  # Same render path as #show; @admin_view is the helper hook.
+  def admin
+    @admin_view = true
+    show
+    render :show
   end
 
   def leaderboard_poll
@@ -306,6 +336,19 @@ class ContestsController < ApplicationController
   end
 
   def enter
+    # Self-custody guard (task #11 Stage 3). Runs FIRST so it catches
+    # self-custodied users regardless of cart / contest state. The server
+    # must not auto-sign for them; route to the Phantom-prepare path.
+    # Clients catch this 422 + the self_custodied flag and walk the user
+    # through Phantom sign-in if they aren't already in an onchain_session.
+    if current_user.self_custodied?
+      return render json: {
+        success: false,
+        error: "Your wallet is self-custodied. Sign in with Phantom (or your imported wallet) and re-enter — Turf Monster will not auto-sign for you.",
+        self_custodied: true
+      }, status: :unprocessable_entity
+    end
+
     entry = @contest.entries.cart.find_by(user: current_user)
     # Survivor contests have no pick-building phase — entering creates the entry
     # directly. (Turf Totals' cart entry is created by toggle_selection.)
