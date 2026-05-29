@@ -50,6 +50,37 @@ class Entry < ApplicationRecord
     selections.each_with_object({}) { |s, h| h[s.slate_matchup_id.to_s] = true }
   end
 
+  # Replace this entry's selections atomically while the contest is still open.
+  # DB-only — the on-chain ContestEntry PDA is a pure ticket (no pick hash), so
+  # editing picks here doesn't desync any on-chain state. Picks that are not
+  # being added or removed (i.e. unchanged across the edit) are not re-checked
+  # for lock state — mirrors the existing confirm! behavior where only the
+  # picks being committed are validated.
+  def update_picks!(matchup_ids)
+    raise "Editing is not supported for this contest type" if survivor?
+    raise "Contest is not open" unless contest.open?
+
+    new_ids = matchup_ids.map(&:to_i).uniq
+    raise "Exactly #{contest.picks_required} selections required" unless new_ids.size == contest.picks_required
+
+    new_matchups = contest.slate.slate_matchups.where(id: new_ids).includes(:team, :game).to_a
+    raise "Invalid matchup selection" unless new_matchups.size == contest.picks_required
+
+    current_ids = selections.pluck(:slate_matchup_id)
+    changed_ids = current_ids.to_set ^ new_ids.to_set
+
+    changed_ids.each do |id|
+      m = new_matchups.find { |nm| nm.id == id } ||
+          contest.slate.slate_matchups.includes(:team).find_by(id: id)
+      raise "#{m.team.name}'s game has already started" if m&.locked?
+    end
+
+    transaction do
+      selections.destroy_all
+      new_matchups.each { |m| selections.create!(slate_matchup: m) }
+    end
+  end
+
   # Activate a cart entry. A paid contest's entry may only be activated with
   # proof of payment: `tx_signature` is the on-chain signature returned by a
   # consumed entry token or a vault entry, set server-side in

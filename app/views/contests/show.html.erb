@@ -1,11 +1,13 @@
 <%
-  entry_count = @contest.active_entry_count
-  max = @contest.max_entries || @contest.format_config[:max_entries]
   creator_name = @creator&.display_name || "Turf Monster"
   # When the URL has ?add_entry=true, the user has an existing entry but is
   # explicitly starting another one — show the matchup board on top of the
   # leaderboard so they can pick a new lineup.
   show_board_for_existing_entry = @has_entry && params[:add_entry].present? && @contest.open?
+  # When ?edit_entry=<slug> resolves to one of current_user's active entries,
+  # the show template renders the selection board in edit mode instead of the
+  # leaderboard (see Section 4 below).
+  edit_mode = @edit_entry.present?
 %>
 
 <!-- Section 1: Hero Banner + Creator Avatar -->
@@ -41,47 +43,7 @@
 </div>
 
 <!-- Section 2: Contest Info -->
-<div class="mb-6">
-  <% if @contest.slate %>
-    <p class="text-sm text-secondary font-medium"><%= @contest.slate.name %></p>
-  <% end %>
-  <h1 class="text-2xl md:text-3xl font-extrabold text-heading">
-    <%= @contest.name %>
-  </h1>
-  <p class="text-sm text-muted mt-1">
-    <span class="text-secondary font-medium"><%= creator_name.downcase %></span>
-    <span class="mx-1">&middot;</span>
-    <span><%= @contest.lock_time_display %></span>
-  </p>
-
-  <!-- Stats row -->
-  <div class="flex items-center gap-4 mt-3 flex-wrap">
-    <div>
-      <span class="text-lg font-extrabold text-primary">$<%= @contest.guaranteed_prize_dollars.to_i %></span>
-      <span class="text-xs text-muted ml-1">Prizes</span>
-    </div>
-    <div class="w-px h-5 bg-subtle"></div>
-    <div>
-      <span class="text-lg font-extrabold text-heading">$<%= @contest.entry_fee_dollars.to_i %></span>
-      <span class="text-xs text-muted ml-1">Entry</span>
-    </div>
-    <div class="w-px h-5 bg-subtle"></div>
-    <div>
-      <span class="text-lg font-extrabold text-heading"><%= entry_count %>/<%= max %></span>
-      <span class="text-xs text-muted ml-1">Entries</span>
-    </div>
-    <% if @has_entry && @contest.open? && @contest.turf_totals? %>
-      <%
-        my_count = @contest.entries.where(user: current_user, status: [:active, :complete]).count
-        next_num = my_count + 1
-        suffix = { 1 => "st", 2 => "nd", 3 => "rd" }.fetch(next_num % 10, "th")
-        suffix = "th" if (11..13).include?(next_num % 100)
-      %>
-      <div class="w-px h-5 bg-subtle"></div>
-      <%= link_to contest_path(@contest, add_entry: true), class: "text-sm font-semibold text-primary hover:text-primary-300 transition" do %>+ Add <%= next_num %><sup><%= suffix %></sup> Entry<% end %>
-    <% end %>
-  </div>
-</div>
+<%= render "contests/contest_header" %>
 
 <!-- Section 3: Conditional cards above the board.
      Entered users: seeds + share row.
@@ -91,7 +53,13 @@
 <% if @has_entry %>
   <div class="mb-6">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <% if @seeds_data %>
+      <%# Once the user has 2+ entries on this contest, the entries-nav card
+          is more useful than the "Earn a Free Entry" seed progress nudge —
+          surface picks they can recognize at a glance. Seeds card returns
+          for single-entry users (still in onboarding flow). %>
+      <% if @my_active_entries && @my_active_entries.size >= 2 %>
+        <%= render "contests/your_entries" %>
+      <% elsif @seeds_data %>
         <%= render "contests/slate_progress_xp", seeds_data: @seeds_data %>
         <script>
           localStorage.setItem('seedsNavbar', JSON.stringify({
@@ -115,6 +83,10 @@
   <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/world_cup_survivor_board" %>
   </div>
+<% elsif edit_mode %>
+  <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
+    <%= render "contests/turf_totals_board", edit_entry: @edit_entry %>
+  </div>
 <% elsif @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
   <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/turf_totals_board" %>
@@ -126,7 +98,9 @@
     Leaderboard / Chat tab toggle on mobile. To revert to the original
     single-column page, replace this whole block with a full-width div
     (id "leaderboard-container", class "mb-8") that renders the
-    contests/turf_totals_leaderboard partial once. %>
+    contests/turf_totals_leaderboard partial once. Hidden during edit
+    mode so the user focuses on the selection board above. %>
+<% unless edit_mode %>
 <div x-data="{ tab: 'leaderboard' }" class="mb-8">
   <%# Tab switcher — mobile only %>
   <div class="flex gap-1 mb-4 md:hidden bg-surface-alt rounded-lg p-1">
@@ -155,6 +129,7 @@
     </div>
   </div>
 </div>
+<% end %>
 
 <!-- Section 5b: Survivor Admin -->
 <% if current_user&.admin? && !@contest.settled? && @contest.world_cup_survivor? %>
@@ -247,13 +222,21 @@
   </script>
 <% end %>
 
-<!-- Auto-scroll on arrival — driven by a ?scroll=<px> URL param
-     (e.g. a landing-page CTA links here with ?scroll=100). -->
+<!-- Auto-scroll on arrival
+     - ?scroll=<px> — absolute pixel scroll (landing-page CTAs).
+     - ?add_entry=true / ?edit_entry=<slug> — scroll to #board so the user
+       lands on the picks UI instead of re-reading the contest header. -->
 <script>
   (function() {
-    var px = parseInt(new URLSearchParams(window.location.search).get('scroll'), 10);
+    var params = new URLSearchParams(window.location.search);
+    var px = parseInt(params.get('scroll'), 10);
     if (px > 0) {
       setTimeout(function() { window.scrollTo({ top: px, behavior: 'smooth' }); }, 200);
+    } else if (params.get('add_entry') === 'true' || params.get('edit_entry')) {
+      setTimeout(function() {
+        var board = document.getElementById('board');
+        if (board) board.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
     }
   })();
 </script>

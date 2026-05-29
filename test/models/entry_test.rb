@@ -200,4 +200,121 @@ class EntryTest < ActiveSupport::TestCase
     assert_match(/Maximum 3 entries per contest/, error.message)
   end
 
+  # --- update_picks! tests ---
+
+  test "update_picks! replaces selections atomically" do
+    entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
+
+    # Swap m6 → m1 stays; new combo uses m1..m5 + m6 same? Use a different swap:
+    # add a new matchup, remove m6. We only have 6 fixtures, so swap by
+    # replacing the order — the model treats the set as the source of truth,
+    # not order. Force a real change by swapping m6 with a fresh matchup.
+    m7 = create_extra_matchup(team_short: "G", slug: "team-g", rank: 7, turf_score: 1.8)
+
+    entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, m7.id])
+
+    new_ids = entry.reload.selections.map(&:slate_matchup_id).sort
+    assert_equal [@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, m7.id].sort, new_ids
+  end
+
+  test "update_picks! rejects when contest is not open" do
+    entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
+    @contest.update!(status: "locked")
+
+    error = assert_raises(RuntimeError) { entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, @m6.id]) }
+    assert_equal "Contest is not open", error.message
+  end
+
+  test "update_picks! rejects when count is not picks_required" do
+    entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
+
+    error = assert_raises(RuntimeError) { entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id]) }
+    assert_match(/selections required/i, error.message)
+    # Selections unchanged
+    assert_equal 6, entry.reload.selections.count
+  end
+
+  test "update_picks! rejects when adding a locked matchup" do
+    entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
+
+    # Create a new matchup tied to past-game (locked)
+    locked_m = create_extra_matchup(team_short: "H", slug: "team-h", rank: 7, turf_score: 1.8, game_slug: "past-game")
+
+    error = assert_raises(RuntimeError) {
+      entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, locked_m.id])
+    }
+    assert_match(/already started/, error.message)
+    # Original selections preserved
+    assert_equal 6, entry.reload.selections.count
+    assert_equal [@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, @m6.id].sort,
+                 entry.selections.map(&:slate_matchup_id).sort
+  end
+
+  test "update_picks! rejects when removing a locked matchup" do
+    # Build entry where one pick (m6) is now tied to a past game
+    @m6.update!(game_slug: "past-game")
+    entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
+
+    # Need another non-locked matchup to swap in
+    m7 = create_extra_matchup(team_short: "G", slug: "team-g", rank: 7, turf_score: 1.8)
+
+    # Removing locked m6 should fail
+    error = assert_raises(RuntimeError) {
+      entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, m7.id])
+    }
+    assert_match(/already started/, error.message)
+    assert_equal 6, entry.reload.selections.count
+  end
+
+  test "update_picks! allows unchanged locked picks (only validates the diff)" do
+    # Same scenario — m6 is locked — but the user submits exactly the same
+    # six picks (a no-op edit). Should pass because the diff is empty.
+    @m6.update!(game_slug: "past-game")
+    entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
+
+    entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, @m6.id])
+
+    assert_equal 6, entry.reload.selections.count
+  end
+
+  test "update_picks! refuses survivor entries" do
+    # Stand up a survivor contest + entry
+    survivor = Contest.create!(name: "Survivor", slate: @contest.slate, contest_type: "survivor_wc_paid",
+                                 entry_fee_cents: 1900, max_entries: 59, status: :open, starts_at: 2.weeks.from_now,
+                                 game_type: "world_cup_survivor", slug: "test-survivor")
+    entry = survivor.entries.create!(user: @user, status: :active)
+
+    error = assert_raises(RuntimeError) { entry.update_picks!([]) }
+    assert_match(/not supported/i, error.message)
+  end
+
+  private
+
+  # Build an :active entry with the given matchups already selected, bypassing
+  # confirm!'s payment gates (we're testing update_picks! mechanics, not entry).
+  def build_active_entry(matchups)
+    entry = @contest.entries.create!(user: @user, status: :active)
+    matchups.each { |m| entry.selections.create!(slate_matchup: m) }
+    entry
+  end
+
+  # SlateMatchup#team_slug must be unique per slate, and the fixtures use
+  # team-a..team-f across the six matchups. Spin up a fresh Team + matchup
+  # so update_picks! tests can swap a real new pick in. Team includes
+  # Sluggable, whose before_save overwrites slug from name_slug — so the
+  # name has to parameterize to the slug we want.
+  def create_extra_matchup(team_short:, slug:, rank:, turf_score:, game_slug: nil)
+    name = slug.tr("-", " ").split.map(&:capitalize).join(" ")  # "team-g" -> "Team G"
+    team = Team.find_by(slug: slug) || Team.create!(name: name, short_name: team_short, emoji: "\u{1F3F3}")
+    SlateMatchup.create!(
+      slate: @contest.slate,
+      team_slug: team.slug,
+      opponent_team_slug: "team-a",
+      rank: rank,
+      turf_score: turf_score,
+      status: "pending",
+      game_slug: game_slug
+    )
+  end
+
 end

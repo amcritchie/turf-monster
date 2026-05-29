@@ -1,11 +1,23 @@
 <%
   cart_selections = {}
   cart_selection_order = []
-  if @cart_entry
-    @cart_entry.selections.order(:created_at).each do |s|
+  edit_entry = local_assigns[:edit_entry]
+  source_entry = edit_entry || @cart_entry
+
+  if source_entry
+    source_entry.selections.order(:created_at, :id).each do |s|
       cart_selections[s.slate_matchup_id.to_s] = true
       cart_selection_order << s.slate_matchup_id.to_s
     end
+  end
+
+  # Edit mode: auto-drop the most-recently-added pick to land in
+  # `picks_required - 1` state. Mirrors the create-mode blur-overlay
+  # drop (further below) and forces a meaningful change rather than
+  # a no-op confirm.
+  if edit_entry && cart_selection_order.any?
+    dropped = cart_selection_order.pop
+    cart_selections.delete(dropped)
   end
 %>
 
@@ -51,7 +63,9 @@
   picksRequired: @contest.picks_required,
   userEmail: current_user&.email.to_s,
   seedsPerLevel: User::SEEDS_PER_LEVEL,
-  pendingRecoveryPtxSlug: @pending_recovery_ptx&.slug
+  pendingRecoveryPtxSlug: @pending_recovery_ptx&.slug,
+  mode: edit_entry ? "edit" : "create",
+  editEntrySlug: edit_entry&.slug
 }.to_json.html_safe %>
 </script>
 
@@ -68,8 +82,11 @@ window.selectionBoard = function() {
   return {
     selections: cfg.cartSelections,
     selectionOrder: cfg.cartSelectionOrder,
-    cartOpen: Object.keys(cfg.cartSelections).length > 0,
+    cartOpen: Object.keys(cfg.cartSelections).length > 0 || cfg.mode === 'edit',
     blurDismissed: false,
+    mode: cfg.mode || 'create',
+    editEntrySlug: cfg.editEntrySlug || null,
+    get isEditMode() { return this.mode === 'edit'; },
     shakeKey: 0,
     submitting: false,
     error: null,
@@ -358,6 +375,11 @@ window.selectionBoard = function() {
         this.blurDismissed = false;
         this.triggerShake(matchupId);
       }
+
+      // Edit mode: picks are staged client-side and committed atomically by
+      // updateEntry() on the Update click. Skip the per-toggle server hit so
+      // we never leave a partially-updated active entry mid-edit.
+      if (this.isEditMode) return;
 
       if (!this.loggedIn) return;
 
@@ -1329,6 +1351,8 @@ window.selectionBoard = function() {
       this.pickUrgent = false;
 
       if (!this.loggedIn) return;
+      // Edit mode never has a cart entry; clear_picks is a no-op there.
+      if (this.isEditMode) return;
 
       try {
         await fetch('/contests/' + this.contestId + '/clear_picks', {
@@ -1341,6 +1365,50 @@ window.selectionBoard = function() {
       } catch (err) {
         // silent
       }
+    },
+
+    // Edit mode: PATCH the staged picks to /contests/:slug/entries/:slug.
+    // DB-only — no on-chain signature required (the ContestEntry PDA carries
+    // no pick commitment, so chain state stays valid as-is).
+    async updateEntry() {
+      if (this.submitting) return;
+      if (this.selectionCount !== this.picksRequired) {
+        this.showError('Make ' + this.picksRequired + ' picks before updating.');
+        return;
+      }
+      this.submitting = true;
+      var ids = this.selectionOrder.map(function(id) { return parseInt(id, 10); });
+      try {
+        var resp = await window.authedFetch(
+          '/contests/' + this.contestId + '/entries/' + this.editEntrySlug,
+          {
+            method: 'PATCH',
+            headers: {
+              'X-CSRF-Token': this.csrfToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify({ matchup_ids: ids })
+          }
+        );
+        if (!resp) { this.submitting = false; return; }
+        var data = await resp.json();
+        if (resp.ok && data.success) {
+          window.location.href = data.redirect || ('/contests/' + this.contestId);
+        } else {
+          this.showError((data && data.error) || 'Failed to update entry.');
+          this.submitting = false;
+        }
+      } catch (e) {
+        this.showError('Network error. Update not saved.');
+        this.submitting = false;
+      }
+    },
+
+    // Edit mode: discard staged picks and return to the leaderboard view.
+    // Server-side state (the active entry's selections) is untouched.
+    cancelEdit() {
+      window.location.href = '/contests/' + this.contestId;
     },
 
     dismissError() {
@@ -1382,7 +1450,7 @@ window.selectionBoard = function() {
     matchups_desc = matchups_asc.reverse
   %>
   <section class="mb-8 transition-all" :class="{ 'cart-pushed': cartOpen }">
-    <% unless local_assigns[:compact] %>
+    <% unless local_assigns[:compact] || edit_entry %>
       <div class="mb-6">
         <%= render "contests/lobby_info_cards" %>
       </div>
@@ -1536,25 +1604,39 @@ window.selectionBoard = function() {
       <%= render "contests/turf_totals_cart_slots" %>
       <!-- Clear / Confirm buttons -->
       <div class="p-4 border-t border-subtle space-y-2">
-        <div x-show="selectionCount === <%= @contest.picks_required %>" x-transition>
-        <%= render 'shared/hold_button',
-          default_text: "Hold to Confirm",
-          hold_text: "Almost there...",
-          success_text: "Confirmed!",
-          duration: 2000,
-          hold_id: "desktop",
-          guard: "data.selectionCount === #{@contest.picks_required}",
-          validate: "d.runHoldValidations()",
-          validate_at: 750,
-          on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
-          early_action: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
-          early_action_at: 1500,
-          early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
-        </div>
-        <button x-show="selectionCount > 0" @click="clearSelections()"
-                class="w-full py-2 text-sm font-semibold text-secondary hover:text-red-400 transition">
-          Clear All
-        </button>
+        <% if edit_entry %>
+          <%# Edit mode: plain Update button (no hold) + Cancel link. DB-only
+              update, no on-chain signature required. %>
+          <div x-show="selectionCount === <%= @contest.picks_required %>" x-transition>
+            <button type="button" @click="updateEntry()" :disabled="submitting"
+                    class="w-full px-4 py-3 rounded-xl text-base font-bold bg-primary hover:bg-primary-700 disabled:bg-surface-alt disabled:text-muted text-white transition"
+                    x-text="submitting ? 'Updating…' : 'Update Entry'"></button>
+          </div>
+          <button type="button" @click="cancelEdit()"
+                  class="w-full py-2 text-sm font-semibold text-secondary hover:text-heading transition">
+            Cancel
+          </button>
+        <% else %>
+          <div x-show="selectionCount === <%= @contest.picks_required %>" x-transition>
+          <%= render 'shared/hold_button',
+            default_text: "Hold to Confirm",
+            hold_text: "Almost there...",
+            success_text: "Confirmed!",
+            duration: 2000,
+            hold_id: "desktop",
+            guard: "data.selectionCount === #{@contest.picks_required}",
+            validate: "d.runHoldValidations()",
+            validate_at: 750,
+            on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
+            early_action: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
+            early_action_at: 1500,
+            early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
+          </div>
+          <button x-show="selectionCount > 0" @click="clearSelections()"
+                  class="w-full py-2 text-sm font-semibold text-secondary hover:text-red-400 transition">
+            Clear All
+          </button>
+        <% end %>
       </div>
     </div>
   </div>
@@ -1605,6 +1687,15 @@ window.selectionBoard = function() {
        x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full"
        class="md:hidden bg-surface border-t-2 border-strong rounded-t-xl px-4 py-3"
        style="position:fixed;bottom:0;left:0;right:0;z-index:9999;box-shadow:0 -6px 30px rgba(0,0,0,0.4)">
+    <% if edit_entry %>
+      <%# Edit mode: plain Update button (no hold) + Cancel link. DB-only
+          update, no on-chain signature required. %>
+      <div x-show="selectionCount === <%= @contest.picks_required %>" class="mb-3">
+        <button type="button" @click="updateEntry()" :disabled="submitting"
+                class="w-full px-4 py-3 rounded-xl text-base font-bold bg-primary hover:bg-primary-700 disabled:bg-surface-alt disabled:text-muted text-white transition"
+                x-text="submitting ? 'Updating…' : 'Update Entry'"></button>
+      </div>
+    <% else %>
     <div x-show="selectionCount === <%= @contest.picks_required %>" class="mb-5">
       <%= render 'shared/hold_button',
         default_text: "Hold to Confirm",
@@ -1620,6 +1711,7 @@ window.selectionBoard = function() {
         early_action_at: 1500,
         early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
     </div>
+    <% end %>
     <p x-show="selectionCount < <%= @contest.picks_required %>" class="text-heading font-bold text-sm text-center mb-3">Your Picks</p>
     <div class="grid grid-cols-3 gap-1.5">
       <template x-for="i in <%= @contest.picks_required %>" :key="i">
@@ -1642,14 +1734,20 @@ window.selectionBoard = function() {
         </div>
       </template>
     </div>
-    <button @click="clearSelections()" class="w-full text-center text-xs font-semibold text-secondary hover:text-red-400 transition mt-2">
-      Clear <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
-    </button>
+    <% if edit_entry %>
+      <button type="button" @click="cancelEdit()" class="w-full text-center text-xs font-semibold text-secondary hover:text-heading transition mt-2">
+        Cancel
+      </button>
+    <% else %>
+      <button @click="clearSelections()" class="w-full text-center text-xs font-semibold text-secondary hover:text-red-400 transition mt-2">
+        Clear <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
+      </button>
+    <% end %>
   </div>
 
   <!-- JSON Debug Block -->
   <section class="transition-all" :class="{ 'cart-pushed': cartOpen }">
-    <%= render "components/json_debug", record: @contest.as_json.merge("slate_matchups" => @matchups.as_json(methods: [:locked?]), "entries" => @entries.as_json(include: { user: { only: [:id, :name] }, selections: {} })), label: "Contest JSON", collapsible: true %>
+    <%= render "components/json_debug", record: @contest.as_json.merge("slate_matchups" => @matchups.as_json(methods: [:locked?]), "entries" => contest_debug_entries(@entries)), label: "Contest JSON", collapsible: true %>
   </section>
 
 </div>

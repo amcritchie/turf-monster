@@ -774,6 +774,27 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/invalid or expired/i, response.parsed_body["error"].to_s)
   end
 
+  # --- admin (operator override view) tests ---
+
+  test "admin view renders show template for admin users" do
+    log_in_as(users(:alex))  # admin role per fixtures
+    get admin_contest_path(@contest)
+    assert_response :success
+    # Same content as the regular show page — contest name appears in the header.
+    assert_includes response.body, @contest.name
+  end
+
+  test "admin view redirects non-admins" do
+    log_in_as(@user)  # not admin
+    get admin_contest_path(@contest)
+    assert_response :redirect
+  end
+
+  test "admin view requires authentication" do
+    get admin_contest_path(@contest)
+    assert_response :redirect
+  end
+
   private
 
   # A free, off-chain contest — the only kind a successful #enter can be

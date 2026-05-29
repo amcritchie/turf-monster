@@ -1,0 +1,73 @@
+<%#
+  Quick-nav card surfaced on /contests/:slug when the current user has 2+
+  entries on the same contest. Replaces the seed-progress card in that slot
+  so the user can jump straight from "which of my entries do I want to edit?"
+  → an edit-mode load on the right one. Each row shows the entry's six picks
+  as compact emoji pills (full name on hover) so the user can recognize their
+  rosters at a glance. Clickable only while the contest is open; settled /
+  locked contests render the same rows non-interactive for reference.
+
+  Locals (optional): entries — defaults to @my_active_entries.
+%>
+<%
+  entries  = local_assigns[:entries] || @my_active_entries || []
+  editable = @contest.open?
+  # Always lay out at the full per-user entry cap (3 for turf totals) so the
+  # 3rd slot stays visually reserved as a "+ Add" CTA when the user has only
+  # 2 entries — surfaces the path to filling out their roster without making
+  # the card grow taller when they max out. Inline grid-template-columns
+  # sidesteps Tailwind JIT compilation of dynamic `grid-cols-N` names.
+  cols = [@contest.max_entries_per_user || 3, 3].min
+  remaining = cols - entries.size
+%>
+
+<%# Card stretches to match share_invite's height via the parent CSS Grid's
+    default `align-items: stretch`. `flex flex-col` + `flex-1` on the entries
+    grid + `grid-auto-rows: minmax(0,1fr)` make the entries row fill whatever
+    extra vertical space the stretch adds, so no empty band ever sits below
+    the entries. Each entry mini-card centers its pills (`flex-col justify-
+    center`) so the stretched cell doesn't leave dead space below them either. %>
+<div class="card shadow p-4 flex flex-col">
+  <div class="flex items-baseline justify-between gap-2 mb-2">
+    <h3 class="text-base font-bold text-heading">Your Entries</h3>
+    <p class="text-xs text-muted"><%= editable ? "Click to update" : "Click to view" %></p>
+  </div>
+
+  <div class="grid gap-2 flex-1"
+       style="grid-template-columns: repeat(<%= cols %>, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr);">
+    <% entries.each_with_index do |entry, idx| %>
+      <%
+        sorted_sels = entry.selections.sort_by { |s| s.slate_matchup.game&.kickoff_at || Time.at(0) }
+        row_classes = "flex flex-col justify-center w-full rounded-lg border border-subtle"
+        row_classes += " hover:bg-surface-alt hover:border-primary/40 transition cursor-pointer" if editable && entry.active?
+      %>
+      <% if editable && entry.active? %>
+        <%= link_to contest_path(@contest, edit_entry: entry.slug), class: row_classes do %>
+          <%= render "contests/your_entries_row", entry: entry, idx: idx, sorted_sels: sorted_sels %>
+        <% end %>
+      <% else %>
+        <div class="<%= row_classes %>">
+          <%= render "contests/your_entries_row", entry: entry, idx: idx, sorted_sels: sorted_sels %>
+        </div>
+      <% end %>
+    <% end %>
+
+    <% if editable && remaining > 0 %>
+      <%
+        next_num = entries.size + 1
+        suffix   = { 1 => "st", 2 => "nd", 3 => "rd" }.fetch(next_num % 10, "th")
+        suffix   = "th" if (11..13).include?(next_num % 100)
+      %>
+      <%= link_to contest_path(@contest, add_entry: true),
+            class: "flex items-center justify-center w-full p-1.5 rounded-lg border border-dashed border-strong text-xs font-semibold text-primary hover:bg-surface-alt hover:border-primary/60 transition" do %>
+        + Add <%= next_num %><sup><%= suffix %></sup>
+      <% end %>
+      <% (remaining - 1).times do %>
+        <%# Visual placeholder so the grid keeps its full 3-column layout even
+            before the user starts adding (shouldn't fire in practice — partial
+            only renders at 2+ entries). %>
+        <div class="rounded-lg border border-dashed border-subtle/40"></div>
+      <% end %>
+    <% end %>
+  </div>
+</div>

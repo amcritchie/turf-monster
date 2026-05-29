@@ -191,7 +191,12 @@
             <div class="text-right flex-shrink-0 ml-auto" style="min-width:3.5rem">
               <div class="font-mono font-bold text-lg <%= dimmed ? 'text-muted' : 'text-violet' %>"><%= sprintf('%.1f', entry.score) %></div>
             </div>
-            <%# Selections — stacked on mobile (tap to expand 3×2), inline on desktop %>
+            <%# Selections — stacked on mobile (tap to expand 3×2), inline on desktop.
+                While the contest is `open`, only the entry owner (and admins on
+                /contests/:slug/admin) see the picks; everyone else gets six
+                placeholder pills so network-tab readers can't preview the
+                competition. Reveal flips automatically once the contest locks. %>
+            <% if picks_visible_for?(entry) %>
             <%
               sorted_sels = entry.selections.sort_by { |s| s.slate_matchup.game&.kickoff_at || Time.at(0) }
               pills = sorted_sels.map do |sel|
@@ -247,6 +252,16 @@
                 <% end %>
               </div>
             </div>
+            <% else %>
+            <div class="w-full grid grid-cols-6 gap-1.5" title="Picks hidden until contest locks">
+              <% entry.selections.size.clamp(1, @contest.picks_required).times do %>
+                <span class="flex items-center justify-center px-2 py-1 rounded-lg text-xs font-semibold text-muted bg-surface-alt border border-subtle">
+                  <span aria-hidden="true">&#x2022;&#x2022;&#x2022;</span>
+                  <span class="sr-only">Hidden</span>
+                </span>
+              <% end %>
+            </div>
+            <% end %>
           </div>
         </div>
         <% lb_row += 1 %>
@@ -303,4 +318,4 @@
   </section>
 <% end %>
 
-<%= render "components/json_debug", record: @contest.as_json.merge("slate_matchups" => @matchups.as_json(methods: [:locked?]), "entries" => @entries.as_json(include: { user: { only: [:id, :name] }, selections: {} })), label: "Contest JSON", collapsible: true %>
+<%= render "components/json_debug", record: @contest.as_json.merge("slate_matchups" => @matchups.as_json(methods: [:locked?]), "entries" => contest_debug_entries(@entries)), label: "Contest JSON", collapsible: true %>
