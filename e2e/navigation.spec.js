@@ -16,16 +16,21 @@ test("games page loads", async ({ page }) => {
   await expect(page.locator("body")).toBeVisible();
 });
 
-test("login page loads with form", async ({ page }) => {
+test("login page loads with magic-link + wallet options", async ({ page }) => {
   await page.goto("/login");
   await expect(page.locator('input[name="email"]')).toBeVisible();
-  await expect(page.locator('input[name="password"]')).toBeVisible();
+  // Passwordless now — email magic link + Google + wallet hub, no password.
+  await expect(page.locator('input[name="password"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Email Link" })).toBeVisible();
+  await expect(page.locator('button:has-text("Google")')).toBeVisible();
+  await expect(page.locator('button:has-text("Solana")')).toBeVisible();
 });
 
-test("signup page loads with form", async ({ page }) => {
+test("signup page loads with magic-link form", async ({ page }) => {
   await page.goto("/signup");
-  await expect(page.locator('#user_email')).toBeVisible();
-  await expect(page.locator('#user_password')).toBeVisible();
+  await expect(page.locator('input[name="email"]')).toBeVisible();
+  await expect(page.locator('input[name="password"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Email Link" })).toBeVisible();
 });
 
 test("error logs page loads", async ({ page }) => {

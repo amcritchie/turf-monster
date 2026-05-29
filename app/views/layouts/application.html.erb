@@ -99,58 +99,37 @@
           },
           detect: function() {
             return null;
+          },
+          // Empty until the full wallet_provider module loads + wallets
+          // register via Wallet Standard. The hub reads this at click time.
+          available: function() {
+            return [];
           }
         };
 
-        // solanaWalletConnect — MUST stay inline because Alpine processes
-        // x-data="solanaWalletConnect(...)" before importmap modules load.
-        window.solanaWalletConnect = function(linkMode, currentUserId) {
-          return {
-            connecting: false,
-            error: null,
-            statusText: 'Connect Wallet',
-            walletAvailable: window.walletProvider.isAvailable(),
-            isMobile: window.walletProvider.isMobile(),
-            async connect() {
-              this.connecting = true;
-              this.error = null;
-              try {
-                var provider = window.walletProvider.detect();
-                if (!provider) throw new Error('No wallet available');
-                this.statusText = 'Connecting...';
-                var resp = await provider.connect();
-                var pubkeyB58 = resp.publicKey.toBase58();
-                this.statusText = 'Fetching nonce...';
-                var data = await (await fetch('/auth/solana/nonce')).json();
-                var domain = window.location.host;
-                // OPSEC-005: when linking (logged-in), bind the message to the active session's user
-                var userIdLine = (linkMode && currentUserId) ? ('User-ID: ' + currentUserId + '\n\n') : '';
-                var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Sign in to Turf Monster\n\nNonce: ' + data.nonce;
-                this.statusText = 'Sign message in wallet...';
-                var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
-                var signatureB58 = encodeBase58(signed.signature);
-                this.statusText = 'Verifying...';
-                var verifyUrl = linkMode ? '/account/link_solana' : '/auth/solana/verify';
-                var result = await (await fetch(verifyUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '' },
-                  body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
-                })).json();
-                if (result.success) {
-                  window.handleSolanaVerifySuccess(result);
-                  window.location.href = result.redirect || '/';
-                } else {
-                  this.error = result.error || 'Verification failed';
-                  this.statusText = 'Connect Wallet';
-                  this.connecting = false;
-                }
-              } catch (e) {
-                this.error = (e.code === 4001) ? 'Signature rejected' : (e.message || 'Connection failed');
-                this.statusText = 'Connect Wallet';
-                this.connecting = false;
-              }
-            }
-          };
+        // Shared SIWS connect+verify, used by the wallet-connect modal (and
+        // reusable anywhere). Picks a provider by name, signs the nonce, posts
+        // to verify (or link_solana when linkMode), and RESOLVES the server
+        // result — the caller decides where to navigate. Inline (not a module)
+        // so it's available the moment the modal mounts.
+        window.solanaConnectAndVerify = async function(walletName, opts) {
+          opts = opts || {};
+          var provider = walletName ? window.walletProvider.get(walletName) : window.walletProvider.detect();
+          if (!provider) throw new Error('Wallet not available');
+          var resp = await provider.connect();
+          var pubkeyB58 = resp.publicKey.toBase58();
+          var data = await (await fetch('/auth/solana/nonce')).json();
+          var domain = window.location.host;
+          var userIdLine = (opts.linkMode && opts.currentUserId) ? ('User-ID: ' + opts.currentUserId + '\n\n') : '';
+          var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Sign in to Turf Monster\n\nNonce: ' + data.nonce;
+          var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
+          var signatureB58 = encodeBase58(signed.signature);
+          var verifyUrl = opts.linkMode ? '/account/link_solana' : '/auth/solana/verify';
+          return await (await fetch(verifyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
+          })).json();
         };
 
         // Solana modal store — registered when Alpine starts
@@ -491,6 +470,13 @@
       </template>
       <template x-if="$store.modals.current().id === 'auth'">
         <%= render "modals/auth" %>
+      </template>
+      <%# Multi-wallet "Connect Wallet" picker (reown-style). Opened directly
+          from the standalone Solana button, or swapped-into from the auth
+          modal's Solana button (board#openWalletConnect saves the cart first
+          and passes returnUrl). %>
+      <template x-if="$store.modals.current().id === 'wallet-connect'">
+        <%= render "modals/wallet_connect" %>
       </template>
       <%# On-chain TX modal (replaces shared/_solana_modal.html.erb).
           State lives in Alpine.store('solanaModal') — show/success/

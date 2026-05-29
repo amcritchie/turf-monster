@@ -4,12 +4,16 @@ const { reseed } = require("./helpers");
 test.beforeEach(async ({ request }) => await reseed(request));
 
 async function doLogin(page) {
-  await page.goto("/login");
-  await page.fill('input[name="email"]', "alex@mcritchie.studio");
-  await page.fill('input[name="password"]', "password");
-  await page.locator('form button.btn-primary[type="submit"]').click();
-  // / redirects to /contests/:slug — wait for any URL outside /login
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  // Passwordless magic link — mint + consume a token for alex (admin).
+  const resp = await page.request.post("/test/magic_link_token", {
+    data: { email: "alex@mcritchie.studio" },
+  });
+  const { url } = await resp.json();
+  await page.goto(url);
+  // / redirects to /contests/:slug — wait for any URL outside /login + /magic_link
+  await page.waitForURL(
+    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link")
+  );
 }
 
 // Enable geo blocking with WA banned + activate WA override via admin UI

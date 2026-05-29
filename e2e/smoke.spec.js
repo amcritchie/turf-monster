@@ -44,13 +44,15 @@ test("login with valid credentials", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("login with invalid credentials shows error", async ({ page }) => {
+test("requesting a magic link confirms the email was sent", async ({ page }) => {
+  // Passwordless: there are no invalid credentials — any well-formed email
+  // gets a one-tap link. Submitting the email form returns to /login with a
+  // "check your inbox" notice.
   await page.goto("/login");
-  await page.fill('input[name="email"]', "alex@mcritchie.studio");
-  await page.fill('input[name="password"]', "wrong");
-  await page.locator('form button.btn-primary[type="submit"]').click();
-  // Should stay on login page with error
-  await expect(page.locator("body")).toContainText(/invalid|incorrect/i);
+  await page.fill('input[name="email"]', "someone@example.com");
+  await page.getByRole("button", { name: "Email Link" }).click();
+  await page.waitForURL((url) => url.pathname.startsWith("/login"));
+  await expect(page.locator("body")).toContainText(/inbox|sign-in link/i);
 });
 
 // ---------------------------------------------------------------------------

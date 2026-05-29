@@ -15,10 +15,16 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
     assert_equal "first", cookies[:reference]
   end
 
-  test "the signup page carries the reference in a hidden field" do
+  # Email signup is now a unified magic link with no user form, so attribution
+  # rides the first-touch cookie through the link (the same mechanism the Google
+  # path uses below) rather than a hidden field on the page.
+  test "magic-link signup persists the reference cookie onto the new user" do
     get faucet_path, params: { reference: "friends-test" }
-    get signup_path
-    assert_select "input[type=hidden][name=?][value=?]", "user[reference]", "friends-test"
+    token = MagicLink.generate(email: "ml-ref@mcritchie.studio")
+    assert_difference "User.count", 1 do
+      get magic_link_path(token: token)
+    end
+    assert_equal "friends-test", User.find_by(email: "ml-ref@mcritchie.studio").reference
   end
 
   test "email signup persists the reference onto the new user" do

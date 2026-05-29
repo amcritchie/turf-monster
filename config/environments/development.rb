@@ -51,8 +51,9 @@ Rails.application.configure do
   config.action_mailer.perform_caching = false
 
   # turf-monster's dev server runs on 3001 (3000 is mcritchie-studio) — mailer
-  # links must point here or they 404 against the wrong app.
-  config.action_mailer.default_url_options = { host: "localhost", port: 3001 }
+  # links must point here or they 404 against the wrong app. APP_PORT lets a
+  # second worktree on another port (e.g. 3002) emit links that point at itself.
+  config.action_mailer.default_url_options = { host: "localhost", port: ENV.fetch("APP_PORT", 3001).to_i }
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

@@ -98,12 +98,13 @@ Rails.application.routes.draw do
   # hands off to OmniAuth. The callback renders a window-closer page.
   get "auth/google_popup", to: "omniauth_callbacks#popup"
 
-  # Inline (modal) email+password login — JSON only, returns user info
-  # so the caller can replay cart selections and submit entry.
+  # DEPRECATED (no UI path since the magic-link redesign): inline (modal)
+  # email+password login. Kept as a non-UI fallback alongside has_secure_password;
+  # the modal now requests a magic link instead. Don't treat as load-bearing.
   post "sessions/inline", to: "inline_sessions#create", as: :inline_login
 
-  # Inline (modal) email+password signup — JSON only. Mirrors the login
-  # route above; creates the account, then the caller resumes the cart.
+  # DEPRECATED (no UI path since the magic-link redesign): inline (modal)
+  # email+password signup. See note above.
   post "registrations/inline", to: "inline_registrations#create", as: :inline_signup
 
   # Email verification (OPSEC-005). Tokens are message_verifier blobs that
@@ -112,6 +113,12 @@ Rails.application.routes.draw do
   get  "email_verification/new",       to: "email_verifications#new",    as: :email_verifications_new
   post "email_verification",           to: "email_verifications#create", as: :email_verifications
   get  "email_verification/:token",    to: "email_verifications#verify", as: :email_verifications_verify,
+       constraints: { token: %r{[^/]+} }, format: false
+
+  # Unified create-or-login magic link. Same token-with-dots constraint as
+  # email_verification above. POST requests a link; GET consumes it.
+  post "magic_link",        to: "magic_links#create",  as: :magic_link_request
+  get  "magic_link/:token", to: "magic_links#consume", as: :magic_link,
        constraints: { token: %r{[^/]+} }, format: false
 
   # Account management
@@ -333,6 +340,7 @@ Rails.application.routes.draw do
     post "test/oauth_mock",               to: "test#set_oauth_mock"
     post "test/set_user_referral_counts", to: "test#set_user_referral_counts"
     post "test/create_active_entry",      to: "test#create_active_entry"
+    post "test/magic_link_token",         to: "test#magic_link_token"
     get  "test/user_info/:slug",          to: "test#user_info"
   end
 end

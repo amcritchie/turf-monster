@@ -4,7 +4,8 @@
   One modal id, internal step machine on $store.modals.current().props.step.
 
   Steps (in flow order — but the modal can be opened at any step):
-    credentials       — signup/login forms + OAuth/Phantom buttons
+    credentials       — Google + Solana wallet hub + email magic-link request
+    magic-link-sent   — "check your inbox" confirmation after the email request
     tokens-picker     — Stripe pack picker (orb-glow cards)
     tokens-waiting    — Stripe checkout open in new tab; awaiting return
     tokens-confirming — Stripe returned; polling /tokens/status for the mint
@@ -14,32 +15,29 @@
     redirect          — countdown auto-redirect (entry blocked, geo, etc.)
 
   State split:
-    - Form fields (email, password) live in this partial's own x-data —
-      they're local to user input and don't need to outlive the modal.
-    - Display state (mintedCount, errorText, redirect copy, etc.) lives
-      on the store entry's props, mutated by the selectionBoard methods.
-    - Submitting/error flags for each auth attempt live on props too,
-      so the board's async methods can flip them.
+    - The email field + wallet-hub open/list live in this partial's own
+      x-data — local to user input, no need to outlive the modal.
+    - Display state (sentEmail, mintedCount, errorText, etc.) lives on the
+      store entry's props, mutated by the selectionBoard methods.
+    - Submitting/error flags for each auth attempt live on props too.
 
   Cross-scope actions: every button dispatches a window event the
-  selectionBoard listens for (see x-data attribute on the board root).
-  We don't reach into board scope from here; the wizard partial is
-  rendered at layout level, outside the board's x-data.
+  selectionBoard listens for (auth-google-click, auth-wallet-hub-open,
+  auth-magic-link-submit). We don't reach into board scope from here; the
+  wizard partial is rendered at layout level, outside the board's x-data.
 %>
 <%# CRITICAL: this partial is rendered inside <template x-if="...id==='auth'">
-    in shared/_modal_host.html.erb. Alpine requires the template's
-    content to have a SINGLE root element — anything else mounts as a
-    silent no-op. Keep all rendered output inside the wizard's outer
-    <div>; .auth-text-shimmer lives in application.tailwind.css. %>
+    in shared/_modal_host.html.erb. Alpine requires the template's content to
+    have a SINGLE root element — anything else mounts as a silent no-op. Keep
+    all rendered output inside the wizard's outer <div>; every inner
+    <template x-if>/<template x-for> also has exactly one root child.
+    .auth-text-shimmer lives in application.tailwind.css. %>
 <div x-data="{
        email: '',
-       password: '',
-       // Hardened against a transient null current() during modal
-       // open/close transitions — Alpine catches exceptions in x-if
-       // expressions and treats them as falsy. Without this guard a
-       // single null-deref took down every inner template and we
-       // rendered an empty modal shell. Return {} so every binding
-       // below evaluates cleanly until current() is real again.
+       // Hardened against a transient null current() during modal open/close
+       // transitions — Alpine catches exceptions in x-if expressions and
+       // treats them as falsy. Returning {} keeps every binding evaluating
+       // cleanly until current() is real again.
        get props() {
          var c = $store.modals.current();
          return (c && c.props) || {};
@@ -47,85 +45,76 @@
        get isCredentialsStep() {
          var s = this.props.step;
          if (!s) return true;
-         if (s === 'redirect') return false;
+         if (s === 'redirect' || s === 'magic-link-sent') return false;
          if (s.indexOf && s.indexOf('tokens-') === 0) return false;
          return true;
        },
-       // Desktop without the extension → render an Install Phantom link
-       // pointing at phantom.com/download instead of the Connect button.
-       // Mobile keeps the button so the existing deep-link path runs.
-       get phantomNeedsInstall() {
-         var wp = window.walletProvider;
-         if (!wp) return false;
-         return !wp.isAvailable() && !wp.isMobile();
+       // Self-contained resend for the magic-link-sent step — works whether the
+       // modal was opened standalone (no board) or advanced into in-contest.
+       // Re-sends to the same email (+ contest/picks if the original carried
+       // them, so the link still returns to the contest).
+       async resendMagicLink() {
+         var p = this.props;
+         if (!p || p.submitting) return;
+         p.submitting = 'magic-link';
+         try {
+           var body = new URLSearchParams();
+           body.set('email', p.sentEmail || '');
+           if (p.sentContest) body.set('contest', p.sentContest);
+           if (p.sentPicks)   body.set('picks', p.sentPicks);
+           await fetch('/magic_link', {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/x-www-form-urlencoded',
+               'Accept': 'application/json',
+               'X-CSRF-Token': (document.querySelector('meta[name=csrf-token]') || {}).content || ''
+             },
+             body: body.toString()
+           });
+         } catch (e) { /* swallow — the button just re-enables */ }
+         p.submitting = null;
        }
      }"
      class="relative">
 
   <%# === CREDENTIALS STEP =================================================== %>
-  <%# x-show (not x-if) so the form is ALWAYS in the DOM — only hidden
-      via display:none when a tokens-* / redirect step is active. The
-      previous x-if approach kept rendering empty in some condition I
-      couldn't repro remotely; x-show eliminates the variable since the
-      content is mounted unconditionally.
-
-      Layout follows the Wizard template: centered title with absolute-
-      positioned close ×, segmented 3-of-3 progress pill below.
-      Credentials is step 1 (signup → picker → done). Progress pill is
-      shared via modals/blocks/_progress_pill. Inline mode-specific
-      header + the three CTAs (Phantom / Google / email-form) + the
-      mode toggle don't fit a generic block — kept inline because they
-      ARE the credentials step. %>
+  <%# x-show (not x-if) so the content is ALWAYS in the DOM — only hidden via
+      display:none when another step is active. Layout follows the Wizard
+      template: centered title with absolute-positioned close ×, segmented
+      3-of-3 progress pill below. CTA order: Google → Solana wallet hub →
+      (or) → email magic link. %>
   <div x-show="isCredentialsStep" x-cloak>
-      <%# Wizard-template header — title centered on the same baseline
-          as the close × via absolute positioning. %>
       <div class="relative mb-3 -mt-2">
         <h3 class="text-heading font-bold text-lg leading-tight text-center pt-1"
-            x-text="props.mode === 'signup' ? 'Create Your Account' : 'Log in to enter'"></h3>
+            x-text="props.mode === 'signup' ? 'Sign in or create your account' : 'Log in to enter'"></h3>
         <button @click="$store.modals.close()"
                 class="absolute top-0 right-0 -mr-2 text-secondary hover:text-heading text-xl leading-none"
                 aria-label="Close">&times;</button>
       </div>
-      <%# Credentials is step 1 of the 3-step onboarding journey
-          (credentials → tokens-picker → confirmed). %>
       <%= render "modals/blocks/progress_pill", current: 1, total: 3 %>
-      <p class="text-xs text-secondary mb-4 text-center"
-         x-text="props.mode === 'signup' ? 'Create your account to submit your lineup' : 'Your 6 picks are saved.'"></p>
+      <p class="text-xs text-secondary mb-4 text-center">Your 6 picks are saved — sign in to submit your lineup.</p>
 
-      <!-- Primary CTA: Phantom (matches on-chain contest flow).
-           When the extension isn't installed (desktop only), swap the
-           Connect button for an Install Phantom link. Mobile keeps the
-           button so the existing startPhantomDeepLink path runs. -->
-      <template x-if="!phantomNeedsInstall">
-        <button @click="$dispatch('auth-phantom-click')"
-                :disabled="props.submitting"
-                class="btn btn-secondary btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
-          <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
-          <span x-text="props.submitting === 'phantom' ? 'Connecting…' :
-                         (props.mode === 'signup' ? 'Sign up with Phantom' : 'Sign in with Phantom')"></span>
-        </button>
-      </template>
-      <template x-if="phantomNeedsInstall">
-        <a href="https://phantom.com/download" target="_blank" rel="noopener noreferrer"
-           class="btn btn-secondary btn-lg w-full gap-3 mb-3 inline-flex items-center justify-center no-underline">
-          <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
-          <span>Install Phantom</span>
-        </a>
-      </template>
-      <template x-if="props.phantomError && !phantomNeedsInstall">
-        <p class="text-red-400 text-xs -mt-2 mb-3" x-text="props.phantomError"></p>
-      </template>
-
-      <!-- Google OAuth — opens a popup; the closer page postMessages the result -->
+      <!-- 1. Google OAuth — opens a popup; the closer page postMessages the result -->
       <button @click="$dispatch('auth-google-click')"
               :disabled="props.submitting"
-              class="btn btn-google btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
+              class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
         <%= render "components/google_logo" %>
-        <span x-text="props.submitting === 'google' ? 'Waiting for Google…' :
-                       (props.mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google')"></span>
+        <span x-text="props.submitting === 'google' ? 'Waiting for Google…' : 'Google'"></span>
       </button>
       <template x-if="props.googleError">
         <p class="text-red-400 text-xs -mt-2 mb-3" x-text="props.googleError"></p>
+      </template>
+
+      <!-- 2. Solana — progresses to the Connect Wallet picker modal. The board
+           saves the cart + passes returnUrl so the lineup survives (see
+           selectionBoard#openWalletConnect). -->
+      <button @click="$dispatch('auth-wallet-hub-open')" :disabled="props.submitting"
+              class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
+        <img src="/solana-mark.svg" alt="" class="w-5 h-5">
+        <span x-text="props.submitting === 'wallet' ? 'Connecting…' : 'Solana'"></span>
+      </button>
+      <template x-if="props.phantomError">
+        <p class="text-red-400 text-xs -mt-2 mb-3" x-text="props.phantomError"></p>
       </template>
 
       <div class="relative my-4">
@@ -133,56 +122,46 @@
         <div class="relative flex justify-center text-sm"><span class="bg-surface px-3 text-secondary">or</span></div>
       </div>
 
-      <!-- Email/password form — same fields drive both signup and login -->
-      <form @submit.prevent="props.mode === 'signup'
-                              ? $dispatch('auth-signup-submit', { email: email, password: password })
-                              : $dispatch('auth-login-submit',  { email: email, password: password })"
-            novalidate>
+      <!-- 3. Email magic link — no password. Dispatches the request; the board
+           emails a one-tap link and advances to the 'magic-link-sent' step. -->
+      <form @submit.prevent="$dispatch('auth-magic-link-submit', { email: email })" novalidate>
         <div class="mb-3">
           <label class="block text-xs text-secondary mb-1 font-medium">Email</label>
-          <input type="email" x-model="email" autocomplete="email"
+          <input type="email" x-model="email" autocomplete="email" required
                  class="input-field" placeholder="you@example.com"
-                 :disabled="props.submitting">
-        </div>
-        <div class="mb-3">
-          <label class="block text-xs text-secondary mb-1 font-medium">Password</label>
-          <input type="password" x-model="password"
-                 :autocomplete="props.mode === 'signup' ? 'new-password' : 'current-password'"
-                 class="input-field"
-                 :placeholder="props.mode === 'signup' ? 'Choose a password (min 6)' : 'Your password'"
                  :disabled="props.submitting">
         </div>
         <template x-if="props.formError">
           <p class="text-red-400 text-xs mb-3" x-text="props.formError"></p>
         </template>
         <button type="submit" :disabled="props.submitting"
-                class="btn btn-primary btn-lg w-full disabled:cursor-wait">
-          <%# Text doubles as the loader — while submitting, the label
-              gets a left-to-right gradient sweep via .auth-text-shimmer
-              (defined above). No separate spinner needed. %>
-          <span :class="props.submitting ? 'auth-text-shimmer' : ''"
-                x-text="props.submitting === 'signup' ? 'Creating account…' :
-                         props.submitting === 'login'  ? 'Logging in…' :
-                         (props.mode === 'signup' ? 'Create Account' : 'Log In')"></span>
+                class="btn btn-neutral btn-lg w-full disabled:cursor-wait">
+          <span :class="props.submitting === 'magic-link' ? 'auth-text-shimmer' : ''"
+                x-text="props.submitting === 'magic-link' ? 'Sending link…' : 'Email Link'"></span>
         </button>
+        <p class="text-xs text-muted text-center mt-2">No password needed — we'll email you a one-tap link.</p>
       </form>
-
-      <!-- Mode toggle — switches the modal in place, no redirect -->
-      <p class="text-center text-secondary text-xs mt-4">
-        <template x-if="props.mode === 'signup'">
-          <span>Already have an account?
-            <button @click.prevent="props.mode = 'login'; props.formError = ''; props.phantomError = ''; props.googleError = ''"
-                    class="text-primary hover:text-primary-300 font-medium underline underline-offset-2">Log in</button>
-          </span>
-        </template>
-        <template x-if="props.mode === 'login'">
-          <span>Don't have an account?
-            <button @click.prevent="props.mode = 'signup'; props.formError = ''; props.phantomError = ''; props.googleError = ''"
-                    class="text-primary hover:text-primary-300 font-medium underline underline-offset-2">Create one</button>
-          </span>
-        </template>
-      </p>
   </div>
+
+  <%# === MAGIC-LINK-SENT STEP =============================================== %>
+  <template x-if="props.step === 'magic-link-sent'">
+    <div class="text-center">
+      <div class="relative mb-3 -mt-2">
+        <h3 class="text-heading font-bold text-lg leading-tight text-center pt-1">Check your inbox</h3>
+        <button @click="$store.modals.close()"
+                class="absolute top-0 right-0 -mr-2 text-secondary hover:text-heading text-xl leading-none"
+                aria-label="Close">&times;</button>
+      </div>
+      <div class="text-4xl mb-3" aria-hidden="true">📬</div>
+      <p class="text-sm text-secondary mb-1">We emailed a one-tap sign-in link to</p>
+      <p class="text-heading font-medium mb-4 break-all" x-text="props.sentEmail"></p>
+      <p class="text-xs text-muted mb-5">Open it on this device to finish — your 6 picks are saved. The link expires in 15 minutes and can only be used once.</p>
+      <button @click="resendMagicLink()" :disabled="props.submitting"
+              class="text-sm text-primary hover:text-primary-300 underline underline-offset-2 disabled:opacity-50">
+        <span x-text="props.submitting === 'magic-link' ? 'Resending…' : 'Resend link'"></span>
+      </button>
+    </div>
+  </template>
 
   <%# === TOKENS SUB-FLOW ====================================================
       tokens-picker / -waiting / -confirming / -minted / -submitted / -error
