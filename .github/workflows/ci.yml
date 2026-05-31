@@ -17,6 +17,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: .ruby-version
+          rubygems: 3.5.11
           bundler-cache: true
 
       - name: Scan for common Rails security vulnerabilities using static analysis
@@ -33,6 +34,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: .ruby-version
+          rubygems: 3.5.11
           bundler-cache: true
 
       - name: Scan for security vulnerabilities in JavaScript dependencies
@@ -48,6 +50,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: .ruby-version
+          rubygems: 3.5.11
           bundler-cache: true
 
       - name: Lint code for consistent style
@@ -83,6 +86,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: .ruby-version
+          rubygems: 3.5.11
           bundler-cache: true
 
       - name: Run tests
@@ -109,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with: { ruby-version: .ruby-version, bundler-cache: true }
+        with: { ruby-version: .ruby-version, rubygems: 3.5.11, bundler-cache: true }
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - name: Install Playwright + browsers
