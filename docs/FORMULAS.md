@@ -4,7 +4,7 @@
 
 All scoring/ranking formulas live as class methods on `SlateMatchup` — single source of truth. JS mirrors in `slates/show.html.erb` and `slates/formula_report.html.erb` with comments noting the model as authoritative.
 
-- **Turf Score**: `SlateMatchup.turf_score_for(rank, n)` — `1.0 + 3.0 * Math.log(rank) / Math.log(n)`. Logarithmic curve, x1.0 at rank 1 to x4.0 at rank N.
+- **Turf Score**: `SlateMatchup.turf_score_for(rank, n)` — `1.0 + 2.0 * Math.log(rank) / Math.log(n)`. Logarithmic curve, x1.0 at rank 1 to x3.0 at rank N. (Scale `2.0` is `Slate::FORMULA_DEFAULTS[:formula_mult_scale]`; per-slate overridable.)
 - **Goals Distribution**: `SlateMatchup.goals_distribution_for(rank, n)` — `0.2 + 4.3 * Math.log(n / rank) / Math.log(n)`.
 
 ## Formula Color System
