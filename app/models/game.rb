@@ -31,7 +31,7 @@ class Game < ApplicationRecord
   # Find all contests that include this game's matchups and re-score entries
   def score_affected_contests!
     slate_ids = SlateMatchup.where(game_slug: slug).pluck(:slate_id).uniq
-    Contest.where(slate_id: slate_ids, status: [:open, :locked]).find_each do |contest|
+    Contest.where(slate_id: slate_ids, status: [:open]).find_each do |contest|
       contest.score_entries!
     end
   end

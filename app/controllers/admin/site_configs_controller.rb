@@ -6,10 +6,11 @@ module Admin
       @season_config = SeasonConfig.current
       @explicit_main = SeasonConfig.main_contest_explicit
       @resolved_main = SeasonConfig.main_contest
-      # Open + locked are reasonable "main" candidates. Settled contests are
-      # excluded — pointing the share/root surfaces at a finished contest
-      # would route new traffic to a dead end.
-      @selectable_contests = Contest.where(status: [:open, :locked])
+      # Open contests are the "main" candidates (locking is derived now, not a
+      # status — an open-but-time-locked contest is still a valid pick).
+      # Settled contests are excluded — pointing the share/root surfaces at a
+      # finished contest would route new traffic to a dead end.
+      @selectable_contests = Contest.where(status: [:open])
                                     .order(created_at: :desc)
     end
 

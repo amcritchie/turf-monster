@@ -186,10 +186,15 @@ Rails.application.routes.draw do
       post :grade_round
       post :fill
       post :lock
+      post :prepare_lock_time
+      post :confirm_lock_time
+      post :prepare_conclusion_time
+      post :confirm_conclusion_time
       post :jump
       post :simulate_game
       post :simulate_batch
       post :reset
+      get :live
       post :prepare_onchain_contest
       post :confirm_onchain_contest
       # `post :payout_entry` was removed in the 2026-05-23 audit (H2) —

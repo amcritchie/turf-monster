@@ -22,9 +22,9 @@ class SeasonConfigTest < ActiveSupport::TestCase
   end
 
   test "main_contest_explicit returns the admin's raw pick regardless of status" do
-    contest = build_contest("Explicit Pick", status: :locked)
+    contest = build_contest("Explicit Pick", status: :settled)
     SeasonConfig.set_main_contest!(contest)
-    # Even though it's locked (not open), the explicit getter returns it.
+    # Even though it's settled (not open), the explicit getter returns it.
     assert_equal contest, SeasonConfig.main_contest_explicit
   end
 
@@ -34,15 +34,15 @@ class SeasonConfigTest < ActiveSupport::TestCase
     assert_equal contest, SeasonConfig.main_contest
   end
 
-  test "main_contest masks a locked explicit pick and falls back to most-recent open" do
+  test "main_contest masks a non-open (settled) explicit pick and falls back to most-recent open" do
     Entry.delete_all
     Contest.delete_all
-    locked = build_contest("Locked Pick", status: :locked, created_at: 2.days.ago)
+    settled_pick = build_contest("Settled Pick", status: :settled, created_at: 2.days.ago)
     older  = build_contest("Older Open",  status: :open,   created_at: 3.days.ago)
     newer  = build_contest("Newer Open",  status: :open,   created_at: 1.day.ago)
-    SeasonConfig.set_main_contest!(locked)
+    SeasonConfig.set_main_contest!(settled_pick)
 
-    assert_equal locked, SeasonConfig.main_contest_explicit
+    assert_equal settled_pick, SeasonConfig.main_contest_explicit
     assert_equal newer,  SeasonConfig.main_contest,
                  "fallback should pick the most recently created OPEN contest"
     refute_equal older, SeasonConfig.main_contest

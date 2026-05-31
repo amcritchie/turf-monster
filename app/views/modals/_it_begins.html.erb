@@ -1,0 +1,21 @@
+<%# "It Begins" — celebratory modal fired the instant a contest's lock countdown
+    hits zero (see contests/_timestamp_countdown). The draining CTA redirects to
+    props.lobbyUrl (the contest page) — we're already here, so it reloads into
+    the locked/leaderboard view. props.lobbyUrl is set by the opener.
+    Single root for Alpine's <template x-if> (see
+    [[feedback_alpine_template_single_root]]). %>
+<div class="text-center">
+  <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-3xl">
+    🏟️
+  </div>
+  <h2 class="text-2xl font-extrabold text-heading">It Begins</h2>
+  <p class="mt-2 text-sm text-secondary">
+    Entries are locked — the contest is underway. Good luck.
+  </p>
+  <div class="mt-5">
+    <%= render "modals/blocks/cta_redirect",
+          href_key: "($store.modals.current() && $store.modals.current().props.lobbyUrl)",
+          label_html: "Enter the Lobby",
+          duration_seconds: 8 %>
+  </div>
+</div>

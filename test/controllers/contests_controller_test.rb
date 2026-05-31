@@ -853,6 +853,178 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   private
 
+  # --- lock action (derived time-lock, v0.17) ---
+
+  test "lock now sets starts_at to ~now and makes the contest derived-locked" do
+    log_in_as(users(:alex))
+    travel_to Time.current do
+      post lock_contest_path(@contest)
+      @contest.reload
+      assert_in_delta Time.current.to_i, @contest.starts_at.to_i, 5
+      assert @contest.locked?, "contest should read derived-locked once starts_at is now"
+    end
+  end
+
+  test "lock in 30s schedules a near-future lock that is not yet locked" do
+    log_in_as(users(:alex))
+    travel_to Time.current do
+      post lock_contest_path(@contest, in_seconds: 30)
+      @contest.reload
+      assert_in_delta 30.seconds.from_now.to_i, @contest.starts_at.to_i, 5
+      assert_not @contest.locked?, "a 30s-out lock should not be locked yet"
+    end
+  end
+
+  test "lock is admin-only" do
+    log_in_as(@user) # users(:sam) — not an admin
+    original = @contest.starts_at
+    post lock_contest_path(@contest)
+    assert_response :redirect
+    assert_equal original.to_i, @contest.reload.starts_at.to_i, "non-admin must not move the lock time"
+  end
+
+  # --- prepare_lock_time / confirm_lock_time (Phantom-signed lock, v0.17) ---
+
+  test "prepare_lock_time builds a Phantom-signable set_contest_lock_time TX" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3Lock#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_lock", season_id: 1)
+    SeasonConfig.set_current!(1)
+    log_in_as_onchain(admin)
+
+    vault = FakeVault.new
+    travel_to Time.current do
+      Solana::Vault.stub :new, vault do
+        post prepare_lock_time_contest_path(@contest, in_seconds: 30), as: :json
+      end
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert body["success"]
+      assert body["serialized_tx"].start_with?("FAKE_TX_lock_")
+      assert_in_delta 30.seconds.from_now.to_i, body["lock_timestamp"], 5
+    end
+    assert_equal 1, vault.lock_calls.length
+    assert_equal admin.web3_solana_address, vault.lock_calls.first[:admin]
+  end
+
+  test "prepare_lock_time rejects a non-Phantom session" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3LockNo#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_lock2")
+    log_in_as(admin) # email/password — no onchain session
+    post prepare_lock_time_contest_path(@contest, in_seconds: 30), as: :json
+    assert_response :forbidden
+    assert_match(/Phantom session required/, JSON.parse(response.body)["error"])
+  end
+
+  test "prepare_lock_time is admin-only" do
+    @user.update!(web3_solana_address: "Web3LockSam#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_lock3")
+    log_in_as_onchain(@user) # users(:sam) — not an admin
+    post prepare_lock_time_contest_path(@contest, in_seconds: 30)
+    assert_response :redirect
+  end
+
+  test "confirm_lock_time mirrors starts_at only after verifying the on-chain TX" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3LockC#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_lock4")
+    log_in_as_onchain(admin)
+
+    lock_ts = 30.seconds.from_now.to_i
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post confirm_lock_time_contest_path(@contest),
+            params: { tx_signature: "lock-sig-1", lock_timestamp: lock_ts }, as: :json
+        end
+      end
+    end
+
+    assert_response :success
+    assert JSON.parse(response.body)["success"]
+    assert_in_delta lock_ts, @contest.reload.starts_at.to_i, 2
+  end
+
+  # --- prepare_conclusion_time / confirm_conclusion_time (v0.18) ---
+
+  test "prepare_conclusion_time builds a Phantom-signable set_contest_conclusion_time TX" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3Conc#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conc", season_id: 1)
+    SeasonConfig.set_current!(1)
+    log_in_as_onchain(admin)
+
+    vault = FakeVault.new
+    travel_to Time.current do
+      Solana::Vault.stub :new, vault do
+        post prepare_conclusion_time_contest_path(@contest, in_seconds: 60), as: :json
+      end
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert body["success"]
+      assert body["serialized_tx"].start_with?("FAKE_TX_conclude_")
+      assert_in_delta 60.seconds.from_now.to_i, body["conclusion_timestamp"], 5
+    end
+    assert_equal 1, vault.conclusion_calls.length
+  end
+
+  test "prepare_conclusion_time rejects a non-Phantom session" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3ConcNo#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conc2")
+    log_in_as(admin) # email/password — no onchain session
+    post prepare_conclusion_time_contest_path(@contest, in_seconds: 60), as: :json
+    assert_response :forbidden
+    assert_match(/Phantom session required/, JSON.parse(response.body)["error"])
+  end
+
+  test "confirm_conclusion_time mirrors concludes_at after verifying the on-chain TX" do
+    admin = users(:alex)
+    admin.update!(web3_solana_address: "Web3ConcC#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_conc3")
+    log_in_as_onchain(admin)
+
+    ts = 60.seconds.from_now.to_i
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post confirm_conclusion_time_contest_path(@contest),
+            params: { tx_signature: "conc-sig-1", conclusion_timestamp: ts }, as: :json
+        end
+      end
+    end
+
+    assert_response :success
+    assert JSON.parse(response.body)["success"]
+    assert_in_delta ts, @contest.reload.concludes_at.to_i, 2
+  end
+
+  # --- #live (active contest page) ---
+
+  test "live renders for a live turf_totals contest + subscribes to the live stream" do
+    @contest.update!(starts_at: 1.hour.ago) # contests(:one) — turf_totals, open → live
+    get live_contest_path(@contest)
+    assert_response :success
+    assert_match(/turbo-cable-stream-source/, response.body)
+  end
+
+  test "live redirects to show when the contest is not yet live" do
+    @contest.update!(starts_at: 1.hour.from_now)
+    get live_contest_path(@contest)
+    assert_redirected_to contest_path(@contest)
+  end
+
+  test "live redirects to show for a survivor contest" do
+    survivor = Contest.create!(name: "Survivor Live #{SecureRandom.hex(2)}",
+                               game_type: :world_cup_survivor, contest_type: "survivor_wc_free",
+                               status: "open", starts_at: 1.hour.ago, rank: 8000 + rand(900))
+    get live_contest_path(survivor)
+    assert_redirected_to contest_path(survivor)
+  end
+
   # A free, off-chain contest — the only kind a successful #enter can be
   # exercised against without a Solana RPC mock (paid entries need a real
   # on-chain token consume / vault transfer). Free entries skip the payment gate.

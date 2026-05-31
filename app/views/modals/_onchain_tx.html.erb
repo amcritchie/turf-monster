@@ -28,7 +28,12 @@
          // before, just rewired to watch the store from inside the
          // host-mounted content.
          this.$watch('$store.solanaModal.state', function(val) {
-           if (val === 'success') {
+           // Confetti is gated on the .confetti flag: the entry variant
+           // defaults it on (unchanged), the generic variant defaults it
+           // off and opts.confetti:true turns it back on. (The entry card
+           // also fires its own confetti in init; this watcher is the
+           // ONLY confetti source for the generic card.)
+           if (val === 'success' && $store.solanaModal.confetti) {
              setTimeout(function() {
                try { if (window.fireSuccessConfetti) window.fireSuccessConfetti(); } catch (_) {}
              }, 100);
@@ -49,11 +54,15 @@
           subtitle_key: "$store.solanaModal.message" %>
   </template>
 
-  <%# === SUCCESS ===========================================================
-      Both web2 (entry-token-funded) and web3 (on-chain) entry success
-      now render the same semantic 'entry confirmed' card. Seeds bar +
-      level-up celebration mount automatically when seeds were awarded. %>
-  <template x-if="$store.solanaModal.state === 'success'">
+  <%# === SUCCESS (entry) ===================================================
+      Contest-entry celebration — the default success variant. Both web2
+      (entry-token-funded) and web3 (on-chain) entry success render this
+      same semantic 'entry confirmed' card. Seeds bar + level-up
+      celebration mount automatically when seeds were awarded.
+
+      Gated to variant !== 'generic' so the ~59 existing success()
+      callers (which never set a variant) keep the entry card unchanged. %>
+  <template x-if="$store.solanaModal.state === 'success' && $store.solanaModal.successVariant !== 'generic'">
     <%# lobby_url_key passed straight (no || fallback) — cta_redirect
         treats null as "skip the auto-redirect, keep the drain visual"
         so a missing lobbyUrl stays visible in the gallery and degrades
@@ -63,6 +72,21 @@
         lobby_url_key:    "$store.solanaModal.lobbyUrl",
         seeds_earned_key: "$store.solanaModal.seedsEarned",
         seeds_total_key:  "$store.solanaModal.seedsTotal" %>
+  </template>
+
+  <%# === SUCCESS (generic) =================================================
+      Fallback success state for any on-chain TX that isn't a contest
+      entry (faucet mint, contest creation, username change, …). Copy +
+      CTA are caller-supplied via success(tx, msg, { variant: 'generic',
+      title, subtitle, ctaLabel, ctaHref }). No seeds bar, no lobby
+      auto-redirect drain. %>
+  <template x-if="$store.solanaModal.state === 'success' && $store.solanaModal.successVariant === 'generic'">
+    <%= render 'modals/blocks/onchain_success',
+        tx_signature_key: "$store.solanaModal.txSignature",
+        title_key:        "$store.solanaModal.successTitle",
+        subtitle_key:     "$store.solanaModal.successSubtitle",
+        cta_label_key:    "$store.solanaModal.ctaLabel",
+        cta_href_key:     "$store.solanaModal.ctaHref" %>
   </template>
 
   <%# === ERROR =============================================================

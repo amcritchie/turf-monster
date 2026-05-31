@@ -251,15 +251,42 @@
                 seedsLevel:      0,
                 lobbyUrl:        null,
                 recoveryLabel:   null,
-                recoveryPhantom: false
+                recoveryPhantom: false,
+                // success-card variant + generic-card copy/CTA. Default
+                // 'entry' keeps every existing success() caller on the
+                // contest-entry celebration; the faucet (and future
+                // generic on-chain flows) pass variant: 'generic'.
+                successVariant:  'entry',
+                successTitle:    null,
+                successSubtitle: null,
+                ctaLabel:        null,
+                ctaHref:         null,
+                // confetti on success — resolved in success() per variant
+                // (entry: on, generic: off unless opts.confetti:true).
+                confetti:        true
               });
             },
-            success: function(tx, message /*, autoCloseSeconds (ignored — entry_confirmed drives the countdown) */) {
+            // opts (optional): { variant: 'entry'|'generic', title,
+            // subtitle, ctaLabel, ctaHref } for the generic success card.
+            // A non-object 3rd arg (legacy autoCloseSeconds — ignored,
+            // entry_confirmed drives its own countdown) is safely a no-op.
+            success: function(tx, message, opts) {
               var c = _onCurrent();
               if (!c) return;
+              if (!opts || typeof opts !== 'object') opts = {};
               c.props.state = 'success';
               c.props.txSignature = tx;
               if (message) c.props.message = message;
+              if (opts.variant)          c.props.successVariant  = opts.variant;
+              if (opts.title != null)    c.props.successTitle    = opts.title;
+              if (opts.subtitle != null) c.props.successSubtitle = opts.subtitle;
+              if (opts.ctaLabel != null) c.props.ctaLabel        = opts.ctaLabel;
+              if (opts.ctaHref != null)  c.props.ctaHref         = opts.ctaHref;
+              // Confetti: explicit opts.confetti wins; otherwise on for
+              // entry, off for generic.
+              c.props.confetti = (opts.confetti !== undefined)
+                ? !!opts.confetti
+                : (c.props.successVariant !== 'generic');
               c.props.dismissible = true;
             },
             error: function(msg, title) {
@@ -306,6 +333,18 @@
             set seedsLevel(v)     { _propWrite('seedsLevel', v); },
             get lobbyUrl()        { return _propRead('lobbyUrl', null); },
             set lobbyUrl(v)       { _propWrite('lobbyUrl', v); },
+            get successVariant()  { return _propRead('successVariant', 'entry'); },
+            set successVariant(v) { _propWrite('successVariant', v); },
+            get successTitle()    { return _propRead('successTitle', null); },
+            set successTitle(v)   { _propWrite('successTitle', v); },
+            get successSubtitle() { return _propRead('successSubtitle', null); },
+            set successSubtitle(v){ _propWrite('successSubtitle', v); },
+            get ctaLabel()        { return _propRead('ctaLabel', null); },
+            set ctaLabel(v)       { _propWrite('ctaLabel', v); },
+            get ctaHref()         { return _propRead('ctaHref', null); },
+            set ctaHref(v)        { _propWrite('ctaHref', v); },
+            get confetti()        { return _propRead('confetti', true); },
+            set confetti(v)       { _propWrite('confetti', v); },
             get recoveryLabel()   { return _propRead('recoveryLabel', null); },
             get recoveryPhantom() { return _propRead('recoveryPhantom', false); },
 
@@ -507,6 +546,12 @@
           error/close on that store push/pop this id onto the stack. %>
       <template x-if="$store.modals.current().id === 'onchain-tx'">
         <%= render "modals/onchain_tx" %>
+      </template>
+      <%# "It Begins" — fired client-side when a contest's lock countdown hits
+          zero (contests/_timestamp_countdown). Celebratory; the draining CTA
+          reloads the lobby into its locked/leaderboard view. %>
+      <template x-if="$store.modals.current().id === 'it-begins'">
+        <%= render "modals/it_begins" %>
       </template>
       <% if logged_in? %>
         <template x-if="$store.modals.current().id === 'profile'">

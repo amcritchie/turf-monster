@@ -1,11 +1,13 @@
 module ContestsHelper
   # Whether the current viewer is allowed to see this entry's picks.
-  # While the contest is `open`, picks are private to the entry owner so
-  # network-tab readers can't preview competitors' selections. Once the
-  # contest transitions to `locked` (or `settled`) picks are public.
-  # Admins on the `/contests/:slug/admin` URL bypass the guard entirely.
+  # While the contest is open and not yet locked, picks are private to the
+  # entry owner so network-tab readers can't preview competitors' selections.
+  # Once the contest locks (v0.17: DERIVED — its lock time has passed) or
+  # settles, picks are public. Admins on the `/contests/:slug/admin` URL
+  # bypass the guard entirely.
   def picks_visible_for?(entry, contest = @contest)
-    return true unless contest&.open?
+    return true unless contest&.open?   # nil or settled → public
+    return true if contest.locked?      # derived: lock time passed → public
     return true if @admin_view && current_user&.admin?
     return true if logged_in? && entry.user_id == current_user.id
     false

@@ -112,6 +112,33 @@ class FakeVault
     ["epda-#{contest_slug}-#{wallet_address[0, 4]}-#{entry_num}", 255]
   end
 
+  # Used by ContestsController#prepare_lock_time (Phantom-signed lock flow).
+  def build_set_contest_lock_time(contest_slug, lock_timestamp, admin_pubkey:)
+    @lock_calls ||= []
+    @lock_calls << { slug: contest_slug, lock_timestamp: lock_timestamp, admin: admin_pubkey }
+    { serialized_tx: "FAKE_TX_lock_#{contest_slug}_#{lock_timestamp}" }
+  end
+
+  def lock_calls
+    @lock_calls ||= []
+  end
+
+  # Used by ContestsController#prepare_conclusion_time (Phantom-signed flow).
+  def build_set_contest_conclusion_time(contest_slug, conclusion_timestamp, admin_pubkey:)
+    @conclusion_calls ||= []
+    @conclusion_calls << { slug: contest_slug, conclusion_timestamp: conclusion_timestamp, admin: admin_pubkey }
+    { serialized_tx: "FAKE_TX_conclude_#{contest_slug}_#{conclusion_timestamp}" }
+  end
+
+  def conclusion_calls
+    @conclusion_calls ||= []
+  end
+
+  # Used by ContestsController#confirm_lock_time (mirrors entry_pda shape).
+  def contest_pda(contest_slug)
+    ["cpda-#{contest_slug}", 254]
+  end
+
   # --- PDA / ATA bootstrapping (no-op stubs) ---
 
   def ensure_user_account(wallet, username: nil)

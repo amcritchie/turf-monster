@@ -43,7 +43,7 @@ class ContestsHelperTest < ActionView::TestCase
   end
 
   test "picks are visible to everyone once contest is locked" do
-    @contest.update!(status: "locked")
+    @contest.update!(starts_at: 1.hour.ago) # v0.17: derived lock
     stub_current_user(@other)
     assert picks_visible_for?(@entry)
   end

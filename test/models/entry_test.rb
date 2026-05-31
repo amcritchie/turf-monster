@@ -49,7 +49,7 @@ class EntryTest < ActiveSupport::TestCase
   end
 
   test "confirm! rejects for non-open contest" do
-    @contest.update!(status: "locked")
+    @contest.update!(status: "settled")
     entry = @contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
@@ -219,7 +219,7 @@ class EntryTest < ActiveSupport::TestCase
 
   test "update_picks! rejects when contest is not open" do
     entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
-    @contest.update!(status: "locked")
+    @contest.update!(status: "settled")
 
     error = assert_raises(RuntimeError) { entry.update_picks!([@m1.id, @m2.id, @m3.id, @m4.id, @m5.id, @m6.id]) }
     assert_equal "Contest is not open", error.message

@@ -51,6 +51,22 @@
             <% end %>
             <%= link_to "Admin View", admin_contest_path(@contest),
                   class: "block px-4 py-2 text-sm text-secondary hover:text-heading hover:bg-surface-alt transition" %>
+            <% if @contest.open? && !@contest.locked? %>
+              <%# Testing aid: schedule the lock 60s out (Phantom-signed) to watch the countdown engage. %>
+              <button type="button"
+                      onclick="lockContestViaPhantom('<%= @contest.slug %>', 60)"
+                      class="block w-full text-left px-4 py-2 text-sm text-yellow-500 hover:bg-surface-alt transition">
+                Lock in 60s
+              </button>
+            <% end %>
+            <% unless @contest.concluded? || @contest.settled? %>
+              <%# Testing aid: schedule the conclusion 60s out (Phantom-signed). %>
+              <button type="button"
+                      onclick="concludeContestViaPhantom('<%= @contest.slug %>', 60)"
+                      class="block w-full text-left px-4 py-2 text-sm text-orange-500 hover:bg-surface-alt transition">
+                Conclude in 60s
+              </button>
+            <% end %>
           <% end %>
         </div>
       </div>
@@ -62,6 +78,22 @@
     <span class="mx-1">&middot;</span>
     <span><%= @contest.lock_time_display %></span>
   </p>
+
+  <% unless @contest.settled? %>
+    <div class="flex flex-wrap items-center gap-2">
+      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Locks in", done_label: "🔒 Entries closed", tone: "yellow",
+            on_done_modal: "it-begins", on_done_url: contest_path(@contest) %>
+      <%= render "contests/timestamp_countdown", target: @contest.concludes_at, label: "Concludes in", done_label: "🏁 Concluded", tone: "orange" %>
+    </div>
+  <% end %>
+
+  <% if @contest.live? && @contest.turf_totals? %>
+    <div class="mt-3">
+      <%= link_to live_contest_path(@contest), class: "btn btn-primary btn-sm inline-flex items-center gap-2" do %>
+        <span class="h-2 w-2 rounded-full bg-white animate-pulse"></span> Watch Live
+      <% end %>
+    </div>
+  <% end %>
 
   <!-- Stats row -->
   <div class="flex items-center gap-4 mt-3 flex-wrap">

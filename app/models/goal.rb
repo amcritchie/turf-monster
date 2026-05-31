@@ -9,6 +9,11 @@ class Goal < ApplicationRecord
   after_create :refresh_game_scores
   after_destroy :refresh_game_scores
 
+  # Live page (Turbo Streams over ActionCable). _commit so scores recomputed by
+  # refresh_game_scores (above, runs first) are committed before we broadcast.
+  after_create_commit  -> { Contest::LiveBroadcast.goal_scored(self) }
+  after_destroy_commit -> { Contest::LiveBroadcast.score_changed(game, event: :goal_removed) }
+
   def name_slug
     "goal-#{id}"
   end
