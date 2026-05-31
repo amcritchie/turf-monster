@@ -71,7 +71,13 @@
             body: JSON.stringify({ amount: amount })
           }).then(r => r.json()).then(data => {
             if (data.success) {
-              $store.solanaModal.success(data.tx, 'Minted $' + amount + ' USDC');
+              $store.solanaModal.success(data.tx, null, {
+                variant: 'generic',
+                title: 'Test USDC Minted',
+                subtitle: 'Minted $' + amount + ' test USDC to your wallet.',
+                ctaLabel: 'Browse Contests',
+                ctaHref: '<%= root_path %>'
+              });
               refreshBalanceDelayed();
             } else {
               $store.solanaModal.error(data.error || 'Faucet claim failed');
