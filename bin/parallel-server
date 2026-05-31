@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# parallel-server — spin up an ISOLATED second dev stack (web + Sidekiq) so a
+# second session/worktree can run alongside the primary dev server (:3001)
+# without colliding on port, Redis (queue + cache), or mailer links.
+#
+# Why this exists: a fresh `git worktree` has no gitignored files (.env, the
+# compiled Tailwind, etc.), Sidekiq + cache both read REDIS_URL (so two stacks
+# share a queue/cache by default), and the dev mailer host port is fixed —
+# all of which bite when two stacks run at once. This wires the isolation in
+# one command.
+#
+# Run from the PRIMARY turf-monster worktree. It will:
+#   1. create a sibling worktree off origin/main (if missing)
+#   2. copy the gitignored .env into it (secrets — no config/master.key here;
+#      secrets live in .env via RAILS_MASTER_KEY etc.)
+#   3. build Tailwind (fresh worktree has no compiled CSS)
+#   4. start Sidekiq (background) + the web server (foreground), both on an
+#      isolated Redis db, with APP_PORT set so emailed magic-links point here.
+#
+# Usage:  bin/parallel-server [PORT] [REDIS_DB]
+#           PORT      default 3002   (web + mailer-link host)
+#           REDIS_DB  default 9      (Sidekiq + Rails.cache isolation)
+#         PARALLEL_WORKTREE=/abs/path overrides the worktree location
+#         (default: <primary>-parallel).
+#
+# Stop:   Ctrl-C stops the web server; the trap also stops Sidekiq.
+# Remove the worktree entirely when done:
+#   git worktree remove <worktree> --force && git worktree prune
+#
+# NOTE: shares the dev DB (turf_monster_development) with the primary worktree.
+# For an isolated test DB when running the suite, see CLAUDE.md → Dev Server →
+# "Parallel dev server".
+#
+set -euo pipefail
+
+PORT="${1:-3002}"
+REDIS_DB="${2:-9}"
+PRIMARY="$(git rev-parse --show-toplevel)"
+WORKTREE="${PARALLEL_WORKTREE:-${PRIMARY}-parallel}"
+
+if [ ! -d "$WORKTREE" ]; then
+  echo "▶ creating worktree at $WORKTREE (off origin/main)"
+  git -C "$PRIMARY" fetch origin --quiet
+  git -C "$PRIMARY" worktree add "$WORKTREE" origin/main
+fi
+
+if [ ! -f "$WORKTREE/.env" ] && [ -f "$PRIMARY/.env" ]; then
+  cp "$PRIMARY/.env" "$WORKTREE/.env"
+  echo "▶ copied .env into the worktree"
+fi
+
+cd "$WORKTREE"
+export APP_PORT="$PORT"
+export REDIS_URL="redis://localhost:6379/${REDIS_DB}"
+
+echo "▶ building Tailwind"
+bin/rails tailwindcss:build >/dev/null
+
+echo "▶ isolated stack up — web http://localhost:${PORT}, Redis db ${REDIS_DB}"
+echo "  (Ctrl-C stops web + Sidekiq)"
+bundle exec sidekiq -q default -q mailers -c 3 &
+SIDEKIQ_PID=$!
+trap 'echo; echo "▶ stopping Sidekiq (${SIDEKIQ_PID})"; kill "${SIDEKIQ_PID}" 2>/dev/null || true' EXIT
+
+exec bin/rails server -p "$PORT"

@@ -112,6 +112,16 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 - **Stripe listener** — token-purchase + USDC-deposit flows depend on webhook delivery. Without it, `/tokens/processing` polling never resolves. Run in a separate terminal: `stripe listen --forward-to localhost:3001/webhooks/stripe --api-key $STRIPE_SECRET_KEY`. The session-printed `whsec_…` must match `STRIPE_WEBHOOK_SECRET` in `.env`.
 - **Solana RPC** — set `SOLANA_RPC_URL` to a Helius endpoint (`https://devnet.helius-rpc.com/?api-key=…`). Public devnet RPC rate-limits `getProgramAccounts` (the call behind `User#entry_token_balance`) to ~1/sec/IP and produces silent UI bugs ("$0 / Buy Tokens" even when the user has tokens). Helius URLs are in 1Password at `agent.helius`.
 
+### Parallel dev server (second worktree / session)
+
+To run a **second** dev stack alongside the primary `:3001` (e.g. a parallel agent/session, or to test a branch without disturbing the main worktree), use **`bin/parallel-server [PORT] [REDIS_DB]`** (defaults `3002` / Redis db `9`). Run it from the primary worktree; it creates a sibling worktree off `origin/main`, copies the gitignored `.env`, builds Tailwind, and starts web + Sidekiq isolated. Ctrl-C stops both; remove the worktree with `git worktree remove <path> --force && git worktree prune`.
+
+Why the isolation matters (each of these silently collides otherwise):
+- **Port + mailer links** — the dev mailer host port reads `APP_PORT` (default 3001) in `config/environments/development.rb`, so emailed links (e.g. magic links) point at *this* server instead of `:3001`.
+- **Redis** — Sidekiq + `Rails.cache` both read `REDIS_URL` (defaults db 0 / db 1). The script points both at `redis://localhost:6379/<REDIS_DB>` so a second stack doesn't process the other's jobs or share its cache.
+- **Secrets** — a fresh worktree has no `.env` (there is no `config/master.key`; secrets live in `.env` via `RAILS_MASTER_KEY`/`SECRET_KEY_BASE`/`MANAGED_WALLET_ENCRYPTION_KEY`). The script copies it from the primary.
+- **Test DB** — for the suite, use a separate DB so you don't fight the shared schema: `DATABASE_URL=postgresql:///turf_monster_test_auth RAILS_ENV=test bin/rails db:create db:schema:load test`. Test cache is `:null_store`, so anything keyed on `Rails.cache` (single-use jti, etc.) must be asserted with an injected `MemoryStore` in a service test, not via the controller.
+
 ## Deployment
 
 - **Heroku app**: `turf-monster`
