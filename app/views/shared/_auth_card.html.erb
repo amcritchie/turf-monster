@@ -39,16 +39,7 @@
                 if (!email || this.sending) return;
                 this.sending = true;
                 try {
-                  var body = new URLSearchParams(); body.set('email', email);
-                  await fetch('<%= magic_link_request_path %>', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/x-www-form-urlencoded',
-                      'Accept': 'application/json',
-                      'X-CSRF-Token': (document.querySelector('meta[name=csrf-token]') || {}).content || ''
-                    },
-                    body: body.toString()
-                  });
+                  await window.postMagicLink(email);
                   $store.modals.open('auth', { step: 'magic-link-sent', sentEmail: email });
                 } catch (e) { /* network — leave the form so they can retry */ }
                 finally { this.sending = false; }

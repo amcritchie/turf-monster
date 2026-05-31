@@ -560,31 +560,14 @@ window.selectionBoard = function() {
       }
       p.submitting = 'magic-link';
       try {
-        // Preserve the cart for the email round trip.
+        // Preserve the cart for the email round trip, then request the link.
+        // picks ride as a comma string so the emailed link returns to the
+        // contest with the lineup (window.postMagicLink owns the request shape).
         this.saveCartForRedirect(true);
         var picks = this.selectionOrder.slice(0, this.picksRequired).map(function (id) { return parseInt(id, 10); });
 
-        // Form-encoded (not JSON) so the rack-attack `magic_link/email`
-        // per-mailbox throttle — which reads req.params before ActionDispatch
-        // parses a JSON body — actually applies to this (primary) path. The
-        // Accept header still selects the JSON response. picks ride as a comma
-        // string; the controller splits on comma.
-        var body = new URLSearchParams();
-        body.set('email', email);
-        body.set('contest', this.contestId);
-        body.set('picks', picks.join(','));
-
-        var resp = await fetch('/magic_link', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': this.csrfToken,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json'
-          },
-          body: body.toString()
-        });
-        var data = await resp.json();
-        if (!resp.ok || !data.success) {
+        var data = await window.postMagicLink(email, { contest: this.contestId, picks: picks.join(',') });
+        if (!data || !data.success) {
           p.formError = (data && data.error) || 'Could not send the link. Try again.';
           p.submitting = null;
           return;

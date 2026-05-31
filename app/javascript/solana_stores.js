@@ -1,6 +1,7 @@
 // Solana Alpine stores — module supplement
-// The solanaModal store, solanaWalletConnect, and fireSuccessConfetti are registered
-// inline in application.html.erb (before Alpine) to avoid module timing issues.
+// The solanaModal store, solanaConnectAndVerify/postMagicLink, and
+// fireSuccessConfetti are registered inline in application.html.erb (before
+// Alpine) to avoid module timing issues.
 // This module registers the wallet watcher store (fine to load late).
 
 function registerWalletStore() {

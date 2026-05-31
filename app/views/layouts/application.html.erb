@@ -132,6 +132,30 @@
           })).json();
         };
 
+        // Shared magic-link request. Form-encoded (so the rack-attack per-email
+        // throttle, which reads req.params before JSON parsing, applies) with
+        // Accept: json for the response. opts.contest / opts.picks ride along
+        // for the in-contest flow so the emailed link returns to the contest.
+        // Resolves the parsed JSON. Inline so every scope (standalone form,
+        // board, modal) shares one request shape.
+        window.postMagicLink = async function(email, opts) {
+          opts = opts || {};
+          var body = new URLSearchParams();
+          body.set('email', email || '');
+          if (opts.contest) body.set('contest', opts.contest);
+          if (opts.picks)   body.set('picks', opts.picks);
+          var resp = await fetch('/magic_link', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+              'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: body.toString()
+          });
+          try { return await resp.json(); } catch (e) { return { success: resp.ok }; }
+        };
+
         // Solana modal store — registered when Alpine starts
         document.addEventListener('alpine:init', function() {
           if (Alpine.store('solanaModal')) return;
