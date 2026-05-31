@@ -53,17 +53,18 @@ Single-elimination survivor pick (one team per round, must win to advance). Sepa
 ## Contest Lifecycle
 
 ```
-pending → open → locked → settled
+pending → open → settled    (locked / concluded are DERIVED, not statuses)
 ```
 
 - **pending**: Contest created, not yet accepting entries (was `draft` pre-v0.4.1 of audit; Rails 7 reserves `:new` so `pending` was chosen instead)
 - **open**: Players can submit entries (toggle selections, hold-to-confirm)
-- **locked**: No new entries, waiting for game results
 - **settled**: All games scored, entries ranked, payouts distributed
+- **locked** (derived, NOT a status column): `Contest#locked?` = `settled? || (starts_at.present? && Time.current >= starts_at)`. Locking is a derived time-gate mirrored from the on-chain `lock_timestamp` — there is no `locked` status. The program rejects entries once chain time passes `lock_timestamp`.
+- **concluded** (derived): `Contest#concluded?` derived from `concludes_at` (mirrored from the on-chain `conclusion_timestamp`). `Contest#live?` = `locked? && !settled?`.
 
 ### Contest Targeting (root page)
 
-- Root (`/`) redirects to the most recent open/locked/settled contest's **show** page (`/contests/:slug`)
+- Root (`/`) redirects to the most recent open/settled contest's **show** page (`/contests/:slug`)
 - Falls back to `/contests` index if no eligible contest exists
 - `Contest.ranked` scope and `Contest.target` still exist but root no longer uses them
 - `load_contest_board_data` — private method used by the `show` action
@@ -77,15 +78,17 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 2. Contest info: name, creator, lock time, stats row (prizes, entry fee, entries count, "+ Add Nth Entry" link)
 3. Conditional cards: seeds+share (entered users) or info cards (new users)
 4. Inline matchup board (not entered) or compact leaderboard (entered)
-5. Admin section (Fill/Lock/Grade + Simulate buttons) — admin only, unsettled contests
-6. Contest selector — other open/locked contests
+5. Admin section (Fill / Lock-time / Grade + Simulate buttons) — admin only, unsettled contests
+6. Contest selector — other open/settled contests
 
 **Partial `compact` flag**: Both `_turf_totals_board` and `_turf_totals_leaderboard` accept `compact: true` to hide admin buttons, onchain details, and info cards when rendered inline.
+
+`_turf_totals_leaderboard` is **locals-capable** (`local_assigns.fetch(:x, @x)` shim per ivar) so it can render from a model broadcast (`Contest::LiveBroadcast`) where no controller ivars are set, as well as inline from the show action.
 
 ### Admin Actions (contest show page + navbar)
 
 - **Fill Contest** — generates random entries (6 random matchups each). Cycles through seeded users. Deduplicates against existing entries.
-- **Lock Contest** — transitions open → locked
+- **Lock now / Lock in 60s / Conclude in 60s** — set the on-chain `lock_timestamp` / `conclusion_timestamp` (mirrored to `starts_at` / `concludes_at`). **Phantom-signed** (1-of-3; admin's wallet is a vault signer) via `prepare_lock_time`/`confirm_lock_time` + `prepare_conclusion_time`/`confirm_conclusion_time` (ContestsController) + `app/javascript/lock_contest.js`. The show page renders a live lock COUNTDOWN and an "It Begins" modal when it hits zero. There is NO more `lock_contest`/`unlock_contest` (locking is a derived time-gate, not a status transition).
 - **Jump** — simulates all game results and settles the contest in one click
 - **Grade Contest** — scores entries based on game results, assigns ranks, distributes payouts. Settlement creates a `PendingTransaction` for 2-of-3 multisig cosigning (see Treasury).
 - **Reset** (navbar) — clears all entries/selections, resets games, sets contest back to open
@@ -251,7 +254,7 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 ## Models
 
 - **User** — name, username, email (nullable), solana_address, wallet_type, role, slug. Balance is on-chain USDC. See `docs/AUTH.md`.
-- **Contest** — name, tagline, entry_fee_cents, status, max_entries, rank, season_id (OPSEC-023), slate association, onchain fields, slug. `belongs_to :user` (creator, optional). `has_one_attached :contest_image` (Active Storage). Helpers: `lock_time_display`, `active_entry_count`, `locks_at` (alias for `starts_at`). Contest's matchups come from `SlateMatchup` via the associated `Slate` — there is no separate `ContestMatchup` model.
+- **Contest** — name, tagline, entry_fee_cents, status (`pending`/`open`/`settled` — no `locked`), max_entries, rank, season_id (OPSEC-023), slate association, onchain fields, slug. On-chain `lock_timestamp`/`conclusion_timestamp` mirrored to the `starts_at`/`concludes_at` columns. `belongs_to :user` (creator, optional). `has_one_attached :contest_image` (Active Storage). Helpers: `lock_time_display`, `active_entry_count`, `locks_at` (alias for `starts_at`), `locked?`, `concluded?`, `live?`, `games_by_phase`. Contest's matchups come from `SlateMatchup` via the associated `Slate` — there is no separate `ContestMatchup` model.
 - **Entry** — user + contest, score, status (cart/active/complete/abandoned), rank, payout_cents, onchain fields, slug (includes id)
 - **Selection** — joins entry + slate_matchup (unique pair)
 - **Team** — name, short_name, emoji, color_primary/secondary, slug
@@ -290,7 +293,7 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 
 Every write action MUST use `rescue_and_log` with target/parent context. See top-level `CLAUDE.md` for full pattern docs.
 
-- ContestsController: toggle_selection, enter, clear_picks → `target: entry, parent: @contest`. Grade, fill, lock, jump, reset, update → `target: @contest`.
+- ContestsController: toggle_selection, enter, clear_picks → `target: entry, parent: @contest`. Grade, fill, jump, reset, update, prepare/confirm_lock_time, prepare/confirm_conclusion_time → `target: @contest`.
 - AccountsController: update, unlink_google, change_password → `target: current_user`
 
 ## Routes
@@ -298,7 +301,8 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 ### Public
 - `/` — contests#world_cup (redirects to most recent contest's show page)
 - `/contests` — contests#index (card grid, newest first, banner images, "My Contests" + "New Contest" buttons)
-- `/contests/:id` — contest show (mobile-first contest page — hero, inline board/leaderboard, admin section, contest selector)
+- `/contests/:id` — contest show (mobile-first contest page — hero, inline board/leaderboard, admin section, contest selector). "Watch Live" button surfaces when `live?`.
+- `/contests/:id/live` — contests#live → `contests/live.html.erb`. Live active-contest page: real-time leaderboard + chat + a single auto-rotating games row, pushed over ActionCable via `Contest::LiveBroadcast` (broadcasts on Goal create/destroy + `Admin::GamesController#complete_game`). Toast fires from a hidden goal-feed + MutationObserver (Turbo doesn't run scripts in broadcast templates).
 - `/contests/:id/edit` — admin contest editor (name, tagline, status, rank, image, locks_at)
 - `/teams`, `/teams/:slug` — team index/show
 - `/games` — games index
@@ -308,9 +312,10 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 ### Contest Actions (POST)
 - `toggle_selection`, `enter`, `clear_picks` — player actions
 - `prepare_entry`, `confirm_onchain_entry` — Phantom onchain entry flow
+- `prepare_lock_time`, `confirm_lock_time`, `prepare_conclusion_time`, `confirm_conclusion_time` — Phantom-signed (1-of-3) set of the on-chain `lock_timestamp` / `conclusion_timestamp`. Replaces the old `lock_contest`/`unlock_contest`. See `app/javascript/lock_contest.js`.
 - `finalize` — Phantom-driven contest creation step 2 (collection route, no `:id`). See `ContestsController#create` + `#finalize`.
 - `prepare_onchain_contest`, `confirm_onchain_contest` — legacy Phantom-fund-existing-contest flow; still referenced by `e2e/onchain.spec.js`. Not used by the UI anymore.
-- `grade`, `fill`, `lock`, `jump`, `reset` — admin actions
+- `grade`, `fill`, `jump`, `reset` — admin actions (no more `lock`; locking is the Phantom-signed `*_lock_time` flow above)
 - `grade_round` — survivor admin action: scores the current SurvivorRound + marks picks survived/eliminated
 - `payout_entry` — individual entry payout
 

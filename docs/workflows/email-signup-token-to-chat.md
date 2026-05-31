@@ -6,13 +6,13 @@
 **Trigger:** Anonymous visitor opens `/` (`GET /`)
 **Actors:** User / Rails / Stripe / Sidekiq / Solana RPC (devnet) / Resend (post-flow, optional)
 **Outcome:** New `users` row, custodial wallet generated, on-chain `UserAccount` PDA created, one Stripe-funded on-chain `EntryTokenAccount` minted and consumed, an `entries` row for the main contest in status `active` with 6 `selections`, and one visible `messages` row broadcast over ActionCable to that contest's chat stream.
-**Preconditions:** at least one contest in status `open`/`locked`/`settled` exists (otherwise root falls back to `/contests`); Stripe keys set (`Rails.application.config.x.stripe_enabled`); a `SeasonConfig` row exists with a non-zero `current_season_id` (`contests_controller.rb:297`); the chosen contest is on-chain (token entry requires `contest.onchain?` — see `contests_controller.rb:311`).
+**Preconditions:** at least one contest in status `open`/`settled` exists (otherwise root falls back to `/contests`; `locked` is no longer a status — it's a derived time-gate); Stripe keys set (`Rails.application.config.x.stripe_enabled`); a `SeasonConfig` row exists with a non-zero `current_season_id` (`contests_controller.rb:297`); the chosen contest is on-chain (token entry requires `contest.onchain?` — see `contests_controller.rb:311`).
 
 ## Sequence
 
 1. **Visitor lands on `/`** — `config/routes.rb:45` → `ContestsController#world_cup` (`app/controllers/contests_controller.rb:210`).
    - Skipped from `:require_authentication` for logged-out browsing (`contests_controller.rb:4`).
-   - Picks the contest in this order: `SeasonConfig.main_contest_explicit` → `SeasonConfig.main_contest` (open-only fallback, `app/models/season_config.rb:33-37`) → most recent `open/locked/settled` contest (`contests_controller.rb:215-217`).
+   - Picks the contest in this order: `SeasonConfig.main_contest_explicit` → `SeasonConfig.main_contest` (open-only fallback, `app/models/season_config.rb:33-37`) → most recent `open/settled` contest (`contests_controller.rb:215-217`; `locked` dropped from the status enum).
    - 302s to `contest_path(@contest)` (`contests_controller.rb:219`).
 
 2. **Show page renders for logged-out visitor** — `ContestsController#show` (`contests_controller.rb:222`) → `app/views/contests/show.html.erb`.
@@ -58,7 +58,7 @@
 
 8. **Back to root → main contest** — user clicks the navbar "Turf Monster" home link → `GET /` → step 1 repeats → 302 to `contest_path(@contest)`.
    - Same `world_cup` action; same `SeasonConfig.main_contest_explicit` → fallback chain (`contests_controller.rb:215-217`).
-   - "Main contest" surfacing logic = the admin's explicit pick in `/admin/site_config` (set via `SeasonConfig.set_main_contest!`, `season_config.rb:45-48`), then `main_contest`'s open-only fallback, then most-recent of `[:open, :locked, :settled]`. **No** highest-pot ordering.
+   - "Main contest" surfacing logic = the admin's explicit pick in `/admin/site_config` (set via `SeasonConfig.set_main_contest!`, `season_config.rb:45-48`), then `main_contest`'s open-only fallback, then most-recent of `[:open, :settled]`. **No** highest-pot ordering.
 
 9. **Build a 6-pick lineup** — for each tap on a matchup tile, the board POSTs to `ContestsController#toggle_selection` (`contests_controller.rb:652-673`).
    - Rejects if contest not `open?` (`contests_controller.rb:653-655`).

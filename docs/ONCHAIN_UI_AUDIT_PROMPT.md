@@ -79,7 +79,7 @@ This is a defensive security review of code I own. Look for OWASP-style bugs (XS
    - `app/controllers/admin/` — anything that calls into `Solana::Vault`
    - `app/views/admin/`
    - `app/views/contests/generator.html.erb`
-   - The v0.16 operator instructions: `register_currency`, `deactivate_currency`, `lock_contest`, `unlock_contest`, `cancel_contest`, `settle_contest`, `close_contest`, `sweep_operator_revenue`, `mint_entry_token`, `pause`, `unpause`
+   - The v0.16 operator instructions: `register_currency`, `deactivate_currency`, `lock_contest`, `unlock_contest`, `cancel_contest`, `settle_contest`, `close_contest`, `sweep_operator_revenue`, `mint_entry_token`, `pause`, `unpause` (NOTE: `lock_contest`/`unlock_contest` superseded by the derived time-lock primitive in turf-vault v0.17/v0.18 — locking now flows through the Phantom-signed `prepare_lock_time`/`confirm_lock_time` + `prepare_conclusion_time`/`confirm_conclusion_time` setting `lock_timestamp`/`conclusion_timestamp`)
    - Look for: routes reachable by non-admins (the `require_admin` callback IS set per the prelaunch audit, but re-verify); CSRF on POST/PATCH ops; authority confusion (INIT_AUTHORITY vs MULTISIG_SIGNERS); operator dry-run vs broadcast confusion
 
 ### B. Solana plumbing

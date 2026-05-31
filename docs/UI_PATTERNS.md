@@ -22,7 +22,7 @@
 - **Tailwind config**: `primary` palette is dynamic from shared studio config (CSS vars). `warning` palette defined locally in `config/tailwind.config.js`. Safelist includes `bg`, `text`, `border`, `ring` utilities for brand colors.
 
 ### Status Badges
-mint=open, yellow=locked, gray=settled, violet=draft
+mint=open, yellow=locked (DERIVED time-gate, not a status — `Contest#locked?`), gray=settled, violet=pending
 
 ## Button System
 

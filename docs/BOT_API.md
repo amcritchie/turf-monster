@@ -243,7 +243,7 @@ Api::V1::AccountsController      — show
 
 - **Rate limiting**: Per wallet address, configurable per endpoint
 - **Bot registration**: Admin registers bot wallets, assigns roles
-- **Webhooks**: Notify bots of contest state changes (open → locked → settled)
+- **Webhooks**: Notify bots of contest state changes (open → settled; plus the derived lock/conclusion time-gates)
 - **Batch selections**: Submit all 6 selections at once instead of toggling individually
 - **Leaderboard API**: `GET /api/v1/contests/:slug/leaderboard`
 - **WebSocket**: Real-time contest updates for active bots
