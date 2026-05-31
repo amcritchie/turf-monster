@@ -150,22 +150,17 @@ test("ref → email signup → entry credits the inviter", async ({ page }) => {
 
   const ts = Date.now().toString(36);
   const email = `email-${ts}@test.com`;
-  const password = "password123";
 
   await seedRef(page, INVITER_FOR_EMAIL);
 
-  await page.goto("/signup");
-  await page.fill("#user_email", email);
-  await page.fill("#user_password", password);
-  // The signup form is single-password (no confirmation field) — see
-  // app/views/registrations/new.html.erb.
-  await page.getByRole("button", { name: "Sign Up", exact: true }).click();
-
-  // Email signup → /account/complete_profile (skipped if username already
-  // auto-set, which it is via User#ensure_username). Either way, we're
-  // logged in by the time turbo:load fires.
+  // Email signup is a passwordless magic link now. Mint + consume a token;
+  // the reference cookie set by seedRef() is read at consume time and written
+  // onto the new user (same mechanism as the Google path above).
+  const tokenResp = await page.request.post("/test/magic_link_token", { data: { email } });
+  const { url } = await tokenResp.json();
+  await page.goto(url);
   await page.waitForURL(
-    (url) => !url.pathname.startsWith("/signup"),
+    (u) => !u.pathname.startsWith("/magic_link"),
     { timeout: 15_000 }
   );
 

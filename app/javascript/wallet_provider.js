@@ -139,26 +139,166 @@ var KeypairProvider = {
 };
 
 
+// --- Wallet Standard discovery (the multi-wallet hub) ---
+// Implements the @wallet-standard/app handshake in plain JS — no bundler/npm.
+// Phantom, Solflare, Backpack, and any other compliant wallet register
+// themselves here. Each is normalized into the SAME provider interface the
+// rest of the app already uses (connect / signMessage / signTransaction /
+// on('accountChanged') / disconnect / publicKey), so the SIWS flow is unchanged.
+var _wsWallets = [];
+
+function _wsHasSolana(wallet) {
+  return !!(wallet && wallet.chains && wallet.chains.some(function(c) { return c.indexOf('solana:') === 0; }));
+}
+
+// Normalize a Wallet Standard `Wallet` into our provider interface. The byte
+// contract is preserved: signMessage takes the same Uint8Array the SIWS code
+// produces with TextEncoder, and returns { signature: Uint8Array } — exactly
+// what encodeBase58() expects, so /auth/solana/verify needs no change.
+function _makeWsAdapter(wallet) {
+  var account = null;
+  function pubObj(acct) {
+    return {
+      toBytes:  function() { return acct.publicKey; },
+      toBase58: function() { return acct.address; },
+      toString: function() { return acct.address; }
+    };
+  }
+  return {
+    name: wallet.name,
+    icon: wallet.icon, // data: URI provided by the wallet — rendered in the hub
+    _raw: wallet,
+    isAvailable: function() { return true; },
+    connect: function(opts) {
+      var feat = wallet.features['standard:connect'];
+      var silent = !!(opts && opts.onlyIfTrusted);
+      return feat.connect(silent ? { silent: true } : {}).then(function(res) {
+        var accts = (res && res.accounts) || wallet.accounts || [];
+        account = accts[0] || null;
+        if (!account) throw new Error('No account authorized');
+        return { publicKey: pubObj(account) };
+      });
+    },
+    signMessage: function(encoded /*, encoding ignored — WS always takes raw bytes */) {
+      if (!account) return Promise.reject(new Error('Wallet not connected'));
+      return wallet.features['solana:signMessage'].signMessage({ account: account, message: encoded })
+        .then(function(outputs) {
+          var out = Array.isArray(outputs) ? outputs[0] : outputs;
+          return { signature: out.signature };
+        });
+    },
+    signTransaction: function(tx) {
+      var feat = wallet.features['solana:signTransaction'];
+      if (!feat) return Promise.reject(new Error('Wallet cannot sign transactions'));
+      if (!account) return Promise.reject(new Error('Wallet not connected'));
+      var wire = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      return feat.signTransaction({ account: account, transaction: new Uint8Array(wire) })
+        .then(function(outputs) {
+          var out = Array.isArray(outputs) ? outputs[0] : outputs;
+          return solanaWeb3.Transaction.from(out.signedTransaction);
+        });
+    },
+    on: function(event, cb) {
+      // Normalize WS 'standard:events' change → the legacy 'accountChanged'
+      // the wallet watcher store listens for.
+      if (event !== 'accountChanged') return;
+      var feat = wallet.features['standard:events'];
+      if (!feat || !feat.on) return;
+      feat.on('change', function(props) {
+        // A change event only carries the keys that changed; only react when
+        // it actually includes accounts (an empty array = disconnect → null).
+        if (props && 'accounts' in props) {
+          account = (props.accounts && props.accounts[0]) || null;
+          cb(account ? pubObj(account) : null);
+        }
+      });
+    },
+    disconnect: function() {
+      var feat = wallet.features['standard:disconnect'];
+      account = null;
+      return (feat && feat.disconnect) ? feat.disconnect() : Promise.resolve();
+    },
+    get publicKey() { return account ? pubObj(account) : null; }
+  };
+}
+
+function _wsRegister(wallet) {
+  if (!wallet || !wallet.features) return;
+  if (!_wsHasSolana(wallet)) return;
+  // Require the features the SIWS sign-in flow needs.
+  if (!wallet.features['standard:connect'] || !wallet.features['solana:signMessage']) return;
+  if (_wsWallets.some(function(a) { return a._raw === wallet; })) return; // de-dupe
+  _wsWallets.push(_makeWsAdapter(wallet));
+}
+
+// The app's side of the handshake. `register` is what wallets call (directly
+// for late wallets via our app-ready broadcast, or via the callback they
+// dispatch when they loaded before us).
+var _wsApi = {
+  version: '1.0.0',
+  register: function() {
+    for (var i = 0; i < arguments.length; i++) _wsRegister(arguments[i]);
+    return function() {}; // unregister no-op
+  }
+};
+
+(function _initWalletStandard() {
+  try {
+    // Wallets that loaded BEFORE us dispatched register-wallet with a callback
+    // expecting our api ( ({register}) => register(wallet) ).
+    window.addEventListener('wallet-standard:register-wallet', function(e) {
+      if (typeof e.detail === 'function') { try { e.detail(_wsApi); } catch (err) {} }
+    });
+    // Announce readiness so wallets present now (and any that load later)
+    // call _wsApi.register with themselves.
+    window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: _wsApi }));
+  } catch (e) { /* non-browser / SSR — ignore */ }
+})();
+
+
 // --- Registry ---
-// window.walletProvider — detect best provider, get by name, check availability
+// window.walletProvider — detect best provider, get by name, list for the hub
 var walletProvider = {
-  // Returns the best available provider: KeypairProvider if configured, else PhantomProvider
+  // Single "best" provider for call sites that don't let the user choose
+  // (silent re-auth, the legacy single-button connect). Keypair wins for tests;
+  // legacy Phantom keeps its existing precedence; else the first discovered
+  // Wallet Standard wallet.
   detect: function() {
     if (KeypairProvider.isAvailable()) return KeypairProvider;
     if (PhantomProvider.isAvailable()) return PhantomProvider;
+    if (_wsWallets.length) return _wsWallets[0];
     return null;
   },
 
-  // Get a specific provider by name
+  // Get a specific provider by name (used by the hub picker). Matches a
+  // discovered Wallet Standard wallet by display name (case-insensitive),
+  // with 'phantom'/'keypair' legacy aliases.
   get: function(name) {
-    if (name === 'phantom') return PhantomProvider;
-    if (name === 'keypair') return KeypairProvider;
+    if (!name) return null;
+    var lower = ('' + name).toLowerCase();
+    if (lower === 'keypair') return KeypairProvider;
+    for (var i = 0; i < _wsWallets.length; i++) {
+      if (_wsWallets[i].name && _wsWallets[i].name.toLowerCase() === lower) return _wsWallets[i];
+    }
+    if (lower === 'phantom') return PhantomProvider; // legacy fallback
     return null;
+  },
+
+  // Connectable wallets for the hub picker. CALL AT CLICK TIME — the list
+  // fills in asynchronously as wallets register after module load, so reading
+  // it during x-data init would return an empty list.
+  available: function() {
+    var list = _wsWallets.slice();
+    // Surface a legacy Phantom extension that didn't register via Wallet
+    // Standard (older builds) so it never silently drops out of the hub.
+    var hasPhantom = list.some(function(a) { return a.name && a.name.toLowerCase() === 'phantom'; });
+    if (!hasPhantom && PhantomProvider.isAvailable()) list.push(PhantomProvider);
+    return list;
   },
 
   // True if any provider is available
   isAvailable: function() {
-    return KeypairProvider.isAvailable() || PhantomProvider.isAvailable();
+    return KeypairProvider.isAvailable() || PhantomProvider.isAvailable() || _wsWallets.length > 0;
   },
 
   // Check if mobile (no extension expected)

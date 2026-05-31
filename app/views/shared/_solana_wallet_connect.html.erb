@@ -1,40 +1,14 @@
 <%# locals: (link_mode: false) %>
-<%# OPSEC-005: when link_mode is true the user is logged in, so pass their
-    id into the JS so the signed wallet message can embed `User-ID: <id>`
-    and the server can refuse signatures captured against a different
-    session's nonce. Login flow (link_mode: false) leaves the id null. %>
-<div x-data="solanaWalletConnect(<%= link_mode %>, <%= (link_mode && current_user&.id) || 'null' %>)" x-cloak>
-  <%# Wallet available (Phantom extension, keypair, etc.) — normal connect flow %>
-  <template x-if="walletAvailable">
-    <button @click="connect()" :disabled="connecting"
-            class="btn btn-secondary btn-lg w-full gap-3 hover:shadow-violet/20 disabled:cursor-wait">
-      <img src="/phantom-white.png" alt="Wallet" class="w-5 h-5">
-      <span x-text="statusText">Connect Wallet</span>
-    </button>
-  </template>
-
-  <%# Mobile: no extension, use deep link to Phantom app %>
-  <template x-if="!walletAvailable && isMobile">
-    <%# OPSEC-005: pass current_user.id when linking so the SIWS message
-        embeds `User-ID: <id>`. Login flow (link_mode: false) passes null. %>
-    <button onclick="startPhantomDeepLink(<%= link_mode %>, <%= (link_mode && current_user&.id) || 'null' %>)"
-            class="btn btn-secondary btn-lg w-full gap-3">
-      <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
-      Connect Phantom
-    </button>
-  </template>
-
-  <%# Desktop: no wallet, show install link %>
-  <template x-if="!walletAvailable && !isMobile">
-    <a href="https://phantom.app/download" target="_blank" rel="noopener"
-       class="btn btn-secondary btn-lg w-full gap-3">
-      <img src="/phantom-white.png" alt="Phantom" class="w-5 h-5">
-      Install Phantom
-    </a>
-  </template>
-
-  <template x-if="error">
-    <p class="text-red-400 text-sm mt-2 text-center" x-text="error"></p>
-  </template>
+<%# Solana auth entry point — opens the "Connect Wallet" picker modal
+    (modals/_wallet_connect). OPSEC-005: when link_mode is true the user is
+    logged in, so their id is passed so the signed wallet message can embed
+    `User-ID: <id>`. The connect itself runs inside the modal via
+    window.solanaConnectAndVerify. %>
+<div x-data x-cloak>
+  <button type="button"
+          @click="$store.modals.open('wallet-connect', { linkMode: <%= link_mode %>, currentUserId: <%= (link_mode && current_user&.id) || 'null' %> })"
+          class="btn btn-neutral btn-lg w-full gap-3">
+    <img src="/solana-mark.svg" alt="" class="w-5 h-5">
+    <span>Solana</span>
+  </button>
 </div>
-<%# JS extracted to app/javascript/solana_stores.js %>

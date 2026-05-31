@@ -12,6 +12,16 @@ class UserMailer < ApplicationMailer
     mail(to: user.email, subject: "Verify your Turf Monster email")
   end
 
+  # Unified create-or-login magic link. `email` is a raw string (the user may
+  # not exist yet). Token is a signed MagicLink payload (email + return_to +
+  # jti, 15-min single-use). Clicking the link logs the recipient in or creates
+  # their account. Contest-aware copy when the link came from an entry flow.
+  def magic_link(email, token, contest: nil)
+    @contest = contest
+    @magic_url = magic_link_url(token: token)
+    mail(to: email, subject: "Your Turf Monster sign-in link")
+  end
+
   # Self-custody wallet export (task #11). Token is a signed payload from
   # AccountsController#initiate_wallet_export, valid 30 min. The recipient
   # clicks the link to land on the reveal page (Stage 2 — WalletExportsController#show).

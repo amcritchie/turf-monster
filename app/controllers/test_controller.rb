@@ -170,6 +170,29 @@ class TestController < ApplicationController
     }
   end
 
+  # Mint a magic-link token for an email so Playwright can drive the
+  # create-or-login consume flow without a real inbox. Mirrors what
+  # MagicLinksController#create emails (contest + validated picks fold into the
+  # signed return_to).
+  #
+  # SECURITY: this hands out a LIVE, consumable sign-in credential for ANY
+  # email — an account-takeover primitive if exposed. The route guard only
+  # blocks production, so we additionally hard-gate to test/development here:
+  # never let a staging / review-app dyno (RAILS_ENV != production) serve it.
+  def magic_link_token
+    return head :forbidden unless Rails.env.test? || Rails.env.development?
+
+    contest = Contest.find_by(slug: params[:contest].presence)
+    return_to = contest ? contest_path(contest) : nil
+    if contest && params[:picks].present?
+      ids   = params[:picks].to_s.split(",").map(&:to_i).select(&:positive?).first(6)
+      picks = ids & contest.matchups.where(id: ids).pluck(:id)
+      return_to = "#{return_to}?picks=#{picks.join(',')}" if picks.present?
+    end
+    token = MagicLink.generate(email: params[:email].to_s, return_to: return_to)
+    render json: { ok: true, token: token, url: magic_link_path(token: token) }
+  end
+
   # Read-only JSON view of a user's referral state so specs can assert
   # without scraping HTML. Looks up by slug (path param).
   def user_info

@@ -1,0 +1,109 @@
+# Unified create-or-login email magic link (replaces the password UI).
+#
+#   POST /magic_link        — request a link (email [, contest, picks, return_to])
+#   GET  /magic_link/:token — consume it: log in OR create the account
+#
+# create-or-login: clicking the link IS proof of email ownership, so an email
+# that collides with a Google/wallet-only account that was never email-verified
+# is safely logged in here and stamped email_verified_at (unlike from_omniauth,
+# which refuses that collision precisely because it lacked this proof).
+class MagicLinksController < ApplicationController
+  skip_before_action :require_authentication
+
+  # Respond uniformly for any well-formed email. Under create-or-login every
+  # address is "valid" (it logs in or signs up), so there is nothing to
+  # enumerate — but staying uniform keeps it that way if invite-only is ever
+  # added. A malformed email gets the same response with no mail sent.
+  def create
+    email = params[:email].to_s.strip.downcase
+    if email.match?(URI::MailTo::EMAIL_REGEXP)
+      token = MagicLink.generate(email: email, return_to: resolved_return_to)
+      UserMailer.magic_link(email, token, contest: @magic_contest).deliver_later
+    end
+    respond_to do |format|
+      format.json { render json: { success: true } }
+      format.html { redirect_to login_path, notice: "Check your inbox — we just emailed you a sign-in link." }
+    end
+  end
+
+  def consume
+    # The token sits in the URL; keep it out of Referer headers on the
+    # consume page's subresource loads (logo, fonts, analytics). Single-use +
+    # 15-min TTL is the primary defence; this closes the passive-leak gap.
+    # NOTE: aggressive email link-scanners (Outlook SafeLinks, Mimecast) may
+    # pre-fetch the link and burn the single-use token before the human clicks
+    # — a known magic-link tradeoff; documented for support.
+    response.set_header("Referrer-Policy", "no-referrer")
+    result = MagicLink.consume(params[:token])
+    user = User.find_by(email: result.email)
+    user ? sign_in_existing(user, result) : sign_up_new(result)
+  rescue MagicLink::InvalidToken
+    redirect_to login_path, alert: "That sign-in link is invalid or has expired. Request a fresh one below."
+  end
+
+  private
+
+  def sign_in_existing(user, result)
+    set_app_session(user)
+    user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
+    redirect_to safe_path(result.return_to) || root_path, notice: "You're signed in."
+  end
+
+  # Mirrors RegistrationsController#create: build → configure_new_user → save!
+  # (fires generate_managed_wallet! + enqueue_onchain_account_setup) → land on
+  # the entry-tokens upsell. No password is set — a magic-link user has a blank
+  # password_digest (has_password? false), which is the intended hidden fallback.
+  def sign_up_new(result)
+    user = User.new(email: result.email, reference: cookies[:reference].presence&.to_s&.first(64))
+    Studio.configure_new_user.call(user)
+    rescue_and_log(target: user) do
+      user.save!
+      cookies.delete(:reference)
+      user.update!(email_verified_at: Time.current)
+      set_app_session(user)
+      redirect_to safe_path(result.return_to) || tokens_buy_path,
+                  notice: Studio.welcome_message.call(user)
+    end
+  rescue ActiveRecord::RecordNotUnique
+    # Two valid tokens for the same brand-new email consumed near-simultaneously
+    # both miss the find_by and race to save!; the loser hits the unique index.
+    # That's benign — the account now exists, so just log the winner in.
+    existing = User.find_by(email: result.email)
+    return sign_in_existing(existing, result) if existing
+
+    redirect_to login_path, alert: "We couldn't finish creating your account. Please try again."
+  rescue StandardError => e
+    Rails.logger.error("[MagicLinksController#consume] signup failed #{e.class}: #{e.message}")
+    redirect_to login_path, alert: "We couldn't finish creating your account. Please try again."
+  end
+
+  # Derives the post-consume landing path server-side (so it rides inside the
+  # signed token and can't be tampered). A contest slug becomes the contest
+  # page; validated picks ride along as ?picks= so the board can rehydrate a
+  # guest's lineup even across a different browser/tab (where localStorage is
+  # unavailable).
+  def resolved_return_to
+    @magic_contest = Contest.find_by(slug: params[:contest].presence)
+    if @magic_contest
+      picks = sanitized_picks
+      picks.present? ? "#{contest_path(@magic_contest)}?picks=#{picks.join(',')}" : contest_path(@magic_contest)
+    else
+      safe_path(params[:return_to])
+    end
+  end
+
+  # Digits only, max 6, intersected with the contest's real matchups so a
+  # tampered query can't smuggle arbitrary ids back into the board.
+  def sanitized_picks
+    ids = params[:picks].to_s.split(",").map(&:to_i).select(&:positive?).first(6)
+    return [] if ids.empty? || @magic_contest.nil?
+
+    valid = @magic_contest.matchups.where(id: ids).pluck(:id)
+    ids & valid
+  end
+
+  def safe_path(path)
+    p = path.to_s
+    p.start_with?("/") && !p.start_with?("//") ? p : nil
+  end
+end

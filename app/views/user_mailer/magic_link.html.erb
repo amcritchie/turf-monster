@@ -1,0 +1,22 @@
+<h1>Your sign-in link</h1>
+
+<% if @contest %>
+  <p>You're almost in <strong><%= @contest.name %></strong>! Tap the button below to
+     sign in (or create your account) — you'll land right back on the contest to
+     finish your entry:</p>
+
+  <p><%= link_to "Sign in & finish my entry", @magic_url %></p>
+<% else %>
+  <p>Tap the button below to sign in to Turf Monster. If you don't have an account
+     yet, we'll create one for you — no password needed:</p>
+
+  <p><%= link_to "Sign in to Turf Monster", @magic_url %></p>
+<% end %>
+
+<p>If the button doesn't work, copy and paste this URL into your browser:</p>
+<p><%= @magic_url %></p>
+
+<p>Open this link on this device to finish. It expires in 15 minutes and can only
+   be used once. If you didn't request it, you can safely ignore this message.</p>
+
+<p>— Turf Monster</p>

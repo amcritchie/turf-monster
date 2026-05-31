@@ -236,32 +236,61 @@ window.selectionBoard = function() {
         try { sessionStorage.removeItem('pendingAuthStep'); } catch (_) {}
       }
 
-      // Restore guest cart that was saved before an external auth redirect
-      // (e.g. Google OAuth). Only replay when we're now logged in AND the
-      // saved cart matches this contest. Auto-enter when the saved intent
-      // included it.
+      // Restore the guest cart saved before an external auth redirect or the
+      // magic-link email round trip. Source priority:
+      //   1. ?picks= on the URL — carried by the magic-link return, so the
+      //      lineup survives even when the link opens in a different browser
+      //      or tab (where localStorage isn't shared). Server-validated.
+      //   2. localStorage pendingContestEntry — same-browser fallback (Google
+      //      full-page redirect, or the link opened in a new tab). A 30-min
+      //      freshness guard stops a long-abandoned cart from auto-entering.
+      // Only replay when logged in AND the cart matches this contest; auto-
+      // enter when the saved intent included it.
       try {
-        var raw = sessionStorage.getItem('pendingContestEntry');
-        if (!raw) return;
-        var pending = JSON.parse(raw);
-        if (!pending || pending.contestSlug !== this.contestId) return;
-        sessionStorage.removeItem('pendingContestEntry');
+        var contestId = this.contestId;
+        var pending = null;
 
-        // Hydrate Alpine cart state from saved selections
-        if (pending.selections && Object.keys(pending.selections).length > 0) {
-          this.selections = pending.selections;
-          this.selectionOrder = pending.selectionOrder || Object.keys(pending.selections);
-          this.cartOpen = true;
+        var urlPicks = new URLSearchParams(window.location.search).get('picks');
+        if (urlPicks) {
+          var pickIds = urlPicks.split(',').map(function (s) { return parseInt(s, 10); }).filter(function (n) { return n > 0; });
+          if (pickIds.length) {
+            var sel = {}, order = pickIds.map(String);
+            order.forEach(function (k) { sel[k] = true; });
+            pending = { contestSlug: contestId, selections: sel, selectionOrder: order, autoEnter: true };
+          }
+          // Strip ?picks so a refresh/share doesn't re-trigger the auto-enter.
+          try {
+            var u = new URL(window.location.href);
+            u.searchParams.delete('picks');
+            window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+          } catch (_) {}
         }
 
-        if (this.loggedIn && pending.autoEnter && this.selectionCount === this.picksRequired) {
-          var self = this;
-          // Let Alpine flush the state, then replay + enter
-          setTimeout(function() { self.afterLoginSuccess(); }, 50);
+        if (!pending) {
+          var raw = localStorage.getItem('pendingContestEntry');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            localStorage.removeItem('pendingContestEntry');
+            var fresh = parsed && parsed.savedAt && (Date.now() - parsed.savedAt) < (30 * 60 * 1000);
+            if (parsed && parsed.contestSlug === contestId && fresh) pending = parsed;
+          }
+        }
+
+        if (pending) {
+          if (pending.selections && Object.keys(pending.selections).length > 0) {
+            this.selections = pending.selections;
+            this.selectionOrder = pending.selectionOrder || Object.keys(pending.selections);
+            this.cartOpen = true;
+          }
+          if (this.loggedIn && pending.autoEnter && this.selectionCount === this.picksRequired) {
+            var self = this;
+            // Let Alpine flush the state, then replay + enter
+            setTimeout(function () { self.afterLoginSuccess(); }, 50);
+          }
         }
       } catch (e) {
-        // Bad JSON or sessionStorage unavailable — quietly skip
-        try { sessionStorage.removeItem('pendingContestEntry'); } catch (_) {}
+        // Bad JSON or storage unavailable — quietly skip
+        try { localStorage.removeItem('pendingContestEntry'); } catch (_) {}
       }
 
       // Stranded on-chain entry recovery. Server populates
@@ -491,17 +520,20 @@ window.selectionBoard = function() {
       });
     },
 
-    // Persist current cart so it survives an external redirect (Google OAuth,
-    // /login fallback). Hydrated by init() after the user returns.
+    // Persist current cart so it survives an external redirect or the magic-
+    // link email round trip. localStorage (not sessionStorage) so it survives
+    // the link opening in a NEW TAB; a savedAt stamp lets init() ignore stale
+    // carts. Hydrated by init() after the user returns.
     saveCartForRedirect(autoEnter) {
       try {
-        sessionStorage.setItem('pendingContestEntry', JSON.stringify({
+        localStorage.setItem('pendingContestEntry', JSON.stringify({
           contestSlug: this.contestId,
           selections: this.selections,
           selectionOrder: this.selectionOrder,
-          autoEnter: !!autoEnter
+          autoEnter: !!autoEnter,
+          savedAt: Date.now()
         }));
-      } catch (e) { /* sessionStorage unavailable — fall through */ }
+      } catch (e) { /* localStorage unavailable — fall through */ }
     },
 
     // Helper — read the auth wizard's props off the store, or null if the
@@ -512,180 +544,58 @@ window.selectionBoard = function() {
       return (c && c.id === 'auth') ? c.props : null;
     },
 
-    // Inline signup — creates the account and transitions the page IN
-    // PLACE (no reload). Hydrates $store.session, swaps the navbar HTML,
-    // replays the cart, then mutates the wizard's step to 'tokens-picker'
-    // so the user goes straight from "Creating account…" to the pack
-    // picker without any modal close/reopen flicker. Called from the
-    // wizard partial via the 'auth-signup-submit' dispatch.
-    async submitInlineSignup(email, password) {
+    // Unified create-or-login magic link. The email path can't transition in
+    // place (the user must click a link in their inbox), so we: preserve the
+    // guest lineup for the round trip (localStorage for a same-browser new tab
+    // + picks ride the signed return_to for a different browser/tab), POST the
+    // request, then move the wizard to the 'magic-link-sent' confirmation step.
+    // Called from the wizard via the 'auth-magic-link-submit' dispatch.
+    async requestMagicLink(email) {
       var p = this._authProps();
       if (!p || p.submitting) return;
       p.formError = '';
-      if (!email || !password) {
-        p.formError = 'Email and password are required.';
+      if (!email) {
+        p.formError = 'Enter your email.';
         return;
       }
-      p.submitting = 'signup';
+      p.submitting = 'magic-link';
       try {
-        var resp = await fetch('/registrations/inline', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': this.csrfToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ email: email, password: password })
-        });
-        var data = await resp.json();
-        if (!resp.ok || !data.success) {
-          p.formError = data.error || 'Could not create account.';
+        // Preserve the cart for the email round trip, then request the link.
+        // picks ride as a comma string so the emailed link returns to the
+        // contest with the lineup (window.postMagicLink owns the request shape).
+        this.saveCartForRedirect(true);
+        var picks = this.selectionOrder.slice(0, this.picksRequired).map(function (id) { return parseInt(id, 10); });
+
+        var data = await window.postMagicLink(email, { contest: this.contestId, picks: picks.join(',') });
+        if (!data || !data.success) {
+          p.formError = (data && data.error) || 'Could not send the link. Try again.';
           p.submitting = null;
           return;
         }
 
-        // Hydrate session, swap navbar, sync body[data-logged-in].
-        var sess = Alpine.store('session');
-        if (sess && data.session) { sess.hydrate(data.session); }
-        if (data.navbar_html) {
-          var oldNav = document.querySelector('header[data-navbar-root]');
-          if (oldNav) {
-            var tmp = document.createElement('div');
-            tmp.innerHTML = data.navbar_html.trim();
-            var newNav = tmp.firstElementChild;
-            if (newNav) {
-              oldNav.replaceWith(newNav);
-              if (window.Alpine && Alpine.initTree) { Alpine.initTree(newNav); }
-            }
-          }
-        }
-        try { document.body.setAttribute('data-logged-in', 'true'); } catch (_) {}
-
-        // Persist the cart server-side so it survives the Stripe detour.
-        await this.replaySelectionsToServer();
-
-        // Queue the "check your email" nudge to fire AFTER the entry is
-        // confirmed (consumed in confirmEntry).
-        try { sessionStorage.setItem('pendingCheckEmail', this.contestId); }
-        catch (e) { /* sessionStorage unavailable */ }
-
-        // Patch the current modal entry with the same directional slide
-        // the host runs for swap() — credentials exits stage-right, the
-        // picker enters stage-left. advance() (instead of swap()) keeps
-        // the same stack entry so the auth modal's outer x-data scope
-        // — including the email/password fields the user just typed —
-        // survives the transition. The patch resets the form-flow flags
-        // so the picker step starts clean; props not listed (mode, etc.)
-        // are preserved.
+        // Move to the confirmation step in the same stack entry (advance keeps
+        // the auth modal's x-data scope alive through the directional slide).
         Alpine.store('modals').advance({
-          step:          'tokens-picker',
-          submitting:    null,
-          formError:     '',
-          phantomError:  '',
-          googleError:   '',
-          mintedCount:   0,
-          mintedBalance: 0,
-          errorText:     '',
-          redirectUrl:   '',
-          txSignature:   ''
+          step:        'magic-link-sent',
+          sentEmail:   email,
+          sentContest: this.contestId,
+          sentPicks:   picks.join(','),
+          submitting:  null,
+          formError:   ''
         });
       } catch (e) {
-        p.formError  = 'Network error. Try again.';
-        p.submitting = null;
-      }
-    },
-
-    async submitInlineLogin(email, password) {
-      var p = this._authProps();
-      if (!p || p.submitting) return;
-      p.formError = '';
-      if (!email || !password) {
-        p.formError = 'Email and password are required.';
-        return;
-      }
-      p.submitting = 'login';
-      try {
-        var resp = await fetch('/sessions/inline', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': this.csrfToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ email: email, password: password })
-        });
-        var data = await resp.json();
-        if (!resp.ok || !data.success) {
-          p.formError = data.error || 'Login failed.';
-          p.submitting = null;
-          return;
-        }
-        // Reload so the navbar + server-rendered logged-in sections
-        // reflect the session. Cart is restored on load (see init()).
-        this.saveCartForRedirect(true);
-        window.location.reload();
-      } catch (e) {
-        p.formError  = 'Network error. Try again.';
-        p.submitting = null;
-      }
-    },
-
-    async loginWithPhantom() {
-      var p = this._authProps();
-      if (!p) return;
-      p.phantomError = '';
-      if (!window.walletProvider || !window.walletProvider.isAvailable()) {
-        if (window.walletProvider && window.walletProvider.isMobile()) {
-          // Save cart, then deep-link to Phantom — user returns via callback
-          this.saveCartForRedirect(true);
-          if (typeof startPhantomDeepLink === 'function') startPhantomDeepLink(false);
-          return;
-        }
-        p.phantomError = 'Phantom not detected. Install the Phantom browser extension or open in the Phantom mobile app.';
-        return;
-      }
-
-      p.submitting = 'phantom';
-      try {
-        var provider = window.walletProvider.detect();
-        var connectResp = await provider.connect();
-        var pubkeyB58 = connectResp.publicKey.toBase58();
-
-        var nonceResp = await fetch('/auth/solana/nonce');
-        var nonceData = await nonceResp.json();
-        var domain = window.location.host;
-        var sessUid = (Alpine.store('session') || {}).userId;
-        var userIdLine = sessUid ? ('User-ID: ' + sessUid + '\n\n') : '';  // OPSEC-005
-        var message = domain + ' wants you to sign in with your Solana account:\n' + pubkeyB58 + '\n\n' + userIdLine + 'Nonce: ' + nonceData.nonce;
-        var encoded = new TextEncoder().encode(message);
-        var signed = await provider.signMessage(encoded, 'utf8');
-        var signatureB58 = encodeBase58(signed.signature);
-
-        var verifyResp = await fetch('/auth/solana/verify', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': this.csrfToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
-        });
-        var verifyData = await verifyResp.json();
-        if (!verifyResp.ok || !verifyData.success) {
-          throw new Error(verifyData.error || 'Wallet verification failed.');
-        }
-
-        // Reload so the navbar + server-rendered logged-in UI reflect the
-        // wallet session. Cart is restored on load (see init()).
-        this.saveCartForRedirect(true);
-        window.location.reload();
-      } catch (e) {
-        var msg = e.message || 'Phantom sign-in failed.';
-        if (typeof parseSolanaError === 'function') msg = parseSolanaError(msg);
-        // Re-fetch props in case the modal closed during the await.
         var p2 = this._authProps();
-        if (p2) { p2.phantomError = msg; p2.submitting = null; }
+        if (p2) { p2.formError = 'Network error. Try again.'; p2.submitting = null; }
       }
+    },
+
+    // Solana clicked in the auth modal → save the guest lineup, then progress
+    // the modal to the "Connect Wallet" picker (modals/_wallet_connect). The
+    // picker runs the SIWS connect itself (window.solanaConnectAndVerify) and
+    // returns here (returnUrl = this contest) so the saved cart auto-enters.
+    openWalletConnect() {
+      this.saveCartForRedirect(true);
+      Alpine.store('modals').swap('wallet-connect', { returnUrl: window.location.href, backTo: 'auth' });
     },
 
     // Google sign-in via a popup window so the contest page stays put.
@@ -1410,9 +1320,8 @@ window.selectionBoard = function() {
 
 <div x-data="selectionBoard()" x-cloak
      @modal-resend-verification.window="sendVerificationEmail()"
-     @auth-signup-submit.window="submitInlineSignup($event.detail.email, $event.detail.password)"
-     @auth-login-submit.window="submitInlineLogin($event.detail.email, $event.detail.password)"
-     @auth-phantom-click.window="loginWithPhantom()"
+     @auth-magic-link-submit.window="requestMagicLink($event.detail.email)"
+     @auth-wallet-hub-open.window="openWalletConnect()"
      @auth-google-click.window="loginWithGoogle()">
 
   <!-- Blur overlay (click to dismiss) -->
@@ -1657,10 +1566,10 @@ window.selectionBoard = function() {
   <%# All auth/tokens/redirect modals moved to app/views/modals/_auth.html.erb,
       rendered through shared/_modal_host as the 'auth' modal id with internal
       step state. The board's show*() methods open the wizard at the right
-      step; the wizard partial dispatches window events (auth-signup-submit,
-      auth-login-submit, auth-phantom-click, auth-google-click — the
-      redirect step's CTA navigates through cta_redirect, no dispatch)
-      that the selectionBoard root listens for (see x-data attribute above). %>
+      step; the wizard partial dispatches window events (auth-magic-link-submit,
+      auth-wallet-hub-open, auth-google-click — the redirect step's CTA navigates
+      through cta_redirect, no dispatch) that the selectionBoard root listens
+      for (see x-data attribute above). %>
 
   <!-- Mobile spacer to prevent fixed cart from covering content -->
   <div x-show="selectionCount > 0" class="md:hidden" style="height:10rem"></div>

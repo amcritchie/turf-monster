@@ -92,6 +92,18 @@ class Rack::Attack
     req.ip if req.post? && req.path == "/email_verification"
   end
 
+  ### Throttle: magic-link request — outbound email spam + can't-spam-a-mailbox
+  # Per-email is the important cap (limits mail to a single address); IP is a
+  # generous backstop for shared NATs. Consume (GET /magic_link/:token) is not
+  # throttled — brute-forcing an HMAC token is infeasible and legit clicks must
+  # always go through.
+  throttle("magic_link/ip", limit: 5, period: 1.hour) do |req|
+    req.ip if req.post? && req.path == "/magic_link"
+  end
+  throttle("magic_link/email", limit: 3, period: 1.hour) do |req|
+    req.params["email"].to_s.downcase.presence if req.post? && req.path == "/magic_link"
+  end
+
   ### Throttle: contest chat — message-post flood backstop
   # Coarse per-IP cap; MessagesController enforces a precise per-user cooldown.
   throttle("chat_messages/ip", limit: 40, period: 1.minute) do |req|
