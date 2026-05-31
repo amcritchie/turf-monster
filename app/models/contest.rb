@@ -440,6 +440,30 @@ class Contest < ApplicationRecord
     concludes_at.present? && Time.current >= concludes_at
   end
 
+  # The contest is live (in-progress) once it has locked but not yet settled —
+  # entries are closed and games are being played. The /contests/:id/live page
+  # and its real-time broadcasts key off this.
+  def live?
+    locked? && !settled?
+  end
+
+  # This contest's games bucketed for the live page. There's no on-chain
+  # in-progress status, so "active" is inferred: kickoff has passed but the
+  # game isn't completed. Games come off the slate matchups (each carries a
+  # :game; some matchups may have none). Shared by ContestsController#live and
+  # Contest::LiveBroadcast so the buckets never drift.
+  def games_by_phase(now = Time.current)
+    games = matchups.includes(game: [:home_team, :away_team]).map(&:game).compact.uniq
+    completed = games.select { |g| g.status == "completed" }
+    active    = games.select { |g| g.status != "completed" && g.kickoff_at.present? && g.kickoff_at <= now }
+    upcoming  = games.select { |g| g.status != "completed" && (g.kickoff_at.nil? || g.kickoff_at > now) }
+    {
+      active:    active.sort_by    { |g| g.kickoff_at || now },
+      upcoming:  upcoming.sort_by  { |g| g.kickoff_at || (now + 100.years) },
+      completed: completed.sort_by { |g| g.kickoff_at || now }.reverse
+    }
+  end
+
   def lock_time_display
     return "TBD" unless starts_at
     starts_at.strftime("Locks %B %-d, %Y @ %-I:%M %p")

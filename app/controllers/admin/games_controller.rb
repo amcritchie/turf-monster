@@ -45,6 +45,9 @@ module Admin
         @game.update!(status: "completed")
         SlateMatchup.where(game_slug: @game.slug).update_all(status: "completed")
         @game.score_affected_contests!
+        # complete_game bypasses the Goal callbacks, so trigger the live
+        # broadcast here (FINAL toast + leaderboard/games refresh).
+        Contest::LiveBroadcast.score_changed(@game, event: :game_completed)
         render json: {
           success: true,
           game: game_json(@game.reload)

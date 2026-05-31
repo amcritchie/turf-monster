@@ -1002,6 +1002,29 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_in_delta ts, @contest.reload.concludes_at.to_i, 2
   end
 
+  # --- #live (active contest page) ---
+
+  test "live renders for a live turf_totals contest + subscribes to the live stream" do
+    @contest.update!(starts_at: 1.hour.ago) # contests(:one) — turf_totals, open → live
+    get live_contest_path(@contest)
+    assert_response :success
+    assert_match(/turbo-cable-stream-source/, response.body)
+  end
+
+  test "live redirects to show when the contest is not yet live" do
+    @contest.update!(starts_at: 1.hour.from_now)
+    get live_contest_path(@contest)
+    assert_redirected_to contest_path(@contest)
+  end
+
+  test "live redirects to show for a survivor contest" do
+    survivor = Contest.create!(name: "Survivor Live #{SecureRandom.hex(2)}",
+                               game_type: :world_cup_survivor, contest_type: "survivor_wc_free",
+                               status: "open", starts_at: 1.hour.ago, rank: 8000 + rand(900))
+    get live_contest_path(survivor)
+    assert_redirected_to contest_path(survivor)
+  end
+
   # A free, off-chain contest — the only kind a successful #enter can be
   # exercised against without a Solana RPC mock (paid entries need a real
   # on-chain token consume / vault transfer). Free entries skip the payment gate.

@@ -69,4 +69,36 @@ class ContestLockingTest < ActiveSupport::TestCase
     @contest.update!(status: "settled", concludes_at: 1.hour.from_now)
     assert @contest.concluded?
   end
+
+  # --- live? + games_by_phase (active contest page) ---
+
+  test "live? is true once locked and not settled" do
+    @contest.update!(starts_at: 1.minute.ago, status: "open")
+    assert @contest.live?
+  end
+
+  test "live? is false before the lock time" do
+    @contest.update!(starts_at: 1.hour.from_now, status: "open")
+    assert_not @contest.live?
+  end
+
+  test "live? is false once settled" do
+    @contest.update!(starts_at: 1.hour.ago, status: "settled")
+    assert_not @contest.live?
+  end
+
+  test "games_by_phase buckets games by status + kickoff" do
+    active   = Game.create!(home_team_slug: "team-a", away_team_slug: "team-b", kickoff_at: 1.hour.ago,      status: "scheduled")
+    upcoming = Game.create!(home_team_slug: "team-c", away_team_slug: "team-d", kickoff_at: 1.day.from_now,  status: "scheduled")
+    done     = Game.create!(home_team_slug: "team-e", away_team_slug: "team-f", kickoff_at: 2.hours.ago,     status: "completed")
+    slate_matchups(:m1).update!(game_slug: active.slug)
+    slate_matchups(:m3).update!(game_slug: upcoming.slug)
+    slate_matchups(:m5).update!(game_slug: done.slug)
+
+    phases = @contest.games_by_phase
+    assert_includes phases[:active],    active
+    assert_includes phases[:upcoming],  upcoming
+    assert_includes phases[:completed], done
+    assert_not_includes phases[:active], upcoming
+  end
 end

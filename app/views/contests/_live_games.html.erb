@@ -1,0 +1,30 @@
+<%# Games for the live contest page. Locals: active / upcoming / completed
+    (Game[]) + contest. ONE single row at the top, ordered active → upcoming →
+    completed; each card self-labels its phase (LIVE / kickoff time / FINAL).
+    gamesCarousel (defined inline in live.html.erb) dwells 10s, smooth-scrolls
+    one full content-width so it lands back on an identical first row, then
+    dwells again — only when the row overflows. Rendered inside
+    #contest_<id>_games (owned by live.html.erb), which the broadcaster
+    updates on every score change, so this is pure content (no outer id). %>
+<% phased = active.map { |g| [g, :active] } +
+            upcoming.map { |g| [g, :upcoming] } +
+            completed.map { |g| [g, :completed] } %>
+<section class="mb-8">
+  <h2 class="text-sm font-semibold text-secondary mb-3">Games</h2>
+
+  <% if phased.any? %>
+    <div x-data="gamesCarousel()">
+      <div x-ref="viewport" class="overflow-hidden">
+        <div x-ref="track" class="flex gap-3 will-change-transform">
+          <% phased.each do |game, phase| %>
+            <div class="flex-shrink-0 basis-[calc((100%-0.75rem)/2)] sm:basis-[calc((100%-1.5rem)/3)] lg:basis-[calc((100%-2.25rem)/4)]">
+              <%= render "contests/live_game_card", game: game, phase: phase %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% else %>
+    <p class="text-sm text-muted">No games scheduled for this contest yet.</p>
+  <% end %>
+</section>

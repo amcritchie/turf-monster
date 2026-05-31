@@ -1,8 +1,8 @@
 class ContestsController < ApplicationController
   include Solana::SessionAuth
 
-  skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll]
-  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :pick, :grade_round]
+  skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll, :live]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
   before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
@@ -338,6 +338,18 @@ class ContestsController < ApplicationController
       html = render_to_string(partial: partial, locals: { compact: true })
       render json: { changed: true, version: current_version, html: html }
     end
+  end
+
+  # Live "active contest" page — real-time leaderboard + chat + games for an
+  # in-progress contest, pushed over ActionCable (Contest::LiveBroadcast). New
+  # dedicated route for now; we'll fold it into #show's live state later.
+  # Turf Totals only for v1; Survivor + not-yet-live redirect to the show page.
+  def live
+    return redirect_to contest_path(@contest) unless @contest.turf_totals?
+    return redirect_to contest_path(@contest), notice: "This contest isn't live yet." unless @contest.live?
+
+    load_contest_board_data
+    @games = @contest.games_by_phase
   end
 
   def enter

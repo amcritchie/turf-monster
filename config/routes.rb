@@ -187,6 +187,7 @@ Rails.application.routes.draw do
       post :simulate_game
       post :simulate_batch
       post :reset
+      get :live
       post :prepare_onchain_contest
       post :confirm_onchain_contest
       # `post :payout_entry` was removed in the 2026-05-23 audit (H2) —

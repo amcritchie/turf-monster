@@ -1,0 +1,13 @@
+<%# A data-only node appended to the hidden goal feed on the live page. The
+    page's MutationObserver reads these data-* attrs, fires a toast, then removes
+    the node. NO <script> here — Turbo doesn't execute scripts inside broadcast
+    <template>s. Locals: event ("goal"|"final"), team (Team|nil), player
+    (Player|nil), game (Game). %>
+<div data-event="<%= event %>"
+     data-team="<%= team ? (team.short_name.presence || team.name) : "" %>"
+     data-team-emoji="<%= team&.emoji %>"
+     data-player="<%= player&.name %>"
+     data-home-team="<%= game.home_team&.short_name || game.home_team_slug %>"
+     data-away-team="<%= game.away_team&.short_name || game.away_team_slug %>"
+     data-home-score="<%= game.home_score.to_i %>"
+     data-away-score="<%= game.away_score.to_i %>"></div>
