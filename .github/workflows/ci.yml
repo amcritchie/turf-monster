@@ -59,6 +59,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    # Test-only key — Solana::Keypair.current_encryptor needs a non-empty
+    # string to derive the managed-wallet encryptor; in CI neither the
+    # env var nor credentials.secret_key_base (no RAILS_MASTER_KEY) is set,
+    # so managed-wallet tests raised "nil into String". Throwaway value;
+    # NOT the OPSEC-015 production key.
+    env:
+      MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
+
     services:
       postgres:
         image: postgres
@@ -98,6 +106,10 @@ jobs:
 
   playwright:
     runs-on: ubuntu-latest
+    # See the test job — managed-wallet flows (signup) need a non-empty
+    # encryption key in CI. Throwaway value, NOT the OPSEC-015 prod key.
+    env:
+      MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
     services:
       postgres:
         image: postgres
