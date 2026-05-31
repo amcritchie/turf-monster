@@ -59,13 +59,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # Test-only key — Solana::Keypair.current_encryptor needs a non-empty
-    # string to derive the managed-wallet encryptor; in CI neither the
-    # env var nor credentials.secret_key_base (no RAILS_MASTER_KEY) is set,
-    # so managed-wallet tests raised "nil into String". Throwaway value;
-    # NOT the OPSEC-015 production key.
+    # MANAGED_WALLET_ENCRYPTION_KEY: throwaway value so the v2 managed-wallet
+    #   encryptor has a non-empty key (KeyGenerator). NOT the OPSEC-015 prod key.
+    # RAILS_MASTER_KEY: repo secret so credentials.secret_key_base decrypts —
+    #   the LEGACY keypair encryptor reads secret_key_base[0,32] directly and
+    #   raised "nil[]" without it (3 KeypairTest errors).
     env:
       MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
+      RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
 
     services:
       postgres:
@@ -106,10 +107,11 @@ jobs:
 
   playwright:
     runs-on: ubuntu-latest
-    # See the test job — managed-wallet flows (signup) need a non-empty
-    # encryption key in CI. Throwaway value, NOT the OPSEC-015 prod key.
+    # See the test job. Managed-wallet flows (signup) need the encryption
+    # key; RAILS_MASTER_KEY lets credentials decrypt for the test server.
     env:
       MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
+      RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
     services:
       postgres:
         image: postgres
@@ -138,6 +140,17 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432
           REDIS_URL: redis://localhost:6379/0
         run: bin/rails db:test:prepare && bin/rails runner -e test e2e/seed.rb
+      # The test server (bin/rails server -e test, started by Playwright's
+      # webServer) serves the compiled Tailwind stylesheet. Without this
+      # build, app/assets/builds/tailwind.css is absent and every page 500s
+      # ("asset tailwind.css is not present in the asset pipeline"), which
+      # cascaded into 51/57 spec failures.
+      - name: Build Tailwind CSS for the test server
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+          REDIS_URL: redis://localhost:6379/0
+        run: bin/rails tailwindcss:build
       - name: Run Playwright (excluding @devnet)
         env:
           RAILS_ENV: test

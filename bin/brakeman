@@ -2,6 +2,8 @@
 require "rubygems"
 require "bundler/setup"
 
-ARGV.unshift("--ensure-latest")
-
+# NOTE: --ensure-latest intentionally removed — it exits 5 in CI whenever
+# a newer brakeman exists (e.g. 7.1.1 < 8.0.4), breaking the build on
+# brakeman's release cadence rather than on any finding. Upgrade brakeman
+# deliberately via the Gemfile instead.
 load Gem.bin_path("brakeman", "brakeman")
