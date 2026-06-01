@@ -49,18 +49,12 @@
          if (s.indexOf && s.indexOf('tokens-') === 0) return false;
          return true;
        },
-       // Self-contained resend for the magic-link-sent step — works whether the
-       // modal was opened standalone (no board, e.g. the login page) or advanced
-       // into in-contest. Re-sends to the same email (+ contest/picks if the
-       // original carried them, so the link still returns to the contest).
-       //
-       // window.postMagicLink is defined inline in the layout, so it IS present
-       // on the login page — but it NEVER throws on a non-2xx response (fetch
-       // only rejects on a network error), it resolves { success: false }. The
-       // old body awaited it, ignored the result, swallowed errors, and reset
-       // submitting — so a throttled (429) or failed resend looked identical to
-       // success: the button flickered "Resending…" then nothing. We now read
-       // the result and surface VISIBLE feedback either way.
+       // Self-contained resend for the magic-link-sent step (login page or
+       // in-contest). postMagicLink resolves rather than throwing on a non-2xx,
+       // so this reads the result and surfaces visible feedback either way.
+       // NOTE: keep comments in this x-data free of double-quotes/backticks --
+       // x-data is a double-quoted HTML attribute, so an inner double-quote
+       // closes it and silently breaks the whole modal (regressed PR #30).
        async resendMagicLink() {
          var p = this.props;
          if (!p || p.submitting) return;
@@ -72,10 +66,10 @@
            if (data && data.success) {
              p.resent = true;
            } else {
-             p.resendError = (data && data.error) || "Couldn't resend — wait a moment and try again.";
+             p.resendError = (data && data.error) || 'Could not resend — wait a moment and try again.';
            }
          } catch (e) {
-           p.resendError = "Couldn't resend — check your connection and try again.";
+           p.resendError = 'Could not resend — check your connection and try again.';
          }
          p.submitting = null;
        }
