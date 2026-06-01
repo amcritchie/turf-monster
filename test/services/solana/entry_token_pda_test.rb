@@ -21,13 +21,24 @@ class Solana::EntryTokenPdaTest < ActiveSupport::TestCase
       "Ruby must hash the exact 64-byte buffer the program hashes"
   end
 
-  test "padded_source_ref is always exactly 64 bytes (pad short, truncate long)" do
+  test "padded_source_ref pads short refs to 64 and RAISES on > 64 (no silent truncation)" do
     assert_equal 64, @vault.send(:padded_source_ref, "short").bytesize
-    assert_equal 64, @vault.send(:padded_source_ref, "x" * 200).bytesize
-    # truncation must be consistent between the seed hash and the mint arg
-    long = "x" * 200
-    assert_equal @vault.send(:entry_token_seed_hash, long),
-      Digest::SHA256.digest(@vault.send(:padded_source_ref, long))
+    assert_equal 64, @vault.send(:padded_source_ref, "x" * 64).bytesize, "exactly 64 is allowed"
+    # Regression (TokenPurchaseJob source_ref collision): a > 64-byte ref used to
+    # be silently truncated, so multi-token purchases ("...:0"/"...:1"/"...:2")
+    # all hashed to ONE PDA and collided on init (custom program error 0x0).
+    # It must now fail loud rather than truncate.
+    err = assert_raises(ArgumentError) { @vault.send(:padded_source_ref, "x" * 65) }
+    assert_match(/exceeds the on-chain \[u8;64\] limit/, err.message)
+    assert_raises(ArgumentError) { @vault.send(:entry_token_seed_hash, "x" * 200) }
+  end
+
+  test "distinct multi-token source_refs derive DISTINCT PDAs (collision regression)" do
+    # The fixed TokenPurchaseJob source_ref shape: stripe:<purchase_id>:<index>.
+    refs  = (0..2).map { |i| "stripe:37:#{i}" }
+    refs.each { |r| assert_operator r.bytesize, :<=, 64, "ref must fit [u8;64]: #{r}" }
+    pdas = refs.map { |r| @vault.send(:entry_token_pda, r).first }
+    assert_equal 3, pdas.uniq.length, "each token in a trio must derive a unique PDA"
   end
 
   test "entry_token_pda is deterministic per source_ref and unique across refs" do
