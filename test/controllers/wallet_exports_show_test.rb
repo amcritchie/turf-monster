@@ -9,7 +9,6 @@ class WalletExportsShowTest < ActionDispatch::IntegrationTest
     @managed = User.create!(
       name: "Sienna Secret", username: "sienna-secret-#{SecureRandom.hex(2)}",
       email: "secret-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       email_verified_at: Time.current
     )
     assert @managed.reload.managed_wallet?, "every account auto-provisions a managed wallet"

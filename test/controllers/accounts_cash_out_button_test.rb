@@ -10,7 +10,6 @@ class AccountsCashOutButtonTest < ActionDispatch::IntegrationTest
     @managed = User.create!(
       name: "Cash Out Cathy", username: "co-#{SecureRandom.hex(2)}",
       email: "co-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       email_verified_at: Time.current
     )
     assert @managed.reload.managed_wallet?
@@ -40,7 +39,6 @@ class AccountsCashOutButtonTest < ActionDispatch::IntegrationTest
     phantom = User.create!(
       name: "Phantom Pete", username: "pp-#{SecureRandom.hex(2)}",
       email: "pp-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       web3_solana_address: phantom_kp.address,
       email_verified_at: Time.current
     )

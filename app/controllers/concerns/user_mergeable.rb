@@ -20,7 +20,6 @@ module UserMergeable
         survivor.provider = absorbed.provider
         survivor.uid = absorbed.uid
       end
-      survivor.password_digest = absorbed.password_digest if (!survivor.has_password?) && absorbed.has_password?
 
       # Update ErrorLog polymorphic references
       ErrorLog.where(target_type: "User", target_id: absorbed.id).update_all(target_id: survivor.id)

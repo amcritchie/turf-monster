@@ -42,8 +42,22 @@ module ActiveSupport
 end
 
 class ActionDispatch::IntegrationTest
-  def log_in_as(user, password: "password")
-    post login_path, params: { email: user.email, password: password }
+  # Passwordless: email auth is magic-link only. Logging in = mint a magic-link
+  # token the same way MagicLinksController#create does, then GET the consume
+  # URL to establish the session (existing email user → sign_in_existing).
+  # Signature kept as log_in_as(user) so the many call sites are unchanged.
+  #
+  # MagicLinksController#sign_in_existing stamps email_verified_at when blank
+  # (clicking the link IS proof of ownership). That's correct product behavior
+  # but a test that deliberately set email_verified_at: nil shouldn't have the
+  # mere act of authenticating silently flip it — so we preserve whatever
+  # verification state the test arranged before the consume.
+  def log_in_as(user)
+    raise ArgumentError, "log_in_as requires a user with an email (use log_in_as_onchain for wallet users)" if user.email.blank?
+    verified_before = user.email_verified_at
+    token = MagicLink.generate(email: user.email)
+    get magic_link_path(token: token)
+    user.update_column(:email_verified_at, verified_before) if user.reload.email_verified_at != verified_before
   end
 
   # Log in via Solana wallet auth — sets session[:onchain] = true

@@ -12,7 +12,6 @@ class WalletsWithdrawTest < ActionDispatch::IntegrationTest
     @managed = User.create!(
       name: "Withdraw Wendy", username: "wd-#{SecureRandom.hex(2)}",
       email: "wd-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       email_verified_at: Time.current
     )
     assert @managed.reload.managed_wallet?

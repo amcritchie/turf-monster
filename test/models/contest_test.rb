@@ -78,7 +78,7 @@ class ContestGradeTiePayoutsTest < ActiveSupport::TestCase
   private
 
   def make_active_entry(score:)
-    user = User.create!(email: "tied_#{SecureRandom.hex(4)}@example.com", password: "password")
+    user = User.create!(email: "tied_#{SecureRandom.hex(4)}@example.com")
     Entry.create!(user: user, contest: @contest, status: "active", score: score)
   end
 end

@@ -1,6 +1,6 @@
 # OPSEC-019: rate limiting via rack-attack.
 #
-# Closes the inline-login-as-password-oracle attack surface plus protects:
+# Protects:
 #   - login + wallet-auth endpoints from credential stuffing / sybil signup
 #   - webhook endpoints from signature-verification DoS
 #   - faucet / airdrop from devnet abuse (also defense-in-depth on top of
@@ -31,17 +31,6 @@ class Rack::Attack
 
   throttle("login/email", limit: 5, period: 1.minute) do |req|
     if req.post? && req.path == "/login"
-      req.params["email"].to_s.downcase.presence
-    end
-  end
-
-  ### Throttle: inline (modal) login — same surface as /login but JSON
-  throttle("inline_login/ip", limit: 10, period: 1.minute) do |req|
-    req.ip if req.post? && req.path == "/sessions/inline"
-  end
-
-  throttle("inline_login/email", limit: 5, period: 1.minute) do |req|
-    if req.post? && req.path == "/sessions/inline"
       req.params["email"].to_s.downcase.presence
     end
   end
@@ -111,14 +100,11 @@ class Rack::Attack
   end
 
   ### Throttle: signup — sybil + spam prevention (prelaunch audit H5)
-  # Engine route POST /signup is the browser-flow registration. Inline signup
-  # at /registrations/inline (modal/JSON path) is the other surface; see below.
+  # Engine route POST /signup is the browser-flow registration. The magic-link
+  # request (POST /magic_link) is the primary email-signup surface now and is
+  # throttled by the magic_link rules above.
   throttle("signup/ip", limit: 5, period: 1.minute) do |req|
     req.ip if req.post? && req.path == "/signup"
-  end
-
-  throttle("inline_signup/ip", limit: 5, period: 1.minute) do |req|
-    req.ip if req.post? && req.path == "/registrations/inline"
   end
 
   ### Throttle: wallet withdraw — money-out, strict cap (prelaunch audit H5)
@@ -137,11 +123,6 @@ class Rack::Attack
   # paper but it hits Solana RPC + holds DB locks; flood mitigation worth it.
   throttle("prepare_entry/ip", limit: 30, period: 1.minute) do |req|
     req.ip if req.post? && req.path.match?(%r{\A/contests/[^/]+/prepare_entry\z})
-  end
-
-  ### Throttle: password change — credential-tamper attack surface (prelaunch audit H5)
-  throttle("change_password/ip", limit: 5, period: 1.minute) do |req|
-    req.ip if req.post? && req.path == "/account/change_password"
   end
 
   ### Throttle: username update — squatting / spam prevention (prelaunch audit H5)

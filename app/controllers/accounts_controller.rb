@@ -7,7 +7,10 @@ class AccountsController < ApplicationController
   # cross-tab broadcast) needs to GET the guest shape back to flip the
   # store. Otherwise auth-required would 302 → /login and the JS can't
   # parse the response.
-  skip_before_action :require_authentication, only: [:session_state]
+  # confirm_email_change is authed by its signed token, not the session — the
+  # link may be opened on a different device than the one logged in (mirrors
+  # WalletExportsController#show).
+  skip_before_action :require_authentication, only: [:session_state, :confirm_email_change, :apply_email_change]
   skip_before_action :require_profile_completion, only: [:show, :complete_profile, :save_profile, :session_state]
 
   def show
@@ -95,37 +98,114 @@ class AccountsController < ApplicationController
     end
   end
 
+  # Passwordless (Lazarus audit #4): changing an EXISTING email is now an
+  # out-of-band confirmation, not an in-session re-auth. The old in-app
+  # "confirm your current password" gate is gone (there is no password), and
+  # the attack chain it left open — a hijacked session silently swapping the
+  # email and then the wallet-export key — is closed by requiring the change
+  # to be confirmed via a link sent to the CURRENT (pre-change) address.
+  #
+  #   - changing an existing email  → don't apply it; mint a signed token and
+  #                                   email a confirm link to the current
+  #                                   address. Other fields (name) still save.
+  #   - setting the FIRST email      → apply directly (no prior address to
+  #                                   protect) with email_verified_at: nil so
+  #                                   the new address goes through the existing
+  #                                   email_verification flow.
+  #   - no email change              → apply normally.
   def update
     @user = current_user
     rescue_and_log(target: @user) do
-      # OPSEC-046: email changes are a re-auth event. Require the current
-      # password (or proof of an unverified pre-change state, see below)
-      # before accepting. Also reset email_verified_at so the new address
-      # must be re-verified, and notify the OLD address as an out-of-band
-      # alert in case the change wasn't initiated by the legit user.
       new_params = account_params
-      email_changing = new_params[:email].present? && new_params[:email].to_s.downcase != @user.email.to_s.downcase
-      old_email = @user.email
+      new_email = new_params[:email].to_s.strip
+      current_email = @user.email
+      email_changing = new_email.present? && new_email.downcase != current_email.to_s.downcase
 
-      if email_changing
-        if @user.has_password? && !@user.authenticate(params[:current_password].to_s)
-          flash.now[:alert] = "Confirm your current password to change email."
-          render :show, status: :unprocessable_entity and return
-        end
-        new_params = new_params.merge(email_verified_at: nil)
+      if email_changing && current_email.present?
+        # OOB confirm: apply every OTHER field now, but never the email itself.
+        other_params = new_params.except(:email)
+        @user.update!(other_params) if other_params.present?
+
+        token = Rails.application.message_verifier(EMAIL_CHANGE_TOKEN_KEY).generate(
+          { user_id: @user.id, new_email: new_email, current_email: current_email, requested_at: Time.current.to_i },
+          expires_in: EMAIL_CHANGE_TOKEN_TTL
+        )
+        UserMailer.email_change_confirmation(@user, current_email, new_email, token).deliver_later
+
+        redirect_to account_path, notice: "Confirm the change via the link we sent to your current email (#{current_email})."
+      elsif email_changing
+        # First email on the account — no prior address to protect. Apply
+        # directly; the new address still has to be verified.
+        @user.update!(new_params.merge(email_verified_at: nil))
+        redirect_to account_path, notice: "Account updated. Verify your new email — link sent to #{@user.email}."
+      else
+        @user.update!(new_params)
+        redirect_to account_path, notice: "Account updated."
       end
-
-      @user.update!(new_params)
-
-      if email_changing && old_email.present?
-        UserMailer.email_change_notification(@user, old_email, @user.email).deliver_later
-      end
-
-      redirect_to account_path, notice: email_changing ? "Account updated. Verify your new email — link sent to #{@user.email}." : "Account updated."
     end
   rescue StandardError => e
     flash.now[:alert] = "Failed to update account."
     render :show, status: :unprocessable_entity
+  end
+
+  # GET /account/email/confirm/:token
+  #
+  # Out-of-band confirmation of an email change (Lazarus audit #4). The link is
+  # sent to the CURRENT (pre-change) address, so the holder of the account's
+  # existing email is the one who authorizes the swap. The link may be opened
+  # on a different device than the logged-in session, so authentication is
+  # skipped (the signed token is the auth boundary — exactly the wallet-export
+  # #show pattern).
+  #
+  # This GET only RENDERS the confirmation — it never mutates. A GET that
+  # persisted an attacker-supplied address would let a link prefetcher / mail
+  # security scanner (which issue GETs, not human clicks) auto-complete a
+  # hijacked-session email takeover. The swap is the CSRF-protected POST below.
+  # The token binds current_email; if the user's email has since changed (or a
+  # newer change was confirmed first), the link is stale → 410.
+  def confirm_email_change
+    @email_change       = verify_email_change_token!(params[:token])
+    @email_change_token = params[:token]
+    # renders accounts/confirm_email_change
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    render plain: "This email-change link is invalid or expired. Request a fresh one from your account page.", status: :gone
+  rescue StandardError => e
+    Rails.logger.warn "[email-change] confirm render failed: #{e.class}: #{e.message}"
+    render plain: e.message, status: :gone
+  end
+
+  # POST /account/email/confirm/:token
+  #
+  # Applies the email change once the human confirms from the interstitial.
+  # Re-verifies the token (it may have gone stale between render and submit),
+  # swaps the email, and rotates the session token.
+  def apply_email_change
+    payload = verify_email_change_token!(params[:token])
+    user = User.find(payload[:user_id])
+
+    rescue_and_log(target: user) do
+      user.update!(email: payload[:new_email], email_verified_at: nil)
+      # OPSEC-045: rotate the session token so any OTHER live session (e.g. a
+      # hijacker who initiated the change) loses access the moment the legit
+      # owner confirms from their inbox.
+      user.regenerate_session_token!
+
+      # Reuse the existing email_verification mint + mailer so the user verifies
+      # the NEW address through the established flow.
+      verify_token = Rails.application.message_verifier(EmailVerificationsController::VERIFY_TOKEN_KEY).generate(
+        { user_id: user.id, email: user.email, return_to: nil },
+        expires_in: EmailVerificationsController::VERIFY_TOKEN_TTL
+      )
+      UserMailer.email_verification(user, verify_token).deliver_later
+
+      target = logged_in? ? account_path : login_path
+      redirect_to target, notice: "Email changed — verify your new address (link sent to #{user.email})."
+    end
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    render plain: "This email-change link is invalid or expired. Request a fresh one from your account page.", status: :gone
+  rescue StandardError => e
+    Rails.logger.warn "[email-change] apply failed: #{e.class}: #{e.message}"
+    render plain: e.message, status: :gone
   end
 
   def link_solana
@@ -184,31 +264,6 @@ class AccountsController < ApplicationController
   # by `confirm_onchain_entry`'s response (authoritative server figure). The
   # cached `users.level` column is now best-effort display only; recompute
   # server-side from `Solana::Vault#sync_balance` when truly needed.
-
-  def change_password
-    rescue_and_log(target: current_user) do
-      # If user already has a password, verify current one
-      if current_user.has_password? && !current_user.authenticate(params[:current_password])
-        flash.now[:alert] = "Current password is incorrect."
-        @user = current_user
-        return render :show, status: :unprocessable_entity
-      end
-
-      current_user.update!(password: params[:new_password], password_confirmation: params[:new_password_confirmation])
-
-      # OPSEC-045: rotate the session token so any OTHER live session
-      # (stolen cookie on a different device) loses access. Update THIS
-      # session's cookie to the new token so the legit user stays signed in.
-      new_token = current_user.regenerate_session_token!
-      session[:session_token] = new_token
-
-      redirect_to account_path, notice: "Password updated."
-    end
-  rescue StandardError => e
-    flash.now[:alert] = e.message
-    @user = current_user
-    render :show, status: :unprocessable_entity
-  end
 
   # On-chain username edit. Custodial (managed) wallets: the server co-signs
   # set_username immediately. Phantom wallets: returns a partial TX for the
@@ -296,13 +351,17 @@ class AccountsController < ApplicationController
   #   - must not be already self_custodied? (one-way flow)
   #   - must have a verified email (we won't email a magic link to an
   #     unverified address)
-  #   - must have entered password within the last 5 min
-  #     (ApplicationController#password_recently_verified?)
+  #
+  # Passwordless (Lazarus audit #4): the old "entered password within the last
+  # 5 min" gate is removed — there is no password. The emailed reveal token
+  # IS the out-of-band lock (sent to the verified address, 30-min single-use),
+  # so requiring a password here would have permanently locked passwordless
+  # (magic-link / Google) managed users out of self-custody. The verified-email
+  # requirement above is the standing re-auth factor.
   def initiate_wallet_export
     return render_export_error(:forbidden, "Self-custody export is only available for managed-wallet accounts.") unless current_user.managed_wallet?
     return render_export_error(:forbidden, "Wallet is already self-custodied.") if current_user.self_custodied?
     return render_export_error(:unprocessable_entity, "Add and verify an email address before exporting your wallet.") if current_user.email.blank? || current_user.email_verified_at.blank?
-    return render_export_error(:unauthorized, "Confirm your password to continue.") unless password_recently_verified?
 
     current_user.update!(export_initiated_at: Time.current)
 
@@ -327,8 +386,31 @@ class AccountsController < ApplicationController
   WALLET_EXPORT_TOKEN_KEY = "wallet_export_v1".freeze
   WALLET_EXPORT_TOKEN_TTL = 30.minutes
 
+  # Signed token for the out-of-band email-change confirmation (Lazarus audit
+  # #4). Distinct key so it can't be cross-used with the verify / export
+  # tokens. Sent to the CURRENT address; binds current_email so it goes stale
+  # the moment the email actually changes. Mirrors the wallet-export token
+  # encoding + route-constraint style (raw message_verifier blob, route
+  # `constraints: { token: %r{[^/]+} }, format: false`).
+  EMAIL_CHANGE_TOKEN_KEY = "email_change_v1".freeze
+  EMAIL_CHANGE_TOKEN_TTL = 30.minutes
+
   def render_export_error(status, message)
     render json: { success: false, error: message }, status: status
+  end
+
+  # Verify + freshness-check an email-change token, for both the GET interstitial
+  # and the POST apply. Raises MessageVerifier::InvalidSignature for a bad or
+  # expired blob; raises for an unknown account or a STALE link — the account's
+  # current email no longer matches the address the token was minted against
+  # (already changed, or a competing confirm won first). Returns the
+  # indifferent-access payload.
+  def verify_email_change_token!(token)
+    payload = Rails.application.message_verifier(EMAIL_CHANGE_TOKEN_KEY).verify(token).with_indifferent_access
+    user = User.find_by(id: payload[:user_id])
+    raise "Unknown account" unless user
+    raise "This email-change link is no longer valid" unless user.email.to_s.downcase == payload[:current_email].to_s.downcase
+    payload
   end
 
 

@@ -8,7 +8,6 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     @managed = User.create!(
       name: "Maggie Managed", username: "maggie-managed",
       email: "managed-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       email_verified_at: Time.current
     )
     # generate_managed_wallet! ran in after_create — confirm.
@@ -20,7 +19,6 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     @phantom = User.create!(
       name: "Penny Phantom", username: "penny-phantom",
       email: "phantom-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       web3_solana_address: phantom_kp.address,
       email_verified_at: Time.current
     )
@@ -56,17 +54,18 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     assert_match(/already self-custodied/i, body["error"])
   end
 
-  test "initiate refuses without recent password reauth" do
+  # Passwordless (Lazarus audit #4): the old "recent password reauth" gate is
+  # gone. A passwordless managed user (magic-link / Google) can now initiate
+  # export — the emailed reveal token is the out-of-band lock, and requiring a
+  # password would have permanently locked these users out of self-custody.
+  test "initiate works for a passwordless managed user (no password reauth gate)" do
     log_in_as(@managed)
-    # Travel past the 5-minute reauth window. The stamp set by login() is
-    # absolute time, so traveling forward 6 minutes makes
-    # password_recently_verified? return false on the next request.
-    travel 6.minutes do
+    assert_enqueued_emails 1 do
       post initiate_wallet_export_account_path
-      assert_response :unauthorized
-      body = JSON.parse(response.body)
-      assert_match(/confirm your password/i, body["error"])
     end
+    assert_response :success
+    assert JSON.parse(response.body)["success"]
+    assert_not_nil @managed.reload.export_initiated_at
   end
 
   test "initiate refuses without verified email" do

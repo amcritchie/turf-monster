@@ -1,8 +1,19 @@
+# Passwordless (Lazarus audit #4): this app removed has_secure_password — email
+# auth is magic-link only (wallet auth via SolanaSessionsController unchanged).
+# The studio-engine User contract still requires User#authenticate, which no
+# longer exists, so we opt out of the contract check. The engine's password
+# SessionsController#create is fully overridden by the host (bounces to the
+# magic-link flow), so no engine code path relies on #authenticate here.
+Studio.validate_user_contract = false
+
 Studio.configure do |config|
   config.app_name = "Turf Monster"
   config.session_key = :turf_user_id
   config.welcome_message = ->(user) { "Welcome to Turf Monster, #{user.display_name}!" }
-  config.registration_params = [:email, :password, :password_confirmation, :reference]
+  # Passwordless: email auth is magic-link only. Permit just :email (+ funnel
+  # reference) so the engine's POST /signup path can't choke on now-unsupported
+  # password params (there is no password= setter anymore).
+  config.registration_params = [:email, :reference]
   config.configure_new_user = ->(user) { }
   config.configure_sso_user = ->(user) { }
 

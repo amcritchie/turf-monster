@@ -11,19 +11,12 @@ class SessionsController < ApplicationController
   def new
   end
 
+  # Passwordless: email auth is magic-link only (MagicLinksController). The
+  # /login page no longer renders a password field; any POST that still lands
+  # here (a stale form, a bot, a deep-link) is bounced to /login with a hint to
+  # use the emailed link. Wallet auth (SolanaSessionsController) is unchanged.
   def create
-    user = User.find_by(email: params[:email])
-    if user&.authenticate(params[:password])
-      set_app_session(user)
-      # Stamp the moment of password proof. Sensitive actions (wallet export,
-      # other future destructive-and-irreversible flows) require this stamp
-      # to be recent. See ApplicationController#password_recently_verified?.
-      session[:password_verified_at] = Time.current.to_i
-      redirect_to root_path, notice: "Welcome back, #{user.display_name}!"
-    else
-      flash.now[:alert] = "Invalid email or password."
-      render :new, status: :unprocessable_entity
-    end
+    redirect_to login_path, alert: "We use magic links — check your email for a sign-in link."
   end
 
   def sso_login

@@ -7,19 +7,19 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test "display_name falls back to capitalized email prefix when username and name are blank" do
-    user = User.create!(email: "newplayer@mcritchie.studio", password: "password")
+    user = User.create!(email: "newplayer@mcritchie.studio")
     user.update_column(:username, nil) # usernames auto-generate; clear it to exercise the fallback
     assert_equal "Newplayer", user.display_name
   end
 
   test "every new account is auto-assigned a username" do
-    user = User.create!(email: "auto@mcritchie.studio", password: "password")
+    user = User.create!(email: "auto@mcritchie.studio")
     assert user.username.present?, "signup should auto-generate a username"
     assert_match(/\A[a-zA-Z0-9_-]+\z/, user.username)
   end
 
   test "an explicitly provided username is kept" do
-    user = User.create!(email: "explicit@mcritchie.studio", password: "password", username: "chosen-name")
+    user = User.create!(email: "explicit@mcritchie.studio", username: "chosen-name")
     assert_equal "chosen-name", user.username
   end
 
@@ -28,15 +28,19 @@ class UserTest < ActiveSupport::TestCase
     # ensure_username never produces an invalid (too-long) username, which
     # previously caused intermittent create failures / CI flakes.
     Studio::UsernameGenerator.stub :generate, "fingerlime-pumpkin-rhinoceros-butternut-manatee" do
-      user = User.create!(email: "longname@mcritchie.studio", password: "password")
+      user = User.create!(email: "longname@mcritchie.studio")
       assert user.username.length <= 30, "generated username must respect the 30-char limit"
       assert_match(/\A[a-zA-Z0-9_-]+\z/, user.username)
     end
   end
 
-  test "authenticate with correct password" do
-    user = users(:alex)
-    assert user.authenticate("password")
+  # Passwordless (Lazarus audit #4): has_secure_password is removed — there is
+  # no #authenticate, #password=, or #has_password?. Email auth is magic-link
+  # only. The password_digest column is kept dormant (no migration).
+  test "password authentication is removed (passwordless)" do
+    assert_not User.method_defined?(:authenticate), "User must not respond to #authenticate"
+    assert_not User.method_defined?(:password=),     "User must not have a password= setter"
+    assert_not User.method_defined?(:has_password?), "has_password? must be removed"
   end
 
   # H1 (Stage 2 audit): DB-level uniqueness on LOWER(username) closes the
@@ -44,12 +48,12 @@ class UserTest < ActiveSupport::TestCase
   # signups can both pass and both INSERT with the same username. The
   # partial unique index on LOWER(username) makes the second INSERT fail.
   test "username DB unique index rejects case-insensitive duplicate (bypassing Rails validations)" do
-    User.create!(email: "h1a@example.com", password: "password", username: "RaceWinner")
+    User.create!(email: "h1a@example.com", username: "RaceWinner")
 
     err = assert_raises(ActiveRecord::RecordNotUnique) do
       # Skip validations to simulate a race: pretend two threads both passed
       # the Ruby-level uniqueness check and tried to INSERT at the same time.
-      dup = User.new(email: "h1b@example.com", password: "password", username: "racewinner")
+      dup = User.new(email: "h1b@example.com", username: "racewinner")
       dup.save(validate: false)
     end
     assert_match(/index_users_on_lower_username/, err.message)
@@ -58,30 +62,21 @@ class UserTest < ActiveSupport::TestCase
   test "username DB index permits multiple NULLs (partial WHERE username IS NOT NULL)" do
     # Wallet-only / pre-profile-completion users have nil usernames; the
     # partial WHERE clause must let many of them coexist.
-    u1 = User.new(email: "h1c@example.com", password: "password", username: nil)
-    u2 = User.new(email: "h1d@example.com", password: "password", username: nil)
+    u1 = User.new(email: "h1c@example.com", username: nil)
+    u2 = User.new(email: "h1d@example.com", username: nil)
     assert u1.save(validate: false)
     assert u2.save(validate: false)
   end
 
-  test "authenticate with wrong password" do
-    user = users(:alex)
-    assert_not user.authenticate("wrong")
-  end
-
   test "email-only user valid without wallet" do
-    user = User.new(email: "test@example.com", password: "password")
+    user = User.new(email: "test@example.com")
     assert user.valid?, user.errors.full_messages.join(", ")
   end
 
   test "user invalid with no auth methods" do
-    user = User.new(password: "password")
+    user = User.new
     assert_not user.valid?
     assert user.errors[:base].any? { |e| e.include?("Must have") }
-  end
-
-  test "has_password? returns true for password users" do
-    assert users(:alex).has_password?
   end
 
   test "has_email? returns true for email users" do
@@ -242,19 +237,19 @@ class UserTest < ActiveSupport::TestCase
   # --- can_change_username? gate ---
 
   test "can_change_username? false when not solana_connected" do
-    user = User.new(email: "bare@example.com", password: "password")
+    user = User.new(email: "bare@example.com")
     user.assign_attributes(web2_solana_address: nil, web3_solana_address: nil, contest_entered: true)
     refute user.can_change_username?
   end
 
   test "can_change_username? false when solana_connected but contest_entered is false" do
-    user = User.new(email: "unentered@example.com", password: "password")
+    user = User.new(email: "unentered@example.com")
     user.assign_attributes(web2_solana_address: "wallet_test_abc", contest_entered: false)
     refute user.can_change_username?
   end
 
   test "can_change_username? true when solana_connected AND contest_entered" do
-    user = User.new(email: "ready@example.com", password: "password")
+    user = User.new(email: "ready@example.com")
     user.assign_attributes(web2_solana_address: "wallet_test_xyz", contest_entered: true)
     assert user.can_change_username?
   end

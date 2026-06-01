@@ -42,4 +42,17 @@ class UserMailer < ApplicationMailer
     @new_email = new_email
     mail(to: old_email, subject: "Your Turf Monster email was changed")
   end
+
+  # Passwordless (Lazarus audit #4): out-of-band confirmation of an email
+  # change. Sent TO the CURRENT (pre-change) address — the holder of the
+  # existing email authorizes the swap by clicking. Token is a signed
+  # message_verifier payload from AccountsController#update, valid 30 min.
+  # Mirrors the wallet_export mailer (token → confirm URL).
+  def email_change_confirmation(user, current_email, new_email, token)
+    @user = user
+    @current_email = current_email
+    @new_email = new_email
+    @confirm_url = confirm_email_change_url(token)
+    mail(to: current_email, subject: "Confirm your Turf Monster email change")
+  end
 end

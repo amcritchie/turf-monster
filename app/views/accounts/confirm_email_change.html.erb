@@ -1,0 +1,31 @@
+<%# Out-of-band email-change confirmation interstitial (Lazarus audit #4).
+    Rendered on GET; the actual swap is the CSRF-protected POST button below,
+    so a link prefetcher / mail scanner can't auto-apply the change. %>
+<% content_for :page_title, "Confirm email change — Turf Monster" %>
+
+<div class="max-w-lg mx-auto px-4 py-12">
+  <div class="rounded-2xl border border-subtle bg-surface p-6">
+    <h1 class="text-2xl font-bold text-heading mb-3">Confirm your email change</h1>
+
+    <p class="text-sm text-muted leading-relaxed mb-4">
+      A request was made to change your account email to:
+    </p>
+
+    <div class="rounded-xl border border-subtle bg-base p-4 mb-5">
+      <p class="text-xs uppercase tracking-wider text-muted mb-1">New email address</p>
+      <code class="font-mono text-sm break-all text-heading select-all"><%= @email_change[:new_email] %></code>
+    </div>
+
+    <p class="text-sm text-muted leading-relaxed mb-6">
+      If you requested this, confirm below. You'll then receive a verification
+      link at the new address. <strong class="text-heading">If you did not request
+      this, do nothing</strong> — your email will not change, and any other active
+      session will be signed out when a change is confirmed.
+    </p>
+
+    <%= button_to "Confirm email change",
+          apply_email_change_path(token: @email_change_token),
+          method: :post,
+          class: "w-full inline-flex items-center justify-center rounded-xl bg-primary text-on-primary font-semibold px-5 py-3 hover:opacity-90 transition" %>
+  </div>
+</div>

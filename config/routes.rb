@@ -98,15 +98,6 @@ Rails.application.routes.draw do
   # hands off to OmniAuth. The callback renders a window-closer page.
   get "auth/google_popup", to: "omniauth_callbacks#popup"
 
-  # DEPRECATED (no UI path since the magic-link redesign): inline (modal)
-  # email+password login. Kept as a non-UI fallback alongside has_secure_password;
-  # the modal now requests a magic link instead. Don't treat as load-bearing.
-  post "sessions/inline", to: "inline_sessions#create", as: :inline_login
-
-  # DEPRECATED (no UI path since the magic-link redesign): inline (modal)
-  # email+password signup. See note above.
-  post "registrations/inline", to: "inline_registrations#create", as: :inline_signup
-
   # Email verification (OPSEC-005). Tokens are message_verifier blobs that
   # contain dots; constraints: { token: /.+/ } stops Rails from interpreting
   # them as URL format extensions.
@@ -127,7 +118,6 @@ Rails.application.routes.draw do
     post :save_profile
     post :link_solana
     post :unlink_google
-    post :change_password
     patch :set_inviter
     post :update_username   # on-chain username edit (custodial server-signs / Phantom co-signs)
     post :confirm_username  # Phantom: confirm the co-signed set_username TX
@@ -136,6 +126,17 @@ Rails.application.routes.draw do
     # OPSEC-007: removed `patch :update_level` — client-supplied seeds_total.
     post :initiate_wallet_export   # task #11 Stage 1: mint signed token + email magic link
   end
+
+  # Out-of-band email-change confirmation (Lazarus audit #4). Token is a signed
+  # payload from AccountsController#update; same token-with-dots constraint as
+  # the wallet-export route below so embedded periods aren't treated as a URL
+  # format extension. Authed by the token, not the session. The GET only renders
+  # an interstitial — the actual swap is the CSRF-protected POST, so a link
+  # prefetcher / mail scanner (which issue GETs) can't auto-apply the change.
+  get  "account/email/confirm/:token", to: "accounts#confirm_email_change", as: :confirm_email_change,
+       constraints: { token: %r{[^/]+} }, format: false
+  post "account/email/confirm/:token", to: "accounts#apply_email_change",   as: :apply_email_change,
+       constraints: { token: %r{[^/]+} }, format: false
 
   # Wallet export reveal page (task #11 Stage 2). Token is a signed payload
   # from AccountsController#initiate_wallet_export; constraints stop Rails

@@ -5,7 +5,6 @@ class WalletExportsCompleteTest < ActionDispatch::IntegrationTest
     @managed = User.create!(
       name: "Maggie Managed", username: "maggie-managed-#{SecureRandom.hex(2)}",
       email: "managed-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       email_verified_at: Time.current
     )
     assert @managed.reload.managed_wallet?

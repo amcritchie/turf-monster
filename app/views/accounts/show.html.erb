@@ -204,10 +204,10 @@
       <% end %>
     </div>
 
-    <%# Email — full PATCH /account flow. OPSEC-046: changing email
-        requires the user to confirm their current password, so we reveal
-        a hidden current_password field via Alpine when the value differs
-        from the saved address (password users only). %>
+    <%# Email — full PATCH /account flow. Passwordless (Lazarus audit #4):
+        changing an existing email is confirmed out-of-band via a link sent to
+        the CURRENT address (AccountsController#update), so there's no in-app
+        re-auth field. Setting a first email applies directly + verifies. %>
     <div x-data="{ initial: '<%= j @user.email.to_s %>', current: '<%= j @user.email.to_s %>' }">
       <h3 class="text-sm font-bold text-heading mb-2">Email</h3>
       <%= form_with model: @user, url: account_path, method: :patch do |f| %>
@@ -218,12 +218,11 @@
                             "x-model": "current" %>
           <button type="submit" class="btn btn-primary">Save</button>
         </div>
-        <% if @user.has_password? %>
-          <input type="password" name="current_password"
-                 x-show="current !== initial"
-                 x-cloak
-                 class="input-field mt-2"
-                 placeholder="Confirm current password to change email">
+        <% if @user.email.present? %>
+          <p x-show="current.toLowerCase() !== initial.toLowerCase()" x-cloak
+             class="text-xs text-muted mt-2">
+            For your security, we'll email a confirmation link to your current address before the change takes effect.
+          </p>
         <% end %>
       <% end %>
     </div>
@@ -356,33 +355,4 @@
     <%= link_to "Buy Entry Tokens", tokens_buy_path, class: "btn btn-primary w-full" %>
   </div>
 
-  <%# -- Change Password -- %>
-  <div class="card shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-heading mb-4"><%= @user.has_password? ? "Change Password" : "Set Password" %></h2>
-    <%= form_tag change_password_account_path, method: :post do %>
-      <% if @user.has_password? %>
-        <div class="mb-4">
-          <label for="current_password" class="block text-sm text-secondary mb-2 font-medium">Current Password</label>
-          <input type="password" name="current_password" id="current_password"
-            class="input-field"
-            placeholder="Current password">
-        </div>
-      <% end %>
-      <div class="mb-4">
-        <label for="new_password" class="block text-sm text-secondary mb-2 font-medium">New Password</label>
-        <input type="password" name="new_password" id="new_password"
-          class="input-field"
-          placeholder="New password (min 6 chars)">
-      </div>
-      <div class="mb-4">
-        <label for="new_password_confirmation" class="block text-sm text-secondary mb-2 font-medium">Confirm New Password</label>
-        <input type="password" name="new_password_confirmation" id="new_password_confirmation"
-          class="input-field"
-          placeholder="Confirm new password">
-      </div>
-      <button type="submit" class="btn btn-secondary">
-        <%= @user.has_password? ? "Update Password" : "Set Password" %>
-      </button>
-    <% end %>
-  </div>
 </div>

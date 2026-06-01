@@ -30,8 +30,7 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
   test "email signup persists the reference onto the new user" do
     assert_difference "User.count", 1 do
       post signup_path, params: {
-        user: { email: "newbie@mcritchie.studio", password: "password",
-                password_confirmation: "password", reference: "friends-test" }
+        user: { email: "newbie@mcritchie.studio", reference: "friends-test" }
       }
     end
     assert_equal "friends-test", User.find_by(email: "newbie@mcritchie.studio").reference

@@ -32,7 +32,6 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     end
     user = User.find_by(email: "brand-new@example.com")
     assert user.email_verified_at.present?, "new user should be email-verified by clicking the link"
-    assert_not user.has_password?, "magic-link user should have no password"
     assert_redirected_to tokens_buy_path
   end
 
