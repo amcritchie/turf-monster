@@ -18,4 +18,14 @@ module ApplicationHelper
     return "—" unless value
     value == value.to_i ? value.to_i.to_s : sprintf('%.1f', value)
   end
+
+  # Whether to load LogRocket session replay on this request. Replay runs only
+  # in production AND never on pages that render secrets — a controller marks
+  # those by setting @suppress_session_replay (see WalletExportsController).
+  # The wallet-export reveal page renders a decrypted private key into the DOM;
+  # without this gate LogRocket would stream that key (and the user's email via
+  # identify()) to a third party (Lazarus audit #2, 2026-05-31).
+  def session_replay_active?
+    Rails.env.production? && !@suppress_session_replay
+  end
 end

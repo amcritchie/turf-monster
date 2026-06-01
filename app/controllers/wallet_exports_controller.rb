@@ -32,6 +32,7 @@ class WalletExportsController < ApplicationController
   skip_before_action :verify_authenticity_token, only: [:complete]
 
   before_action :verify_export_token, only: [:show, :complete]
+  before_action :harden_secret_response, only: [:show]
 
   def show
     keypair = @export_user.solana_keypair
@@ -90,6 +91,17 @@ class WalletExportsController < ApplicationController
   end
 
   private
+
+  # Lazarus audit #2 (2026-05-31): #show renders the decrypted private key into
+  # the DOM. Suppress third-party session replay (LogRocket — see
+  # ApplicationHelper#session_replay_active?) so the key + the owner's identity
+  # are never streamed off-box, and forbid caching / referrer leakage of the
+  # reveal page.
+  def harden_secret_response
+    @suppress_session_replay = true
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+  end
 
   def verify_export_token
     payload = Rails.application.message_verifier(WALLET_EXPORT_TOKEN_KEY).verify(params[:token]).with_indifferent_access
