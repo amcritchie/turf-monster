@@ -64,4 +64,31 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "a[href=?]", admin_hub_path, count: 0
   end
+
+  # --- Sidekiq Web admin gate (SidekiqAdminMiddleware) ---
+  # Lazarus audit #17 / OPSEC-045: /admin/jobs must require BOTH admin? AND a
+  # session whose token still matches the user's current session_token, so a
+  # rotated/revoked session (e.g. after the email-change flow or a forced
+  # re-login) loses Sidekiq Web access too — not just admin? alone.
+
+  test "Sidekiq /admin/jobs denies non-admins (404)" do
+    log_in_as(@user)
+    get "/admin/jobs"
+    assert_response :not_found
+  end
+
+  test "Sidekiq /admin/jobs denies a stale session_token (OPSEC-045)" do
+    log_in_as(@admin)
+    # Rotate the DB token so the session's stored token is now stale, as if the
+    # admin re-authed elsewhere or an email change rotated it.
+    @admin.update_column(:session_token, SecureRandom.hex(32))
+    get "/admin/jobs"
+    assert_response :not_found
+  end
+
+  test "Sidekiq /admin/jobs opens for an admin with a matching session token" do
+    log_in_as(@admin)
+    get "/admin/jobs"
+    assert_not_equal 404, response.status, "a valid admin session must pass the gate"
+  end
 end

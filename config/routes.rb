@@ -13,8 +13,13 @@ class SidekiqAdminMiddleware
     session = env["rack.session"] || {}
     user_id = session[Studio.session_key.to_s] || session[Studio.session_key]
     user = user_id && User.find_by(id: user_id)
+    # OPSEC-045 (Lazarus audit #17): also require the session's token to match
+    # the user's current session_token — so a rotated/revoked session (after the
+    # email-change flow or a forced re-login) loses Sidekiq Web access too.
+    # admin? alone left /admin/jobs reachable by a stale stolen cookie.
+    session_token = session["session_token"] || session[:session_token]
 
-    if user&.admin?
+    if user&.admin? && session_token.present? && session_token == user.session_token
       @app.call(env)
     else
       body = <<~HTML
@@ -231,7 +236,12 @@ Rails.application.routes.draw do
   post "tokens/stripe_checkout", to: "tokens#stripe_checkout", as: :tokens_stripe_checkout
   get  "tokens/processing",      to: "tokens#processing",      as: :tokens_processing
   get  "tokens/status",          to: "tokens#status",          as: :tokens_status
-  post "tokens/dev_mint",        to: "tokens#dev_mint",        as: :tokens_dev_mint
+  # Lazarus audit #21: dev/test-only free-mint endpoint — not drawn in
+  # production so the public mainnet app exposes no free-mint surface. The
+  # tokens/buy view gates its "Mint free (dev)" button the same way.
+  unless Rails.env.production?
+    post "tokens/dev_mint",      to: "tokens#dev_mint",        as: :tokens_dev_mint
+  end
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_31_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_01_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -243,6 +243,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_31_000001) do
     t.index ["slug"], name: "index_pending_transactions_on_slug", unique: true
     t.index ["status"], name: "index_pending_transactions_on_status"
     t.index ["target_type", "target_id"], name: "index_pending_transactions_on_target"
+    t.index ["tx_signature"], name: "index_pending_transactions_on_tx_signature_unique", unique: true, where: "(tx_signature IS NOT NULL)"
   end
 
   create_table "players", force: :cascade do |t|
