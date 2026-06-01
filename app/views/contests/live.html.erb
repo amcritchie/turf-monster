@@ -92,10 +92,7 @@
       <%# Wrapper owns the id; the broadcaster updates its inner HTML (the compact
           leaderboard partial), so the wrapper + id survive every re-rank. %>
       <div id="contest_<%= @contest.id %>_leaderboard" :class="tab === 'leaderboard' ? '' : 'hidden'" class="md:block">
-        <%# show_completed_games: false — the Games row above already lists completed
-            games (FINAL) with scorers, so the leaderboard's Completed Games grid
-            would duplicate it here. Other callers (contest show) keep it. %>
-        <%= render "contests/turf_totals_leaderboard", compact: true, show_completed_games: false %>
+        <%= render "contests/turf_totals_leaderboard", compact: true %>
       </div>
       <div x-cloak :class="tab === 'chat' ? '' : 'hidden'" class="md:block">
         <%= render "contests/chat_panel", contest: @contest %>
