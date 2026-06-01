@@ -2,7 +2,7 @@
   "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.18.0",
+    "version": "0.19.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
@@ -1193,7 +1193,9 @@
     {
       "name": "mint_entry_token",
       "docs": [
-        "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer."
+        "Mint a new EntryTokenAccount for a user. 1-of-3 vault signer.",
+        "PDA is derived from sha256(source_ref) (v0.19, audit #9) — re-minting the",
+        "same source_ref collides on init for true on-chain idempotency."
       ],
       "discriminator": [
         182,
@@ -1234,7 +1236,7 @@
         {
           "name": "user_wallet",
           "docs": [
-            "`owner` on the new account. Not a signer; not modified."
+            "account (NOT a PDA seed in v0.19). Not a signer; not modified."
           ]
         },
         {
@@ -1259,12 +1261,8 @@
                 ]
               },
               {
-                "kind": "account",
-                "path": "user_wallet"
-              },
-              {
                 "kind": "arg",
-                "path": "sequence"
+                "path": "source_ref_hash"
               }
             ]
           }
@@ -1276,10 +1274,6 @@
       ],
       "args": [
         {
-          "name": "sequence",
-          "type": "u64"
-        },
-        {
           "name": "source",
           "type": "u8"
         },
@@ -1289,6 +1283,15 @@
             "array": [
               "u8",
               64
+            ]
+          }
+        },
+        {
+          "name": "source_ref_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
             ]
           }
         }
@@ -1471,6 +1474,15 @@
           "signer": true
         },
         {
+          "name": "cosigner",
+          "docs": [
+            "Optional second vault signer. Required (2-of-3) ONLY to amend an",
+            "already-set conclusion; omitted for the initial 1-of-3 set."
+          ],
+          "signer": true,
+          "optional": true
+        },
+        {
           "name": "vault_state",
           "pda": {
             "seeds": [
@@ -1544,6 +1556,15 @@
           "name": "admin",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "cosigner",
+          "docs": [
+            "Optional second vault signer. Required (2-of-3) ONLY to amend a lock",
+            "that has already passed; omitted for a routine pre-lock set (1-of-3)."
+          ],
+          "signer": true,
+          "optional": true
         },
         {
           "name": "vault_state",
@@ -2170,6 +2191,21 @@
       "code": 6035,
       "name": "ContestConcluded",
       "msg": "Contest has concluded — the conclusion timestamp has passed"
+    },
+    {
+      "code": 6036,
+      "name": "InvalidPayoutDestination",
+      "msg": "Settlement payout destination is not the winner's associated token account"
+    },
+    {
+      "code": 6037,
+      "name": "InvalidTimestamp",
+      "msg": "Invalid contest timestamp: must be non-negative, in the future, and lock must precede conclusion"
+    },
+    {
+      "code": 6038,
+      "name": "EntryTokenSeedMismatch",
+      "msg": "Entry token seed hash does not match sha256(source_ref)"
     }
   ],
   "types": [
@@ -2525,8 +2561,11 @@
         "EntryTokenAccount: a pre-purchased contest entry token issued by the admin.",
         "User redeems one of these to enter a contest without paying the entry fee at entry time.",
         "",
-        "PDA seeds: [b\"entry_token\", owner.as_ref(), sequence.to_le_bytes().as_ref()]",
-        "Discovery: getProgramAccounts filter by `owner`."
+        "PDA seeds (v0.19, audit #9): [b\"entry_token\", sha256(source_ref)]. Derived",
+        "from the external reference's hash so re-minting the same `source_ref`",
+        "collides on init (true idempotency); replaces the old caller-supplied",
+        "`sequence`. `source_ref` must be globally unique across wallets.",
+        "Discovery: getProgramAccounts filter by `owner` (still in the account body)."
       ],
       "type": {
         "kind": "struct",
