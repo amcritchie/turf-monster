@@ -669,27 +669,16 @@ class ContestsController < ApplicationController
       return render json: { status: "processing" }
     end
 
-    # TX landed. Before crediting, run the SAME semantic verification the live
-    # confirm_onchain_entry path uses (OPSEC-010 / Lazarus audit #1):
-    # server-DERIVE the entry PDA from (contest slug, the session wallet,
-    # this entry's entry_number) — never trust ptx.metadata.entry_pda, which
-    # is client-supplied — then assert the signature really is an
-    # `enter_contest` instruction signed by THIS user and writing to THAT PDA.
-    # Without this, the recovery path would activate a paid entry from ANY
-    # finalized signature (a $0.01 self-transfer, someone else's tx, …) for
-    # free. confirm_onchain! then re-checks open/lock/limit/sybil, and the
-    # unique-signature constraint blocks replaying one tx across two rows.
+    # TX landed. Run the SAME server-side verification the live path uses
+    # before crediting — never trust ptx.metadata.entry_pda (client-supplied).
+    # verify_and_confirm_onchain_entry! re-derives the PDA, asserts the
+    # signature is a genuine enter_contest IX from this wallet, and activates
+    # the entry; without it the recovery path would credit a paid entry from
+    # ANY finalized signature. confirm_onchain! re-checks open/lock/limit/sybil
+    # and the unique-signature index blocks replaying one tx across two rows.
+    # (OPSEC-010 / Lazarus audit #1.)
     begin
-      derived_entry_pda = Solana::Keypair.encode_base58(
-        vault.entry_pda(@contest.slug, current_user.web3_solana_address, entry.entry_number).first
-      )
-      verify_solana_transaction!(
-        ptx.tx_signature,
-        instruction: "enter_contest",
-        signer: current_user.web3_solana_address,
-        writable: derived_entry_pda
-      )
-      entry.confirm_onchain!(tx_signature: ptx.tx_signature, entry_pda: derived_entry_pda)
+      verify_and_confirm_onchain_entry!(entry, ptx.tx_signature, vault: vault)
       ptx.update!(status: "confirmed")
       render json: {
         status: "confirmed",
@@ -714,26 +703,12 @@ class ContestsController < ApplicationController
     rescue_and_log(target: entry, parent: @contest) do
       raise "Wallet not linked" unless current_user.web3_solana_address.present?
 
-      # OPSEC-010: server-derive the entry PDA (we know contest slug, wallet,
-      # and entry_number). Reject mismatched client-supplied PDAs, then assert
-      # the on-chain TX is the v0.16 enter_contest IX writing to that PDA,
-      # signed by the user's own wallet.
-      derived_entry_pda = Solana::Keypair.encode_base58(
-        Solana::Vault.new.entry_pda(@contest.slug, current_user.web3_solana_address, entry.entry_number).first
-      )
-      raise "Entry PDA mismatch" unless params[:entry_pda] == derived_entry_pda
-
-      verify_solana_transaction!(
-        params[:tx_signature],
-        instruction: "enter_contest",
-        signer: current_user.web3_solana_address,
-        writable: derived_entry_pda
-      )
-
-      entry.confirm_onchain!(
-        tx_signature: params[:tx_signature],
-        entry_pda: derived_entry_pda
-      )
+      # OPSEC-010 / Lazarus audit #1: server-derive the entry PDA, cross-check
+      # the client-supplied one, assert the on-chain TX is the v0.16
+      # enter_contest IX signed by the user's wallet writing to that PDA, then
+      # activate. Shared with the crash-recovery path so neither can drift.
+      verify_and_confirm_onchain_entry!(entry, params[:tx_signature],
+                                        expected_entry_pda: params[:entry_pda])
 
       # Mark the PendingTransaction confirmed. Use the stamped signature as
       # the lookup key (covers the case where prepare_entry created the row
@@ -1255,6 +1230,40 @@ class ContestsController < ApplicationController
     )
   rescue Solana::TxVerifier::VerificationError => e
     raise e.message
+  end
+
+  # Shared on-chain entry confirmation, used by BOTH the live confirm path
+  # (#confirm_onchain_entry) and the crash-recovery path (#recover_pending_entry).
+  # Server-DERIVES the entry PDA from (contest slug, the session wallet, this
+  # entry's entry_number) — never trusts a client-supplied PDA — asserts the
+  # signature is a genuine `enter_contest` IX signed by this user and writing
+  # to that derived PDA (OPSEC-010 / Lazarus audit #1), then activates the
+  # entry. Keeping both callers on this one method stops the recovery path
+  # from ever drifting back to the unverified-signature critical it just
+  # closed. Returns the server-derived entry PDA (base58).
+  #
+  # `expected_entry_pda:` — the live path passes the client-supplied PDA to
+  #   cross-check (mismatch raises, matching the prior inline guard); the
+  #   recovery path omits it (default `false` = skip the cross-check) since it
+  #   has no trustworthy client PDA — re-deriving is the whole point. A real
+  #   PDA is always a non-empty base58 string, so `false` is an unambiguous
+  #   "not provided" sentinel.
+  # `vault:` — lets a caller reuse an already-instantiated Solana::Vault.
+  def verify_and_confirm_onchain_entry!(entry, tx_signature, expected_entry_pda: false, vault: Solana::Vault.new)
+    derived_entry_pda = Solana::Keypair.encode_base58(
+      vault.entry_pda(@contest.slug, current_user.web3_solana_address, entry.entry_number).first
+    )
+    raise "Entry PDA mismatch" if expected_entry_pda != false && expected_entry_pda != derived_entry_pda
+
+    verify_solana_transaction!(
+      tx_signature,
+      instruction: "enter_contest",
+      signer: current_user.web3_solana_address,
+      writable: derived_entry_pda
+    )
+
+    entry.confirm_onchain!(tx_signature: tx_signature, entry_pda: derived_entry_pda)
+    derived_entry_pda
   end
 
   def set_contest
