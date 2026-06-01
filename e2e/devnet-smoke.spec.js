@@ -44,7 +44,6 @@ const MACK_PUBKEY = "foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds";
 let sharedSmallContestUrl;
 let sharedStandardContestUrl;
 let masonEmail;
-let masonPassword;
 
 // Balance snapshots — captured before/after for consumption tracking
 let preflightSOL = 0;
@@ -230,15 +229,22 @@ async function loginViaKeypair(page) {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: log in via email/password
+// Helper: log in via passwordless magic link (mirrors e2e/helpers.js login()).
+// Email auth is magic-link only now — there is no password form. Mints a token
+// through the dev-only /test/magic_link_token endpoint and consumes it.
 // ---------------------------------------------------------------------------
 
-async function loginViaEmail(page, email, password) {
-  await page.goto("/login");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.locator('form button.btn-primary[type="submit"]').click();
-  await page.waitForURL(/^(?!.*login)/, { timeout: 15000 });
+async function loginViaEmail(page, email) {
+  const resp = await page.request.post("/test/magic_link_token", { data: { email } });
+  if (!resp.ok()) {
+    throw new Error(`magic_link_token failed: ${resp.status()} ${await resp.text()}`);
+  }
+  const { url } = await resp.json();
+  await page.goto(url);
+  await page.waitForURL(
+    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link"),
+    { timeout: 15000 }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -417,33 +423,40 @@ test("@devnet 2 — Alex claims $500 USDC from faucet", async ({
 // Test 3: Mason registers via email
 // ===========================================================================
 
-test("@devnet 3 — Mason registers via email → completes profile", async ({
+test("@devnet 3 — Mason registers via magic link → completes profile", async ({
   page,
 }) => {
   const ts = Date.now().toString(36);
   const email = `mason-${ts}@test.com`;
-  const password = "password123";
 
-  await page.goto("/signup");
-  await page.fill("#user_email", email);
-  await page.fill("#user_password", password);
-  await page.fill("#user_password_confirmation", password);
-  await page.getByRole("button", { name: "Sign Up", exact: true }).click();
-  await page.waitForURL("**/account/complete_profile", { timeout: 30000 });
+  // Passwordless: a magic link for a brand-new email creates the account and
+  // logs in (create-or-login). Mint via the dev-only endpoint + consume — there
+  // is no signup password form anymore.
+  const resp = await page.request.post("/test/magic_link_token", { data: { email } });
+  if (!resp.ok()) {
+    throw new Error(`magic_link_token failed: ${resp.status()} ${await resp.text()}`);
+  }
+  const { url } = await resp.json();
+  await page.goto(url);
+  await page.waitForURL(
+    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link"),
+    { timeout: 30000 }
+  );
 
-  // Complete profile
+  // Complete profile — a brand-new user has no username, so the
+  // profile-completion gate applies.
+  await page.goto("/account/complete_profile");
   const username = `mason-${ts}`;
   await page.fill("#user_username", username);
   await page.getByRole("button", { name: "Save Profile" }).click();
   await page.waitForURL(/^(?!.*complete_profile)/, { timeout: 15000 });
 
   masonEmail = email;
-  masonPassword = password;
 
   // Verify on account page
   await page.goto("/account");
   await expect(page.locator("body")).toContainText(username, { timeout: 10000 });
-  console.log(`Test 3 — Mason registered: ${email}`);
+  console.log(`Test 3 — Mason registered (magic link): ${email}`);
 });
 
 // ===========================================================================
@@ -455,7 +468,7 @@ test("@devnet 4 — Mason claims $50 USDC from faucet", async ({
 }) => {
   test.skip(!masonEmail, "No Mason credentials from Test 3");
 
-  await loginViaEmail(page, masonEmail, masonPassword);
+  await loginViaEmail(page, masonEmail);
   console.log(`Test 4 — logged in as ${masonEmail}`);
 
   await claimFaucet(page, "Test 4");
@@ -556,7 +569,7 @@ test("@devnet 8 — small contest: Mason picks 6 → enters", async ({
   test.skip(!sharedSmallContestUrl, "No shared small contest URL from Test 7");
   test.skip(!masonEmail, "No Mason credentials from Test 3");
 
-  await loginViaEmail(page, masonEmail, masonPassword);
+  await loginViaEmail(page, masonEmail);
   console.log(`Test 8 — logged in as ${masonEmail}`);
 
   // Navigate to small contest, pick all LEFT sides of game pairs [1/3]
@@ -740,7 +753,7 @@ test("@devnet 14 — standard contest: Mason picks 6 → enters", async ({
   test.skip(!sharedStandardContestUrl, "No shared standard contest URL from Test 13");
   test.skip(!masonEmail, "No Mason credentials from Test 3");
 
-  await loginViaEmail(page, masonEmail, masonPassword);
+  await loginViaEmail(page, masonEmail);
   console.log(`Test 14 — logged in as ${masonEmail}`);
 
   // Navigate to standard contest, pick 6 matchups
@@ -763,7 +776,7 @@ test("@devnet 15 — standard contest: Mason re-enters with different picks", as
   test.skip(!sharedStandardContestUrl, "No shared standard contest URL from Test 13");
   test.skip(!masonEmail, "No Mason credentials from Test 3");
 
-  await loginViaEmail(page, masonEmail, masonPassword);
+  await loginViaEmail(page, masonEmail);
   console.log(`Test 15 — logged in as ${masonEmail}`);
 
   // Navigate to standard contest and clear stale picks
