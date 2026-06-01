@@ -114,7 +114,16 @@ module Solana
     # program disagree on the address. Both go through these two helpers so they
     # can't drift — see test/services/solana/entry_token_pda_test.rb.
     def padded_source_ref(source_ref)
-      bytes = source_ref.to_s.b.bytes.first(64)
+      bytes = source_ref.to_s.b.bytes
+      # The on-chain source_ref is [u8;64]. Silently truncating a longer ref
+      # drops its tail — which is exactly how a multi-token purchase's
+      # "...:#{i}" suffix got cut off so every token shared ONE PDA and
+      # collided on init (custom program error 0x0). Fail loud instead: callers
+      # MUST keep source_refs <= 64 bytes (and globally unique per token).
+      if bytes.length > 64
+        raise ArgumentError, "source_ref exceeds the on-chain [u8;64] limit " \
+          "(#{bytes.length} bytes): #{source_ref.inspect}"
+      end
       bytes += [0] * (64 - bytes.length)
       bytes.pack("C*")
     end

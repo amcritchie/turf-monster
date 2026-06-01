@@ -51,7 +51,13 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     assert_equal "minted", purchase.status
     assert_equal 3, purchase.tx_signatures.length
     assert_equal 3, vault.mint_calls.length
-    assert vault.mint_calls.all? { |r| r.start_with?("stripe:#{@sid}:") }
+    # source_ref is "stripe:<purchase_id>:<index>" — short enough to fit the
+    # on-chain [u8;64] AND distinct per token. Regression: the old
+    # "stripe:<66-char-session>:<i>" overflowed 64 bytes, truncating the ":#{i}"
+    # so all three trio tokens hashed to one PDA and collided on init (0x0).
+    assert vault.mint_calls.all? { |r| r.start_with?("stripe:#{purchase.id}:") }, "ref keyed on purchase id"
+    assert_equal 3, vault.mint_calls.uniq.length, "each token gets a DISTINCT source_ref"
+    assert vault.mint_calls.all? { |r| r.bytesize <= 64 }, "each source_ref fits the on-chain [u8;64]"
     assert TransactionLog.where("metadata @> ?", { stripe_session_id: @sid }.to_json).exists?
   end
 
@@ -59,7 +65,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     # Simulate a previous run that minted indices 0 and 1 and persisted their
     # signatures to the DB before crashing on index 2. The retry should resume
     # at i=2 (already_minted == 2) and mint only the one remaining token.
-    StripePurchase.create!(
+    sp = StripePurchase.create!(
       user: @user,
       stripe_session_id: @sid,
       quantity: 3,
@@ -74,7 +80,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
 
     # Only the 3rd iteration should have hit the chain on this retry.
     assert_equal 1, vault.mint_calls.length
-    assert_equal "stripe:#{@sid}:2", vault.mint_calls.first
+    assert_equal "stripe:#{sp.id}:2", vault.mint_calls.first
 
     purchase = StripePurchase.for_session(@sid).first
     assert_equal "minted", purchase.status
@@ -125,7 +131,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     assert_equal first_run_sigs, purchase.tx_signatures[0..1]
     # The retry only attempted the third mint — not a re-mint of 0/1.
     assert_equal 1, retry_vault.mint_calls.length
-    assert_equal "stripe:#{@sid}:2", retry_vault.mint_calls.first
+    assert_equal "stripe:#{purchase.id}:2", retry_vault.mint_calls.first
     assert TransactionLog.where("metadata @> ?", { stripe_session_id: @sid }.to_json).exists?
   end
 

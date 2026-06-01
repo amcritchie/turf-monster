@@ -3,7 +3,13 @@
 # Idempotency (OPSEC-009): per-mint incremental persistence so a partial
 # failure (e.g. 2 of 3 minted then crash) recovers on retry without
 # re-minting or losing the audit trail:
-#   - "stripe:#{session_id}:#{i}" is the source_ref for token i of this purchase
+#   - "stripe:#{purchase.id}:#{i}" is the source_ref for token i of this purchase.
+#     NOT the Stripe session id: that's ~66 chars, and with the "stripe:" prefix
+#     + ":#{i}" suffix it overflows the on-chain [u8;64] source_ref field, which
+#     silently truncated the ":#{i}" — so every token in a multi-token purchase
+#     hashed to ONE PDA and collided on init (custom program error 0x0). The
+#     numeric purchase id keeps the ref short, unique-per-token, and stable for
+#     retries; the readable session→purchase mapping lives in the DB row.
 #   - Each successful mint persists its signature to StripePurchase
 #     immediately. A crash on the next iteration leaves the prior signatures
 #     in the DB as the resume point.
@@ -69,8 +75,8 @@ class TokenPurchaseJob < ApplicationJob
       Rails.logger.info "[tokens] job.signatures_complete already_have=#{already_minted}, marking minted"
     else
       (already_minted...quantity).each do |i|
-        source_ref = "stripe:#{stripe_session_id}:#{i}"
-        Rails.logger.info "[tokens] job.mint #{i + 1}/#{quantity} source_ref=stripe:#{sid_short}...:#{i} program_id=#{Solana::Config::PROGRAM_ID[0,12]}..."
+        source_ref = "stripe:#{purchase.id}:#{i}"
+        Rails.logger.info "[tokens] job.mint #{i + 1}/#{quantity} source_ref=#{source_ref} program_id=#{Solana::Config::PROGRAM_ID[0,12]}..."
         result = vault.mint_entry_token(
           wallet_address: wallet_address,
           source: :stripe,
