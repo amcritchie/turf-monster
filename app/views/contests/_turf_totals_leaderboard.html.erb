@@ -122,38 +122,9 @@
 <% end %>
 <% end %>
 
-<%# Completed Games — show_completed_games defaults to true (contest show page).
-    The live page passes false because its Games row already lists completed
-    games + scorers, so this grid would duplicate it. %>
-<% show_completed_games = local_assigns.fetch(:show_completed_games, true) %>
-<% completed_matchups = show_completed_games ? (matchups&.select { |m| m.status == "completed" } || []) : [] %>
-<% if completed_matchups.any? %>
-  <section class="mb-8">
-    <h2 class="text-xl font-semibold mb-4 text-body">Completed Games</h2>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <%
-        # Group by game to show scores once per game
-        games_shown = Set.new
-        completed_matchups.each do |matchup|
-          next if games_shown.include?(matchup.game_slug)
-          games_shown << matchup.game_slug
-          game = matchup.game
-          next unless game
-          home_matchup = completed_matchups.find { |m| m.team_slug == game.home_team_slug }
-          away_matchup = completed_matchups.find { |m| m.team_slug == game.away_team_slug }
-      %>
-        <div class="card p-3 text-center">
-          <div class="flex items-center justify-center gap-2 mb-1">
-            <span class="text-lg"><%= game.home_team.emoji %></span>
-            <span class="font-mono text-heading text-lg font-bold"><%= game.home_score %>-<%= game.away_score %></span>
-            <span class="text-lg"><%= game.away_team.emoji %></span>
-          </div>
-          <p class="text-xs text-muted"><%= game.home_team.short_name %> vs <%= game.away_team.short_name %></p>
-        </div>
-      <% end %>
-    </div>
-  </section>
-<% end %>
+<%# Completed Games grid removed 2026-06-01 (operator request). The live page's
+    Games row already lists completed games + scorers; the contest show page no
+    longer shows a Completed Games section. %>
 
 <!-- Leaderboard -->
 <% total_seats = contest.max_entries || entries.size %>
