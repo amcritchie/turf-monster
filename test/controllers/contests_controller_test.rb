@@ -814,6 +814,20 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_select "section" # board renders inline
   end
 
+  test "show shows an entries-closed state in place of Hold to Confirm once the contest is locked" do
+    log_in_as(@user)
+    # Derived time-lock: starts_at in the past → Contest#locked? is true.
+    # update_column skips the onchain lock-time callback (test-only board).
+    @contest.update_column(:starts_at, 1.minute.ago)
+    assert @contest.reload.locked?, "precondition: contest should be derived-locked"
+
+    get contest_path(@contest)
+    assert_response :success
+    # Specific to the picks-sidebar gate (the header's countdown also says
+    # "Entries closed", so assert the unique closed-state copy instead).
+    assert_match "this contest has locked", @response.body
+  end
+
   test "show renders 'Add Nth Entry' link when user already has an entry" do
     log_in_as(@user)
     entry = @contest.entries.create!(user: @user, status: :active)
