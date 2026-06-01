@@ -61,7 +61,7 @@ MASON_KEY=$(op item get agent.mason.solana --vault agents --fields "private key"
 ```
 
 - [ ] All three Squads stages complete (propose → approve ×2 → execute)
-- [ ] `solana program show Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT --url devnet` shows a recent "Last Deployed In Slot"
+- [ ] `solana program show EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ --url devnet` shows a recent "Last Deployed In Slot"
 
 ---
 

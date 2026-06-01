@@ -672,5 +672,8 @@ rescue => e
   puts "     Then re-run `bin/rails db:seed` to finish the on-chain bootstrap."
 end
 
+# ─── Landing pages (marketing funnels) ───────────────────────
+load Rails.root.join("db/seeds/landing_pages.rb")
+
 puts "Done! #{User.count} users, #{Slate.count} slates, #{Contest.count} contests, #{Entry.count} entries"
-puts "  #{Team.count} teams, #{Game.count} games, #{Player.count} players, #{SlateMatchup.count} matchups"
+puts "  #{Team.count} teams, #{Game.count} games, #{Player.count} players, #{SlateMatchup.count} matchups, #{LandingPage.count} landing pages"
