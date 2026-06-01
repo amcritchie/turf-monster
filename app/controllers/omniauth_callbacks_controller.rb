@@ -22,6 +22,15 @@ class OmniauthCallbacksController < ApplicationController
   def create
     auth = request.env["omniauth.auth"]
 
+    # Defensive: a nil auth hash means OmniAuth never populated it (e.g.
+    # test_mode with no mock configured, or a malformed callback). Fail
+    # cleanly instead of NoMethodError on `auth.extra`.
+    if auth.nil?
+      Rails.logger.warn("[OmniauthCallbacks] missing omniauth.auth — failing gracefully")
+      return finish_oauth((logged_in? ? account_path : login_path), success: false,
+                          alert: "Google sign-in failed. Please try again.")
+    end
+
     # omniauth-google-oauth2 v1.x exposes the id_token under `extra`; older
     # versions put it in `credentials`. Reading the wrong key yields nil and
     # the validator rejects every sign-in with `missing_id_token`.

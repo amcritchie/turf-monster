@@ -58,11 +58,15 @@ Rails.application.configure do
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log
 
-  # Enable OmniAuth test mode in development so Playwright's OAuth mock
-  # path (POST /test/oauth_mock then GET /auth/google_oauth2) actually
-  # uses the configured mock_auth hash instead of redirecting to Google.
-  # Dev is localhost-only — no exposure risk. Production stays untouched.
-  config.after_initialize { OmniAuth.config.test_mode = true } if defined?(OmniAuth)
+  # OmniAuth test_mode is intentionally NOT forced on in development —
+  # interactive dev logins must hit the REAL Google redirect. Playwright
+  # enables test_mode lazily via POST /test/oauth_mock
+  # (TestController#set_oauth_mock) right before it navigates to
+  # /auth/:provider, and the reseed endpoint flips it back off so a reused
+  # dev server returns to the real flow. CI runs under RAILS_ENV=test where
+  # test.rb keeps test_mode on. (Previously this line forced test_mode on,
+  # which short-circuited /auth/google_oauth2 to the callback with a nil
+  # auth hash → "Google sign-in failed" for every real browser login.)
 
   # Raise exceptions for disallowed deprecations.
   config.active_support.disallowed_deprecation = :raise
