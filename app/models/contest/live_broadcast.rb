@@ -64,7 +64,10 @@ class Contest
           partial: "contests/turf_totals_leaderboard",
           # onchain_contest: nil — compact mode never renders on-chain blocks, and
           # a broadcast can't afford a synchronous RPC fetch.
-          locals:  { compact: true, contest: contest, entries: entries, matchups: matchups, onchain_contest: nil }
+          # show_completed_games: false — this stream feeds ONLY the live page,
+          # whose Games row already lists completed games with scorers. Must mirror
+          # live.html.erb's initial render or each goal re-injects the duplicate grid.
+          locals:  { compact: true, show_completed_games: false, contest: contest, entries: entries, matchups: matchups, onchain_contest: nil }
         )
       rescue => e
         ErrorLog.capture!(e)
