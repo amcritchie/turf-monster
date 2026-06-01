@@ -15,15 +15,16 @@ def seed_core_users!
   users = {}
 
   CORE_USERS.each do |data|
+    # Passwordless (Lazarus audit #4): no password is set — email auth is
+    # magic-link only. has_secure_password was removed, so `u.password=` no
+    # longer exists; the password_digest column is dormant.
     user = User.find_or_create_by!(email: data[:email]) do |u|
       u.name     = data[:name]
       u.username = data[:username]
-      u.password = "password"
       u.role     = data[:role] || "user"
     end
 
     # Ensure fields are up to date on existing records
-    user.update!(password: "password") if user.password_digest.blank?
     user.update!(username: data[:username]) if user.username.blank?
     user.update!(role: data[:role]) if data[:role] && !user.send("#{data[:role]}?")
 
