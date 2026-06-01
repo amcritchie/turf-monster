@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+#
+# bin/tm — Turf Monster local stack control: ONE command to bring the dev
+# stack (web + Sidekiq + Stripe listener) up or down.
+#
+# Unlike `bin/dev` (foreman), every process is DETACHED — it survives the
+# terminal and an agent session — and the stack's gotchas are encoded once so
+# nobody has to re-derive them:
+#   • preflight: redis + postgresql@14 must be up (started via brew if not)
+#   • exactly ONE Sidekiq, on the `default` + `mailers` queues. `mailers` is
+#     not optional — magic-link login enqueues there; and a stale Sidekiq keeps
+#     an old .env snapshot (e.g. SOLANA_PROGRAM_ID) and mints to a dead program.
+#   • one-shot Tailwind build (the --watch process self-destructs without a TTY)
+#   • a Stripe listener whose signing secret is verified against .env
+#   • a readiness poll, so "up" means actually-serving — not merely launched
+#
+# Usage:
+#   bin/tm up [--no-stripe]   bring the stack to healthy; ADOPTS an already-
+#                             running stack (writes pidfiles) instead of bouncing
+#   bin/tm down               stop the managed stack (leaves redis/postgres up)
+#   bin/tm restart            force a clean bounce — the after-.env / gem /
+#                             migration ritual (Sidekiq snapshots .env at boot)
+#   bin/tm status             services, ports, one-Sidekiq check, secret match
+#   bin/tm logs [web|sidekiq|stripe]   tail -f a log (default: all three)
+#
+# Env overrides (default to the canonical primary stack):
+#   TM_PORT=3001  TM_REDIS_DB=0   — point at an isolated stack (e.g. smoke tests)
+#
+# This manages the PRIMARY :3001 stack. For a second isolated stack ALONGSIDE
+# it (a worktree), use `bin/parallel-server`, or set TM_PORT/TM_REDIS_DB here.
+#
+set -uo pipefail   # deliberately no -e: failures are handled inline with messages
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+APP="$(basename "$ROOT")"
+
+PORT="${TM_PORT:-3001}"
+REDIS_DB="${TM_REDIS_DB:-0}"
+NO_STRIPE=0
+
+# Children inherit these. APP_PORT keeps emailed magic-links pointing here; a
+# non-default Redis db isolates Sidekiq+cache (the primary uses its .env config).
+export APP_PORT="$PORT"
+[ "$REDIS_DB" != "0" ] && export REDIS_URL="redis://localhost:6379/${REDIS_DB}"
+
+PIDDIR="$ROOT/tmp/pids"; LOGDIR="$ROOT/log"
+mkdir -p "$PIDDIR" "$LOGDIR"
+WEB_PID="$PIDDIR/tm-web.pid";    WEB_LOG="$LOGDIR/tm-web.log"
+SK_PID="$PIDDIR/tm-sidekiq.pid"; SK_LOG="$LOGDIR/tm-sidekiq.log"
+ST_PID="$PIDDIR/tm-stripe.pid";  ST_LOG="$LOGDIR/tm-stripe.log"
+FORWARD="localhost:${PORT}/webhooks/stripe"
+
+c_say(){  printf '  \033[36m▶\033[0m %s\n' "$*"; }
+c_ok(){   printf '  \033[32m✓\033[0m %s\n' "$*"; }
+c_warn(){ printf '  \033[33m!\033[0m %s\n' "$*"; }
+c_err(){  printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
+hr(){     printf '\033[1m▶ tm %s\033[0m (%s :%s)\n' "$1" "$APP" "$PORT"; }
+
+readpid(){ [ -f "$1" ] && head -1 "$1" 2>/dev/null || true; }
+
+# alive <pid> [cmd-substring] — true if pid runs AND (optionally) its command
+# matches; the substring guards against a stale pidfile whose PID got reused.
+alive(){
+  local p="${1:-}" pat="${2:-}"
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null || return 1
+  [ -z "$pat" ] && return 0
+  ps -p "$p" -o command= 2>/dev/null | grep -qE "$pat"
+}
+
+web_code(){ curl -s -o /dev/null -m 2 -w '%{http_code}' "http://localhost:${PORT}/up" 2>/dev/null; }
+web_pid(){  lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1; }
+# Sidekiqs for THIS checkout only — the proctitle tag is the dir basename, so a
+# parallel worktree's Sidekiq (different basename) is never matched.
+our_sidekiqs(){ pgrep -f "sidekiq [0-9.]+ ${APP} \[" 2>/dev/null; }
+stripe_running(){ pgrep -f "stripe listen --forward-to ${FORWARD}" 2>/dev/null | head -1; }
+env_val(){ grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'; }
+
+# spawn <logfile> <pidfile> <cmd...> — detached, survives this shell (nohup +
+# </dev/null + disown; macOS has no setsid).
+spawn(){
+  local log="$1" pf="$2"; shift 2
+  nohup "$@" </dev/null >"$log" 2>&1 &
+  echo $! >"$pf"
+  disown 2>/dev/null || true
+}
+
+ensure_ruby(){
+  command -v bundle >/dev/null 2>&1 || {
+    c_err "bundle not on PATH — is brew ruby@3.1 active? (docs/agents/system/house-burn-down.md)"; return 1; }
+}
+
+ensure_services(){
+  command -v redis-cli  >/dev/null 2>&1 || { c_err "redis-cli missing — brew install redis"; return 1; }
+  command -v pg_isready >/dev/null 2>&1 || { c_err "pg_isready missing — brew install postgresql@14"; return 1; }
+  if ! redis-cli ping >/dev/null 2>&1; then
+    c_say "redis down — brew services start redis"; brew services start redis >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do redis-cli ping >/dev/null 2>&1 && break; sleep 0.3; done
+  fi
+  redis-cli ping >/dev/null 2>&1 && c_ok "redis" || { c_err "redis unreachable"; return 1; }
+  if ! pg_isready -q 2>/dev/null; then
+    c_say "postgres down — brew services start postgresql@14"; brew services start postgresql@14 >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pg_isready -q 2>/dev/null && break; sleep 0.3; done
+  fi
+  pg_isready -q 2>/dev/null && c_ok "postgres" || { c_err "postgres unreachable"; return 1; }
+}
+
+start_web(){
+  if [ "$(web_code)" = "200" ]; then
+    local p; p="$(web_pid)"; [ -n "$p" ] && echo "$p" >"$WEB_PID"
+    c_ok "web already serving on :$PORT (adopted${p:+ pid $p})"; return 0
+  fi
+  local p; p="$(web_pid)"
+  [ -n "$p" ] && { c_warn "port :$PORT busy (pid $p) but not healthy — replacing"; kill -TERM "$p" 2>/dev/null; }
+  c_say "starting web → http://localhost:$PORT"
+  spawn "$WEB_LOG" "$WEB_PID" bin/rails server -p "$PORT"
+}
+
+start_sidekiq(){
+  local arr; arr=($(our_sidekiqs)); local n=${#arr[@]}
+  if [ "$n" -eq 1 ]; then echo "${arr[0]}" >"$SK_PID"; c_ok "sidekiq already running (adopted pid ${arr[0]})"; return 0; fi
+  if [ "$n" -gt 1 ]; then
+    c_warn "$n sidekiqs for $APP — resetting to one"; kill -TERM "${arr[@]}" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8; do [ -z "$(our_sidekiqs)" ] && break; sleep 0.5; done
+  fi
+  c_say "starting sidekiq (queues: default, mailers)"
+  spawn "$SK_LOG" "$SK_PID" bundle exec sidekiq -q default -q mailers
+}
+
+start_stripe(){
+  [ "$NO_STRIPE" = 1 ] && { c_warn "stripe listener skipped (--no-stripe)"; return 0; }
+  command -v stripe >/dev/null 2>&1 || { c_warn "stripe CLI missing — skipped (brew install stripe/stripe-cli/stripe)"; return 0; }
+  local sp; sp="$(stripe_running)"
+  [ -n "$sp" ] && { echo "$sp" >"$ST_PID"; c_ok "stripe listener already running (adopted pid $sp)"; return 0; }
+  local key; key="$(env_val STRIPE_SECRET_KEY)"
+  [ -z "$key" ] && { c_warn "STRIPE_SECRET_KEY not in .env — stripe skipped"; return 0; }
+  c_say "starting stripe listener → $FORWARD"
+  spawn "$ST_LOG" "$ST_PID" stripe listen --forward-to "$FORWARD" --api-key "$key"
+}
+
+build_css(){
+  c_say "building tailwind"
+  if bin/rails tailwindcss:build >/dev/null 2>&1; then c_ok "css built"
+  else c_warn "css build failed — pages may be unstyled (retry: bin/rails tailwindcss:build)"; fi
+}
+
+poll_ready(){
+  c_say "waiting for readiness"
+  local code; code="$(curl -s -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused -m 60 \
+    -w '%{http_code}' "http://localhost:${PORT}/up" 2>/dev/null)"
+  if [ "$code" = "200" ]; then c_ok "web serving (/up → 200)"
+  else c_err "web did not come up (/up → ${code:-no response}) — see $WEB_LOG"; tail -n 12 "$WEB_LOG" 2>/dev/null | sed 's/^/      /' >&2; fi
+  local sk; sk="$(readpid "$SK_PID")"
+  alive "$sk" sidekiq && c_ok "sidekiq alive (pid $sk)" || c_err "sidekiq not alive — see $SK_LOG"
+}
+
+# Compare the listener's printed signing secret to .env (the #1 silent token-
+# purchase failure: a mismatch makes every webhook 400 and stalls /tokens).
+check_secret(){
+  [ -n "$(stripe_running)" ] || return 0
+  local listen env_secret
+  listen="$(grep -oE 'whsec_[A-Za-z0-9]+' "$ST_LOG" 2>/dev/null | tail -1)"
+  env_secret="$(env_val STRIPE_WEBHOOK_SECRET)"
+  [ -z "$listen" ] && return 0
+  [ "$listen" = "$env_secret" ] && c_ok "stripe   secret matches .env" \
+    || c_warn "stripe   secret MISMATCH — set STRIPE_WEBHOOK_SECRET=$listen in .env (webhooks 400)"
+}
+
+report(){
+  local code; code="$(web_code)"
+  [ "$code" = "200" ] && c_ok "web      :$PORT serving (pid $(web_pid))" || c_warn "web      :$PORT not serving (${code:-down})"
+  local arr; arr=($(our_sidekiqs)); local n=${#arr[@]}
+  case "$n" in
+    0) c_warn "sidekiq  none running";;
+    1) c_ok   "sidekiq  1 pid ${arr[0]} (default+mailers)";;
+    *) c_warn "sidekiq  $n running — run: bin/tm restart";;
+  esac
+  local sp; sp="$(stripe_running)"
+  [ -n "$sp" ] && c_ok "stripe   listening → $FORWARD (pid $sp)" || c_warn "stripe   not running"
+}
+
+stop_one(){ # stop_one <pidfile> <cmd-substring> <label>
+  local p; p="$(readpid "$1")"
+  if alive "$p" "$2"; then
+    c_say "stopping $3 (pid $p)"; kill -TERM "$p" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$p" 2>/dev/null || break; sleep 0.3; done
+    kill -0 "$p" 2>/dev/null && { c_warn "$3 didn't stop — SIGKILL"; kill -KILL "$p" 2>/dev/null; }
+  else
+    c_say "$3 not running"
+  fi
+  rm -f "$1"
+}
+
+cmd_up(){
+  hr up
+  ensure_ruby || return 1
+  ensure_services || return 1
+  start_web
+  start_sidekiq
+  start_stripe
+  build_css
+  poll_ready
+  check_secret
+  echo; report
+  printf '  \033[32m✅ up\033[0m — http://localhost:%s\n' "$PORT"
+}
+
+cmd_down(){
+  hr down
+  stop_one "$ST_PID" "stripe listen" stripe
+  stop_one "$SK_PID" "sidekiq"       sidekiq
+  stop_one "$WEB_PID" "puma|rails|ruby" web
+  c_ok "stopped (redis + postgres left running)"
+}
+
+cmd_restart(){ cmd_down; echo; cmd_up; }
+
+cmd_status(){
+  hr status
+  redis-cli ping >/dev/null 2>&1 && c_ok "redis    up" || c_warn "redis    DOWN"
+  pg_isready -q 2>/dev/null       && c_ok "postgres up" || c_warn "postgres DOWN"
+  report
+  check_secret
+}
+
+cmd_logs(){
+  case "${1:-all}" in
+    web)     tail -f "$WEB_LOG";;
+    sidekiq) tail -f "$SK_LOG";;
+    stripe)  tail -f "$ST_LOG";;
+    *)       tail -f "$WEB_LOG" "$SK_LOG" "$ST_LOG";;
+  esac
+}
+
+usage(){
+  cat >&2 <<EOF
+bin/tm — Turf Monster local stack control
+
+  up [--no-stripe]   bring web + Sidekiq + Stripe up (adopts a running stack)
+  down               stop the managed stack (leaves redis/postgres)
+  restart            clean bounce — run after editing .env / gems / migrations
+  status             services, ports, one-Sidekiq check, Stripe secret match
+  logs [proc]        tail -f web|sidekiq|stripe (default: all)
+
+  env: TM_PORT=$PORT  TM_REDIS_DB=$REDIS_DB   (override for an isolated stack)
+EOF
+}
+
+CMD="${1:-help}"; shift || true
+LOG_TARGET="all"
+for a in "$@"; do
+  case "$a" in
+    --no-stripe)              NO_STRIPE=1;;
+    web|sidekiq|stripe|all)   LOG_TARGET="$a";;
+  esac
+done
+
+case "$CMD" in
+  up)             cmd_up;;
+  down)           cmd_down;;
+  restart)        cmd_restart;;
+  status|st)      cmd_status;;
+  logs|log)       cmd_logs "$LOG_TARGET";;
+  help|-h|--help) usage;;
+  *)              c_err "unknown command: $CMD"; usage; exit 1;;
+esac

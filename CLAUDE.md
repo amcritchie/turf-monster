@@ -103,8 +103,9 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 
 ## Dev Server
 
-- **Port 3001** — `bin/rails server -p 3001`
-- `bin/dev` self-destructs as a long-lived background process (foreman exits when the foreground stops). Start Rails + Sidekiq separately for any session that outlives the terminal: `bin/rails server -p 3001` and `bundle exec sidekiq -q default -q mailers`.
+- **`bin/tm up`** — the one command to bring the whole local stack up: web (`:3001`) + Sidekiq + the Stripe listener, each **detached** so it survives the terminal and an agent/background session. Companion verbs: `bin/tm down` (stop), `bin/tm restart` (clean bounce — the after-`.env`/gem/migration ritual, since Sidekiq snapshots `.env` at boot), `bin/tm status` (services, ports, one-Sidekiq check, Stripe-secret match), `bin/tm logs [web|sidekiq|stripe]` (tail). It encodes the gotchas in this section so they're never re-derived: preflights redis+postgres, guarantees **exactly one** Sidekiq on `default`+`mailers`, builds Tailwind once (the `--watch` process self-destructs without a TTY), and verifies the Stripe signing secret against `.env`. Idempotent — a second `up` **adopts** the running stack instead of bouncing it. `TM_PORT` / `TM_REDIS_DB` override for an isolated stack (smoke tests / a second checkout).
+- **Port 3001** — `bin/rails server -p 3001` (what `bin/tm` runs as `web`).
+- `bin/dev` (foreman + `Procfile.dev`) is the interactive **combined-log** alternative for a real terminal. It self-destructs in any background/no-TTY context — the `css` watcher exits without a TTY and foreman then SIGTERMs the rest — so for detached/agent use reach for `bin/tm`. It also does not start the Stripe listener.
 - **Redis required** — `brew services start redis`. Used by:
   - Sidekiq (db 0) — background jobs
   - Rails.cache (db 1, namespace `tm-cache`) — `:redis_cache_store` is the dev backend so Sidekiq + Rails server share the same cache (required for `User#bust_entry_tokens_cache!` to propagate across processes; `:memory_store` is per-process and breaks the post-mint refresh).
