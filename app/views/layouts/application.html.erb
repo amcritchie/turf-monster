@@ -535,6 +535,14 @@
       <template x-if="$store.modals.current().id === 'check-email'">
         <%= render "modals/check_email" %>
       </template>
+      <%# Email-change-pending — opened on the /account page after a held
+          email change (AccountsController#update). Informational handoff:
+          "go click the confirm link in your inbox." Auto-opened from the
+          server flash[:email_change_pending] via the inline script in
+          accounts/show.html.erb. %>
+      <template x-if="$store.modals.current().id === 'email-change-pending'">
+        <%= render "modals/email_change_pending" %>
+      </template>
       <template x-if="$store.modals.current().id === 'auth'">
         <%= render "modals/auth" %>
       </template>

@@ -241,6 +241,67 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     @alex.reload
     assert_equal current_email, @alex.email, "email must not change until OOB confirm"
     assert @alex.email_verified_at.present?, "verified_at unchanged until confirm"
+    # The success presentation is now an informational MODAL, signalled via
+    # flash[:email_change_pending] (carrying the emails the modal renders),
+    # NOT a flash[:notice] toast. (with_indifferent_access: the in-request
+    # FlashHash keeps symbol keys; through a real cookie round-trip they're
+    # strings — the view reads it with_indifferent_access for the same reason.)
+    pending = flash[:email_change_pending].with_indifferent_access
+    assert pending.present?, "expected the email-change-pending modal signal in the flash"
+    assert_equal current_email, pending[:current_email]
+    assert_equal "newaddr@example.com", pending[:new_email]
+    # No held-change :notice is SET by the update action (the modal replaces
+    # the toast). A pre-existing login notice may still be sticky in the test
+    # session, so we assert the held-change copy specifically is absent rather
+    # than the whole :notice slot.
+    refute_match(/Confirm the change|link we sent/i, flash[:notice].to_s,
+                 "modal replaces the toast — no held-change :notice")
+  end
+
+  # The held-change response signals the email-change-pending modal (not a
+  # toast): flash[:email_change_pending] present with the current + new emails
+  # so the /account page can render them into the modal via x-text.
+  test "held email change sets the modal signal with the current and new emails" do
+    @alex.update!(email_verified_at: Time.current)
+    current_email = @alex.email
+    log_in_as @alex
+
+    patch account_path, params: { user: { email: "modal-signal@example.com" } }
+    assert_redirected_to account_path
+    pending = flash[:email_change_pending].with_indifferent_access
+    assert pending.present?, "expected flash[:email_change_pending] on a held change"
+    assert_equal current_email,              pending[:current_email]
+    assert_equal "modal-signal@example.com", pending[:new_email]
+
+    # And the /account page renders the modal trigger markup from that flash.
+    follow_redirect!
+    assert_response :success
+    assert_match(/email-change-pending-data/, response.body,
+                 "expected the JSON trigger script tag on the account page")
+    assert_match(/email-change-pending/, response.body,
+                 "expected the auto-open call referencing the modal id")
+    assert_match(/modal-signal@example\.com/, response.body,
+                 "expected the new email in the modal trigger payload")
+  end
+
+  # First-email + plain-update branches keep their flash[:notice] toast — the
+  # modal swap is ONLY for the held existing-email change.
+  test "setting a first email still uses a flash notice (not the modal)" do
+    user = User.create!(web3_solana_address: Solana::Keypair.generate.address)
+    user.update_columns(email: nil, email_verified_at: nil)
+    log_in_as_onchain(user)
+    patch account_path, params: { user: { email: "firsttoast@example.com" } }
+    assert_match(/Verify your new email/i, flash[:notice].to_s,
+                 "first-email change keeps its verify toast")
+    assert_nil flash[:email_change_pending], "first-email change must not trigger the modal"
+  end
+
+  test "a non-email update still uses a flash notice (not the modal)" do
+    log_in_as @alex
+    patch account_path, params: { user: { name: "Toast Name" } }
+    assert_match(/Account updated/i, flash[:notice].to_s,
+                 "plain update keeps its Account updated toast")
+    assert_nil flash[:email_change_pending], "plain update must not trigger the modal"
   end
 
   # The confirm mail goes to the CURRENT (pre-change) address — that's the OOB

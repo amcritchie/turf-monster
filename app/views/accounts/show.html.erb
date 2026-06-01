@@ -4,6 +4,63 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 
+<%# Auto-open the email-change-pending modal after a held email change.
+    AccountsController#update redirects here with flash[:email_change_pending]
+    carrying { current_email, new_email }; we render it into a JSON script
+    tag and open the informational modal on load.
+
+    Timing: the email form is a Turbo form_with, so the redirect lands via
+    Turbo Drive (body swap), NOT a hard load — the open MUST fire on the
+    Turbo render. We bind to turbo:load (fires on every Turbo navigation,
+    incl. the post-redirect render AND the initial hard load) with a
+    one-shot guard so a back/forward turbo:load can't replay a stale flash.
+    Flash is single-render, so the JSON tag is absent on any later visit;
+    even so we null-check before opening. Alpine.store('modals') is wired on
+    alpine:init (already past by the time a Turbo navigation completes), but
+    we poll briefly in case turbo:load wins the race against Alpine boot on
+    a cold first paint. turbo-stream <script> tags don't execute, but this
+    is a redirect + normal page render, so an inline page script runs fine. %>
+<% if flash[:email_change_pending].present? %>
+  <%# Flash round-trips through the session cookie as JSON, so the hash
+      comes back with STRING keys regardless of how the controller set it.
+      with_indifferent_access lets us read it symbol-style here. %>
+  <% pending = flash[:email_change_pending].with_indifferent_access %>
+  <script type="application/json" id="email-change-pending-data">
+    <%= raw({ currentEmail: pending[:current_email], newEmail: pending[:new_email] }.to_json) %>
+  </script>
+<% end %>
+<script>
+  (function() {
+    var fired = false;
+    function openEmailChangePending() {
+      if (fired) return;
+      var el = document.getElementById('email-change-pending-data');
+      if (!el) return;
+      var data;
+      try { data = JSON.parse(el.textContent); } catch (e) { return; }
+      var attempts = 0;
+      (function tryOpen() {
+        var m = (window.Alpine && Alpine.store) ? Alpine.store('modals') : null;
+        if (m && typeof m.open === 'function') {
+          fired = true;
+          m.open('email-change-pending', { currentEmail: data.currentEmail, newEmail: data.newEmail });
+          // Drop the one-shot payload so a later turbo:load (bfcache restore,
+          // re-navigation) can't replay it.
+          el.remove();
+          return;
+        }
+        if (attempts++ < 50) setTimeout(tryOpen, 50); // up to ~2.5s for Alpine boot
+      })();
+    }
+    document.addEventListener('turbo:load', openEmailChangePending);
+    // Initial hard load before Turbo intercepts (direct nav to /account with
+    // the flash, e.g. a non-Turbo redirect path) — turbo:load also covers
+    // this, but DOMContentLoaded is a belt-and-suspenders for the cold start.
+    if (document.readyState !== 'loading') openEmailChangePending();
+    else document.addEventListener('DOMContentLoaded', openEmailChangePending);
+  })();
+</script>
+
 <div class="max-w-2xl mx-auto">
   <h1 class="text-2xl font-extrabold text-heading mb-8">Account Settings</h1>
 

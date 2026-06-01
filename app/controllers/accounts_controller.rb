@@ -132,7 +132,12 @@ class AccountsController < ApplicationController
         )
         UserMailer.email_change_confirmation(@user, current_email, new_email, token).deliver_later
 
-        redirect_to account_path, notice: "Confirm the change via the link we sent to your current email (#{current_email})."
+        # Signal the email-change-pending modal instead of a flash toast. The
+        # /account page reads flash[:email_change_pending] into an inline JSON
+        # script tag and opens the modal on load (see accounts/show.html.erb).
+        # No :notice here — the modal replaces the toast for this case.
+        flash[:email_change_pending] = { current_email: current_email, new_email: new_email }
+        redirect_to account_path
       elsif email_changing
         # First email on the account — no prior address to protect. Apply
         # directly; the new address still has to be verified.
