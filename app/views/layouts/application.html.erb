@@ -5,14 +5,18 @@
     <link rel="apple-touch-icon" href="/favicon.png">
     <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
-    <script src="https://cdn.logr-in.com/LogRocket.min.js" crossorigin="anonymous"></script>
-    <script>window.LogRocket && window.LogRocket.init('jodsqq/mcritchie-studio');</script>
+    <% if session_replay_active? %>
+      <script src="https://cdn.logr-in.com/LogRocket.min.js" crossorigin="anonymous"></script>
+      <script>window.LogRocket && window.LogRocket.init('jodsqq/mcritchie-studio');</script>
+    <% end %>
     <% content_for :head do %>
       <script>
-        <% if logged_in? && current_user %>
+        <% if session_replay_active? && logged_in? && current_user %>
+          <%# Identify by opaque slug only — never send email/PII to the replay
+              vendor (Lazarus audit #2). Display name is already public on
+              leaderboards; email is not. %>
           window.LogRocket && window.LogRocket.identify('<%= current_user.slug %>', {
-            name: '<%= j(current_user.username || current_user.name || "") %>',
-            email: '<%= j(current_user.email || "") %>'
+            name: '<%= j(current_user.username || current_user.name || "") %>'
           });
         <% end %>
         <% if logged_in? && Solana::Config.devnet? %>

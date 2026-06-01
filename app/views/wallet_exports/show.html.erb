@@ -36,7 +36,10 @@
         <button type="button" @click="toggle('b58')"
                 class="text-xs text-primary hover:underline" x-text="reveal.b58 ? 'Hide' : 'Reveal'"></button>
       </div>
+      <%# data-private: redact from LogRocket/session replay as defense-in-depth.
+          The reveal page also suppresses replay entirely (Lazarus audit #2). %>
       <code class="font-mono text-xs break-all block p-3 bg-surface-alt rounded-lg"
+            data-private
             x-show="reveal.b58"
             x-text="$el.textContent"><%= @secret_base58 %></code>
       <div x-show="!reveal.b58"
@@ -53,6 +56,7 @@
                 class="text-xs text-primary hover:underline" x-text="reveal.json ? 'Hide' : 'Reveal'"></button>
       </div>
       <code class="font-mono text-xs break-all block p-3 bg-surface-alt rounded-lg"
+            data-private
             x-show="reveal.json"
             x-text="$el.textContent"><%= @secret_json_array %></code>
       <div x-show="!reveal.json"
