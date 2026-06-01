@@ -9,13 +9,16 @@
       tone          (String)   — "yellow" (lock) | "orange" (conclusion)
       on_done_modal (String?)  — modal id to open the instant the timer crosses
                                  zero LIVE (skipped if already done on load)
-      on_done_url   (String?)  — lobbyUrl prop passed to that modal %>
+      on_done_url   (String?)  — lobbyUrl prop passed to that modal
+      done_href     (String?)  — if set, the done state renders as a CTA link to
+                                 this URL (e.g. the live page) instead of the badge
+      wrapper_class (String?)  — outer margin class (default "mt-2"; "" for inline) %>
 <% if target.present? %>
   <% done_classes = tone.to_s == "orange" ? "border-orange-700 bg-orange-900/50 text-orange-400" : "border-yellow-700 bg-yellow-900/50 text-yellow-400" %>
   <% on_done_modal = local_assigns[:on_done_modal] %>
   <% on_done_url   = local_assigns[:on_done_url] %>
   <div
-    class="mt-2"
+    class="<%= local_assigns.fetch(:wrapper_class, "mt-2") %>"
     x-data="{
       target: <%= target.to_i * 1000 %>,
       now: Date.now(),
@@ -36,9 +39,18 @@
         <span x-show="d > 0"><span x-text="d"></span>d </span><span x-text="p(h)"></span>h <span x-text="p(m)"></span>m <span x-text="p(s)"></span>s
       </span>
     </div>
-    <div x-show="done" x-cloak
-         class="inline-flex items-center gap-1.5 rounded-lg border <%= done_classes %> px-3 py-1.5">
-      <span class="text-sm font-semibold"><%= done_label %></span>
-    </div>
+    <% if local_assigns[:done_href].present? %>
+      <%# Done state as a CTA link (e.g. "Watch Live" the instant a contest locks). %>
+      <a href="<%= done_href %>" x-show="done" x-cloak
+         class="btn btn-primary btn-sm inline-flex items-center gap-2 shadow-lg shadow-primary/20">
+        <span class="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+        <span class="font-semibold"><%= done_label %></span>
+      </a>
+    <% else %>
+      <div x-show="done" x-cloak
+           class="inline-flex items-center gap-1.5 rounded-lg border <%= done_classes %> px-3 py-1.5">
+        <span class="text-sm font-semibold"><%= done_label %></span>
+      </div>
+    <% end %>
   </div>
 <% end %>

@@ -79,21 +79,16 @@
     <span><%= @contest.lock_time_display %></span>
   </p>
 
-  <% unless @contest.settled? %>
+  <%# Locks countdown moved inline into the stats row (next to Entries). Only
+      the conclusion countdown lives here now. %>
+  <% if @contest.concludes_at.present? && !@contest.settled? %>
     <div class="flex flex-wrap items-center gap-2">
-      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Locks in", done_label: "🔒 Entries closed", tone: "yellow",
-            on_done_modal: "it-begins", on_done_url: contest_path(@contest) %>
       <%= render "contests/timestamp_countdown", target: @contest.concludes_at, label: "Concludes in", done_label: "🏁 Concluded", tone: "orange" %>
     </div>
   <% end %>
 
-  <% if @contest.live? && @contest.turf_totals? %>
-    <div class="mt-3">
-      <%= link_to live_contest_path(@contest), class: "btn btn-primary btn-sm inline-flex items-center gap-2" do %>
-        <span class="h-2 w-2 rounded-full bg-white animate-pulse"></span> Watch Live
-      <% end %>
-    </div>
-  <% end %>
+  <%# The standalone "Watch Live" button moved inline into the stats-row lock
+      countdown's done-state (see the Stats row below). %>
 
   <!-- Stats row -->
   <div class="flex items-center gap-4 mt-3 flex-wrap">
@@ -111,15 +106,17 @@
       <span class="text-lg font-extrabold text-heading"><%= entry_count %>/<%= max %></span>
       <span class="text-xs text-muted ml-1">Entries</span>
     </div>
-    <% if @has_entry && @contest.open? && @contest.turf_totals? %>
-      <%
-        my_count = @contest.entries.where(user: current_user, status: [:active, :complete]).count
-        next_num = my_count + 1
-        suffix = { 1 => "st", 2 => "nd", 3 => "rd" }.fetch(next_num % 10, "th")
-        suffix = "th" if (11..13).include?(next_num % 100)
-      %>
+    <%# Locks countdown inline next to the entries count (replaces the old
+        "+ Add Nth Entry" link). Shows "Locks in X" while open; once the derived
+        lock passes it flips to a "Watch Live" CTA (turf_totals, which has a live
+        page) or a "🔒 Entries closed" badge otherwise. Only rendered when a lock
+        time is set and the contest isn't settled. %>
+    <% if @contest.locks_at.present? && !@contest.settled? %>
       <div class="w-px h-5 bg-subtle"></div>
-      <%= link_to contest_path(@contest, add_entry: true), class: "text-sm font-semibold text-primary hover:text-primary-300 transition" do %>+ Add <%= next_num %><sup><%= suffix %></sup> Entry<% end %>
+      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Locks in",
+            done_label: (@contest.turf_totals? ? "Watch Live" : "🔒 Entries closed"),
+            done_href: (@contest.turf_totals? ? live_contest_path(@contest) : nil),
+            tone: "yellow", on_done_modal: "it-begins", on_done_url: contest_path(@contest), wrapper_class: "" %>
     <% end %>
   </div>
 </div>
