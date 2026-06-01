@@ -39,8 +39,10 @@ PORT="${TM_PORT:-3001}"
 REDIS_DB="${TM_REDIS_DB:-0}"
 NO_STRIPE=0
 
-# Children inherit these. APP_PORT keeps emailed magic-links pointing here; a
-# non-default Redis db isolates Sidekiq+cache (the primary uses its .env config).
+# Children inherit these. APP_PORT keeps emailed magic-links pointing here. A
+# non-default TM_REDIS_DB points REDIS_URL at one db, isolating this stack's
+# Sidekiq+cache from the primary's — though both then share that single db
+# (vs the primary's .env split of queue=db0 / cache=db1).
 export APP_PORT="$PORT"
 [ "$REDIS_DB" != "0" ] && export REDIS_URL="redis://localhost:6379/${REDIS_DB}"
 
@@ -111,7 +113,12 @@ start_web(){
     c_ok "web already serving on :$PORT (adopted${p:+ pid $p})"; return 0
   fi
   local p; p="$(web_pid)"
-  [ -n "$p" ] && { c_warn "port :$PORT busy (pid $p) but not healthy — replacing"; kill -TERM "$p" 2>/dev/null; }
+  if [ -n "$p" ]; then
+    c_warn "port :$PORT busy (pid $p) but not healthy — replacing"
+    kill -TERM "$p" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(web_pid)" ] && break; sleep 0.3; done
+    [ -n "$(web_pid)" ] && { c_warn "port :$PORT still held — SIGKILL"; kill -KILL "$(web_pid)" 2>/dev/null; sleep 0.3; }
+  fi
   c_say "starting web → http://localhost:$PORT"
   spawn "$WEB_LOG" "$WEB_PID" bin/rails server -p "$PORT"
 }
@@ -135,7 +142,10 @@ start_stripe(){
   local key; key="$(env_val STRIPE_SECRET_KEY)"
   [ -z "$key" ] && { c_warn "STRIPE_SECRET_KEY not in .env — stripe skipped"; return 0; }
   c_say "starting stripe listener → $FORWARD"
-  spawn "$ST_LOG" "$ST_PID" stripe listen --forward-to "$FORWARD" --api-key "$key"
+  # Pass the key via env (STRIPE_API_KEY), never --api-key, so it isn't exposed
+  # in argv / `ps`. The Stripe CLI reads STRIPE_API_KEY natively.
+  export STRIPE_API_KEY="$key"
+  spawn "$ST_LOG" "$ST_PID" stripe listen --forward-to "$FORWARD"
 }
 
 build_css(){
@@ -191,8 +201,23 @@ stop_one(){ # stop_one <pidfile> <cmd-substring> <label>
   rm -f "$1"
 }
 
+# bin/tm manages the canonical :3001 stack. Run from a NON-primary worktree on
+# the default port, it would adopt the primary's web (port-keyed) yet manage
+# this checkout's own Sidekiq (basename-keyed) — mixed ownership. Refuse, and
+# point at the right tool. TM_PORT/TM_REDIS_DB (or bin/parallel-server) opt out.
+guard_primary(){
+  [ "$PORT" != "3001" ] && return 0
+  local primary; primary="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
+  [ -z "$primary" ] && return 0
+  [ "$primary" = "$ROOT" ] && return 0
+  c_err "refusing: '$APP' is a worktree, not the primary checkout, but TM_PORT is the default 3001."
+  c_err "  → use the primary checkout's bin/tm for :3001, or set TM_PORT+TM_REDIS_DB (or use bin/parallel-server)."
+  return 1
+}
+
 cmd_up(){
   hr up
+  guard_primary || return 1
   ensure_ruby || return 1
   ensure_services || return 1
   start_web
