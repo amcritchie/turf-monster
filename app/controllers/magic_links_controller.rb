@@ -46,7 +46,11 @@ class MagicLinksController < ApplicationController
   def sign_in_existing(user, result)
     set_app_session(user)
     user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
-    redirect_to safe_path(result.return_to) || root_path, notice: "You're signed in."
+    redirect_to magic_link_landing_path(result),
+                flash: { magic_link_welcome: {
+                  message: "Signed in — your 6 picks are saved.",
+                  next:    tokens_buy_path
+                } }
   end
 
   # Mirrors RegistrationsController#create: build → configure_new_user → save!
@@ -61,8 +65,15 @@ class MagicLinksController < ApplicationController
       cookies.delete(:reference)
       user.update!(email_verified_at: Time.current)
       set_app_session(user)
-      redirect_to safe_path(result.return_to) || tokens_buy_path,
-                  notice: Studio.welcome_message.call(user)
+      # Land on the contest (return_to) and show the welcome SUCCESS MODAL,
+      # which auto-advances to the entry-tokens upsell after ~2.5s. The old
+      # straight redirect to tokens_buy_path with a :notice toast skipped the
+      # celebratory beat and dropped the user past the contest they came from.
+      redirect_to magic_link_landing_path(result),
+                  flash: { magic_link_welcome: {
+                    message: "You're in! Your 6 picks are saved.",
+                    next:    tokens_buy_path
+                  } }
     end
   rescue ActiveRecord::RecordNotUnique
     # Two valid tokens for the same brand-new email consumed near-simultaneously
@@ -105,5 +116,14 @@ class MagicLinksController < ApplicationController
   def safe_path(path)
     p = path.to_s
     p.start_with?("/") && !p.start_with?("//") ? p : nil
+  end
+
+  # Where the welcome modal opens. The signed return_to is normally the
+  # contest the link came from (resolved_return_to bakes the contest slug +
+  # picks in at request time); fall back to root, which redirects to the
+  # current contest's show page. The modal itself then transfers the user to
+  # the entry-tokens upsell after its countdown.
+  def magic_link_landing_path(result)
+    safe_path(result.return_to) || root_path
   end
 end

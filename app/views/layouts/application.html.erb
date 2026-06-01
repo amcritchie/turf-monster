@@ -519,6 +519,61 @@
         } catch (_) {}
       })();
     </script>
+    <%# Auto-open the magic-link welcome modal after a consumed magic link.
+        MagicLinksController#consume redirects to the contest (return_to) with
+        flash[:magic_link_welcome] = { message:, next: } (NOT a :notice — that
+        renders a toast; this celebratory beat wants a modal). We render the
+        signal into a JSON script tag and open the modal on load.
+
+        Same wiring as the email-change-pending auto-open in accounts/show, but
+        hoisted to the layout because the landing page varies (whichever contest
+        the link returned to). turbo-stream <script> tags don't execute, but this
+        is a redirect + normal page render so an inline page script runs fine.
+
+        Timing: the redirect can land via Turbo Drive (body swap) on an in-app
+        navigation OR a hard load (cold click from the email). We bind to
+        turbo:load (fires on every Turbo navigation incl. the post-redirect
+        render AND the initial hard load) with a one-shot guard so a back/forward
+        turbo:load can't replay a stale flash, and poll briefly for the modals
+        store in case turbo:load wins the race against Alpine boot on cold paint.
+        Flash is single-render so the JSON tag is absent on any later visit. %>
+    <% if flash[:magic_link_welcome].present? %>
+      <%# Flash round-trips through the session cookie as JSON, so the hash comes
+          back with STRING keys; with_indifferent_access lets us read it symbol-
+          style. %>
+      <% welcome = flash[:magic_link_welcome].with_indifferent_access %>
+      <script type="application/json" id="magic-link-welcome-data">
+        <%= raw({ message: welcome[:message], next: welcome[:next] }.to_json) %>
+      </script>
+    <% end %>
+    <script>
+      (function() {
+        var fired = false;
+        function openMagicLinkWelcome() {
+          if (fired) return;
+          var el = document.getElementById('magic-link-welcome-data');
+          if (!el) return;
+          var data;
+          try { data = JSON.parse(el.textContent); } catch (e) { return; }
+          var attempts = 0;
+          (function tryOpen() {
+            var m = (window.Alpine && Alpine.store) ? Alpine.store('modals') : null;
+            if (m && typeof m.open === 'function') {
+              fired = true;
+              m.open('magic-link-welcome', { message: data.message, next: data.next });
+              // Drop the one-shot payload so a later turbo:load (bfcache restore,
+              // re-navigation) can't replay it.
+              el.remove();
+              return;
+            }
+            if (attempts++ < 50) setTimeout(tryOpen, 50); // up to ~2.5s for Alpine boot
+          })();
+        }
+        document.addEventListener('turbo:load', openMagicLinkWelcome);
+        if (document.readyState !== 'loading') openMagicLinkWelcome();
+        else document.addEventListener('DOMContentLoaded', openMagicLinkWelcome);
+      })();
+    </script>
     <%= render "layouts/studio/flash" %>
     <%= render "layouts/navbar" %>
 
@@ -542,6 +597,13 @@
           accounts/show.html.erb. %>
       <template x-if="$store.modals.current().id === 'email-change-pending'">
         <%= render "modals/email_change_pending" %>
+      </template>
+      <%# Magic-link welcome — opened on the contest landing page after a
+          consumed magic link (MagicLinksController#consume). Celebration +
+          ~2.5s auto-redirect to the entry-tokens upsell. Auto-opened from the
+          server flash[:magic_link_welcome] via the inline script below. %>
+      <template x-if="$store.modals.current().id === 'magic-link-welcome'">
+        <%= render "modals/magic_link_welcome" %>
       </template>
       <template x-if="$store.modals.current().id === 'auth'">
         <%= render "modals/auth" %>

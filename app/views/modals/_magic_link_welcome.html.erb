@@ -1,0 +1,39 @@
+<%#
+  Magic-link welcome modal — opened via
+  $store.modals.open('magic-link-welcome', { message, next }).
+  Rendered inside studio/_modal_host through its own <template x-if>, which
+  provides backdrop, card chrome, scroll lock, escape, click-outside and the
+  mount animation.
+
+  Celebration handoff after a consumed magic link (MagicLinksController#consume,
+  both the new-signup and returning-sign-in paths). The user just landed on the
+  contest they came from; this modal shows a brief "You're in!" beat, then the
+  cta_redirect block drains for ~2.5s and transfers to the entry-tokens upsell
+  (props.next). The user can click the CTA to go there immediately — it's a real
+  link to props.next, so a click navigates now instead of waiting out the drain.
+
+  Auto-opened from the server flash[:magic_link_welcome] via the inline script in
+  layouts/application.html.erb (mirrors the email-change-pending auto-open on
+  /account, but at layout level so it fires on whichever contest page the link
+  returned to).
+
+  Single root element wrapping the template (the host mounts this partial through
+  its own template x-if; multiple sibling roots there silently no-op). The x-data
+  props reader is defined inline — no importmap factory.
+%>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }">
+  <%= render 'modals/blocks/card_header',
+        size:        :lg,
+        icon_emoji:  '🎉',
+        title:       "Welcome to Turf Totals" do %>
+    <span x-text="props.message || 'You\'re in! Your 6 picks are saved.'"></span>
+  <% end %>
+
+  <%# Drains for ~2.5s then transfers to props.next (entry tokens). The CTA is a
+      real link to props.next, so clicking it navigates immediately. props.next
+      is server-controlled (tokens_buy_path), never user input. %>
+  <%= render 'modals/blocks/cta_redirect',
+        href_key:         "props.next",
+        label_html:       "Get entry tokens &rarr;",
+        duration_seconds: 2.5 %>
+</div>

@@ -7,7 +7,7 @@
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
       <img src="/logo.png" alt="Turf Monster" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
-      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Turf <span class="text-primary">Monster</span></h1>
+      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Turf <span class="text-primary">Totals</span></h1>
       <p class="text-secondary mt-2"><%= subheading %></p>
     </div>
 
@@ -33,16 +33,29 @@
           and opens the "check your inbox" modal (reuses the auth modal's
           magic-link-sent step) instead of a toast. The funnel reference cookie
           is read server-side at link-consume time, so no hidden field here. %>
+      <%# Initial "Email Link" submit. Shares window.postMagicLink (layout-inline)
+          with the auth modal's resend — same request shape, same { success }
+          contract. postMagicLink never throws on a non-2xx (fetch resolves),
+          so we read data.success and only open "check your inbox" on a real
+          success; a throttle/failure surfaces inline instead of opening an
+          empty confirmation the user can't act on. %>
       <form x-data="{
               sending: false,
+              error: '',
               async submit(email) {
                 if (!email || this.sending) return;
+                this.error = '';
                 this.sending = true;
                 try {
-                  await window.postMagicLink(email);
-                  $store.modals.open('auth', { step: 'magic-link-sent', sentEmail: email });
-                } catch (e) { /* network — leave the form so they can retry */ }
-                finally { this.sending = false; }
+                  var data = await window.postMagicLink(email);
+                  if (data && data.success) {
+                    $store.modals.open('auth', { step: 'magic-link-sent', sentEmail: email });
+                  } else {
+                    this.error = (data && data.error) || 'Could not send the link. Try again.';
+                  }
+                } catch (e) {
+                  this.error = 'Could not send the link — check your connection and try again.';
+                } finally { this.sending = false; }
               }
             }"
             @submit.prevent="submit($refs.mlEmail.value)" novalidate>
@@ -55,6 +68,7 @@
         <button type="submit" :disabled="sending" class="btn btn-neutral btn-lg w-full disabled:cursor-wait">
           <span x-text="sending ? 'Sending…' : 'Email Link'">Email Link</span>
         </button>
+        <p x-show="error" x-cloak class="text-xs text-red-400 text-center mt-2" x-text="error"></p>
         <p class="text-xs text-muted text-center mt-2">We'll email you a one-tap link — no password needed.</p>
       </form>
 
