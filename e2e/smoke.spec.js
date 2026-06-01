@@ -1,5 +1,15 @@
 const { test, expect } = require("@playwright/test");
-const { login } = require("./helpers");
+const { login, reseed } = require("./helpers");
+
+// Clear rack-attack throttle counters before each smoke test. The dev server
+// these run against has rack-attack ENABLED (only the Rails test env disables
+// it), and the magic-link request is capped at 5/hour per IP — once earlier
+// specs in the suite burn that budget, "requesting a magic link confirms the
+// email was sent" gets a 429 and (correctly, post-#30) shows no modal. reseed
+// only clears cache counters + the OmniAuth mock; it does not touch the DB.
+test.beforeEach(async ({ request }) => {
+  await reseed(request);
+});
 
 // ---------------------------------------------------------------------------
 // Index page
