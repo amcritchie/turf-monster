@@ -107,10 +107,24 @@ module Solana
       Transaction.find_pda([b("entry"), contest_id, wallet_bytes, entry_num_bytes], @program_id)
     end
 
-    def entry_token_pda(wallet_address, sequence)
-      wallet_bytes = Keypair.decode_base58(wallet_address)
-      seq_bytes = [sequence].pack("Q<") # u64 LE
-      Transaction.find_pda([b("entry_token"), wallet_bytes, seq_bytes], @program_id)
+    # The EntryTokenAccount PDA is seeded on sha256 of `source_ref` zero-padded
+    # to [u8;64] (turf-vault v0.19, audit #9 — replaces the old wallet+sequence
+    # seed). The mint instruction's `source_ref_hash` arg AND this derivation
+    # MUST hash the SAME 64-byte buffer the program hashes, or Ruby and the
+    # program disagree on the address. Both go through these two helpers so they
+    # can't drift — see test/services/solana/entry_token_pda_test.rb.
+    def padded_source_ref(source_ref)
+      bytes = source_ref.to_s.b.bytes.first(64)
+      bytes += [0] * (64 - bytes.length)
+      bytes.pack("C*")
+    end
+
+    def entry_token_seed_hash(source_ref)
+      Digest::SHA256.digest(padded_source_ref(source_ref))
+    end
+
+    def entry_token_pda(source_ref)
+      Transaction.find_pda([b("entry_token"), entry_token_seed_hash(source_ref)], @program_id)
     end
 
     def season_pda(season_id)
@@ -798,6 +812,11 @@ module Solana
         program_id: @program_id,
         accounts: [
           { pubkey: admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          # cosigner: Option<Signer> — None for a routine 1-of-3 pre-lock set
+          # (v0.19, #5). Anchor encodes a None optional account as the program
+          # ID. Amending an ALREADY-PASSED lock needs a real 2-of-3 cosigner
+          # (separate cosign flow) — see ContestsController guard.
+          { pubkey: @program_id,            is_signer: false, is_writable: false },
           { pubkey: vault_pda,              is_signer: false, is_writable: false },
           { pubkey: c_pda,                  is_signer: false, is_writable: true  }
         ],
@@ -824,6 +843,7 @@ module Solana
       serialized = build_partial_signed(
         accounts: [
           { pubkey: admin_bytes, is_signer: true,  is_writable: true  }, # admin == Phantom (vault signer)
+          { pubkey: @program_id, is_signer: false, is_writable: false }, # cosigner: None (1-of-3 pre-lock; v0.19 #5)
           { pubkey: vault_pda,   is_signer: false, is_writable: false }, # vault_state
           { pubkey: c_pda,       is_signer: false, is_writable: true  }  # contest
         ],
@@ -849,6 +869,9 @@ module Solana
         program_id: @program_id,
         accounts: [
           { pubkey: admin.public_key_bytes, is_signer: true,  is_writable: true  },
+          # cosigner: Option<Signer> — None for a 1-of-3 first set; amending an
+          # already-SET conclusion needs a 2-of-3 cosigner (v0.19, #5).
+          { pubkey: @program_id,            is_signer: false, is_writable: false },
           { pubkey: vault_pda,              is_signer: false, is_writable: false },
           { pubkey: c_pda,                  is_signer: false, is_writable: true  }
         ],
@@ -872,6 +895,7 @@ module Solana
       serialized = build_partial_signed(
         accounts: [
           { pubkey: admin_bytes, is_signer: true,  is_writable: true  },
+          { pubkey: @program_id, is_signer: false, is_writable: false }, # cosigner: None (1-of-3 first set; v0.19 #5)
           { pubkey: vault_pda,   is_signer: false, is_writable: false },
           { pubkey: c_pda,       is_signer: false, is_writable: true  }
         ],
@@ -1331,21 +1355,24 @@ module Solana
     ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2 }.freeze
     ENTRY_TOKEN_LEN = 124 # bytes — 8 disc + 32 owner + 1 source + 64 source_ref + 1 consumed + 9 consumed_at + 8 created_at + 1 bump
 
-    def mint_entry_token(wallet_address:, source:, source_ref:, sequence: nil)
-      sequence ||= next_entry_token_sequence(wallet_address)
+    def mint_entry_token(wallet_address:, source:, source_ref:)
       source_u8 = source.is_a?(Symbol) ? ENTRY_TOKEN_SOURCE.fetch(source) : source.to_i
 
       admin = Keypair.admin
-      pda, _ = entry_token_pda(wallet_address, sequence)
       wallet_bytes = Keypair.decode_base58(wallet_address)
 
-      ref_bytes = source_ref.to_s.b.bytes.first(64)
-      ref_bytes += [0] * (64 - ref_bytes.length)
+      # v0.19 (#9): the PDA is seeded on sha256(source_ref) and the program
+      # asserts the passed `source_ref_hash` equals it. `source_ref` must be
+      # GLOBALLY unique across wallets — re-minting the same ref collides on
+      # init (true idempotency; safe for Sidekiq retries). `sequence` is gone.
+      ref_buffer = padded_source_ref(source_ref)        # the exact [u8;64] the program hashes
+      ref_hash   = Digest::SHA256.digest(ref_buffer)    # [u8;32] — seed + asserted arg
+      pda, _ = Transaction.find_pda([b("entry_token"), ref_hash], @program_id)
 
       data = Transaction.anchor_discriminator("mint_entry_token") +
-             Borsh.encode_u64(sequence) +
-             [source_u8].pack("C") +
-             ref_bytes.pack("C*")
+             [source_u8].pack("C") +   # source: u8
+             ref_buffer +              # source_ref: [u8;64] (fixed array — raw bytes)
+             ref_hash                  # source_ref_hash: [u8;32] (fixed array — raw bytes)
 
       vault_pda, _ = vault_state_pda
 
@@ -1364,7 +1391,7 @@ module Solana
 
       signature = client.send_and_confirm(tx.serialize_base64)
       invalidate_entry_tokens_cache(wallet_address)
-      { signature: signature, pda: Keypair.encode_base58(pda), sequence: sequence }
+      { signature: signature, pda: Keypair.encode_base58(pda) }
     end
 
     def list_entry_tokens(wallet_address, commitment: "confirmed")
@@ -1384,10 +1411,6 @@ module Solana
         ])
         (result || []).map { |account| decode_entry_token(account) }
       end
-    end
-
-    def next_entry_token_sequence(wallet_address)
-      list_entry_tokens(wallet_address).length
     end
 
     def invalidate_entry_tokens_cache(wallet_address)
