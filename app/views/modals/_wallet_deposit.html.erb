@@ -10,10 +10,10 @@
   for the web2 path; kept standalone because deposit-related state has
   nothing to do with auth credentials.
 
-  Cross-scope actions: the Stripe + MoonPay buttons are plain Rails-CSRF
-  forms targeting _blank — no JS to wire, the host stays open while the
-  user finishes payment in the new tab. The "Send to address" copy
-  button uses the Clipboard API.
+  Cross-scope actions: the Stripe "Pay with Card" button is a plain
+  Rails-CSRF form targeting _blank — no JS to wire, the host stays open
+  while the user finishes payment in the new tab. The "Send to address"
+  copy button uses the Clipboard API.
 %>
 <div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }"
      class="relative">
@@ -46,14 +46,6 @@
              :value="Math.max(20, Math.ceil((props.neededCents || 0) / 100))">
       <button type="submit" class="btn btn-primary btn-lg w-full">
         Pay with Card
-      </button>
-    </form>
-
-    <%# MoonPay — fiat onramp, supports more countries than Stripe. %>
-    <form method="post" action="<%= moonpay_deposit_wallet_path %>" target="_blank" data-turbo="false">
-      <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
-      <button type="submit" class="btn btn-secondary btn-lg w-full">
-        Buy with MoonPay
       </button>
     </form>
 

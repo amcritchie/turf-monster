@@ -70,15 +70,10 @@
       <% balance_zero  = usdc.zero? %>
       <% has_tokens    = (current_user.entry_token_balance rescue 0).positive? %>
       <% hide_balance  = balance_zero && has_tokens %>
-      <% if current_user.phantom_wallet? %>
-        <%# Web3 (Phantom) user → MoonPay top-up flow on click %>
-        <%= link_to topup_wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= usdc.to_i %><% end %>
-      <% else %>
-        <%# Managed-wallet user — show USDC balance. Free-entry tokens
-            are surfaced by the 🎟️ badge in _user_nav (next to the
-            balance), not by a second balance-style link here. %>
-        <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= usdc.to_i %><% end %>
-      <% end %>
+      <%# USDC balance link. Free-entry tokens are surfaced by the 🎟️
+          badge in _user_nav (next to the balance), not by a second
+          balance-style link here. %>
+      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %>$<%= usdc.to_i %><% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
       <% if show_user %>

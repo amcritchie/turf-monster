@@ -1,8 +1,8 @@
 class WalletsController < ApplicationController
   before_action :require_login
-  before_action :require_geo_allowed, only: [:withdraw, :stripe_deposit, :moonpay_deposit, :topup]
+  before_action :require_geo_allowed, only: [:withdraw, :stripe_deposit]
   # B4 / OPSEC-048: frozen accounts can view the wallet page but cannot move money.
-  before_action :require_unfrozen_account, only: [:withdraw, :stripe_deposit, :moonpay_deposit, :topup]
+  before_action :require_unfrozen_account, only: [:withdraw, :stripe_deposit]
 
   def show
     @user = current_user
@@ -16,13 +16,6 @@ class WalletsController < ApplicationController
     if Solana::Config.devnet? && @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:sol)
       @sol_balance = @wallet_balances[:sol]
     end
-  end
-
-  def topup
-    unless current_user.phantom_wallet?
-      return redirect_to wallet_path, alert: "Top-up via MoonPay is only available for self-custody wallets."
-    end
-    @user = current_user
   end
 
   def stripe_deposit
@@ -60,38 +53,6 @@ class WalletsController < ApplicationController
     end
   rescue StandardError => e
     redirect_to wallet_path, alert: "Stripe checkout failed: #{e.message}"
-  end
-
-  def moonpay_deposit
-    rescue_and_log(target: current_user) do
-      raise "No wallet connected" unless current_user.solana_connected?
-
-      config = Rails.application.config.moonpay
-      raise "MoonPay not configured" unless config[:api_key].present?
-
-      params_hash = {
-        apiKey: config[:api_key],
-        currencyCode: "usdc_sol",
-        walletAddress: current_user.solana_address,
-        colorCode: "%234BAF50",
-        redirectURL: wallet_url
-      }
-
-      query_string = params_hash.map { |k, v| "#{k}=#{v}" }.join("&")
-
-      # Sign the URL if secret key is available
-      if config[:secret_key].present?
-        signature = Base64.strict_encode64(
-          OpenSSL::HMAC.digest("SHA256", config[:secret_key], "?#{query_string}")
-        )
-        query_string += "&signature=#{CGI.escape(signature)}"
-      end
-
-      moonpay_url = "#{config[:base_url]}?#{query_string}"
-      redirect_to moonpay_url, allow_other_host: true
-    end
-  rescue StandardError => e
-    redirect_to wallet_path, alert: "MoonPay failed: #{e.message}"
   end
 
   def withdraw

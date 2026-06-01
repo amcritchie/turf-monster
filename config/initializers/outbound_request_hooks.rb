@@ -2,7 +2,6 @@
 #
 #   - Stripe        — via the SDK's Instrumentation.subscribe(:request_end)
 #   - Solana RPC    — via prepending Solana::ClientLogger onto the gem's Client class
-#   - MoonPay       — (future) once a SDK or wrapper is in place
 #
 # Failure of either hook is logged but never raises — these are observability
 # wires, not part of the request path.
