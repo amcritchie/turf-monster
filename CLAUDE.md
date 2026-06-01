@@ -112,9 +112,19 @@ Mobile-first contest page. Renders inline matchup board or leaderboard depending
 - **Stripe listener** — token-purchase + USDC-deposit flows depend on webhook delivery. Without it, `/tokens/processing` polling never resolves. Run in a separate terminal: `stripe listen --forward-to localhost:3001/webhooks/stripe --api-key $STRIPE_SECRET_KEY`. The session-printed `whsec_…` must match `STRIPE_WEBHOOK_SECRET` in `.env`.
 - **Solana RPC** — set `SOLANA_RPC_URL` to a Helius endpoint (`https://devnet.helius-rpc.com/?api-key=…`). Public devnet RPC rate-limits `getProgramAccounts` (the call behind `User#entry_token_balance`) to ~1/sec/IP and produces silent UI bugs ("$0 / Buy Tokens" even when the user has tokens). Helius URLs are in 1Password at `agent.helius`.
 
-### Parallel dev server (second worktree / session)
+### Parallel work — worktrees (Claude drives this)
 
-To run a **second** dev stack alongside the primary `:3001` (e.g. a parallel agent/session, or to test a branch without disturbing the main worktree), use **`bin/parallel-server [PORT] [REDIS_DB]`** (defaults `3002` / Redis db `9`). Run it from the primary worktree; it creates a sibling worktree off `origin/main`, copies the gitignored `.env`, builds Tailwind, and starts web + Sidekiq isolated. Ctrl-C stops both; remove the worktree with `git worktree remove <path> --force && git worktree prune`.
+We run several Claude sessions at once. To keep branches from tangling: **the primary checkout (`~/projects/turf-monster`) stays on `main` and is never committed to** — every task, solo or parallel, lives in its own `git worktree` off current `origin/main`. Parallel work is then just more worktrees, which makes a stale/already-merged-branch ("zombie") tangle structurally impossible.
+
+**Branch hygiene — verify before the first edit/commit of ANY task:**
+- If you're in the primary checkout, on `main`, or on a branch whose commits are already on `origin/main` (a merged "zombie"), do NOT commit here — start fresh.
+- `bin/worktree new <slug>` creates `../turf-monster-<slug>` on `feat/<slug>` off `origin/main` (and copies `.env`). Work there; for a parallel task the operator runs `cd ../turf-monster-<slug> && claude` so that session owns it.
+- Ship: small commits → push → `gh pr create` → after merge, `bin/worktree done <slug>` (removes the worktree + branch). **Never reuse a branch after its PR merges.**
+- Guardrail: about to commit on anything that isn't a fresh branch off *current* `main`? STOP and flag it — cherry-picking onto a clean branch at ship time is recovery, not the plan.
+
+**Port `:3001` is the canonical/main dev server — reserve it for the primary.** External callbacks are wired to it: the Stripe webhook forward (`localhost:3001/webhooks/stripe`), the Google OAuth redirect URIs, and the dev mailer host (`development.rb` `default_url_options` falls back to `3001`). Worktree stacks run on **3002+** and are fine for general UI/backend dev, but any flow with an external callback — **Stripe, Google OAuth, MoonPay, webhooks, emailed magic-links** — must be exercised on the primary `:3001`.
+
+**Running a worktree's live dev stack:** `bin/parallel-server [PORT] [REDIS_DB]` (defaults `3002` / Redis db `9`) from the primary worktree — it creates a sibling worktree off `origin/main`, copies `.env`, builds Tailwind, and starts web + Sidekiq isolated. Ctrl-C stops both; clean up with `git worktree remove <path> --force && git worktree prune`. Rule of thumb: use `bin/worktree` when you need a *named feature branch to commit on*; use `bin/parallel-server` when you just need a second *running* stack.
 
 Why the isolation matters (each of these silently collides otherwise):
 - **Port + mailer links** — the dev mailer host port reads `APP_PORT` (default 3001) in `config/environments/development.rb`, so emailed links (e.g. magic links) point at *this* server instead of `:3001`.

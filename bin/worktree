@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#
+# worktree — per-task git worktree lifecycle off current origin/main, so
+# parallel sessions never tangle branches. The primary checkout stays on `main`
+# and is never committed to; every task gets its own worktree + feature branch.
+# (See CLAUDE.md → "Parallel work — worktrees".)
+#
+#   bin/worktree new <slug> [type]   create ../<repo>-<slug> on <type>/<slug>
+#                                     off origin/main (+ copy .env). type=feat.
+#   bin/worktree done <slug>         after the PR merges: remove the worktree
+#                                     + delete its branch.
+#   bin/worktree list                worktrees + their branches (default).
+#
+# Need a LIVE stack in the worktree? Run it on an isolated port/Redis, e.g.
+#   APP_PORT=3002 REDIS_URL=redis://localhost:6379/9 bin/rails server -p 3002
+#   (+ a sidekiq with the same REDIS_URL), or use bin/parallel-server.
+# Port :3001 is the CANONICAL dev server — Stripe webhooks, Google OAuth
+# redirect URIs, and the default mailer host are wired to it, so any external-
+# callback flow (Stripe / OAuth / MoonPay / webhooks / magic-links) must run on
+# the primary :3001, not a worktree stack.
+#
+set -euo pipefail
+
+# the main worktree is always listed first by `git worktree list`
+PRIMARY="$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')"
+REPO="$(basename "$PRIMARY")"
+PARENT="$(dirname "$PRIMARY")"
+cmd="${1:-list}"; slug="${2:-}"; type="${3:-feat}"
+
+dir_for() { echo "${PARENT}/${REPO}-${1}"; }
+
+case "$cmd" in
+  new)
+    [ -n "$slug" ] || { echo "usage: bin/worktree new <slug> [type]" >&2; exit 1; }
+    dir="$(dir_for "$slug")"
+    git -C "$PRIMARY" fetch origin --quiet
+    git -C "$PRIMARY" worktree add "$dir" -b "${type}/${slug}" origin/main
+    if [ -f "$PRIMARY/.env" ]; then cp "$PRIMARY/.env" "$dir/.env"; echo "▶ copied .env"; fi
+    echo "▶ ${type}/${slug} ready at $dir"
+    echo "  work:  cd $dir && claude"
+    echo "  stack: APP_PORT=3002 REDIS_URL=redis://localhost:6379/9 bin/rails server -p 3002   (+ sidekiq, same REDIS_URL)"
+    echo "  note:  Stripe / OAuth / webhook / magic-link flows need the canonical primary :3001"
+    ;;
+  done)
+    [ -n "$slug" ] || { echo "usage: bin/worktree done <slug>" >&2; exit 1; }
+    dir="$(dir_for "$slug")"
+    branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    git -C "$PRIMARY" worktree remove "$dir" --force
+    git -C "$PRIMARY" worktree prune
+    [ -n "$branch" ] && git -C "$PRIMARY" branch -D "$branch" >/dev/null 2>&1 || true
+    echo "▶ removed worktree + branch (${branch:-?}) for ${slug}"
+    ;;
+  list)
+    git -C "$PRIMARY" worktree list
+    ;;
+  *)
+    echo "usage: bin/worktree {new|done|list} <slug> [type]" >&2; exit 1
+    ;;
+esac
