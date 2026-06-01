@@ -639,6 +639,14 @@
       })();
     </script>
 
+    <%# cropper.js for the admin "Update banner" modal (bannerCropper). Loaded
+        here — not in the modal partial, which sits inside the host template
+        where <script>/<link> don't run — and only for admins on contest pages. %>
+    <% if current_user&.admin? && @contest&.persisted? %>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+      <script defer src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+    <% end %>
+
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>

@@ -334,6 +334,69 @@
     };
   };
 
+  // === bannerCropper — modals/_contest_banner.html.erb ============
+  // Inline cropper for the contest banner: pick an image, frame it to the
+  // hero's wide aspect ratio (cropper.js, drag-to-move), then Save crops it to
+  // a Blob, drops it into the form's file input, and submits via Turbo.
+  // cropper.js is CDN-loaded for admins on contest pages (see the layout).
+  window.bannerCropper = function (opts) {
+    opts = opts || {};
+    return {
+      cropper: null,
+      imageUrl: null, // data URL being framed (null => picker/dropzone state)
+      dragging: false,
+      cropping: false,
+      error: null,
+      aspectRatio: opts.aspectRatio || 3,
+      outW: opts.outputWidth || 1500,
+      outH: opts.outputHeight || 500,
+
+      destroy() { if (this.cropper) { this.cropper.destroy(); this.cropper = null; } },
+
+      pick(event) { var f = event.target.files[0]; event.target.value = ""; this.readFile(f); },
+      drop(event) {
+        this.dragging = false;
+        var f = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+        this.readFile(f);
+      },
+      readFile(file) {
+        if (!file) return;
+        if (!file.type || file.type.indexOf("image/") !== 0) { this.error = "Please choose a PNG, JPG, or WebP image."; return; }
+        if (file.size > 8 * 1024 * 1024) { this.error = "That image is over 8 MB — choose a smaller one."; return; }
+        var self = this;
+        var reader = new FileReader();
+        reader.onload = function (e) { self.error = null; self.imageUrl = e.target.result; self.mount(); };
+        reader.readAsDataURL(file);
+      },
+      mount() {
+        var self = this;
+        this.$nextTick(function () {
+          if (typeof Cropper === "undefined") { self.error = "The cropper didn't load — refresh and try again."; return; }
+          if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
+          self.cropper = new Cropper(self.$refs.cropImage, {
+            aspectRatio: self.aspectRatio, viewMode: 1, dragMode: "move",
+            autoCropArea: 1, cropBoxResizable: false, cropBoxMovable: false,
+            background: false, guides: false, responsive: true
+          });
+        });
+      },
+      save() {
+        if (!this.cropper || this.cropping) return;
+        var self = this;
+        this.cropping = true;
+        var canvas = this.cropper.getCroppedCanvas({ width: this.outW, height: this.outH, imageSmoothingQuality: "high" });
+        if (!canvas) { this.error = "Could not process that image."; this.cropping = false; return; }
+        canvas.toBlob(function (blob) {
+          if (!blob) { self.error = "Could not process that image."; self.cropping = false; return; }
+          var dt = new DataTransfer();
+          dt.items.add(new File([blob], "banner.png", { type: "image/png" }));
+          self.$refs.fileInput.files = dt.files;
+          self.$refs.form.requestSubmit();
+        }, "image/png");
+      }
+    };
+  };
+
   // === usernameRenameForm — modals/_username.html.erb ==============
   window.usernameRenameForm = function (opts) {
     opts = opts || {};

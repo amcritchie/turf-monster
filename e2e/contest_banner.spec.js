@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 const { loginAdmin, reseed } = require("./helpers");
 const path = require("path");
 
-const BANNER = path.join(__dirname, "..", "test", "fixtures", "files", "banner.png");
+const BANNER_WIDE = path.join(__dirname, "..", "test", "fixtures", "files", "banner_wide.png");
 
 // Admin "Update banner" flow (PR #29). The server side is covered by
 // ContestsControllerTest; this drives the actual JS path that unit tests can't:
@@ -11,7 +11,7 @@ const BANNER = path.join(__dirname, "..", "test", "fixtures", "files", "banner.p
 test.beforeEach(async ({ request }) => await reseed(request));
 
 test.describe("Contest banner update", () => {
-  test("admin swaps the banner from the hero modal and it closes on success", async ({ page }) => {
+  test("admin frames + saves a new banner from the hero modal", async ({ page }) => {
     await loginAdmin(page);
     await page.goto("/contests/world-cup-2026");
 
@@ -21,15 +21,17 @@ test.describe("Contest banner update", () => {
       .click();
     await expect(page.getByRole("heading", { name: "Update banner" })).toBeVisible();
 
-    // Save is disabled until a file is chosen; pick the fixture image.
     const save = page.getByRole("button", { name: "Save banner" });
     await expect(save).toBeDisabled();
-    await page.locator('#contest-banner-form input[type="file"]').setInputFiles(BANNER);
+
+    // Pick an image -> the cropper.js frame mounts -> Save enables.
+    await page.locator("#banner-image-picker").setInputFiles(BANNER_WIDE);
+    await expect(page.locator(".cropper-container")).toBeVisible();
     await expect(save).toBeEnabled();
 
     await save.click();
 
-    // turbo:submit-end listener closes the modal; the hero re-renders with an <img>.
+    // turbo:submit-end closes the modal; the hero re-renders with an <img>.
     await expect(page.getByRole("heading", { name: "Update banner" })).toBeHidden();
     await expect(page.locator("#contest-hero img")).toBeVisible();
   });
