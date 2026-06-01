@@ -165,6 +165,17 @@ jobs:
           path: playwright-report/
           if-no-files-found: ignore
 
+      # test-results/ holds the per-test traces + screenshots (use.trace /
+      # use.screenshot). This is what lets us diagnose CI-only failures that
+      # don't reproduce locally.
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+
       - name: Keep screenshots from failed system tests
         uses: actions/upload-artifact@v4
         if: failure()

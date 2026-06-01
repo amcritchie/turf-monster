@@ -18,6 +18,12 @@ module.exports = defineConfig({
   use: {
     baseURL: "http://127.0.0.1:3001",
     headless: true,
+    // Capture a Playwright trace + screenshot when a test retries/fails so
+    // CI-only failures (which don't reproduce locally — e.g. geo.spec.js:54)
+    // are diagnosable from the uploaded test-results/ artifact. on-first-retry
+    // keeps green runs cheap (trace only recorded once a test has failed once).
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
   },
   projects: [
     {
