@@ -12,11 +12,11 @@ module Solana
   #     Managed-wallet "withdrawals" are handled off-chain (operator flow —
   #     see PayoutRequest model, coming in Phase 2).
   #
-  # Instruction surface (15 + pause/unpause = 17):
+  # Instruction surface (16 + pause/unpause = 18):
   #   initialize, register_currency, deactivate_currency,
   #   create_user_account, set_username,
   #   create_season,
-  #   create_contest, lock_contest, unlock_contest,
+  #   create_contest, set_contest_lock_time, set_contest_conclusion_time,
   #   enter_contest, enter_contest_with_token,
   #   settle_contest, cancel_contest, close_contest,
   #   mint_entry_token, sweep_operator_revenue,

@@ -256,7 +256,7 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 - **Token purchases ($19 / 3-for-$49)** mint on-chain `EntryTokenAccount` PDAs via `TokenPurchaseJob`. **No USDC top-up** — the token IS the value; redemption goes through `enter_contest_with_token` which skips the USDC transfer. (Pre-v0.10 the flow ALSO topped up $19 of USDC per token; that was dropped when tokens moved on-chain.)
 - **Slug-based foreign keys**: Teams, Games, Players use slug columns as FKs (e.g. `team_slug`, `home_team_slug`). Associations use `foreign_key: :*_slug, primary_key: :slug`.
 - **Turf Score formula**: `1.0 + 2.0 * ln(rank) / ln(N)` — x1.0 at rank 1 to x3.0 at rank N. Centralized on `SlateMatchup.turf_score_for(rank, n)` (scale `2.0` = `Slate::FORMULA_DEFAULTS[:formula_mult_scale]`, per-slate overridable; JS mirrors in `slates/show.html.erb` + `formula_report.html.erb`).
-- **Seeds system**: 65 seeds per entry on-chain. No DB columns. See `docs/SOLANA.md`.
+- **Seeds system**: seeds awarded on-chain per the active Season's `seed_schedule` (default `[25, 19, 14, 10, 7]` — entry 0→25, clamping to slot 4); no DB column for the count. See `docs/SOLANA.md`.
 - **Entry tokens**: on-chain `EntryTokenAccount` PDAs (turf-vault v0.9.0+). DB `stripe_purchases` is audit-only. See `Solana::Vault#list_entry_tokens` and `app/controllers/admin/free_entries_controller.rb`.
 - Entry slug includes `id` — requires `after_create` callback
 - Every page shows JSON debug block of its primary record
