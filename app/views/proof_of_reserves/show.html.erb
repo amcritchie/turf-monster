@@ -16,10 +16,8 @@
   // be defined inline (see CLAUDE.md "Inline JS that MUST stay inline").
   window.proofOfReserves = function () {
     var CFG_EL_ID = "proof-of-reserves-config";
-    var STATUS_NAMES = ["Open", "Locked", "Settled"];
+    var STATUS_NAMES = ["Open", "Locked", "Settled", "Cancelled"];
     var USDC_DECIMALS = 6;
-    // 8-byte Anchor discriminator + 32-byte contest_id at the start of every Contest account.
-    var CONTEST_FIELDS_OFFSET = 8 + 32;
     // Half a USDC cent of slack on the solvency check (covers Borsh→float rounding).
     var SOLVENCY_FLOAT_SLACK = 0.005;
 
@@ -47,17 +45,24 @@
       return Number(big) / Math.pow(10, USDC_DECIMALS);
     }
 
-    // Layout (post 8-byte Anchor discriminator), from turf-vault Contest struct:
-    //   contest_id [u8;32] | prizes u64 | entry_fee u64 | entry_fees u64
-    //   max_entries u32 | current_entries u32 | status u8 (enum)
-    //   payout_amounts Vec<u64> (u32 len + len*u64)
-    //   admin pk(32) | creator pk(32) | season_id u32 | bump u8
+    // Layout (post 8-byte Anchor discriminator), from the turf-vault Contest
+    // struct (v0.18, config/turf_vault.idl.json):
+    //   contest_id [u8;32] | admin pk(32) | creator pk(32) | season_id u32
+    //   prize_pool u64 | entry_fee_by_currency [u64;16] | entry_fees [u64;16]
+    //   max_entries u32 | current_entries u32 | status u8 (ContestStatus enum)
+    //   payout_amounts Vec<u64> (u32 len + len*u64) | bump u8
+    //   lock_timestamp i64 | conclusion_timestamp i64 | _reserved [u8;16]
+    // USDC is currency index 0, so the entry fee / fees use slot [0].
     function decodeContest(data) {
       var dv = asView(data);
-      var o = CONTEST_FIELDS_OFFSET;
-      var prizes = readU64LE(dv, o); o += 8;
-      var entryFee = readU64LE(dv, o); o += 8;
-      var entryFees = readU64LE(dv, o); o += 8;
+      var o = 8;        // Anchor discriminator
+      o += 32;          // contest_id
+      o += 32;          // admin
+      o += 32;          // creator
+      var seasonId = readU32LE(dv, o); o += 4;
+      var prizePool = readU64LE(dv, o); o += 8;
+      var entryFee0 = readU64LE(dv, o); o += 8 * 16;  // entry_fee_by_currency[0], skip [u64;16]
+      o += 8 * 16;                                    // entry_fees [u64;16] — collected fees, operator-side, not a pool obligation
       var maxEntries = readU32LE(dv, o); o += 4;
       var currentEntries = readU32LE(dv, o); o += 4;
       var statusByte = dv.getUint8(o); o += 1;
@@ -67,19 +72,17 @@
         payoutAmounts.push(readU64LE(dv, o));
         o += 8;
       }
-      o += 32 + 32; // skip admin + creator pubkeys
-      var seasonId = readU32LE(dv, o); o += 4;
+      // bump u8, lock/conclusion i64, _reserved [u8;16] follow — not needed here.
       return {
-        // Lamports kept only where the solvency math needs BigInt precision.
-        entryFeesLamports: entryFees,
-        prizesLamports: prizes,
+        // The guaranteed prize (BigInt lamports for the solvency math) is what
+        // the prize-pool token account must hold.
+        prizesLamports: prizePool,
         maxEntries: maxEntries,
         currentEntries: currentEntries,
         status: STATUS_NAMES[statusByte] || "Unknown",
-        prizesUsd: lamportsToUsd(prizes),
-        entryFeeUsd: lamportsToUsd(entryFee),
+        prizesUsd: lamportsToUsd(prizePool),
+        entryFeeUsd: lamportsToUsd(entryFee0),
         payoutAmountsUsd: payoutAmounts.map(lamportsToUsd),
-        reservedUsd: lamportsToUsd(prizes + entryFees),
         seasonId: seasonId
       };
     }
@@ -91,7 +94,7 @@
       return decodeContest(info.data);
     }
 
-    async function fetchVaultUsdcBalance(conn, pubkeyB58) {
+    async function fetchTokenBalance(conn, pubkeyB58) {
       var pubkey = new solanaWeb3.PublicKey(pubkeyB58);
       var resp = await conn.getTokenAccountBalance(pubkey, "confirmed");
       return {
@@ -106,9 +109,9 @@
     return {
       cfg: cfg,
       contests: cfg.contests.map(function (c) {
-        return Object.assign({}, c, { onchain: null, error: null, loading: true });
+        return Object.assign({}, c, { onchain: null, prizePoolUsd: null, prizePoolLamports: 0n, prizePoolError: null, error: null, loading: true });
       }),
-      vaultBalanceUsd: null,
+      reservesUsd: null,
       obligationsUsd: null,
       bannerLoading: true,
       bannerError: null,
@@ -146,8 +149,8 @@
       solvencyLabel: function () {
         if (this.bannerLoading) return "Checking…";
         if (this.bannerError) return "Error";
-        if (this.vaultBalanceUsd === null || this.obligationsUsd === null) return "Unknown";
-        return this.vaultBalanceUsd + SOLVENCY_FLOAT_SLACK >= this.obligationsUsd ? "Solvent" : "Undercollateralized";
+        if (this.reservesUsd === null || this.obligationsUsd === null) return "Unknown";
+        return this.reservesUsd + SOLVENCY_FLOAT_SLACK >= this.obligationsUsd ? "Solvent" : "Undercollateralized";
       },
 
       solvencyTone: function () {
@@ -155,6 +158,12 @@
         if (l === "Solvent") return "ok";
         if (l === "Undercollateralized") return "warn";
         return "muted";
+      },
+
+      // Does this contest's on-chain prize-pool balance cover its guaranteed prize?
+      poolCovers: function (c) {
+        if (!c.onchain || c.prizePoolUsd === null) return null;
+        return c.prizePoolUsd + SOLVENCY_FLOAT_SLACK >= c.onchain.prizesUsd;
       },
 
       fetchedAtLabel: function () {
@@ -168,13 +177,26 @@
         self.bannerLoading = true;
         self.bannerError = null;
 
+        // Per contest: decode the Contest PDA (obligation counters) AND read the
+        // real on-chain prize-pool token balance (the actual reserve).
         var contestPromises = self.contests.map(async function (row, idx) {
           self.contests[idx].loading = true;
           self.contests[idx].error = null;
+          self.contests[idx].prizePoolError = null;
           try {
             var decoded = await fetchContestAccount(connection, row.contest_pda);
             self.contests[idx].onchain = decoded;
-            if (!decoded) self.contests[idx].error = "Account not found";
+            if (!decoded) { self.contests[idx].error = "Account not found"; return; }
+            try {
+              var bal = await fetchTokenBalance(connection, row.prize_pool_pda);
+              self.contests[idx].prizePoolUsd = bal.amountUsd;
+              self.contests[idx].prizePoolLamports = bal.amountLamports;
+            } catch (e) {
+              // Not-yet-funded or settled+swept pool: read 0 rather than failing the row.
+              self.contests[idx].prizePoolUsd = 0;
+              self.contests[idx].prizePoolLamports = 0n;
+              self.contests[idx].prizePoolError = e.message || String(e);
+            }
           } catch (e) {
             self.contests[idx].error = e.message || String(e);
           } finally {
@@ -182,25 +204,24 @@
           }
         });
 
-        var vaultPromise = (async function () {
-          try {
-            var bal = await fetchVaultUsdcBalance(connection, self.cfg.vault_usdc_pubkey);
-            self.vaultBalanceUsd = bal.amountUsd;
-          } catch (e) {
-            self.bannerError = e.message || String(e);
-          }
-        })();
+        await Promise.all(contestPromises);
 
-        await Promise.all(contestPromises.concat([vaultPromise]));
-
-        var totalLamports = 0n;
+        // Solvency across open + locked contests: Σ on-chain prize-pool balances
+        // (reserves) vs Σ (prizes + entry_fees) the program owes (obligations).
+        var reservesLamports = 0n, obligationsLamports = 0n;
         for (var i = 0; i < self.contests.length; i++) {
           var c = self.contests[i];
-          if (!c.onchain) continue;
-          if (c.onchain.status === "Settled") continue;
-          totalLamports += c.onchain.prizesLamports + c.onchain.entryFeesLamports;
+          if (!c.onchain || c.onchain.status === "Settled" || c.onchain.status === "Cancelled") continue;
+          reservesLamports += c.prizePoolLamports || 0n;       // actual on-chain prize-pool USDC
+          obligationsLamports += c.onchain.prizesLamports;     // guaranteed prize the pool must cover
         }
-        self.obligationsUsd = lamportsToUsd(totalLamports);
+        // If nothing decoded at all, the RPC is likely down — surface it rather
+        // than implying a misleading "Solvent $0".
+        if (self.contests.length > 0 && !self.contests.some(function (c) { return c.onchain; })) {
+          self.bannerError = "Couldn't read any contest from chain — the RPC may be unavailable.";
+        }
+        self.reservesUsd = lamportsToUsd(reservesLamports);
+        self.obligationsUsd = lamportsToUsd(obligationsLamports);
         self.lastFetchedAt = new Date();
         self.bannerLoading = false;
         self.refreshing = false;
@@ -254,16 +275,12 @@
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
         <div class="bg-surface-alt rounded-xl p-4 border border-subtle">
-          <p class="text-xs text-muted uppercase tracking-wider mb-1">USDC in shared vault</p>
-          <p class="font-mono text-2xl text-heading" x-text="fmtUsd(vaultBalanceUsd)"></p>
-          <a :href="explorer('address', cfg.vault_usdc_pubkey)" target="_blank" rel="noopener"
-             class="text-xs font-mono text-violet hover:underline mt-1 inline-flex items-center gap-1.5">
-            <span x-text="shortPubkey(cfg.vault_usdc_pubkey)"></span>
-            <img src="/solana-mark.svg" alt="" class="w-3 h-3">
-          </a>
+          <p class="text-xs text-muted uppercase tracking-wider mb-1">USDC reserves (on-chain prize pools)</p>
+          <p class="font-mono text-2xl text-heading" x-text="fmtUsd(reservesUsd)"></p>
+          <p class="text-xs text-muted mt-1">Summed across every open &amp; locked contest's prize-pool account</p>
         </div>
         <div class="bg-surface-alt rounded-xl p-4 border border-subtle">
-          <p class="text-xs text-muted uppercase tracking-wider mb-1">Open obligations (prizes + entry fees)</p>
+          <p class="text-xs text-muted uppercase tracking-wider mb-1">Guaranteed prizes owed</p>
           <p class="font-mono text-2xl text-heading" x-text="fmtUsd(obligationsUsd)"></p>
           <p class="text-xs text-muted mt-1">Across all open & locked contests</p>
         </div>
@@ -272,7 +289,7 @@
       <p class="text-xs text-muted mt-4" x-show="lastFetchedAt">
         Last refreshed <span x-text="fetchedAtLabel()"></span>
       </p>
-      <p class="text-xs text-rose mt-4" x-show="bannerError" x-text="'Vault read failed: ' + bannerError"></p>
+      <p class="text-xs text-rose mt-4" x-show="bannerError" x-text="bannerError"></p>
     </div>
   </section>
 
@@ -292,17 +309,16 @@
              class="font-mono text-xs text-violet break-all hover:underline" x-text="cfg.usdc_mint"></a>
         </div>
         <div>
-          <p class="text-heading font-semibold mb-1">3. Shared vault PDA</p>
-          <a :href="explorer('address', cfg.vault_usdc_pubkey)" target="_blank" rel="noopener"
-             class="font-mono text-xs text-violet break-all hover:underline" x-text="cfg.vault_usdc_pubkey"></a>
-          <p class="text-[10px] text-muted mt-1 font-mono">seeds = [b"vault_usdc"]</p>
+          <p class="text-heading font-semibold mb-1">3. Per-contest prize pool</p>
+          <p class="font-mono text-xs text-secondary break-all">prize_pool token account</p>
+          <p class="text-[10px] text-muted mt-1 font-mono">seeds = [b"prize_pool", sha256(slug)]</p>
         </div>
       </div>
       <p class="text-muted text-xs mt-5 leading-relaxed">
         Your browser opens an RPC connection to <span class="font-mono text-secondary" x-text="cfg.rpc_url"></span>,
-        reads each Contest PDA (seeds: <span class="font-mono text-secondary">[b"contest", sha256(slug)]</span>),
-        and Borsh-decodes the prize pool, entry count, and status. The shared vault USDC token
-        account's balance is read separately and shown above.
+        reads each Contest PDA (seeds: <span class="font-mono text-secondary">[b"contest", sha256(slug)]</span>)
+        and Borsh-decodes its prizes, entry count, and status, then reads that contest's prize-pool
+        token account balance directly. The reserves figure above is the sum of those balances.
       </p>
     </div>
   </section>
@@ -355,12 +371,14 @@
               <!-- Headline stats -->
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-5">
                 <div class="bg-surface-alt rounded-lg p-3 border border-mint/30">
-                  <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Reserved USDC</p>
+                  <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Prize pool on-chain</p>
                   <div class="flex items-center gap-1.5">
                     <img src="/usdc-mark.svg" alt="USDC" class="w-5 h-5 flex-shrink-0">
-                    <p class="font-mono text-mint text-lg font-bold" x-text="fmtUsd(c.onchain.reservedUsd)"></p>
+                    <p class="font-mono text-mint text-lg font-bold" x-text="fmtUsd(c.prizePoolUsd)"></p>
                   </div>
-                  <p class="text-[10px] text-muted mt-0.5">prizes + entry fees</p>
+                  <p class="text-[10px] mt-0.5"
+                     :class="poolCovers(c) === false ? 'text-rose' : 'text-muted'"
+                     x-text="poolCovers(c) === false ? 'Short of guaranteed prize' : 'Funds the guaranteed prize'"></p>
                 </div>
                 <div class="bg-surface-alt rounded-lg p-3 border border-subtle">
                   <p class="text-[10px] text-muted uppercase tracking-wider mb-1">Guaranteed prize</p>
@@ -405,6 +423,14 @@
                       <img src="/solana-mark.svg" alt="" class="w-3 h-3">
                     </span>
                   </a>
+                  <a :href="explorer('address', c.prize_pool_pda)" target="_blank" rel="noopener"
+                     class="flex items-center justify-between bg-surface-alt rounded px-3 py-2 border border-subtle hover:border-violet/50 group">
+                    <span class="text-muted">Prize pool</span>
+                    <span class="font-mono text-violet group-hover:underline inline-flex items-center gap-1.5">
+                      <span x-text="shortPubkey(c.prize_pool_pda)"></span>
+                      <img src="/solana-mark.svg" alt="" class="w-3 h-3">
+                    </span>
+                  </a>
                   <a x-show="c.create_tx_signature" :href="explorer('tx', c.create_tx_signature)" target="_blank" rel="noopener"
                      class="flex items-center justify-between bg-surface-alt rounded px-3 py-2 border border-subtle hover:border-violet/50 group">
                     <span class="text-muted">Created <span x-text="c.created_label"></span></span>
@@ -427,10 +453,11 @@
   <!-- ========== FOOTNOTE ========== -->
   <section class="text-center py-4">
     <p class="text-muted text-xs max-w-xl mx-auto leading-relaxed">
-      Reserves are held in a shared USDC vault (<span class="font-mono">seeds = [b"vault_usdc"]</span>) owned by the
-      turf-vault program. Per-contest balances live in the program's internal counters
-      (<span class="font-mono">prizes</span> + <span class="font-mono">entry_fees</span> on each Contest PDA), not in separate token accounts.
-      Token-funded entries don't increment <span class="font-mono">entry_fees</span> on-chain — operator subsidizes the prize pool.
+      As of v0.16 each contest's USDC sits in its own prize-pool token account
+      (<span class="font-mono">seeds = [b"prize_pool", sha256(slug)]</span>), authority-controlled by the turf-vault
+      program's vault-state PDA — so every contest's reserve is independently verifiable on-chain.
+      The obligation each pool must cover is the contest's guaranteed prize (<span class="font-mono">prize_pool</span> on the Contest PDA,
+      equal to the sum of its payouts); collected entry fees are operator revenue, tracked in a separate account.
     </p>
   </section>
 
