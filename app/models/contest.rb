@@ -176,6 +176,11 @@ class Contest < ApplicationRecord
   def grade!
     with_lock do
       raise "Contest is already settled" if settled?
+      # v0.19 (#6): the program rejects settle until the lock (or conclusion)
+      # has passed — entries must be provably closed before grading. Gate here,
+      # before any off-chain grading, so we don't grade in the DB then fail the
+      # on-chain settle with 6028. `locked?` mirrors the on-chain lock_timestamp.
+      raise "Cannot grade: the contest lock time hasn't passed — entries are still open." if onchain? && !locked?
       # World Cup Survivor sets entry scores during round grading — skip matchup scoring.
       score_entries! unless world_cup_survivor?
 

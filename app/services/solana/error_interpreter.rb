@@ -135,6 +135,18 @@ module Solana
         return ok(message: "Contest must have at least one entry fee or a non-zero prize pool.", log: true)
       end
 
+      # ── v0.19 codes (6036-6038, audit highs #3/#5/#9) ────────────────
+      # Loud — a redirected payout is a fund-safety signal.
+      if stripped.match?(/0x1794|\b6036\b|invalidpayoutdestination/i)
+        return ok(message: "Settlement payout destination is not the winner's associated token account.", log: true)
+      end
+      if stripped.match?(/0x1795|\b6037\b|invalidtimestamp/i)
+        return ok(message: "Invalid contest time — must be in the future, and the lock must precede the conclusion.", log: true)
+      end
+      if stripped.match?(/0x1796|\b6038\b|entrytokenseedmismatch/i)
+        return ok(message: "Entry token reference hash mismatch — retry the mint.", log: true)
+      end
+
       # Network / RPC flakes — transient, user can just retry.
       if stripped.match?(/blockhash not found|block height exceeded|connection refused|timed out|connection reset/i)
         return ok(message: "Network blip — please try again.", toast: true)
