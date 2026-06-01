@@ -1,6 +1,10 @@
 <div class="mb-6 flex items-center justify-between">
   <h1 class="text-3xl font-extrabold text-heading">Contests</h1>
-  <%= link_to "New Contest", new_contest_path, class: "btn btn-primary" %>
+  <%# Admin-only: contest creation is gated to admins server-side (ContestsController
+      #new/#create require_admin), so hide the button for everyone else. %>
+  <% if current_user&.admin? %>
+    <%= link_to "New Contest", new_contest_path, class: "btn btn-primary" %>
+  <% end %>
 </div>
 
 <%# ===== My Contests — contests you've entered, in the same card grid. Only
