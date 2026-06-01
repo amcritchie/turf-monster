@@ -161,7 +161,7 @@ class FakeVault
     { ata: "fake-ata-#{wallet[0, 4]}-#{mint[0, 4]}", created: false }
   end
 
-  # --- Deposit flow (StripeDepositJob / MoonpayDepositJob) ---
+  # --- Deposit flow (StripeDepositJob) ---
 
   def fund_user(wallet, lamports)
     @fund_calls << { wallet: wallet, lamports: lamports }

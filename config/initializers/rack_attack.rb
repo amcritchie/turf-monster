@@ -50,14 +50,10 @@ class Rack::Attack
   end
 
   ### Throttle: webhook endpoints — DoS protection on signature verification
-  # Stripe / MoonPay normally deliver a handful per second at peak. 100/min
-  # leaves ample headroom while killing flood attacks.
+  # Stripe normally delivers a handful per second at peak. 100/min leaves
+  # ample headroom while killing flood attacks.
   throttle("webhooks/stripe", limit: 100, period: 1.minute) do |req|
     req.ip if req.post? && req.path == "/webhooks/stripe"
-  end
-
-  throttle("webhooks/moonpay", limit: 100, period: 1.minute) do |req|
-    req.ip if req.post? && req.path == "/webhooks/moonpay"
   end
 
   ### Throttle: devnet faucet / airdrop — money-cost endpoints
@@ -110,12 +106,6 @@ class Rack::Attack
   ### Throttle: wallet withdraw — money-out, strict cap (prelaunch audit H5)
   throttle("wallet_withdraw/ip", limit: 5, period: 1.minute) do |req|
     req.ip if req.post? && req.path == "/wallet/withdraw"
-  end
-
-  ### Throttle: MoonPay deposit initiate — fee-bleed protection (prelaunch audit H5)
-  # Stripe deposit is already covered by the "stripe_checkout/ip" rule above.
-  throttle("moonpay_deposit/ip", limit: 10, period: 1.minute) do |req|
-    req.ip if req.post? && req.path == "/wallet/moonpay_deposit"
   end
 
   ### Throttle: on-chain entry preparation — sign-build flood backstop (prelaunch audit H5)

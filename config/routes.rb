@@ -222,9 +222,7 @@ Rails.application.routes.draw do
   resources :games, only: [:index]
 
   resource :wallet, only: [:show] do
-    get  :topup
     post :stripe_deposit
-    post :moonpay_deposit
     post :withdraw
     post :faucet
     post :airdrop
@@ -245,7 +243,6 @@ Rails.application.routes.draw do
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"
-  post "webhooks/moonpay", to: "webhooks/moonpay#create"
 
   post "add_funds", to: "users#add_funds"
 
