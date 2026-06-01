@@ -672,8 +672,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
       "sig-confirmed-1" => { "err" => nil, "confirmationStatus" => "confirmed" }
     })
     Solana::Vault.stub :new, vault do
-      post recover_pending_entry_contest_path(@contest),
-        params: { ptx_slug: ptx.slug }, as: :json
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post recover_pending_entry_contest_path(@contest),
+            params: { ptx_slug: ptx.slug }, as: :json
+        end
+      end
     end
 
     assert_response :success
@@ -683,6 +687,43 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "confirmed", ptx.reload.status
     assert entry.reload.active?, "expected entry to be promoted to active"
     assert_equal "sig-confirmed-1", entry.onchain_tx_signature
+  end
+
+  test "recover_pending_entry rejects an unverified signature (forged/unrelated tx) and leaves entry in cart" do
+    @user.update!(web3_solana_address: "WalletR9#{SecureRandom.hex(4)}")
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+    # Attacker stamps a real-but-unrelated finalized signature and a forged
+    # entry_pda in the PT metadata.
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest", serialized_tx: "stx",
+      status: "submitted", tx_signature: "sig-forged-1",
+      target: entry, initiator_address: @user.web3_solana_address,
+      metadata: { entry_pda: "epda-attacker-controlled" }.to_json
+    )
+
+    # RPC reports the signature finalized, but semantic verification must
+    # reject it — it is not an enter_contest IX writing to this user's
+    # server-derived entry PDA.
+    vault = FakeVault.new(signature_statuses: {
+      "sig-forged-1" => { "err" => nil, "confirmationStatus" => "finalized" }
+    })
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, ->(*_a, **_k) { raise Solana::TxVerifier::VerificationError, "Transaction does not contain a `enter_contest` instruction" } do
+          post recover_pending_entry_contest_path(@contest),
+            params: { ptx_slug: ptx.slug }, as: :json
+        end
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "failed", body["status"]
+    assert entry.reload.cart?, "a forged/unverified signature must NOT activate the entry"
+    assert_nil entry.onchain_tx_signature
+    assert_equal "failed", ptx.reload.status
   end
 
   test "recover_pending_entry returns processing when RPC doesn't know the signature" do

@@ -625,6 +625,12 @@ class ContestsController < ApplicationController
 
     entry = ptx.target
     return render json: { error: "Invalid PT target" }, status: :unprocessable_entity unless entry.is_a?(Entry) && entry.contest_id == @contest.id
+    # Defense-in-depth (Lazarus audit #1): the target entry must belong to the
+    # caller. Today this is implied by the initiator_address check above plus
+    # the fact that prepare_entry is the only enter_contest PT creator, but
+    # asserting entry ownership explicitly keeps that invariant from becoming
+    # silently load-bearing if another PT-creation path is ever added.
+    return render json: { error: "Not authorized" }, status: :forbidden unless entry.user_id == current_user&.id
 
     # Already-active entry → close the loop on the PT and short-circuit.
     if entry.active?
@@ -645,8 +651,10 @@ class ContestsController < ApplicationController
     end
 
     # Ask the RPC about the signature once. The client owns the polling
-    # cadence; keeping this action cheap avoids tying up a request thread.
-    status = Solana::Vault.new.client.confirm_transaction(ptx.tx_signature).dig("value", 0)
+    # cadence; keeping this poll cheap (getSignatureStatuses) avoids tying up
+    # a request thread while the TX propagates.
+    vault = Solana::Vault.new
+    status = vault.client.confirm_transaction(ptx.tx_signature).dig("value", 0)
 
     if status.nil?
       return render json: { status: "processing" }
@@ -661,13 +669,27 @@ class ContestsController < ApplicationController
       return render json: { status: "processing" }
     end
 
-    # TX landed. Promote the entry server-side (re-derive entry_pda from
-    # the stored metadata, then call confirm_onchain! which runs the same
-    # safety checks the live confirm_onchain_entry endpoint does — locked
-    # games, per-user limit, sybil check).
-    entry_pda = ptx.parsed_metadata["entry_pda"]
+    # TX landed. Before crediting, run the SAME semantic verification the live
+    # confirm_onchain_entry path uses (OPSEC-010 / Lazarus audit #1):
+    # server-DERIVE the entry PDA from (contest slug, the session wallet,
+    # this entry's entry_number) — never trust ptx.metadata.entry_pda, which
+    # is client-supplied — then assert the signature really is an
+    # `enter_contest` instruction signed by THIS user and writing to THAT PDA.
+    # Without this, the recovery path would activate a paid entry from ANY
+    # finalized signature (a $0.01 self-transfer, someone else's tx, …) for
+    # free. confirm_onchain! then re-checks open/lock/limit/sybil, and the
+    # unique-signature constraint blocks replaying one tx across two rows.
     begin
-      entry.confirm_onchain!(tx_signature: ptx.tx_signature, entry_pda: entry_pda)
+      derived_entry_pda = Solana::Keypair.encode_base58(
+        vault.entry_pda(@contest.slug, current_user.web3_solana_address, entry.entry_number).first
+      )
+      verify_solana_transaction!(
+        ptx.tx_signature,
+        instruction: "enter_contest",
+        signer: current_user.web3_solana_address,
+        writable: derived_entry_pda
+      )
+      entry.confirm_onchain!(tx_signature: ptx.tx_signature, entry_pda: derived_entry_pda)
       ptx.update!(status: "confirmed")
       render json: {
         status: "confirmed",

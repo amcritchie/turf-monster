@@ -42,6 +42,14 @@ class FakeVault
     @client ||= FakeSolanaClient.new(@signature_statuses)
   end
 
+  # Recovery flow re-derives the entry PDA server-side before verifying the
+  # signature. The real Vault returns [pubkey_bytes, bump]; tests stub
+  # Solana::Keypair.encode_base58 to identity, so a deterministic value here
+  # is enough to exercise the derive → verify → confirm path.
+  def entry_pda(_contest_slug, _wallet_address, _entry_num)
+    ["epda-derived", 255]
+  end
+
   # --- Token minting (TokenPurchaseJob, dev_mint) ---
 
   def mint_entry_token(wallet_address:, source:, source_ref:, **_opts)

@@ -17,6 +17,15 @@ class Entry < ApplicationRecord
 
   enum :status, { cart: "cart", active: "active", complete: "complete", abandoned: "abandoned" }
 
+  # Single-use signatures (Lazarus audit #1/#8, 2026-05-31). A finalized
+  # on-chain signature may credit at most one entry — one real `enter_contest`
+  # tx must never be replayed to activate a second paid entry. `allow_nil`
+  # keeps cart / off-chain / comped entries (which have no signature)
+  # unconstrained. The partial unique DB index added in
+  # 20260531000001_add_unique_index_to_entries_onchain_tx_signature is the
+  # race-safe backstop; this validation gives a clean error message.
+  validates :onchain_tx_signature, uniqueness: true, allow_nil: true
+
   private
 
   def sync_user_contest_entered
@@ -172,6 +181,17 @@ class Entry < ApplicationRecord
     if contest.locks_at && Time.current >= contest.locks_at
       raise "Contest has locked — entries closed"
     end
+
+    # Fail-closed payment gate (Lazarus audit #1/#7, 2026-05-31). The caller
+    # (ContestsController#confirm_onchain_entry and #recover_pending_entry)
+    # verifies the signature semantically via Solana::TxVerifier before
+    # reaching here. This assertion is defense-in-depth: a future caller that
+    # forgets to verify still cannot activate a paid entry without a
+    # signature — mirroring the gate Entry#confirm! already carries.
+    if contest.entry_fee_cents.to_i.positive? && tx_signature.blank?
+      raise "Entry payment required — no verified on-chain signature recorded"
+    end
+
     raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
 
     # Check no locked games
