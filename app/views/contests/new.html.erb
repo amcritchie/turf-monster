@@ -11,7 +11,9 @@
     <% end %>
 
     <%= form_with model: @contest, url: contests_path, method: :post, id: "contest-form" do |f| %>
-      <div x-data="contestLockPicker({ sport: '<%= j @default_sport.to_s %>' })">
+      <%# Default to FIFA when no slate is prefilled (a prefilled slate sets
+          @default_sport from its sport); init() then runs selectFifa(). %>
+      <div x-data="contestLockPicker({ sport: '<%= j(@default_sport.presence || "fifa") %>' })">
       <!-- Sport selector -->
       <div class="mb-6">
         <label class="block text-sm text-secondary mb-3 font-medium">Sport</label>
@@ -39,8 +41,10 @@
 
       <div class="mb-5">
         <label for="contest_slate_id" class="block text-sm text-secondary mb-2 font-medium">Slate</label>
+        <%# No prompt — pre-select the first slate (earliest starts_at) by
+            default; a prefilled @contest.slate_id still wins when present. %>
         <%= f.collection_select :slate_id, Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at), :id, :name,
-          { prompt: "Select a slate..." },
+          {},
           { id: "contest_slate_id", class: "input-field" } %>
       </div>
 
