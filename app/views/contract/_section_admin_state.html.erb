@@ -28,7 +28,7 @@
       <dt class="text-[10px] uppercase tracking-wider text-secondary font-semibold mb-1">Program ID</dt>
       <dd class="font-mono text-xs sm:text-sm text-heading break-all">
         <%# Phase 2: read from Solana::Config::PROGRAM_ID at request time. %>
-        <%= (Solana::Config::PROGRAM_ID rescue "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT") %>
+        <%= (Solana::Config::PROGRAM_ID rescue "(SOLANA_PROGRAM_ID not set)") %>
       </dd>
       <p class="text-[11px] text-muted mt-1">Same on devnet + mainnet builds &mdash; pinned via SOLANA_PROGRAM_ID.</p>
     </div>
