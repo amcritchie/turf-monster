@@ -49,17 +49,28 @@
          if (s.indexOf && s.indexOf('tokens-') === 0) return false;
          return true;
        },
-       // Self-contained resend for the magic-link-sent step — works whether the
-       // modal was opened standalone (no board) or advanced into in-contest.
-       // Re-sends to the same email (+ contest/picks if the original carried
-       // them, so the link still returns to the contest).
+       // Self-contained resend for the magic-link-sent step (login page or
+       // in-contest). postMagicLink resolves rather than throwing on a non-2xx,
+       // so this reads the result and surfaces visible feedback either way.
+       // NOTE: keep comments in this x-data free of double-quotes/backticks --
+       // x-data is a double-quoted HTML attribute, so an inner double-quote
+       // closes it and silently breaks the whole modal (regressed PR #30).
        async resendMagicLink() {
          var p = this.props;
          if (!p || p.submitting) return;
+         p.resendError = '';
+         p.resent = false;
          p.submitting = 'magic-link';
          try {
-           await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks });
-         } catch (e) { /* swallow — the button just re-enables */ }
+           var data = await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks });
+           if (data && data.success) {
+             p.resent = true;
+           } else {
+             p.resendError = (data && data.error) || 'Could not resend — wait a moment and try again.';
+           }
+         } catch (e) {
+           p.resendError = 'Could not resend — check your connection and try again.';
+         }
          p.submitting = null;
        }
      }"
@@ -146,8 +157,18 @@
       <p class="text-xs text-muted mb-5">Open it on this device to finish — your 6 picks are saved. The link expires in 15 minutes and can only be used once.</p>
       <button @click="resendMagicLink()" :disabled="props.submitting"
               class="text-sm text-primary hover:text-primary-300 underline underline-offset-2 disabled:opacity-50">
-        <span x-text="props.submitting === 'magic-link' ? 'Resending…' : 'Resend link'"></span>
+        <span :class="props.submitting === 'magic-link' ? 'auth-text-shimmer' : ''"
+              x-text="props.submitting === 'magic-link' ? 'Resending…' : 'Resend link'"></span>
       </button>
+      <%# Visible resend feedback — success confirmation OR error. Plain x-show
+          inside the step's single template root (the parent <template x-if> owns
+          the one-root rule; these siblings live under its child <div>). %>
+      <p x-show="props.resent && props.submitting !== 'magic-link'" x-cloak
+         class="text-xs text-emerald-400 mt-3">
+        Sent again — check your inbox at <span class="font-medium" x-text="props.sentEmail"></span>.
+      </p>
+      <p x-show="props.resendError" x-cloak
+         class="text-xs text-red-400 mt-3" x-text="props.resendError"></p>
     </div>
   </template>
 

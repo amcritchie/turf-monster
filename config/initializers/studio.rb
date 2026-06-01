@@ -9,7 +9,7 @@ Studio.validate_user_contract = false
 Studio.configure do |config|
   config.app_name = "Turf Monster"
   config.session_key = :turf_user_id
-  config.welcome_message = ->(user) { "Welcome to Turf Monster, #{user.display_name}!" }
+  config.welcome_message = ->(user) { "Welcome to Turf Totals, #{user.display_name}!" }
   # Passwordless: email auth is magic-link only. Permit just :email (+ funnel
   # reference) so the engine's POST /signup path can't choke on now-unsupported
   # password params (there is no password= setter anymore).

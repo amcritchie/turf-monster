@@ -25,17 +25,36 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ── consume (GET /magic_link/:token) ─────────────────────────────────────
-  test "consume creates a passwordless, email-verified account and lands on the tokens upsell" do
+  # consume now redirects to the LANDING page (return_to, else root) and carries
+  # the welcome SUCCESS MODAL via flash[:magic_link_welcome] = { message, next };
+  # the modal auto-redirects to the entry-tokens upsell client-side. It does NOT
+  # redirect straight to tokens_buy_path nor set a :notice toast anymore.
+  test "consume creates a passwordless, email-verified account and shows the welcome modal" do
     token = MagicLink.generate(email: "brand-new@example.com")
     assert_difference "User.count", 1 do
       get magic_link_path(token: token)
     end
     user = User.find_by(email: "brand-new@example.com")
     assert user.email_verified_at.present?, "new user should be email-verified by clicking the link"
-    assert_redirected_to tokens_buy_path
+    # No contest return_to → lands on root, not straight on the tokens page.
+    assert_redirected_to root_path
+    assert_nil flash[:notice], "the welcome should be a modal, not a toast"
+    welcome = flash[:magic_link_welcome]
+    assert welcome.present?, "consume should set the welcome modal flash signal"
+    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
+    assert (welcome[:message] || welcome["message"]).present?
   end
 
-  test "consume logs in an existing user and honors a safe return_to" do
+  test "consume lands a new signup on the contest return_to with the welcome modal" do
+    token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3")
+    get magic_link_path(token: token)
+    assert_redirected_to "/contests/the-cup?picks=1,2,3"
+    welcome = flash[:magic_link_welcome]
+    assert welcome.present?
+    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
+  end
+
+  test "consume logs in an existing user on a safe return_to with the welcome modal" do
     existing = users(:alex)
     token = MagicLink.generate(email: existing.email, return_to: "/account")
     assert_no_difference "User.count" do
@@ -43,6 +62,10 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     end
     assert_redirected_to "/account"
     assert_equal existing.id, session[Studio.session_key]
+    assert_nil flash[:notice], "the welcome should be a modal, not a toast"
+    welcome = flash[:magic_link_welcome]
+    assert welcome.present?, "existing sign-in should also show the welcome modal"
+    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
   end
 
   test "consume verifies an existing but never-verified email" do
