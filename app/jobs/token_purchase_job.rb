@@ -79,7 +79,7 @@ class TokenPurchaseJob < ApplicationJob
         signatures << result[:signature]
         # Persist incrementally — a crash on the next iteration won't lose this signature.
         purchase.update!(mint_tx_signatures: signatures.to_json)
-        Rails.logger.info "[tokens] job.mint_ok #{i + 1}/#{quantity} sig=#{result[:signature][0,16]}... pda=#{result[:pda]&.[](0,12)}... seq=#{result[:sequence]}"
+        Rails.logger.info "[tokens] job.mint_ok #{i + 1}/#{quantity} sig=#{result[:signature][0,16]}... pda=#{result[:pda]&.[](0,12)}..."
       end
     end
 
