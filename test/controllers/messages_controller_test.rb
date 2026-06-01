@@ -18,7 +18,7 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
 
   test "an admin can post without having entered" do
     admin = User.create!(name: "Mod", username: "modtest", email: "mod@mcritchie.studio",
-                         password: "password", role: "admin")
+                         role: "admin")
     log_in_as(admin)
     assert_difference -> { @contest.messages.count }, 1 do
       post contest_messages_url(@contest), params: { message: { body: "admin moderating" } }, as: :json

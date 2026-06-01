@@ -1,0 +1,15 @@
+Hi <%= @user.display_name %>,
+
+Someone requested changing your Turf Monster email to <%= @new_email %>.
+
+If this was you, confirm the change:
+
+<%= @confirm_url %>
+
+This link expires in 30 minutes. Until you confirm, your email stays
+<%= @current_email %> — no change has been made.
+
+If this wasn't you, ignore this email — your account is unchanged. You may
+want to review your account security.
+
+— Turf Monster

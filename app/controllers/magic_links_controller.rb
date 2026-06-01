@@ -51,8 +51,8 @@ class MagicLinksController < ApplicationController
 
   # Mirrors RegistrationsController#create: build → configure_new_user → save!
   # (fires generate_managed_wallet! + enqueue_onchain_account_setup) → land on
-  # the entry-tokens upsell. No password is set — a magic-link user has a blank
-  # password_digest (has_password? false), which is the intended hidden fallback.
+  # the entry-tokens upsell. There is no password — email auth is magic-link
+  # only across the whole app (the password_digest column is dormant).
   def sign_up_new(result)
     user = User.new(email: result.email, reference: cookies[:reference].presence&.to_s&.first(64))
     Studio.configure_new_user.call(user)

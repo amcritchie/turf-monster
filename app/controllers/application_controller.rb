@@ -99,20 +99,6 @@ class ApplicationController < ActionController::Base
     session[:onchain] == true
   end
 
-  # Strong-factor reauth gate for destructive/irreversible actions
-  # (wallet export today; potentially: change of email + password rotation
-  # + account close in the future). Returns true if the current session
-  # successfully entered a password within `window` (default 5 min).
-  #
-  # Set by SessionsController#create + InlineSessionsController#create.
-  # Phantom-only logins (SolanaSessionsController#verify) DON'T stamp this
-  # — wallet-auth users have no password, so the few flows that demand it
-  # show a "set a password first" path or redirect to /login.
-  def password_recently_verified?(window: 5.minutes)
-    stamp = session[:password_verified_at].to_i
-    stamp > 0 && Time.at(stamp) > window.ago
-  end
-
   # Canonical auth + wallet state for this request — the single source of truth
   # the whole UI branches on (web3 / web2 / guest). Serialised into the page and
   # mirrored client-side by Alpine.store('session'). See SessionContext.

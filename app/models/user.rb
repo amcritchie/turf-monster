@@ -1,7 +1,10 @@
 class User < ApplicationRecord
   include Sluggable
 
-  has_secure_password validations: false
+  # Passwordless: email auth is magic-link only (MagicLink service / MagicLinksController).
+  # has_secure_password was removed in the passwordless re-auth refactor (closes Lazarus
+  # audit #4 — the password re-auth → wallet-key-theft chain). The password_digest column
+  # is kept dormant (no migration) but there is no longer a password= setter or #authenticate.
   has_one_attached :avatar
   has_many :entries, dependent: :destroy
   has_many :transaction_logs, dependent: :destroy
@@ -13,8 +16,6 @@ class User < ApplicationRecord
   validates :web2_solana_address, uniqueness: true, allow_nil: true
   validates :web3_solana_address, uniqueness: true, allow_nil: true
   validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/, message: "only letters, numbers, hyphens, and underscores" }, uniqueness: { case_sensitive: false }, allow_nil: true
-  validates :password, length: { minimum: 6 }, if: -> { password.present? }
-  validates :password, confirmation: true, if: -> { password_confirmation.present? }
   validate :has_authentication_method
 
   before_validation :ensure_username, on: :create
@@ -76,7 +77,6 @@ class User < ApplicationRecord
       name: auth.info.name,
       provider: auth.provider,
       uid: auth.uid,
-      password: SecureRandom.hex(16),
       email_verified_at: Time.current
     )
   rescue ActiveRecord::RecordNotUnique
@@ -211,10 +211,6 @@ class User < ApplicationRecord
     managed_wallet? && !self_custodied? && !phantom_wallet?
   end
 
-  def has_password?
-    password_digest.present? && password_digest != ""
-  end
-
   # B4 / OPSEC-048: account freeze for chargeback / dispute / refund. While
   # frozen, the user can't enter contests, buy tokens, or withdraw. Existing
   # on-chain tokens stay where they are (irreversible) but become unspendable
@@ -235,9 +231,9 @@ class User < ApplicationRecord
   end
 
   # OPSEC-045: rotate the session-binding token. Call after any action
-  # that should invalidate other live sessions (password change today;
-  # consider hooking on email change + 2FA disable later). Returns the
-  # new token so callers can update session[:session_token] in step.
+  # that should invalidate other live sessions (email change today;
+  # consider hooking on 2FA disable later). Returns the new token so
+  # callers can update session[:session_token] in step.
   def regenerate_session_token!
     new_token = SecureRandom.hex(32)
     update_column(:session_token, new_token)

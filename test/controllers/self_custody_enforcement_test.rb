@@ -13,7 +13,6 @@ class SelfCustodyEnforcementTest < ActionDispatch::IntegrationTest
     @user = User.create!(
       name: "Self Custody Sam", username: "sc-sam-#{SecureRandom.hex(2)}",
       email: "sc-#{SecureRandom.hex(2)}@example.test",
-      password: "password",
       email_verified_at: Time.current
     )
     assert @user.reload.managed_wallet?

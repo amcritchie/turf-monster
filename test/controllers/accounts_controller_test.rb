@@ -2,6 +2,8 @@ require "test_helper"
 require "minitest/mock"
 
 class AccountsControllerTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
+
   setup do
     @alex = users(:alex)
   end
@@ -96,7 +98,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "session_state returns web3 shape after a Phantom login" do
-    user = User.create!(email: "phantom@mcritchie.studio", password: "password")
+    user = User.create!(email: "phantom@mcritchie.studio")
     log_in_as_onchain(user)
     get session_state_account_path, as: :json
     assert_response :success
@@ -108,7 +110,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "session_state skips require_profile_completion gate" do
-    user = User.create!(email: "incomplete@mcritchie.studio", password: "password")
+    user = User.create!(email: "incomplete@mcritchie.studio")
     # User with no username would normally hit require_profile_completion and
     # get redirected; session_state must be reachable for the visibilitychange
     # rehydrate hook to work even mid-onboarding.
@@ -133,7 +135,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "update_username (custodial) saves via a server-signed set_username" do
-    user = User.create!(email: "renamer@mcritchie.studio", password: "password") # managed wallet
+    user = User.create!(email: "renamer@mcritchie.studio") # managed wallet
     user.update_columns(contest_entered: true) # satisfy the gate
     log_in_as user
     fake_vault = Object.new
@@ -148,7 +150,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "update_username is gated until contest_entered" do
-    user = User.create!(email: "gated@mcritchie.studio", password: "password") # managed wallet, contest_entered: false
+    user = User.create!(email: "gated@mcritchie.studio") # managed wallet, contest_entered: false
     log_in_as user
     post update_username_account_path, params: { username: "new-name-here" }, as: :json
     assert_response :forbidden
@@ -159,7 +161,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "update_username rejects when no wallet (gate fail-closed)" do
-    user = User.create!(email: "nowallet@mcritchie.studio", password: "password")
+    user = User.create!(email: "nowallet@mcritchie.studio")
     user.update_columns(web2_solana_address: nil, web3_solana_address: nil, contest_entered: true)
     log_in_as user
     post update_username_account_path, params: { username: "new-name" }, as: :json
@@ -192,26 +194,19 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_nil @alex.uid
   end
 
-  test "change_password updates password" do
-    log_in_as @alex
-    post change_password_account_path, params: {
-      current_password: "password",
-      new_password: "newpassword",
-      new_password_confirmation: "newpassword"
-    }
-    assert_redirected_to account_path
-    @alex.reload
-    assert @alex.authenticate("newpassword")
+  # Passwordless (Lazarus audit #4): the change_password action + route are
+  # gone entirely. Email auth is magic-link only. The named route helper no
+  # longer exists (NameError), and a raw POST to the old path 404s.
+  test "change_password route helper is gone" do
+    assert_raises(NameError) do
+      change_password_account_path
+    end
   end
 
-  test "change_password fails with wrong current password" do
+  test "POST to the old change_password path 404s (route removed)" do
     log_in_as @alex
-    post change_password_account_path, params: {
-      current_password: "wrongpassword",
-      new_password: "newpassword",
-      new_password_confirmation: "newpassword"
-    }
-    assert_response :unprocessable_entity
+    post "/account/change_password", params: { new_password: "x" }
+    assert_response :not_found
   end
 
   # OPSEC-007: update_level route + action removed. Previously accepted
@@ -219,23 +214,6 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   # is now read directly from on-chain seeds (cached navbar localStorage
   # is populated from the server's authoritative confirm_onchain_entry
   # response). No replacement test needed — there's no longer a write path.
-
-  # OPSEC-045: password change rotates session_token, booting other sessions
-  test "change_password rotates session_token (OPSEC-045)" do
-    log_in_as @alex
-    before = @alex.session_token
-    assert before.present?
-
-    post change_password_account_path, params: {
-      current_password: "password",
-      new_password: "newpassword",
-      new_password_confirmation: "newpassword"
-    }
-    assert_redirected_to account_path
-    @alex.reload
-    assert @alex.session_token.present?
-    assert_not_equal before, @alex.session_token
-  end
 
   test "stale session_token boots the request (OPSEC-045)" do
     log_in_as @alex
@@ -247,45 +225,210 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to login_path
   end
 
-  # OPSEC-046: email change requires current password + clears verified_at
-  test "email change requires current password (OPSEC-046)" do
+  # --- Out-of-band email change (Lazarus audit #4) ---
+
+  # Changing an EXISTING email does not apply it in-session; it sends a confirm
+  # link to the current address and leaves the email unchanged.
+  test "changing an existing email leaves it UNCHANGED and sends a confirm link" do
     @alex.update!(email_verified_at: Time.current)
+    current_email = @alex.email
     log_in_as @alex
-    assert_emails 0 do
-      patch account_path, params: {
-        user: { email: "newaddr@example.com" },
-        current_password: "wrongpassword"
-      }
+
+    assert_enqueued_emails 1 do
+      patch account_path, params: { user: { email: "newaddr@example.com" } }
     end
-    assert_response :unprocessable_entity
+    assert_redirected_to account_path
     @alex.reload
-    assert_not_equal "newaddr@example.com", @alex.email
-    assert @alex.email_verified_at.present?, "verified_at should be unchanged"
+    assert_equal current_email, @alex.email, "email must not change until OOB confirm"
+    assert @alex.email_verified_at.present?, "verified_at unchanged until confirm"
+    # The success presentation is now an informational MODAL, signalled via
+    # flash[:email_change_pending] (carrying the emails the modal renders),
+    # NOT a flash[:notice] toast. (with_indifferent_access: the in-request
+    # FlashHash keeps symbol keys; through a real cookie round-trip they're
+    # strings — the view reads it with_indifferent_access for the same reason.)
+    pending = flash[:email_change_pending].with_indifferent_access
+    assert pending.present?, "expected the email-change-pending modal signal in the flash"
+    assert_equal current_email, pending[:current_email]
+    assert_equal "newaddr@example.com", pending[:new_email]
+    # No held-change :notice is SET by the update action (the modal replaces
+    # the toast). A pre-existing login notice may still be sticky in the test
+    # session, so we assert the held-change copy specifically is absent rather
+    # than the whole :notice slot.
+    refute_match(/Confirm the change|link we sent/i, flash[:notice].to_s,
+                 "modal replaces the toast — no held-change :notice")
   end
 
-  test "email change with correct password resets verified_at + sends notification (OPSEC-046)" do
+  # The held-change response signals the email-change-pending modal (not a
+  # toast): flash[:email_change_pending] present with the current + new emails
+  # so the /account page can render them into the modal via x-text.
+  test "held email change sets the modal signal with the current and new emails" do
     @alex.update!(email_verified_at: Time.current)
-    old_email = @alex.email
+    current_email = @alex.email
     log_in_as @alex
-    assert_emails 1 do
-      patch account_path, params: {
-        user: { email: "newaddr@example.com" },
-        current_password: "password"
-      }
-    end
-    @alex.reload
-    assert_equal "newaddr@example.com", @alex.email
-    assert_nil @alex.email_verified_at
-    notice = ActionMailer::Base.deliveries.last
-    assert_equal [old_email], notice.to
-    assert_match(/email was changed/i, notice.subject)
+
+    patch account_path, params: { user: { email: "modal-signal@example.com" } }
+    assert_redirected_to account_path
+    pending = flash[:email_change_pending].with_indifferent_access
+    assert pending.present?, "expected flash[:email_change_pending] on a held change"
+    assert_equal current_email,              pending[:current_email]
+    assert_equal "modal-signal@example.com", pending[:new_email]
+
+    # And the /account page renders the modal trigger markup from that flash.
+    follow_redirect!
+    assert_response :success
+    assert_match(/email-change-pending-data/, response.body,
+                 "expected the JSON trigger script tag on the account page")
+    assert_match(/email-change-pending/, response.body,
+                 "expected the auto-open call referencing the modal id")
+    assert_match(/modal-signal@example\.com/, response.body,
+                 "expected the new email in the modal trigger payload")
   end
 
-  test "non-email update (name only) does not require current_password" do
+  # First-email + plain-update branches keep their flash[:notice] toast — the
+  # modal swap is ONLY for the held existing-email change.
+  test "setting a first email still uses a flash notice (not the modal)" do
+    user = User.create!(web3_solana_address: Solana::Keypair.generate.address)
+    user.update_columns(email: nil, email_verified_at: nil)
+    log_in_as_onchain(user)
+    patch account_path, params: { user: { email: "firsttoast@example.com" } }
+    assert_match(/Verify your new email/i, flash[:notice].to_s,
+                 "first-email change keeps its verify toast")
+    assert_nil flash[:email_change_pending], "first-email change must not trigger the modal"
+  end
+
+  test "a non-email update still uses a flash notice (not the modal)" do
+    log_in_as @alex
+    patch account_path, params: { user: { name: "Toast Name" } }
+    assert_match(/Account updated/i, flash[:notice].to_s,
+                 "plain update keeps its Account updated toast")
+    assert_nil flash[:email_change_pending], "plain update must not trigger the modal"
+  end
+
+  # The confirm mail goes to the CURRENT (pre-change) address — that's the OOB
+  # control that closes the hijacked-session → silent-email-swap chain.
+  test "email-change confirm mail is sent to the current address" do
+    @alex.update!(email_verified_at: Time.current)
+    current_email = @alex.email
+    log_in_as @alex
+
+    patch account_path, params: { user: { email: "attacker@example.com" } }
+    perform_enqueued_jobs
+    mail = ActionMailer::Base.deliveries.last
+    assert_equal [current_email], mail.to
+    assert_match(/confirm/i, mail.subject)
+  end
+
+  # Other fields (name) still save even when the email change is held for OOB confirm.
+  test "name still saves alongside a held email change" do
+    @alex.update!(email_verified_at: Time.current)
+    log_in_as @alex
+    patch account_path, params: { user: { name: "Renamed Person", email: "held@example.com" } }
+    @alex.reload
+    assert_equal "Renamed Person", @alex.name
+    assert_not_equal "held@example.com", @alex.email
+  end
+
+  # Setting the FIRST email (no prior address) applies directly + unverified.
+  test "setting a first email applies directly and clears verified_at" do
+    user = User.create!(web3_solana_address: Solana::Keypair.generate.address)
+    user.update_columns(email: nil, email_verified_at: nil)
+    log_in_as_onchain(user)
+    patch account_path, params: { user: { email: "first@example.com" } }
+    user.reload
+    assert_equal "first@example.com", user.email
+    assert_nil user.email_verified_at
+  end
+
+  # The GET confirm link only RENDERS an interstitial — it must NOT mutate.
+  # A link prefetcher / mail scanner issuing the GET cannot apply the change.
+  test "GET confirm_email_change renders the interstitial without changing the email" do
+    @alex.update!(email_verified_at: Time.current)
+    original = @alex.email
+    token = email_change_token(@alex, "interstitial@example.com", @alex.email)
+
+    get confirm_email_change_path(token: token)
+    assert_response :success
+    @alex.reload
+    assert_equal original, @alex.email, "GET must not apply the change — POST does"
+    assert @alex.email_verified_at.present?, "GET must not touch verification state"
+  end
+
+  # apply_email_change (POST) with a valid token applies the new email + rotates
+  # the session token (boots any other session, e.g. a hijacker's).
+  test "apply_email_change applies the new email and rotates session_token" do
+    @alex.update!(email_verified_at: Time.current)
+    token = email_change_token(@alex, "confirmed@example.com", @alex.email)
+    before_token = @alex.session_token
+
+    post apply_email_change_path(token: token)
+    @alex.reload
+    assert_equal "confirmed@example.com", @alex.email
+    assert_nil @alex.email_verified_at, "new address must be re-verified"
+    assert_not_equal before_token, @alex.session_token, "session token must rotate on confirm"
+  end
+
+  test "apply_email_change enqueues a verification mail for the new address" do
+    @alex.update!(email_verified_at: Time.current)
+    token = email_change_token(@alex, "verifyme@example.com", @alex.email)
+    assert_enqueued_emails 1 do
+      post apply_email_change_path(token: token)
+    end
+  end
+
+  # POST apply must also reject a stale token (token re-verified at submit time,
+  # not just at render) — closes the render-then-go-stale gap.
+  test "apply_email_change rejects a stale token (410)" do
+    @alex.update!(email: "moved2@example.com", email_verified_at: Time.current)
+    token = email_change_token(@alex, "newer2@example.com", "old2@example.com")
+    post apply_email_change_path(token: token)
+    assert_response :gone
+    @alex.reload
+    assert_equal "moved2@example.com", @alex.email
+  end
+
+  # A stale token (current_email no longer matches) is rejected with 410.
+  test "confirm_email_change rejects a stale token (email already changed)" do
+    @alex.update!(email: "moved@example.com", email_verified_at: Time.current)
+    # Token minted against the OLD address — now stale.
+    token = email_change_token(@alex, "newer@example.com", "old-address@example.com")
+    get confirm_email_change_path(token: token)
+    assert_response :gone
+    @alex.reload
+    assert_equal "moved@example.com", @alex.email
+  end
+
+  test "confirm_email_change rejects an invalid/garbage token (410)" do
+    get confirm_email_change_path(token: "not-a-real-token")
+    assert_response :gone
+  end
+
+  # The full Lazarus audit #4 chain: a logged-in (possibly hijacked) session
+  # cannot silently change the email — it's held for OOB confirm — and the
+  # wallet-export key reveal is reachable only behind the verified email +
+  # emailed token, never via in-session re-auth.
+  test "logged-in session cannot silently change email (audit #4)" do
+    @alex.update!(email_verified_at: Time.current)
+    original = @alex.email
+    log_in_as @alex
+    patch account_path, params: { user: { email: "takeover@example.com" } }
+    @alex.reload
+    assert_equal original, @alex.email, "email change must require OOB confirmation"
+  end
+
+  test "non-email update (name only) applies normally" do
     log_in_as @alex
     patch account_path, params: { user: { name: "Different Name" } }
     assert_redirected_to account_path
     @alex.reload
     assert_equal "Different Name", @alex.name
+  end
+
+  private
+
+  def email_change_token(user, new_email, current_email)
+    Rails.application.message_verifier(AccountsController::EMAIL_CHANGE_TOKEN_KEY).generate(
+      { user_id: user.id, new_email: new_email, current_email: current_email, requested_at: Time.current.to_i },
+      expires_in: 30.minutes
+    )
   end
 end

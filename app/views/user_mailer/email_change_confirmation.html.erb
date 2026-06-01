@@ -1,0 +1,20 @@
+<h1>Confirm your email change</h1>
+
+<p>Hi <%= @user.display_name %>,</p>
+
+<p>Someone requested changing your Turf Monster email to <strong><%= @new_email %></strong>.</p>
+
+<p>If this was you, confirm the change:</p>
+
+<p><%= link_to "Confirm email change", @confirm_url %></p>
+
+<p>If the button doesn't work, copy and paste this URL into your browser:</p>
+<p style="word-break:break-all;"><%= @confirm_url %></p>
+
+<p>This link expires in 30 minutes. Until you confirm, your email stays
+   <strong><%= @current_email %></strong> — no change has been made.</p>
+
+<p>If this wasn't you, ignore this email — your account is unchanged. You may
+   want to review your account security.</p>
+
+<p>— Turf Monster</p>

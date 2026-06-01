@@ -1,9 +1,9 @@
+# Passwordless: email auth is magic-link only. No password_digest is set —
+# the column is dormant (DB default ""), kept only so the schema is unchanged.
 alex:
   name: Alex
   username: alex_test
   email: alex@mcritchie.studio
-
-  password_digest: <%= BCrypt::Password.create("password") %>
   role: admin
   session_token: <%= SecureRandom.hex(32) %>
 
@@ -11,15 +11,11 @@ jordan:
   name: Jordan
   username: jordan_test
   email: jordan@mcritchie.studio
-
-  password_digest: <%= BCrypt::Password.create("password") %>
   session_token: <%= SecureRandom.hex(32) %>
 
 sam:
   name: Sam
   username: sam_test
   email: sam@mcritchie.studio
-
-  password_digest: <%= BCrypt::Password.create("password") %>
   web3_solana_address: foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds
   session_token: <%= SecureRandom.hex(32) %>

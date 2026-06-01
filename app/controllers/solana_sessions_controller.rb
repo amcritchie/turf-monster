@@ -37,7 +37,6 @@ class SolanaSessionsController < ApplicationController
     user ||= User.new(
       name: "anon",
       web3_solana_address: pubkey_b58,
-      password: SecureRandom.hex(16),
       reference: cookies[:reference].presence&.first(64) # first-touch funnel attribution
     )
 
