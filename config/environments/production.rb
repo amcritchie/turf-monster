@@ -68,8 +68,28 @@ Rails.application.configure do
   # want to log everything, set the level to "debug".
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
 
-  # In-memory cache for contest show page caching
-  config.cache_store = :memory_store, { size: 64.megabytes }
+  # Shared Redis cache (Lazarus audit #11). Was :memory_store — per-dyno and
+  # wiped on restart, which silently broke two security mechanisms that both
+  # ride Rails.cache:
+  #   - rack-attack throttles (login / faucet / Stripe / etc.) — per-dyno
+  #     counters that never aggregate and reset on every deploy, so the limits
+  #     were effectively off in prod.
+  #   - MagicLink single-use — the jti is written on generate and deleted on
+  #     consume; with a per-dyno store a link generated on web dyno A can't be
+  #     consumed on dyno B (jti absent → legit login rejected) and replay
+  #     protection resets on every restart.
+  # Redis is shared + cross-process, so both work correctly. Shares the Sidekiq
+  # Redis (REDIS_URL), namespaced to avoid key collisions; the error_handler
+  # degrades gracefully (a Redis blip logs instead of 500ing the request).
+  config.cache_store = :redis_cache_store, {
+    url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"),
+    namespace: "tm-cache",
+    expires_in: 90.minutes,
+    reconnect_attempts: 1,
+    error_handler: ->(method:, returning:, exception:) {
+      Rails.logger.error("[cache] #{method} failed: #{exception.class}: #{exception.message}")
+    }
+  }
 
   # Background jobs via Sidekiq (worker dyno + Heroku Redis).
   # NB1 (audit 2026-05-23): was :async, which ran jobs in the web dyno's

@@ -7,6 +7,13 @@ class PendingTransaction < ApplicationRecord
   validates :serialized_tx, presence: true
   validates :status, inclusion: { in: %w[pending submitted confirmed expired failed] }
 
+  # Single-use broadcast signatures (Lazarus audit #8 residual). A finalized
+  # tx_signature may back at most ONE PendingTransaction — mirrors the
+  # entries.onchain_tx_signature guard. allow_nil keeps unbroadcast rows
+  # (signature is set only once submitted) unconstrained; the partial unique DB
+  # index (20260601000001) is the race-safe backstop, this gives a clean error.
+  validates :tx_signature, uniqueness: true, allow_nil: true
+
   # BL4 (Stage 3 audit) bug fix: name_slug includes `id`, which is nil during
   # Sluggable's before_save. Without intervention, every row got slug "ptx-"
   # → unique index meant only ONE PendingTransaction could exist at a time

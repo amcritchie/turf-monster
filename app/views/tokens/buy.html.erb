@@ -18,7 +18,11 @@
     <% end %>
   </div>
 
-  <% if current_user&.admin? && Solana::Config.devnet? %>
+  <%# Lazarus audit #21: dev/test-only. The free-mint route is not drawn in
+      production, so this affordance (and its tokens_dev_mint_path helper) must
+      be production-gated too — otherwise the page NameErrors in prod, where
+      Solana::Config.devnet? is currently true. %>
+  <% if !Rails.env.production? && current_user&.admin? && Solana::Config.devnet? %>
     <div class="space-y-2 mb-6">
       <p class="text-[10px] uppercase tracking-widest text-muted">Dev (admin · devnet)</p>
       <% @packs.each do |pack_id, pack| %>

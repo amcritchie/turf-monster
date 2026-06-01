@@ -99,4 +99,19 @@ class PendingTransactionTest < ActiveSupport::TestCase
     ptx = build_ptx; ptx.save!
     assert_equal ptx.slug, ptx.to_param
   end
+
+  # Single-use broadcast signatures (Lazarus audit #8 residual). A finalized
+  # tx_signature may back at most one PendingTransaction; unbroadcast (nil) rows
+  # are unconstrained. Mirrors the entries.onchain_tx_signature guard.
+  test "tx_signature is unique among non-null rows; nil is unconstrained" do
+    sig = "Sig#{SecureRandom.hex(8)}"
+    build_ptx(tx_signature: sig).save!
+
+    dup = build_ptx(tx_signature: sig)
+    refute dup.valid?, "a second row with the same tx_signature must be rejected"
+    assert dup.errors[:tx_signature].any?
+
+    assert build_ptx(tx_signature: nil).save, "first nil-signature row saves"
+    assert build_ptx(tx_signature: nil).save, "second nil-signature row coexists"
+  end
 end
