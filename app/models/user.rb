@@ -371,7 +371,15 @@ class User < ApplicationRecord
   # Every account gets an auto-generated username — signup never has a
   # "pick a username" step (the username's master record is on-chain).
   def ensure_username
-    self.username ||= Studio::UsernameGenerator.generate
+    return if username.present?
+    # Studio::UsernameGenerator emits "fruit-animal(-animal)" names that can
+    # exceed the model's 30-char limit (length: { in: 3..30 }) — which
+    # intermittently broke signups + CI (a generated name happened to be >30).
+    # Prefer an in-range draw; truncate as a deterministic backstop so a
+    # create never raises on username length.
+    candidate = (1..5).lazy.map { Studio::UsernameGenerator.generate.to_s }
+                      .find { |n| n.length.between?(3, 30) }
+    self.username = (candidate || Studio::UsernameGenerator.generate.to_s)[0, 30]
   end
 
   # Eager on-chain UserAccount creation at signup — see CreateOnchainUserAccountJob.

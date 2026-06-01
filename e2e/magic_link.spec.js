@@ -31,8 +31,11 @@ test("the wallet hub offers install options when no wallet is present", async ({
   await page.goto("/login");
   await page.locator('button:has-text("Solana")').click();
   // No injected wallet in headless Chromium → featured install links appear.
-  await expect(page.locator('a:has-text("Install Phantom")')).toBeVisible();
-  await expect(page.locator('a:has-text("Install Solflare")')).toBeVisible();
+  // The hub (_wallet_connect) renders each uninstalled wallet as a link to its
+  // download page — name + a separate "Install" label, NOT the literal text
+  // "Install Phantom" — so match by the install URL.
+  await expect(page.locator('a[href*="phantom.app"]')).toBeVisible();
+  await expect(page.locator('a[href*="solflare.com"]')).toBeVisible();
 });
 
 test("the hub does not surface the keypair test provider", async ({ page }) => {

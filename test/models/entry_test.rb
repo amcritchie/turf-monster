@@ -89,6 +89,32 @@ class EntryTest < ActiveSupport::TestCase
     assert_equal "pda_addr_456", entry.onchain_entry_id
   end
 
+  test "confirm_onchain! rejects a paid entry with a blank signature (fail-closed gate)" do
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    error = assert_raises(RuntimeError) { entry.confirm_onchain!(tx_signature: "", entry_pda: "pda") }
+    assert_match(/payment required/i, error.message)
+    assert entry.reload.cart?
+  end
+
+  test "confirm_onchain! cannot reuse a signature already credited to another entry (replay guard)" do
+    first = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| first.selections.create!(slate_matchup: m) }
+    first.confirm_onchain!(tx_signature: "dup-sig-1", entry_pda: "pda-1")
+    assert first.active?
+
+    other = users(:jordan)
+    second = @contest.entries.create!(user: other, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| second.selections.create!(slate_matchup: m) }
+
+    # Same finalized signature must not credit a second row.
+    assert_raises(ActiveRecord::RecordInvalid) do
+      second.confirm_onchain!(tx_signature: "dup-sig-1", entry_pda: "pda-2")
+    end
+    assert second.reload.cart?, "replayed signature must not activate a second entry"
+  end
+
   # --- toggle_selection! tests ---
 
   test "toggle_selection! creates a new selection" do

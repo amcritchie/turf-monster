@@ -46,6 +46,9 @@ class TestController < ApplicationController
 
     if defined?(OmniAuth) && OmniAuth.config.respond_to?(:mock_auth)
       OmniAuth.config.mock_auth.clear
+      # Restore the real Google redirect for interactive dev between runs;
+      # set_oauth_mock re-enables test_mode right before it's needed.
+      OmniAuth.config.test_mode = false
       cleared << "omniauth_mocks"
     end
 
@@ -127,6 +130,11 @@ class TestController < ApplicationController
   # so the e2e spec controls who "signs in" with Google.
   def set_oauth_mock
     provider = params[:provider].presence || "google_oauth2"
+    # Opt into test_mode on demand so /auth/:provider short-circuits to the
+    # callback with this mock instead of redirecting to Google. Development
+    # keeps test_mode OFF by default (real Google flow); this turns it on for
+    # the duration of a Playwright run, and reseed flips it back off.
+    OmniAuth.config.test_mode = true
     OmniAuth.config.mock_auth[provider.to_sym] = OmniAuth::AuthHash.new(
       provider: provider,
       uid:      params[:uid].to_s,

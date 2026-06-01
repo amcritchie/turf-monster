@@ -23,6 +23,17 @@ class UserTest < ActiveSupport::TestCase
     assert_equal "chosen-name", user.username
   end
 
+  test "auto-generated username is capped at the 30-char model limit even when the generator returns a long name" do
+    # Studio::UsernameGenerator can emit names longer than 30 chars; ensure
+    # ensure_username never produces an invalid (too-long) username, which
+    # previously caused intermittent create failures / CI flakes.
+    Studio::UsernameGenerator.stub :generate, "fingerlime-pumpkin-rhinoceros-butternut-manatee" do
+      user = User.create!(email: "longname@mcritchie.studio", password: "password")
+      assert user.username.length <= 30, "generated username must respect the 30-char limit"
+      assert_match(/\A[a-zA-Z0-9_-]+\z/, user.username)
+    end
+  end
+
   test "authenticate with correct password" do
     user = users(:alex)
     assert user.authenticate("password")

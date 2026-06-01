@@ -3,7 +3,12 @@ const { defineConfig } = require("@playwright/test");
 module.exports = defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
-  retries: 0,
+  // CI retries: this single-worker e2e suite has documented full-suite
+  // flakiness (cross-spec DB/session state pollution + timing under load —
+  // see CLAUDE.md). Retry only in CI so a transient flake doesn't fail the
+  // whole job; a genuinely broken test still fails all attempts. Local runs
+  // stay at 0 to surface flakes during development.
+  retries: process.env.CI ? 2 : 0,
   workers: 1,
   // Swap alex's wallet to MOCK_PUBKEY_B58 before tests (so loginViaPhantom
   // resolves to the admin user) and restore it after. Lets the dev seed
@@ -13,6 +18,12 @@ module.exports = defineConfig({
   use: {
     baseURL: "http://127.0.0.1:3001",
     headless: true,
+    // Capture a Playwright trace + screenshot when a test retries/fails so
+    // CI-only failures (which don't reproduce locally — e.g. geo.spec.js:54)
+    // are diagnosable from the uploaded test-results/ artifact. on-first-retry
+    // keeps green runs cheap (trace only recorded once a test has failed once).
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
   },
   projects: [
     {
