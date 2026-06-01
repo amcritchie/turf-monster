@@ -122,8 +122,11 @@
 <% end %>
 <% end %>
 
-<!-- Completed Games -->
-<% completed_matchups = matchups&.select { |m| m.status == "completed" } || [] %>
+<%# Completed Games — show_completed_games defaults to true (contest show page).
+    The live page passes false because its Games row already lists completed
+    games + scorers, so this grid would duplicate it. %>
+<% show_completed_games = local_assigns.fetch(:show_completed_games, true) %>
+<% completed_matchups = show_completed_games ? (matchups&.select { |m| m.status == "completed" } || []) : [] %>
 <% if completed_matchups.any? %>
   <section class="mb-8">
     <h2 class="text-xl font-semibold mb-4 text-body">Completed Games</h2>

@@ -1,46 +1,75 @@
 <div class="mb-6 flex items-center justify-between">
   <h1 class="text-3xl font-extrabold text-heading">Contests</h1>
-  <div class="flex items-center gap-2">
-    <%= link_to "My Contests", my_contests_path, class: "btn btn-outline" %>
-    <%= link_to "New Contest", new_contest_path, class: "btn btn-primary" %>
-  </div>
+  <%= link_to "New Contest", new_contest_path, class: "btn btn-primary" %>
 </div>
 
-<% if @contests.any? %>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <% @contests.each do |contest| %>
-      <%= link_to contest_path(contest), class: "card-hover block overflow-hidden" do %>
-        <% if contest.contest_image.attached? %>
-          <%= image_tag contest.contest_image, class: "w-full h-36 object-cover", alt: contest.name %>
-        <% else %>
-          <div class="w-full h-36" style="background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-900))"></div>
-        <% end %>
+<%# ===== My Contests — contests you've entered, in the same card grid. Only
+    rendered when you have at least one (hidden for guests + the entry-less);
+    capped to a single row (3 on desktop) with a "View all" link to the full
+    /contests/my list. ===== %>
+<% if logged_in? && @my_contests.any? %>
+  <section class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-heading">My Contests</h2>
+      <%= link_to "View all →", my_contests_path, class: "text-sm text-primary hover:underline" %>
+    </div>
 
-        <div class="p-5">
-          <% if contest.slate %>
-            <p class="text-xs text-secondary font-medium mb-1"><%= contest.slate.name %></p>
-          <% end %>
-
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-lg font-bold text-heading"><%= contest.name %></h2>
-            <span class="badge text-[10px] <%= contest_badge_classes(contest.status) %>"><%= contest.status.capitalize %></span>
-          </div>
-
-          <div class="flex items-center gap-4 text-sm text-secondary mb-2">
-            <span><%= dollars(contest.entry_fee_dollars) %> entry</span>
-            <span class="text-muted">|</span>
-            <span><%= dollars(contest.guaranteed_prize_dollars) %> prizes</span>
-            <span class="text-muted">|</span>
-            <span><%= contest.entries.where(status: [:active, :complete]).size %> entries</span>
-          </div>
-
-          <% if contest.starts_at %>
-            <p class="text-xs text-muted"><%= contest.starts_at.strftime("%b %-d, %Y") %></p>
-          <% end %>
-        </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <% @my_contests.first(3).each do |contest| %>
+        <%= render "contests/contest_card", contest: contest, entry_count: @entry_counts[contest.id] || 0 %>
       <% end %>
-    <% end %>
-  </div>
-<% else %>
-  <p class="text-secondary">No contests yet.</p>
+    </div>
+  </section>
 <% end %>
+
+<%# ===== All Contests — compact table of every open/settled contest. Whole row
+    is click-through (CSP allows inline handlers); the name stays a real link
+    for keyboard access, with stopPropagation so it doesn't double-fire. ===== %>
+<section>
+  <h2 class="text-xl font-bold text-heading mb-4">All Contests</h2>
+
+  <% if @contests.any? %>
+    <div class="card overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-subtle">
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Contest</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Status</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Entry</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Prizes</th>
+            <th class="px-4 py-3 text-center text-xs font-semibold text-muted uppercase tracking-wider">Entries</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Locks</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-subtle">
+          <% @contests.each do |contest| %>
+            <tr class="hover:bg-surface-alt transition cursor-pointer" onclick="window.location='<%= contest_path(contest) %>'">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <%= link_to contest.name, contest_path(contest), class: "font-semibold text-heading hover:text-primary transition", onclick: "event.stopPropagation()" %>
+                  <% if @entered_contest_ids.include?(contest.id) %>
+                    <span class="badge text-[10px] bg-primary/15 text-primary border border-primary/30">Entered</span>
+                  <% end %>
+                </div>
+                <% if contest.slate %>
+                  <p class="text-xs text-muted mt-0.5"><%= contest.slate.name %></p>
+                <% end %>
+              </td>
+              <td class="px-4 py-3">
+                <span class="badge text-[10px] <%= contest_badge_classes(contest.status) %>"><%= contest.status.capitalize %></span>
+              </td>
+              <td class="px-4 py-3 text-right font-mono text-secondary whitespace-nowrap"><%= dollars(contest.entry_fee_dollars) %></td>
+              <td class="px-4 py-3 text-right font-mono text-primary whitespace-nowrap"><%= dollars(contest.guaranteed_prize_dollars) %></td>
+              <td class="px-4 py-3 text-center font-mono text-secondary whitespace-nowrap">
+                <%= @entry_counts[contest.id] || 0 %><span class="text-muted">/<%= contest.max_entries %></span>
+              </td>
+              <td class="px-4 py-3 text-muted text-xs whitespace-nowrap"><%= contest.starts_at ? contest.starts_at.strftime("%b %-d, %Y") : "TBD" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="text-secondary">No contests yet.</p>
+  <% end %>
+</section>

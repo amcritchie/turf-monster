@@ -453,19 +453,29 @@ class Contest < ApplicationRecord
   end
 
   # This contest's games bucketed for the live page. There's no on-chain
-  # in-progress status, so "active" is inferred: kickoff has passed but the
-  # game isn't completed. Games come off the slate matchups (each carries a
-  # :game; some matchups may have none). Shared by ContestsController#live and
-  # Contest::LiveBroadcast so the buckets never drift.
+  # in-progress status, so "active" is inferred: a game is live if it has goals
+  # OR its kickoff has passed, as long as it isn't completed. (Test games carry
+  # future kickoffs, so scoring a goal is what flips a scheduled game live.)
+  # Games come off the slate matchups (each carries a :game; some may have none).
+  # Shared by ContestsController#live and Contest::LiveBroadcast so the buckets
+  # never drift.
   def games_by_phase(now = Time.current)
-    games = matchups.includes(game: [:home_team, :away_team]).map(&:game).compact.uniq
-    completed = games.select { |g| g.status == "completed" }
-    active    = games.select { |g| g.status != "completed" && g.kickoff_at.present? && g.kickoff_at <= now }
-    upcoming  = games.select { |g| g.status != "completed" && (g.kickoff_at.nil? || g.kickoff_at > now) }
+    games = matchups.includes(game: [:home_team, :away_team, { goals: :player }]).map(&:game).compact.uniq
+    # Classify each game once so the active/upcoming split has a single source of
+    # truth — no mirrored negation to keep in sync.
+    buckets = games.group_by do |g|
+      if g.status == "completed"
+        :completed
+      elsif g.goals.any? || (g.kickoff_at.present? && g.kickoff_at <= now)
+        :active
+      else
+        :upcoming
+      end
+    end
     {
-      active:    active.sort_by    { |g| g.kickoff_at || now },
-      upcoming:  upcoming.sort_by  { |g| g.kickoff_at || (now + 100.years) },
-      completed: completed.sort_by { |g| g.kickoff_at || now }.reverse
+      active:    (buckets[:active]    || []).sort_by { |g| g.kickoff_at || now },
+      upcoming:  (buckets[:upcoming]  || []).sort_by { |g| g.kickoff_at || (now + 100.years) },
+      completed: (buckets[:completed] || []).sort_by { |g| g.kickoff_at || now }.reverse
     }
   end
 

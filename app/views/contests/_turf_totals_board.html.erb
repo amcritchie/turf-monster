@@ -89,8 +89,6 @@ window.selectionBoard = function() {
     get isEditMode() { return this.mode === 'edit'; },
     shakeKey: 0,
     submitting: false,
-    error: null,
-    errorTimer: null,
     contestId: cfg.contestSlug,
     csrfToken: document.querySelector('meta[name="csrf-token"]')?.content,
     // Auth/wallet state is read live from the canonical Alpine.store('session')
@@ -1233,10 +1231,12 @@ window.selectionBoard = function() {
     },
 
     showError(message) {
-      this.error = message;
-      if (this.errorTimer) clearTimeout(this.errorTimer);
-      var self = this;
-      this.errorTimer = setTimeout(function() { self.dismissError(); }, 5000);
+      // Route entry/selection errors through the shared toast manager (alert =
+      // red error styling) — same path as the recovery/confirm toasts above,
+      // instead of the old bespoke "Entry Failed" popup.
+      try {
+        window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'alert', title: 'Entry Failed', message: message || '', duration: 6000 } }));
+      } catch (_) {}
     },
 
     async clearSelections() {
@@ -1305,14 +1305,6 @@ window.selectionBoard = function() {
     // Server-side state (the active entry's selections) is untouched.
     cancelEdit() {
       window.location.href = '/contests/' + this.contestId;
-    },
-
-    dismissError() {
-      this.error = null;
-      if (this.errorTimer) {
-        clearTimeout(this.errorTimer);
-        this.errorTimer = null;
-      }
     }
   };
 };
@@ -1533,27 +1525,6 @@ window.selectionBoard = function() {
           </button>
         <% end %>
       </div>
-    </div>
-  </div>
-
-  <!-- Error popup -->
-  <div x-show="error"
-       x-transition:enter="transition ease-out duration-300"
-       x-transition:enter-start="-translate-y-full opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
-       x-transition:leave="transition ease-in duration-200"
-       x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="-translate-y-full opacity-0"
-       class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
-    <div class="bg-red-900/90 border border-red-700 rounded-xl p-4 shadow-2xl relative overflow-hidden">
-      <div class="flex items-start justify-between">
-        <div>
-          <p class="text-red-200 font-semibold text-sm">Entry Failed</p>
-          <p class="text-red-300 text-sm mt-1" x-text="error"></p>
-        </div>
-        <button @click="dismissError()" class="text-red-400 hover:text-white transition text-lg ml-4 leading-none">&times;</button>
-      </div>
-      <div class="absolute bottom-0 left-0 h-0.5 bg-red-500"
-           x-ref="errorProgress"
-           :style="error ? 'animation: progress-countdown 5s linear forwards' : ''"></div>
     </div>
   </div>
 

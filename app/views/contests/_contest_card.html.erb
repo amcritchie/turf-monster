@@ -1,0 +1,34 @@
+<%# A contest summary card — banner, slate, name, status, fee/prizes/entries,
+    lock date. Locals: contest, entry_count (active+complete entries, passed in
+    so the card never triggers its own count query). Extracted from the index so
+    the My Contests grid and any future grid share one card. %>
+<%= link_to contest_path(contest), class: "card-hover block overflow-hidden" do %>
+  <% if contest.contest_image.attached? %>
+    <%= image_tag contest.contest_image, class: "w-full h-36 object-cover", alt: contest.name %>
+  <% else %>
+    <div class="w-full h-36" style="background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-900))"></div>
+  <% end %>
+
+  <div class="p-5">
+    <% if contest.slate %>
+      <p class="text-xs text-secondary font-medium mb-1"><%= contest.slate.name %></p>
+    <% end %>
+
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-bold text-heading"><%= contest.name %></h2>
+      <span class="badge text-[10px] <%= contest_badge_classes(contest.status) %>"><%= contest.status.capitalize %></span>
+    </div>
+
+    <div class="flex items-center gap-4 text-sm text-secondary mb-2">
+      <span><%= dollars(contest.entry_fee_dollars) %> entry</span>
+      <span class="text-muted">|</span>
+      <span><%= dollars(contest.guaranteed_prize_dollars) %> prizes</span>
+      <span class="text-muted">|</span>
+      <span><%= entry_count %> entries</span>
+    </div>
+
+    <% if contest.starts_at %>
+      <p class="text-xs text-muted"><%= contest.starts_at.strftime("%b %-d, %Y") %></p>
+    <% end %>
+  </div>
+<% end %>
