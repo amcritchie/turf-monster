@@ -9,13 +9,22 @@ class ContestsController < ApplicationController
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
 
   def index
-    @contests = Contest.where(status: [:open, :settled]).includes(:slate, :entries).with_attached_contest_image.order(created_at: :desc)
+    @contests = Contest.where(status: [:open, :settled])
+                       .includes(:slate).with_attached_contest_image
+                       .order(created_at: :desc).to_a
+    # One grouped query for confirmed entry counts — avoids a per-card / per-row
+    # N+1 across the My Contests grid + All Contests table.
+    @entry_counts = Entry.confirmed.where(contest_id: @contests.map(&:id)).group(:contest_id).count
+    # "My Contests" = contests the viewer has entered. Filter the already-loaded
+    # list in Ruby so there's no extra Contest query.
+    @entered_contest_ids = (logged_in? ? current_user.entries.confirmed.distinct.pluck(:contest_id) : []).to_set
+    @my_contests = @contests.select { |c| @entered_contest_ids.include?(c.id) }
   end
 
   def my
     @contests = Contest.where(status: [:open, :settled]).order(created_at: :desc)
     if logged_in?
-      @my_entries = current_user.entries.where(status: [:active, :complete]).includes(:contest, selections: { slate_matchup: [:team, :opponent_team] }).group_by(&:contest_id)
+      @my_entries = current_user.entries.confirmed.includes(:contest, selections: { slate_matchup: [:team, :opponent_team] }).group_by(&:contest_id)
     else
       @my_entries = {}
     end

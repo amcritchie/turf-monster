@@ -17,6 +17,11 @@ class Entry < ApplicationRecord
 
   enum :status, { cart: "cart", active: "active", complete: "complete", abandoned: "abandoned" }
 
+  # The recurring "real entry" filter: submitted (active) or settled (complete) —
+  # not a half-built cart or an abandoned entry. Counts toward leaderboards,
+  # per-user entry limits, and "contests I've entered".
+  scope :confirmed, -> { where(status: [:active, :complete]) }
+
   # Single-use signatures (Lazarus audit #1/#8, 2026-05-31). A finalized
   # on-chain signature may credit at most one entry — one real `enter_contest`
   # tx must never be replayed to activate a second paid entry. `allow_nil`
