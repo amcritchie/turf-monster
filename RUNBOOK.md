@@ -28,7 +28,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 **Wrong network (mainnet vs devnet)**
 - Diagnosis: Transactions fail with "account not found" or wrong program ID.
-- Fix: Verify `SOLANA_RPC_URL` points to devnet: `bin/rails runner "puts Solana::Client.new.send_rpc('getVersion', [])"`. Program ID `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` is only deployed on devnet.
+- Fix: Verify `SOLANA_RPC_URL` points to devnet: `bin/rails runner "puts Solana::Client.new.send_rpc('getVersion', [])"`. Program ID `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ` is only deployed on devnet.
 
 ## Phantom Wallet Connection Issues
 

@@ -41,7 +41,7 @@ Surfaced in the navbar admin dropdown as **"Vault Init"** with a yellow `!` badg
   1. `Admin::VaultInitController#build` (`app/controllers/admin/vault_init_controller.rb:26-46`) validates params (`validate_init_params!` lines 90-110 — three distinct signers, threshold 1-3, creator must equal `INIT_AUTHORITY` on mainnet) and calls `Solana::Vault#build_initialize_vault` (`app/services/solana/vault.rb:217-245`). Bot fee-pays; the creator slot is left for Phantom.
   2. Phantom cosigns + broadcasts client-side.
   3. `Admin::VaultInitController#confirm` (`app/controllers/admin/vault_init_controller.rb:48-72`) verifies the TX via `Solana::TxVerifier.verify!` against the `initialize` discriminator + the vault PDA as writable + the creator as signer, then busts the `uninitialized?` cache.
-- **Today's reality (2026-05-24):** devnet vault is initialized at PDA `FYBTB5pwoSxN…vpWAn` on program `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` (see `docs/SOLANA.md:20-26`). The admin will *not* see Vault Init on devnet; this branch only fires the first time the program is deployed to a fresh cluster (mainnet first deploy — see `MAINNET_LAUNCH.md`).
+- **Today's reality (2026-05-31):** devnet vault is initialized at PDA `J7b5g9uS…HkK2` on program `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ` (v0.18; see `docs/SOLANA.md`). The admin will *not* see Vault Init on devnet; this branch only fires the first time the program is deployed to a fresh cluster (mainnet first deploy — see `MAINNET_LAUNCH.md`).
 
 #### 2b. Per-season seed-schedule init (rare — once per Season)
 

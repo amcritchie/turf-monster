@@ -9,7 +9,7 @@ module Solana
     PROGRAM_ID = if Rails.env.production?
       ENV.fetch("SOLANA_PROGRAM_ID") { raise "SOLANA_PROGRAM_ID required in production (see OPSEC-012)" }
     else
-      ENV.fetch("SOLANA_PROGRAM_ID", "Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT")
+      ENV.fetch("SOLANA_PROGRAM_ID", "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ")
     end
     RPC_URL = ENV.fetch("SOLANA_RPC_URL", "https://api.devnet.solana.com")
     NETWORK = ENV.fetch("SOLANA_NETWORK", "devnet")

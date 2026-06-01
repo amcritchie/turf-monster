@@ -17,8 +17,8 @@
 Separate project at `/Users/alex/projects/turf-vault/`. PDAs: VaultState, UserAccount, Contest, ContestEntry. Instructions: initialize, create_user_account, deposit, withdraw, create_contest, enter_contest, settle_contest, close_contest, force_close_vault, update_signers.
 
 **Deployment status**: deployed to devnet. 2-of-3 multisig for treasury ops.
-- Program ID: `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` (devnet — current)
-  - Old orphaned program: `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J` (upgrade authority lost; ~3.45 SOL of rent locked there). See the 2026-05-18 program-ID migration in `CLAUDE.md`'s TODO log.
+- Program ID: `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ` (devnet — current, v0.18)
+  - Superseded/orphaned devnet programs: `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` (the 2026-05-18 migration target, since superseded) and `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J` (upgrade authority lost; ~3.45 SOL of rent locked there). See the program-ID migration notes in `CLAUDE.md`'s TODO log.
 - Vault PDA: derived from the program ID at seed `[b"vault"]` — re-derived per `Solana::Transaction` against the current `PROGRAM_ID`.
 - Signer 1 (server): Alex Bot — `F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ`
 - Signer 2: Alex — `7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr`
