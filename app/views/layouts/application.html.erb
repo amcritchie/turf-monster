@@ -589,6 +589,15 @@
         </template>
       <% end %>
 
+      <%# Admin "Update banner" modal — opened from the contest hero's Edit
+          button. Registered only on contest pages (where @contest is set) for
+          admins, since the partial references @contest. %>
+      <% if current_user&.admin? && @contest&.persisted? %>
+        <template x-if="$store.modals.current().id === 'contest-banner'">
+          <%= render "modals/contest_banner" %>
+        </template>
+      <% end %>
+
       <%# Template reference modals — registered in non-production only so
           they don't add JS surface area to prod. Surfaced at the top of
           /admin/modals as "Templates" so new modal work has copy-paste
@@ -611,6 +620,25 @@
         </template>
       <% end %>
     <% end %>
+
+    <%# Close the "Update banner" modal once its Turbo submit succeeds (the
+        server already swapped #contest-hero via Turbo Stream). Lives OUTSIDE
+        the modal host template so it actually runs; scoped to the form id so it
+        ignores every other Turbo form. A 422 (bad file) is not a success, so
+        the modal stays open with its inline error. Bound once (window flag) so
+        Turbo Drive re-rendering the layout doesn't stack duplicate listeners. %>
+    <script>
+      (function () {
+        if (window.__contestBannerCloseBound) return;
+        window.__contestBannerCloseBound = true;
+        document.addEventListener("turbo:submit-end", function (e) {
+          if (e.target && e.target.id === "contest-banner-form" && e.detail && e.detail.success) {
+            if (window.Alpine && Alpine.store("modals")) Alpine.store("modals").close();
+          }
+        });
+      })();
+    </script>
+
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>

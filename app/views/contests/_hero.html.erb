@@ -1,0 +1,47 @@
+<%#
+  Contest hero — Active Storage banner (or gradient fallback), the on-chain PDA
+  overlay, the creator avatar, and (admin only) an "Edit banner" affordance that
+  opens the contest-banner modal. Wrapped in #contest-hero so the banner update
+  flow can swap it in place via Turbo Stream (ContestsController#update_banner).
+  Rendered from contests/show and re-rendered by the update_banner stream, so it
+  relies only on @contest and @creator.
+%>
+<% creator_name = @creator&.display_name || "Turf Monster" %>
+<div id="contest-hero" class="-mx-4 relative mb-8">
+  <% if @contest.contest_image.attached? %>
+    <%= image_tag @contest.contest_image, class: "w-full h-48 md:h-64 lg:h-72 object-cover", alt: @contest.name %>
+  <% else %>
+    <div class="w-full h-48 md:h-64 lg:h-72" style="background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-900))"></div>
+  <% end %>
+
+  <!-- Onchain address overlay (SE corner with shaded triangle) -->
+  <% if @contest.onchain? %>
+    <div class="absolute inset-0 pointer-events-none" style="background: linear-gradient(to top left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 25%, transparent 50%);"></div>
+    <a href="https://explorer.solana.com/address/<%= @contest.onchain_contest_id %><%= '?cluster=devnet' if Solana::Config.devnet? %>"
+       target="_blank" rel="noopener"
+       class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 text-xs font-mono text-white/90 hover:text-white transition">
+      ...<%= @contest.onchain_contest_id.last(6) %>
+      <svg class="w-3.5 h-3.5" viewBox="0 0 397.7 311.7" fill="currentColor"><path d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z"/><path d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z"/><path d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"/></svg>
+    </a>
+  <% end %>
+
+  <%# Admin: swap the banner without leaving the page. Opens the modal
+      registered in the layout host (id 'contest-banner'). %>
+  <% if current_user&.admin? %>
+    <button type="button"
+            @click="$store.modals.open('contest-banner')"
+            class="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-black/55 hover:bg-black/75 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-white/95 ring-1 ring-white/15 transition">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+      </svg>
+      Edit banner
+    </button>
+  <% end %>
+
+  <!-- Creator avatar -->
+  <div class="absolute -bottom-6 left-4">
+    <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-bold text-lg ring-4" style="--tw-ring-color: var(--bg-page, #1A1535)">
+      <%= creator_name.first.upcase %>
+    </div>
+  </div>
+</div>

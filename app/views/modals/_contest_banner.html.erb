@@ -1,0 +1,65 @@
+<%#
+  Update Banner modal — content partial for the shared modal host.
+  Opened (admin only) from the contest hero's "Edit banner" button:
+    Alpine.store('modals').open('contest-banner').
+  Registered in layouts/application.html.erb's host block, guarded by
+  current_user.admin? AND @contest, so it only renders on contest pages
+  (the partial references @contest).
+
+  Submits a multipart PATCH to banner_contest_path via Turbo. On success the
+  server replaces #contest-hero (Turbo Stream) and the layout's
+  turbo:submit-end listener closes this modal. A bad file returns 422 with an
+  error into #contest-banner-error and the modal stays open.
+
+  Single root: this partial mounts inside the host's <template x-if>, so the
+  outer x-data div is the only top-level element here.
+%>
+<% has_banner = @contest.contest_image.attached? %>
+<div x-data="imageDropzone({ previewUrl: '<%= has_banner ? url_for(@contest.contest_image) : "" %>' })">
+  <h3 class="text-heading font-bold text-lg text-center mb-1">Update banner</h3>
+  <p class="text-xs text-muted text-center mb-4">Replaces the hero image for <%= @contest.name %>.</p>
+
+  <%# Error slot — the update_banner stream targets this on a 422. %>
+  <div id="contest-banner-error"></div>
+
+  <%= form_with model: @contest, url: banner_contest_path(@contest), method: :patch,
+        html: { multipart: true, id: "contest-banner-form" } do |f| %>
+    <div @click="$refs.fileInput.click()"
+         @dragover.prevent="dragging = true"
+         @dragleave.prevent="dragging = false"
+         @drop.prevent="dropFile($event)"
+         :class="dragging ? 'border-primary bg-primary/10' : 'border-subtle hover:border-primary'"
+         class="cursor-pointer border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-center p-6 mb-4 transition"
+         style="min-height: 180px;">
+      <template x-if="previewUrl">
+        <img :src="previewUrl" alt="" class="max-h-32 w-auto rounded-md object-cover mb-3">
+      </template>
+      <template x-if="!previewUrl">
+        <svg class="w-10 h-10 text-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.9 5 5 0 019.9-1A5.5 5.5 0 0118 16h-1m-6-4l3-3m0 0l3 3m-3-3v12"/>
+        </svg>
+      </template>
+      <p class="text-sm font-medium text-body" x-text="fileName || 'Drop an image or click to upload'"></p>
+      <p class="text-xs text-muted mt-1">PNG, JPG or WebP &middot; up to 8&nbsp;MB</p>
+    </div>
+
+    <%= f.file_field :contest_image,
+          accept: "image/png,image/jpeg,image/webp",
+          class: "hidden",
+          "x-ref": "fileInput",
+          "@change": "pickFile($event)" %>
+
+    <div class="flex gap-3">
+      <button type="button" @click="$store.modals.close()" class="btn btn-outline flex-1">Cancel</button>
+      <button type="submit"
+              :disabled="!fileName"
+              :class="!fileName ? 'opacity-60 cursor-not-allowed' : ''"
+              class="btn btn-primary flex-1">Save banner</button>
+    </div>
+  <% end %>
+
+  <a href="<%= edit_contest_path(@contest) %>" data-turbo="false"
+     class="block text-center mt-4 text-xs text-secondary hover:text-heading underline underline-offset-2">
+    Edit name, tagline &amp; lock time&hellip;
+  </a>
+</div>

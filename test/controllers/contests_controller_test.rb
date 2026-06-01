@@ -14,6 +14,59 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     @m6 = slate_matchups(:m6)
   end
 
+  # --- update_banner tests ---
+
+  test "update_banner attaches a new banner and re-renders the hero for an admin" do
+    log_in_as(users(:alex)) # admin
+
+    assert_changes -> { @contest.reload.contest_image.attached? }, from: false, to: true do
+      patch banner_contest_path(@contest),
+        params: { contest: { contest_image: fixture_file_upload("banner.png", "image/png") } },
+        as: :turbo_stream
+    end
+
+    assert_response :success
+    assert_match "contest-hero", response.body
+  end
+
+  test "update_banner rejects a non-image file with 422 and does not attach" do
+    log_in_as(users(:alex)) # admin
+
+    patch banner_contest_path(@contest),
+      params: { contest: { contest_image: fixture_file_upload("not_an_image.txt", "text/plain") } },
+      as: :turbo_stream
+
+    assert_response :unprocessable_entity
+    assert_match "contest-banner-error", response.body
+    assert_not @contest.reload.contest_image.attached?
+  end
+
+  test "update_banner is admin-only" do
+    log_in_as(@user) # sam — not an admin
+
+    patch banner_contest_path(@contest),
+      params: { contest: { contest_image: fixture_file_upload("banner.png", "image/png") } }
+
+    assert_response :redirect
+    assert_not @contest.reload.contest_image.attached?
+  end
+
+  test "admin sees the Edit banner control and the banner modal on the show page" do
+    log_in_as(users(:alex))
+    get contest_path(@contest)
+    assert_response :success
+    assert_match "Edit banner", response.body
+    assert_match "Update banner", response.body # modal heading (gated partial)
+  end
+
+  test "non-admin sees neither the Edit banner control nor the banner modal" do
+    log_in_as(@user)
+    get contest_path(@contest)
+    assert_response :success
+    assert_no_match "Edit banner", response.body
+    assert_no_match "Update banner", response.body # modal heading (gated partial)
+  end
+
   # --- toggle_selection tests ---
 
   test "toggle_selection creates entry and selection on first toggle" do

@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll, :live]
-  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -203,6 +203,45 @@ class ContestsController < ApplicationController
     end
   rescue StandardError => e
     render :edit, status: :unprocessable_entity
+  end
+
+  # Admin "Update banner" flow — swap just the contest's hero image from a modal
+  # on the show page (Alpine.store('modals').open('contest-banner')). Responds
+  # with Turbo Streams so #contest-hero re-renders in place; the layout's
+  # turbo:submit-end listener closes the modal on a successful (2xx) submit.
+  # A bad file returns 422 + an inline error so the modal stays open.
+  def update_banner
+    rescue_and_log(target: @contest) do
+      file = params.dig(:contest, :contest_image)
+      valid = file.respond_to?(:content_type) && file.respond_to?(:size) &&
+              %w[image/png image/jpeg image/webp].include?(file.content_type) &&
+              file.size <= 8.megabytes
+
+      unless valid
+        message = file.blank? ? "Choose an image to upload." : "Use a PNG, JPG, or WebP under 8 MB."
+        respond_to do |format|
+          format.turbo_stream do
+            render turbo_stream: turbo_stream.update("contest-banner-error",
+              helpers.content_tag(:p, message, class: "text-red-400 text-sm text-center mb-3")),
+              status: :unprocessable_entity
+          end
+          format.html { redirect_to contest_path(@contest), alert: message }
+        end
+        next
+      end
+
+      @contest.contest_image.attach(file)
+      @creator = @contest.user
+      respond_to do |format|
+        format.turbo_stream do
+          render turbo_stream: [
+            turbo_stream.replace("contest-hero", partial: "contests/hero"),
+            turbo_stream.update("contest-banner-error", "")
+          ]
+        end
+        format.html { redirect_to contest_path(@contest), notice: "Banner updated." }
+      end
+    end
   end
 
   # Build a partially-signed create_contest transaction for Phantom co-signing.

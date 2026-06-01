@@ -11,36 +11,7 @@
 %>
 
 <!-- Section 1: Hero Banner + Creator Avatar -->
-<div class="-mx-4 relative mb-8">
-  <% if @contest.contest_image.attached? %>
-    <%= image_tag @contest.contest_image, class: "w-full h-48 md:h-64 lg:h-72 object-cover", alt: @contest.name %>
-  <% else %>
-    <div class="w-full h-48 md:h-64 lg:h-72" style="background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-900))"></div>
-  <% end %>
-
-  <!-- Onchain address overlay (SE corner with shaded triangle) -->
-  <% if @contest.onchain? %>
-    <div class="absolute inset-0 pointer-events-none" style="background: linear-gradient(to top left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 25%, transparent 50%);"></div>
-    <%# Link to the explorer's basic account view (not /anchor-account, which
-        requires the program's IDL to be published on-chain via
-        `anchor idl init` — currently not done; tracked in
-        mcritchie-studio audit doc Tier 3 #22). The base account view
-        renders raw data + lamports + owner reliably for any valid PDA. %>
-    <a href="https://explorer.solana.com/address/<%= @contest.onchain_contest_id %><%= '?cluster=devnet' if Solana::Config.devnet? %>"
-       target="_blank" rel="noopener"
-       class="absolute bottom-3 right-3 inline-flex items-center gap-1.5 text-xs font-mono text-white/90 hover:text-white transition">
-      ...<%= @contest.onchain_contest_id.last(6) %>
-      <svg class="w-3.5 h-3.5" viewBox="0 0 397.7 311.7" fill="currentColor"><path d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z"/><path d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z"/><path d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"/></svg>
-    </a>
-  <% end %>
-
-  <!-- Creator avatar -->
-  <div class="absolute -bottom-6 left-4">
-    <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-bold text-lg ring-4" style="--tw-ring-color: var(--bg-page, #1A1535)">
-      <%= creator_name.first.upcase %>
-    </div>
-  </div>
-</div>
+<%= render "contests/hero" %>
 
 <!-- Section 2: Contest Info -->
 <%= render "contests/contest_header" %>
