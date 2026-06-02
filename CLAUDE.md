@@ -15,6 +15,7 @@ Load these when working on specific areas:
 | `docs/FORMULAS.md` | Scoring formulas, slate system, Chart.js patterns |
 | `docs/UI_PATTERNS.md` | Branding, theme colors, matchup grid, hold button, animations |
 | `docs/world_cup_2026.md` | World Cup format, groups, matchday structure |
+| `docs/RATE_LIMITING.md` | Rate limiting — rack-attack throttles, the two-tier general/auth design, wait modals (design spec, pre-build) |
 
 ## Game Rules
 
