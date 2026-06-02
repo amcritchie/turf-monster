@@ -252,6 +252,10 @@ class FakeVault
     ["oprev-pda-#{mint[0, 4]}", 253]
   end
 
+  def vault_state_pda
+    ["vault-state-pda", 255]
+  end
+
   def build_sweep_operator_revenue(cosigner_pubkey:, currency_mint:, treasury_ata_pubkey:, amount: 0)
     @sweep_calls ||= []
     @sweep_calls << { cosigner: cosigner_pubkey, currency_mint: currency_mint, treasury_ata: treasury_ata_pubkey, amount: amount }
