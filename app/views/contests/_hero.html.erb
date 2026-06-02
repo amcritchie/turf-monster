@@ -1,13 +1,12 @@
 <%#
   Contest hero — Active Storage banner (or gradient fallback), the on-chain PDA
-  overlay, the creator avatar, and (admin only) an "Edit banner" affordance that
-  opens the contest-banner modal. Wrapped in #contest-hero so the banner update
-  flow can swap it in place via Turbo Stream (ContestsController#update_banner).
-  Rendered from contests/show and re-rendered by the update_banner stream, so it
-  relies only on @contest and @creator.
+  overlay, and the creator avatar. Rendered from contests/show; relies only on
+  @contest and @creator. Banner editing lives on the contest EDIT screen
+  (ContestsController#update_banner swaps #contest-banner-preview there); the
+  show-page hero reflects a new banner on its next full render, not live.
 %>
 <% creator_name = @creator&.display_name || "Turf Monster" %>
-<div id="contest-hero" class="-mx-4 relative mb-8">
+<div class="-mx-4 relative mb-8">
   <% if @contest.contest_image.attached? %>
     <%= image_tag @contest.contest_image, class: "w-full h-48 md:h-64 lg:h-72 object-cover", alt: @contest.name %>
   <% else %>

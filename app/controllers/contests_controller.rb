@@ -208,9 +208,10 @@ class ContestsController < ApplicationController
   # Admin "Update banner" flow — swap just the contest's hero image. The admin
   # frames the image in the shared crop-photo modal (imageUploadHost +
   # cropPhotoModal, same cropper as the avatar) and the persistent uploader host
-  # POSTs the cropped PNG here. Responds with Turbo Streams so #contest-hero
-  # re-renders in place. (A bad file 422s, but the crop always yields a valid
-  # PNG, so that path is defensive — the picker also has an accept filter.)
+  # POSTs the cropped PNG here. Responds with a Turbo Stream that replaces
+  # #contest-banner-preview on the edit screen. (A bad file 422s, but the crop
+  # always yields a valid PNG, so that path is defensive — the picker has an
+  # accept filter too.)
   def update_banner
     rescue_and_log(target: @contest) do
       file = params.dig(:contest, :contest_image)
@@ -219,8 +220,8 @@ class ContestsController < ApplicationController
         @contest.contest_image.attach(file)
         respond_to do |format|
           # The crop modal saves immediately; refresh the preview on the edit
-          # screen (the only caller). #contest-hero on the show page picks up the
-          # new banner on its next render.
+          # screen (the only caller). The contest show-page hero picks up the
+          # new banner on its next full render.
           format.turbo_stream do
             render turbo_stream: turbo_stream.replace("contest-banner-preview", partial: "contests/banner_preview")
           end
