@@ -1,9 +1,0 @@
-<%# Loading card for the contest banner save (update_banner). Opened by
-    contestBannerHost.applyCrop with dismissible: false (replacing the crop
-    modal), and closed on turbo:submit-end — held >= ~500ms via
-    StudioModals.holdAtLeast so it doesn't flash on a fast save. Single root for
-    the modal host's <template x-if>. %>
-<div>
-  <%= render "studio/modals/blocks/processing_card",
-        title: "Saving banner…", message: "Uploading your cropped image" %>
-</div>

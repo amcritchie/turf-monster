@@ -334,6 +334,38 @@
     };
   };
 
+  // === submitFormWithProgress — shared loading modal + toast for Turbo form
+  // submits (banner editor, avatar uploader). Swaps in the 'saving' card while
+  // the form uploads, then closes it (held >= ~450ms so it doesn't flash) and
+  // toasts on completion. opts: { saving, success, successMessage, failure,
+  // failureMessage, dismissible (default false), toast (default true) }.
+  window.submitFormWithProgress = function (form, opts) {
+    opts = opts || {};
+    var store = window.Alpine && Alpine.store("modals");
+    var hold = (window.StudioModals && window.StudioModals.holdAtLeast)
+      ? window.StudioModals.holdAtLeast(450)
+      : { then: function (cb) { cb(); } };
+    if (store) {
+      store.open("saving", { dismissible: opts.dismissible === true, title: opts.saving || "Saving…" }, { replace: true });
+    }
+    var onEnd = function (e) {
+      form.removeEventListener("turbo:submit-end", onEnd);
+      var ok = e.detail && e.detail.success;
+      hold.then(function () {
+        if (store) store.close();
+        if (opts.toast !== false) {
+          window.dispatchEvent(new CustomEvent("toast", { detail: {
+            type: ok ? "notice" : "alert",
+            title: ok ? (opts.success || "Saved") : (opts.failure || "Couldn't save"),
+            message: ok ? (opts.successMessage || "") : (opts.failureMessage || "Please try again.")
+          } }));
+        }
+      });
+    };
+    form.addEventListener("turbo:submit-end", onEnd);
+    form.requestSubmit();
+  };
+
   // === contestBannerHost — contests/edit.html.erb =================
   // Host for the admin banner editor on the contest edit screen. "Edit banner"
   // calls open(), which opens the SHARED crop-photo modal (cropPhotoModal) in
@@ -360,31 +392,12 @@
         var dt = new DataTransfer();
         dt.items.add(new File([blob], "banner.png", { type: "image/png" }));
         this.$refs.fileInput.files = dt.files;
-
-        // Swap the (still-open) crop modal for a loading card, submit, then close
-        // it + toast when the upload finishes. holdAtLeast keeps the spinner from
-        // flashing on a fast save.
-        var store = window.Alpine && Alpine.store("modals");
-        var hold = (window.StudioModals && window.StudioModals.holdAtLeast)
-          ? window.StudioModals.holdAtLeast(500)
-          : { then: function (cb) { cb(); } };
-        if (store) store.open("banner-saving", { dismissible: false }, { replace: true });
-
-        var form = this.$refs.form;
-        var onEnd = function (e) {
-          form.removeEventListener("turbo:submit-end", onEnd);
-          var ok = e.detail && e.detail.success;
-          hold.then(function () {
-            if (store) store.close();
-            window.dispatchEvent(new CustomEvent("toast", { detail: {
-              type: ok ? "notice" : "alert",
-              title: ok ? "Banner updated" : "Couldn't save the banner",
-              message: ok ? "Your new banner is live." : "Please try again."
-            } }));
-          });
-        };
-        form.addEventListener("turbo:submit-end", onEnd);
-        form.requestSubmit();
+        window.submitFormWithProgress(this.$refs.form, {
+          saving: "Saving banner…",
+          success: "Banner updated",
+          successMessage: "Your new banner is live.",
+          failure: "Couldn't save the banner"
+        });
       }
     };
   };

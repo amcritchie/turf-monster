@@ -580,9 +580,9 @@
       <template x-if="$store.modals.current().id === 'crop-photo'">
         <%= render "modals/crop_photo" %>
       </template>
-      <%# Loading card shown while the contest banner saves (contestBannerHost). %>
-      <template x-if="$store.modals.current().id === 'banner-saving'">
-        <%= render "modals/banner_saving" %>
+      <%# Generic loading card (submitFormWithProgress) — banner save, avatar upload. %>
+      <template x-if="$store.modals.current().id === 'saving'">
+        <%= render "modals/saving" %>
       </template>
       <%# wallet-deposit — opened by the entry-eligibility blocker when a
           web3 user lacks USDC/USDT for the entry fee. Symmetric to the

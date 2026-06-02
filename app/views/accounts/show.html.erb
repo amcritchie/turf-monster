@@ -112,7 +112,7 @@
             if (!file) return;
             var reader = new FileReader();
             reader.onload = function(e) {
-              Alpine.store('modals').open('crop-photo', { imageUrl: e.target.result });
+              Alpine.store('modals').open('crop-photo', { imageUrl: e.target.result, dispatch: true });
             };
             reader.readAsDataURL(file);
             event.target.value = '';
@@ -122,7 +122,10 @@
             var dt = new DataTransfer();
             dt.items.add(new File([blob], 'avatar.png', { type: 'image/png' }));
             this.$refs.hiddenFileInput.files = dt.files;
-            this.$refs.form.requestSubmit();
+            // Loading card while it uploads. #update redirects, so the reload
+            // (closeAllDismissible) clears the card and the server flash toasts —
+            // hence dismissible + no client toast.
+            window.submitFormWithProgress(this.$refs.form, { saving: 'Saving photo…', dismissible: true, toast: false });
           }
         };
       }
