@@ -291,6 +291,13 @@ Rails.application.routes.draw do
       member { get :manage }
     end
 
+    # Currency registry (on-chain accepted_currencies). register / deactivate /
+    # sweep are 2-of-3 → they queue a PendingTransaction for Treasury cosign.
+    get  "currencies",                         to: "currencies#index",      as: :currencies
+    post "currencies/register",                to: "currencies#register",   as: :register_currency
+    post "currencies/:idx/deactivate",         to: "currencies#deactivate", as: :deactivate_currency
+    post "currencies/sweep",                   to: "currencies#sweep",      as: :sweep_operator_revenue
+
     # Free entries (on-chain token minting console)
     get  "free_entries",                       to: "free_entries#index",    as: :free_entries
     post "free_entries/:user_slug/mint",       to: "free_entries#mint",     as: :mint_free_entries
