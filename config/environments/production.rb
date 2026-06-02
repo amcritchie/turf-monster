@@ -153,13 +153,14 @@ Rails.application.configure do
   # *.herokuapp.com URL (bypassing CDN/WAF allowlists) and enables DNS-rebinding
   # to reach the app under a foreign origin's cookie scope.
   # Primary public host (app_host) + this app's direct Heroku dyno host. The
-  # dyno host is parameterized via HEROKU_DYNO_HOST so each Heroku app (devnet
+  # dyno host is parameterized via DYNO_HOST so each Heroku app (devnet
   # turf-monster.herokuapp.com, mainnet turf-monster-mainnet-*.herokuapp.com)
   # authorizes its own *.herokuapp.com without a code change. Devnet leaves
-  # both unset → identical allowlist to before.
+  # both unset → identical allowlist to before. (Avoid the HEROKU_* namespace,
+  # which the platform reserves and may clobber.)
   config.hosts = [
-    app_host,                                                          # primary public URL
-    ENV.fetch("HEROKU_DYNO_HOST", "turf-monster.herokuapp.com"),       # direct Heroku dyno URL (health checks, etc.)
+    app_host,                                                      # primary public URL
+    ENV.fetch("DYNO_HOST", "turf-monster.herokuapp.com"),          # direct Heroku dyno URL (health checks, etc.)
   ]
   # /up is the Rails health-check endpoint Heroku polls — Heroku's load balancer
   # may use internal addressing, so exclude it from host authorization to avoid
