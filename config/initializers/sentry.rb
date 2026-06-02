@@ -17,7 +17,7 @@ if ENV["SENTRY_DSN"].present?
     config.dsn = ENV["SENTRY_DSN"]
     config.breadcrumbs_logger = [:active_support_logger, :http_logger]
     config.traces_sample_rate = (ENV["SENTRY_TRACES_SAMPLE_RATE"] || 0.0).to_f
-    config.environment = Rails.env
+    config.environment = ENV["SENTRY_ENVIRONMENT"] || Rails.env
     config.release = ENV["HEROKU_SLUG_COMMIT"] || ENV["GIT_COMMIT"]
     config.send_default_pii = false
     config.send_modules = false
