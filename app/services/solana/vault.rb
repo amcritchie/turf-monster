@@ -107,6 +107,20 @@ module Solana
       Transaction.find_pda([b("entry"), contest_id, wallet_bytes, entry_num_bytes], @program_id)
     end
 
+    # Build the source_ref for an operator-initiated entry-token mint (the
+    # /admin/free_entries "Mint N" / "Mint All" buttons). It MUST be globally
+    # unique per mint — the on-chain PDA is sha256(source_ref), so a repeat
+    # collides on init — AND fit the [u8;64] limit padded_source_ref enforces.
+    # Keyed on user.id + a random nonce, NOT the ~44-char wallet address:
+    # "operator:" + a base58 address + a 32-char nonce ran ~86 bytes, so
+    # padded_source_ref raised and ZERO owed free entries minted in prod (v119
+    # caution). user.id is the trace; the nonce alone guarantees uniqueness;
+    # even a max bigint id keeps this ~61 bytes. The ref is opaque (only hashed
+    # + logged, never parsed back), so dropping the address loses nothing.
+    def self.operator_source_ref(user)
+      "operator:#{user.id}:#{SecureRandom.hex(16)}"
+    end
+
     # The EntryTokenAccount PDA is seeded on sha256 of `source_ref` zero-padded
     # to [u8;64] (turf-vault v0.19, audit #9 — replaces the old wallet+sequence
     # seed). The mint instruction's `source_ref_hash` arg AND this derivation
