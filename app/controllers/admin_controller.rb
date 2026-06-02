@@ -221,6 +221,16 @@ class AdminController < ApplicationController
     @latest_contest = Contest.order(created_at: :desc).first
   end
 
+  # Static reference: per-instruction byte cost + auth + web2/web3 caller map
+  # for the turf-vault Solana program. The per-instruction data is
+  # hand-maintained in the view (no DB/RPC read); only the pinned version +
+  # network are read live from Solana::Config so the header can't drift.
+  # Refresh the view's byte/caller table after a turf-vault program release.
+  def instruction_map
+    @idl_version = Solana::Config.idl_version  # from the committed IDL metadata
+    @network     = Solana::Config::NETWORK
+  end
+
   def usdc_balance
     return render json: { error: "Not logged in" }, status: :unauthorized unless logged_in?
     return render json: { balance: 0 } unless current_user.solana_connected?

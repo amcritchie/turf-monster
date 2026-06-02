@@ -1,0 +1,690 @@
+<% content_for(:title, "On-chain Instruction Map — Turf Monster") %>
+
+<%#
+  turf-vault on-chain instruction reference. Static, hand-maintained data —
+  no DB / RPC read (see AdminController#instruction_map). Per-instruction
+  .text bytes are MEASURED from a debug-info rebuild of the v0.19 source
+  (CARGO_PROFILE_RELEASE_DEBUG=2 ... cargo-build-sbf, llvm-objdump --syms |
+  rustfilt, deduped by address, bucketed by instruction module). Auth roles
+  are from programs/turf_vault/src; caller sites are from this app's
+  app/services/solana/vault.rb builders and their call sites.
+  Refresh after a turf-vault program release.
+%>
+
+<%
+  # ── Program-level facts (refresh per turf-vault release) ────────────────
+  # @idl_version + @network come live from Solana::Config (controller) so the
+  # version header tracks the pinned IDL automatically. The byte/caller data
+  # below is still hand-maintained — measured against v0.19 source.
+  idl_version = @idl_version.present? ? "v#{@idl_version}" : "v0.19"
+  ix_meta = {
+    binary_bytes:   501_528,        # llvm-objdump --section-headers (stripped deploy .so)
+    text_bytes:     425_304,        # .text section (stripped deploy .so)
+    handler_bytes:  184_640,        # measured handler-attributable .text (debug rebuild)
+    perm_sol:       3.45,           # permanent ProgramData rent at deploy
+    error_range:    "6000–6038",    # 39 VaultError variants
+    generated_on:   "2026-06-02",
+  }
+
+  # ── Per-instruction records ─────────────────────────────────────────────
+  # bytes: measured .text bytes (handler fn + Anchor try_accounts validator),
+  #        totals include ICF-shared blocks (see `icf`).
+  ix_data = [
+    {
+      name: "initialize", bytes: 28_904, status: "one", statusLabel: "one-time",
+      auth: "INIT_AUTHORITY", authClass: "init",
+      web3Short: "/admin/vault_init", web2Short: "rake solana:init_vault",
+      web3: { file: "app/views/admin/vault_init/show.html.erb:182", fn: "provider.signTransaction",
+              trigger: "Operator opens /admin/vault_init; bot partial-signs, Phantom (INIT_AUTHORITY) cosigns + submits.",
+              signer: "Phantom (admin = INIT_AUTHORITY on mainnet builds)." },
+      web2: { file: "lib/tasks/solana.rake:73 · app/controllers/admin/vault_init_controller.rb:47",
+              vault: "Solana::Vault#build_initialize_vault (vault.rb:283) · #initialize_vault (vault.rb:319)",
+              trigger: "Devnet bootstrap: bin/rails solana:init_vault INIT=true (server-signed).",
+              signer: "Alex Bot alone (rake) / Phantom cosign (admin UI)." },
+      notes: [
+        "Truly one-time per cluster — not part of any normal flow.",
+        "Inits VaultState + USDC/USDT op_rev ATAs + treasury_authority + signers[3]/threshold in one shot.",
+        "Initialize::try_accounts is the largest validator in the program (3 init accounts).",
+      ],
+    },
+    {
+      name: "create_contest", bytes: 21_784, status: "live", statusLabel: "live",
+      auth: "1-of-3 + creator", authClass: "one",
+      web3Short: "/contests/new · /contests/generator", web2Short: "Contest#create_onchain! (console)",
+      web3: { file: "app/views/contests/new.html.erb:307 · generator.html.erb:117",
+              fn: "signTransaction → POST /contests/finalize",
+              trigger: "New-contest form, or curated-bundle 'Provision Setup' on /contests/generator.",
+              signer: "Phantom (creator) signs the prize-pool USDC transfer; bot is payer." },
+      web2: { file: "app/models/contest.rb:145 · contests_controller.rb:62 / :132 / :239",
+              vault: "Solana::Vault#build_create_contest (vault.rb:706) · #create_contest_server_funded (vault.rb:755)",
+              trigger: "POST /contests → sign → POST /contests/finalize verifies the TX, then the DB row is written.",
+              signer: "Server-funded fallback: Alex Bot signs both payer + creator slots (console/scripts)." },
+      notes: [
+        "Dual-signer: admin pays SOL rent, the creator's Phantom signs the USDC prize-pool transfer.",
+        "DB row written only AFTER on-chain confirm (finalize → verify_solana_transaction!).",
+        "#generate_bundle / #finalize_bundle (contest + landing bundle) is a new 3rd call site.",
+      ],
+    },
+    {
+      name: "enter_contest", bytes: 20_784, status: "live", statusLabel: "live",
+      auth: "user + 1-of-3", authClass: "user",
+      web3Short: "/contests/:slug board", web2Short: "contests#enter (managed)",
+      web3: { file: "app/views/contests/_turf_totals_board.html.erb:1047-1089", fn: "selectionBoard().confirmEntry",
+              trigger: "Phantom user hold-to-confirms on the matchup board.",
+              signer: "Phantom user signs the USDC transfer from their own ATA; bot is payer." },
+      web2: { file: "contests_controller.rb:393 (#enter, managed) · app/models/entry.rb:249",
+              vault: "Solana::Vault#enter_contest (vault.rb:970) · #build_enter_contest (vault.rb:1018)",
+              trigger: "Managed-wallet user confirms entry; server signs the SPL transfer with the custodial keypair.",
+              signer: "Alex Bot (payer) + managed keypair (user slot)." },
+      notes: [
+        "v0.16 unified handler — replaces the old enter_contest_direct + managed variants.",
+        "Self-custodied users are bounced to the Phantom path (controller returns 422 + self_custodied).",
+        "currency_idx defaults to 0 (USDC); a currency picker is a Phase 2 task.",
+      ],
+    },
+    {
+      name: "enter_contest_with_token", bytes: 16_664, status: "live", statusLabel: "live",
+      auth: "user + 1-of-3", authClass: "user",
+      web3Short: "—", web2Short: "contests#enter (token branch)",
+      web3: { file: "NOT CALLED from JS — build_enter_contest_with_token (vault.rb:1100) is uncalled",
+              fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "contests_controller.rb:393 (#enter, token branch)",
+              vault: "Solana::Vault#enter_contest_with_token (vault.rb:1058)",
+              trigger: "Managed/web2 user with an unconsumed EntryTokenAccount enters — token consumed atomically, no USDC.",
+              signer: "Alex Bot (payer) + managed keypair (token-owner consent, OPSEC-004)." },
+      notes: [
+        "Live for web2 / managed only — the Phantom build_* variant (vault.rb:1100) has zero callers.",
+        "OPSEC-004: the token owner must sign the consume — admin alone can't burn a user's token.",
+        "Busts the entry-tokens cache to avoid re-picking a consumed token within the 60s TTL.",
+      ],
+    },
+    {
+      name: "register_currency", bytes: 15_208, status: "dead", statusLabel: "unused",
+      auth: "2-of-3", authClass: "two",
+      web3Short: "—", web2Short: "—",
+      web3: { file: "NOT CALLED from JS", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "ZERO callers (grep-confirmed)",
+              vault: "Solana::Vault#build_register_currency (vault.rb:496)",
+              trigger: "—", signer: "—" },
+      notes: [
+        "Builder exists (2-of-3) but has NO caller anywhere in app/lib — there is no admin-currency UI.",
+        "USDC + USDT are registered at initialize; nothing adds a 3rd currency.",
+        "Candidate to remove, or to wire up an admin screen.",
+      ],
+    },
+    {
+      name: "settle_contest", bytes: 14_024, status: "live", statusLabel: "live",
+      auth: "2-of-3", authClass: "two",
+      web3Short: "/admin/pending_transactions", web2Short: "Contest#grade! → Treasury",
+      web3: { file: "app/javascript/cosign.js:4 · app/views/admin/pending_transactions/index.html.erb",
+              fn: "window.cosignTransaction",
+              trigger: "Operator clicks Cosign on a settle PendingTransaction; Phantom signs the cosigner slot.",
+              signer: "Phantom cosigner over the admin-partial (2-of-3)." },
+      web2: { file: "app/models/contest.rb:413 (#settle_onchain!, via #grade!:232) · admin/pending_transactions_controller.rb:75",
+              vault: "Solana::Vault#build_settle_contest (vault.rb:1183)",
+              trigger: "grade! → settle_onchain! builds a PendingTransaction (tx_type settle_contest); the second signer cosigns.",
+              signer: "Alex Bot signs first; Phantom cosigner signs second." },
+      notes: [
+        "Prepends set_compute_unit_limit(400_000); remaining_accounts are TRIPLES [user_pda, entry_pda, winner_ata] per winner.",
+        "Direct server-signed settle_contest (vault.rb:1140) has zero callers — the live flow is always multisig.",
+        "grade! short-circuits to settled with no TX when there are no winners.",
+      ],
+    },
+    {
+      name: "close_contest", bytes: 9_648, status: "dead", statusLabel: "unused",
+      auth: "1-of-3", authClass: "one",
+      web3Short: "—", web2Short: "—",
+      web3: { file: "NOT CALLED from JS", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "ZERO callers (grep-confirmed)",
+              vault: "Solana::Vault#close_contest (vault.rb:1227)",
+              trigger: "—", signer: "—" },
+      notes: [
+        "1-of-3 builder sweeps prize-pool dust → op_rev, closes the Contest PDA + prize_pool ATA, reclaims rent — ZERO callers.",
+        "Without it, settled / cancelled Contest PDAs stay rent-locked.",
+        "Rent-reclamation housekeeping that is never invoked.",
+      ],
+    },
+    {
+      name: "mint_entry_token", bytes: 8_984, status: "live", statusLabel: "live",
+      auth: "1-of-3", authClass: "one",
+      web3Short: "—", web2Short: "TokenPurchaseJob · admin/free_entries",
+      web3: { file: "NOT CALLED from JS — Stripe webhook + admin button only", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "app/jobs/token_purchase_job.rb:80 · admin/free_entries_controller.rb:130 · tokens_controller.rb:137",
+              vault: "Solana::Vault#mint_entry_token (vault.rb:1381)",
+              trigger: "Stripe purchase (per-quantity loop), operator free-entry mint, or dev test mint.",
+              signer: "Alex Bot alone." },
+      notes: [
+        "v0.19 (#9): PDA seeded on sha256(source_ref); program asserts source_ref_hash → true idempotency for Sidekiq retries.",
+        "Operator path uses Solana::Vault.operator_source_ref(user) (keyed user.id + nonce — wallet overflowed [u8;64]).",
+        "Every mint must be followed by user.bust_entry_tokens_cache! for navbar fanout.",
+      ],
+    },
+    {
+      name: "cancel_contest", bytes: 8_504, status: "dead", statusLabel: "unused",
+      auth: "2-of-3", authClass: "two",
+      web3Short: "—", web2Short: "—",
+      web3: { file: "NOT CALLED from JS", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "ZERO callers (grep-confirmed)",
+              vault: "Solana::Vault#build_cancel_contest (vault.rb:932)",
+              trigger: "—", signer: "—" },
+      notes: [
+        "2-of-3 builder refunds the full prize pool → creator ATA — NO caller anywhere.",
+        "No PendingTransaction tx_type 'cancel_contest' is ever created.",
+        "Built-but-unwired admin action; a cancel-contest UI does not exist yet.",
+      ],
+    },
+    {
+      name: "create_season", bytes: 8_168, status: "admin", statusLabel: "admin-only",
+      auth: "1-of-3", authClass: "one",
+      web3Short: "—", web2Short: "admin/seasons#create",
+      web3: { file: "NOT CALLED from JS — admin form POST only", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "app/controllers/admin/seasons_controller.rb:31",
+              vault: "Solana::Vault#create_season (vault.rb:1452)",
+              trigger: "Operator creates a Season on /admin/seasons.",
+              signer: "Alex Bot alone." },
+      notes: [
+        "Server-only; validates a 5-element non-negative seed schedule (default [25, 19, 14, 10, 7]).",
+        "Per-entry seed-award schedule is immutable after creation (OPSEC-023).",
+        "SeasonConfig.current_season_id selects which Season PDA entries reference.",
+      ],
+    },
+    {
+      name: "sweep_operator_revenue", bytes: 7_000, status: "dead", statusLabel: "unused",
+      auth: "2-of-3", authClass: "two",
+      web3Short: "—", web2Short: "—",
+      web3: { file: "NOT CALLED from JS", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "ZERO callers (grep-confirmed)",
+              vault: "Solana::Vault#build_sweep_operator_revenue (vault.rb:1261)",
+              trigger: "—", signer: "—" },
+      notes: [
+        "2-of-3 builder drains an op_rev ATA → the treasury_authority's Squads-vault ATA — NO caller.",
+        "The only textual hit is an explanatory comment in admin/vault_init/show.html.erb.",
+        "Operator revenue-sweep admin UI was specced but never built.",
+      ],
+    },
+    {
+      name: "create_user_account", bytes: 6_664, status: "live", statusLabel: "live",
+      auth: "permissionless", authClass: "perm",
+      web3Short: "—", web2Short: "CreateOnchainUserAccountJob (+ lazy)",
+      web3: { file: "NOT CALLED from JS — server-driven only", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "app/jobs/create_onchain_user_account_job.rb:14 · entry.rb:241 · contests_controller.rb:473/504/588 · stripe_deposit_job.rb:21",
+              vault: "Solana::Vault#ensure_user_account (vault.rb:559) → #create_user_account (vault.rb:570)",
+              trigger: "Eager at signup (User after_commit) + lazy before any entry/deposit that finds the PDA missing.",
+              signer: "Alex Bot alone (admin pays rent; the wallet is data, NOT a signer)." },
+      notes: [
+        "Always reached via ensure_user_account — idempotent (no-ops if the PDA exists).",
+        "Username written at creation (≥3 chars enforced on-chain).",
+        "Works for both managed + Phantom users — the wallet pubkey is an instruction arg, not a signer.",
+      ],
+    },
+    {
+      name: "set_contest_conclusion_time", bytes: 6_368, status: "live", statusLabel: "live",
+      auth: "1-of-3 / 2-of-3 amend", authClass: "one", icf: ["set_contest_lock_time"],
+      web3Short: "/contests/:slug Conclude", web2Short: "—",
+      web3: { file: "app/javascript/lock_contest.js:110", fn: "concludeContestViaPhantom",
+              trigger: "Admin clicks 'Conclude in 60s' on the contest show page.",
+              signer: "Phantom (admin's vault-signer wallet) — 1-of-3." },
+      web2: { file: "contests_controller.rb:979 (#prepare_conclusion_time / #confirm_conclusion_time)",
+              vault: "Solana::Vault#build_set_contest_conclusion_time (vault.rb:910)",
+              trigger: "Live only via Phantom; the server-signed set_contest_conclusion_time (vault.rb:882) has zero callers.",
+              signer: "Phantom admin (1-of-3); 2-of-3 to amend an already-set conclusion." },
+      notes: [
+        "v0.18 — conclusion is a derived time-lock, not a status. Once chain time passes it, lock time is final.",
+        "Shares lock_contest.js (setContestTimeViaPhantom, action='conclusion') with set_contest_lock_time.",
+        "ICF: shares ~4 KB of validator code with set_contest_lock_time.",
+      ],
+    },
+    {
+      name: "set_contest_lock_time", bytes: 6_144, status: "live", statusLabel: "live",
+      auth: "1-of-3 / 2-of-3 amend", authClass: "one", icf: ["set_contest_conclusion_time"],
+      web3Short: "/contests/:slug Lock", web2Short: "contests#lock (fallback)",
+      web3: { file: "app/javascript/lock_contest.js:12 / :106", fn: "lockContestViaPhantom",
+              trigger: "Admin clicks 'Lock now' / 'Lock in 60s' on the contest show page.",
+              signer: "Phantom (admin's vault-signer wallet) — 1-of-3." },
+      web2: { file: "contests_controller.rb:912 (#lock) · :194 (#update mirror) · :930 (#prepare_lock_time)",
+              vault: "Solana::Vault#build_set_contest_lock_time (vault.rb:858) · #set_contest_lock_time (vault.rb:825)",
+              trigger: "Phantom-signed pre-lock set; server fallback for 'Lock now'.",
+              signer: "Alex Bot alone (1-of-3); 2-of-3 to amend an already-passed lock." },
+      notes: [
+        "v0.17 derived time-lock — replaces the retired lock_contest / unlock_contest status flips.",
+        "Chain is master: DB starts_at only moves after on-chain confirm.",
+        "Amending an already-passed lock requires a real 2-of-3 cosigner.",
+      ],
+    },
+    {
+      name: "set_username", bytes: 3_992, status: "live", statusLabel: "live",
+      auth: "user signs", authClass: "user",
+      web3Short: "/account rename modal", web2Short: "accounts#save_username (custodial)",
+      web3: { file: "app/javascript/username_rename_form.js:21 (sign:80, broadcast:82)", fn: "usernameRenameForm",
+              trigger: "Phantom / self-custody user renames on /account; server hands a partial, Phantom signs the user slot.",
+              signer: "Phantom user signs the user slot." },
+      web2: { file: "app/controllers/accounts_controller.rb:309 (custodial) · :300 (Phantom)",
+              vault: "Solana::Vault#set_username (vault.rb:605) · #build_set_username (vault.rb:627)",
+              trigger: "Custodial: server cosigns with the managed keypair in one round-trip.",
+              signer: "Alex Bot (payer) + wallet owner (managed keypair OR Phantom)." },
+      notes: [
+        "The wallet MUST sign in BOTH paths — admin alone cannot rename someone.",
+        "On-chain validation: reserved prefixes, printable-ASCII, ≥3 chars.",
+        "Branch on @user.phantom_wallet? || self_custodied? → build_set_username.",
+      ],
+    },
+    {
+      name: "pause", bytes: 3_832, status: "admin", statusLabel: "admin-only",
+      auth: "2-of-3", authClass: "two", icf: ["unpause", "deactivate_currency"],
+      web3Short: "/admin/vault_state", web2Short: "admin/vault_state#pause",
+      web3: { file: "app/views/admin/vault_state/show.html.erb", fn: "vaultAction('pause')",
+              trigger: "Operator clicks Pause on /admin/vault_state with a reason.",
+              signer: "Phantom cosigner over the bot-partial (2-of-3)." },
+      web2: { file: "app/controllers/admin/vault_state_controller.rb:42",
+              vault: "Solana::Vault#build_pause_vault (vault.rb:452)",
+              trigger: "POST /admin/vault_state/pause → server partial-signs, Phantom cosigner finishes.",
+              signer: "Alex Bot signs first; Phantom cosigner second." },
+      notes: [
+        "reason is logged on-chain (64-byte fixed field).",
+        "Blocks both enter_contest paths while set.",
+        "ICF: shares the validate_multisig validator block (~2.5 KB) with unpause + deactivate_currency.",
+      ],
+    },
+    {
+      name: "unpause", bytes: 3_088, status: "admin", statusLabel: "admin-only",
+      auth: "2-of-3", authClass: "two", icf: ["pause", "deactivate_currency"],
+      web3Short: "/admin/vault_state", web2Short: "admin/vault_state#unpause",
+      web3: { file: "app/views/admin/vault_state/show.html.erb:64", fn: "vaultAction('unpause')",
+              trigger: "Operator clicks Unpause on /admin/vault_state.",
+              signer: "Phantom cosigner over the bot-partial (2-of-3)." },
+      web2: { file: "app/controllers/admin/vault_state_controller.rb:60",
+              vault: "Solana::Vault#build_unpause_vault (vault.rb:473)",
+              trigger: "Unpause form renders only when @vault[:paused]; same confirm endpoint as pause.",
+              signer: "Alex Bot first; Phantom cosigner second." },
+      notes: [
+        "No auto-unpause — manual lift only.",
+        "Mirror of pause; same 2-of-3 model.",
+        "Bytes are smaller because ICF assigned the shared multisig validator to pause.",
+      ],
+    },
+    {
+      name: "deactivate_currency", bytes: 3_848, status: "dead", statusLabel: "unused",
+      auth: "2-of-3", authClass: "two", icf: ["pause", "unpause"],
+      web3Short: "—", web2Short: "—",
+      web3: { file: "NOT CALLED from JS", fn: "—", trigger: "—", signer: "—" },
+      web2: { file: "ZERO callers (grep-confirmed)",
+              vault: "Solana::Vault#build_deactivate_currency (vault.rb:522)",
+              trigger: "—", signer: "—" },
+      notes: [
+        "2-of-3 builder flips accepted_currencies[idx].active = 0 — NO caller anywhere.",
+        "Pairs with register_currency — same missing admin-currency surface.",
+        "The slot / op_rev is never reclaimed; currency_idx stays stable.",
+      ],
+    },
+  ]
+
+  status_counts = ix_data.group_by { |i| i[:status] }.transform_values(&:size)
+%>
+
+<div id="ix-map" class="max-w-6xl mx-auto py-8 space-y-6">
+  <%= link_to "← Link Hub", admin_hub_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
+
+  <header>
+    <h1 class="text-heading text-3xl font-extrabold mb-1">On-chain Instruction Map</h1>
+    <p class="text-secondary text-sm max-w-3xl">
+      Every <span class="font-mono">turf-vault</span> Solana instruction — its <span class="font-mono">.text</span> byte cost,
+      signer/auth role, and the Web3 (Phantom) and Web2 (Rails / Alex Bot) callers that invoke it.
+      Click any row for the caller detail. Sort by clicking a column header; filter with the buttons.
+    </p>
+  </header>
+
+  <%# ── Meta strip ─────────────────────────────────────────────── %>
+  <div class="ix-stats">
+    <div class="ix-stat">
+      <div class="ix-stat-label">Program</div>
+      <div class="ix-stat-value"><%= idl_version %> <span class="ix-stat-unit">IDL-pinned · <%= @network || "devnet" %></span></div>
+    </div>
+    <div class="ix-stat">
+      <div class="ix-stat-label">Instructions</div>
+      <div class="ix-stat-value"><%= ix_data.size %> <span class="ix-stat-unit">handlers</span></div>
+    </div>
+    <div class="ix-stat">
+      <div class="ix-stat-label">Deploy binary</div>
+      <div class="ix-stat-value"><%= number_with_delimiter(ix_meta[:binary_bytes]) %> <span class="ix-stat-unit">bytes · ~<%= ix_meta[:perm_sol] %> SOL rent</span></div>
+    </div>
+    <div class="ix-stat">
+      <div class="ix-stat-label">Error codes</div>
+      <div class="ix-stat-value"><%= ix_meta[:error_range] %> <span class="ix-stat-unit">39 variants</span></div>
+    </div>
+  </div>
+
+  <%# ── Instruction table ──────────────────────────────────────── %>
+  <section class="card p-5 sm:p-6">
+    <div class="flex items-baseline justify-between flex-wrap gap-2 mb-1">
+      <h2 class="text-heading text-lg font-bold">Per-instruction byte cost</h2>
+      <span class="label-upper text-muted">measured · <%= number_with_delimiter(ix_meta[:handler_bytes]) %> handler bytes of <%= number_with_delimiter(ix_meta[:text_bytes]) %> .text</span>
+    </div>
+    <p class="text-secondary text-sm mb-4">
+      Each instruction's bytes = its handler function plus the Anchor-generated <span class="font-mono">try_accounts</span> validator
+      (the validators dwarf the business logic). <span class="font-mono">ICF</span> = identical-code-folding shares bytes between siblings.
+    </p>
+
+    <div class="ix-controls">
+      <button class="ix-filter is-active" data-filter="all">All <%= ix_data.size %></button>
+      <button class="ix-filter" data-filter="live">Live <%= status_counts["live"] %></button>
+      <button class="ix-filter" data-filter="admin">Admin-only <%= status_counts["admin"] %></button>
+      <button class="ix-filter" data-filter="one">One-time <%= status_counts["one"] %></button>
+      <button class="ix-filter" data-filter="dead">Unused <%= status_counts["dead"] %></button>
+      <button class="ix-filter" data-filter="web3-yes">Web3 callers</button>
+      <button class="ix-filter" data-filter="web2-yes">Web2 callers</button>
+    </div>
+
+    <div class="ix-table-wrap">
+      <table class="ix-table" id="ix-table">
+        <thead>
+          <tr>
+            <th data-sort="name">Instruction</th>
+            <th data-sort="bytes" class="sort-desc">Bytes (.text)</th>
+            <th data-sort="auth">Auth</th>
+            <th data-sort="web3">Web3 caller</th>
+            <th data-sort="web2">Web2 caller</th>
+            <th data-sort="status">Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <%# ── Auth model ─────────────────────────────────────────────── %>
+  <section class="card p-5 sm:p-6">
+    <div class="flex items-baseline justify-between flex-wrap gap-2 mb-1">
+      <h2 class="text-heading text-lg font-bold">Auth model — who can call what</h2>
+      <span class="label-upper text-muted">signer matrix</span>
+    </div>
+    <p class="text-secondary text-sm mb-4">
+      Five signer roles. The role decides whether the Rails backend (Alex Bot) can run an instruction unaided
+      or needs a browser-side Phantom round-trip. Vault signer set: <span class="font-mono">Alex Bot · Alex · Mason</span>.
+    </p>
+
+    <div class="ix-auth-grid">
+      <div class="ix-auth-card auth-init">
+        <div class="ix-auth-h">INIT_AUTHORITY</div>
+        <div class="ix-auth-who">Alex's Phantom key (pinned in mainnet binary)</div>
+        <ul><li>initialize — once, ever</li></ul>
+      </div>
+      <div class="ix-auth-card auth-one">
+        <div class="ix-auth-h">1-of-3 vault signer</div>
+        <div class="ix-auth-who">Alex Bot signs alone (server-driven)</div>
+        <ul>
+          <li>create_contest (payer) · create_season</li>
+          <li>set_contest_lock_time · set_contest_conclusion_time</li>
+          <li>mint_entry_token · close_contest</li>
+        </ul>
+      </div>
+      <div class="ix-auth-card auth-two">
+        <div class="ix-auth-h">2-of-3 multisig</div>
+        <div class="ix-auth-who">2 of {Alex Bot · Alex · Mason} — Phantom cosign</div>
+        <ul>
+          <li>settle_contest · cancel_contest</li>
+          <li>pause · unpause · sweep_operator_revenue</li>
+          <li>register_currency · deactivate_currency</li>
+          <li>+ amend an already-passed lock / conclusion</li>
+        </ul>
+      </div>
+      <div class="ix-auth-card auth-user">
+        <div class="ix-auth-h">User wallet signs</div>
+        <div class="ix-auth-who">Phantom OR managed keypair (consent)</div>
+        <ul>
+          <li>set_username</li>
+          <li>enter_contest (USDC transfer)</li>
+          <li>enter_contest_with_token (token consume)</li>
+        </ul>
+      </div>
+      <div class="ix-auth-card auth-perm">
+        <div class="ix-auth-h">Permissionless</div>
+        <div class="ix-auth-who">Admin pays rent; wallet is data, not a signer</div>
+        <ul><li>create_user_account</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-muted text-xs space-y-1 pt-2">
+    <div>
+      Generated <%= ix_meta[:generated_on] %>. Bytes are measured from a debug-info rebuild of the <%= ix_meta[:source_version] %> source
+      (<span class="font-mono">CARGO_PROFILE_RELEASE_DEBUG=2 … cargo-build-sbf</span> → <span class="font-mono">llvm-objdump --syms | rustfilt</span>, deduped by address, bucketed by instruction module).
+    </div>
+    <div>
+      Section sizes from <span class="font-mono">llvm-objdump --section-headers</span> on the stripped deploy <span class="font-mono">.so</span>.
+      Auth roles from <span class="font-mono">programs/turf_vault/src</span>; callers from <span class="font-mono">app/services/solana/vault.rb</span> + their call sites.
+      Refresh after a turf-vault program release.
+    </div>
+  </footer>
+</div>
+
+<script type="application/json" id="ix-map-data"><%== ix_data.to_json %></script>
+
+<style>
+  /* Scoped to #ix-map. Colours come from the studio-engine theme vars so
+     light/dark both work; color-mix tints them for pill backgrounds. */
+  #ix-map .font-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  #ix-map .ix-stats { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
+  #ix-map .ix-stat {
+    background: var(--color-inset); border: 1px solid var(--color-border);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  #ix-map .ix-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 6px; }
+  #ix-map .ix-stat-value { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 17px; color: var(--color-text); font-variant-numeric: tabular-nums; line-height: 1.2; }
+  #ix-map .ix-stat-unit { font-size: 12px; color: var(--color-text-muted); }
+
+  /* ── Filters ── */
+  #ix-map .ix-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  #ix-map .ix-filter {
+    background: var(--color-inset); border: 1px solid var(--color-border);
+    color: var(--color-text-secondary); padding: 5px 11px; border-radius: 999px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; cursor: pointer; transition: all .12s;
+  }
+  #ix-map .ix-filter:hover { color: var(--color-text); border-color: var(--color-border-strong); }
+  #ix-map .ix-filter.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+  /* ── Table ── */
+  #ix-map .ix-table-wrap { overflow-x: auto; }
+  #ix-map .ix-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #ix-map .ix-table th {
+    text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted); font-weight: 600; font-size: 11px; letter-spacing: 0.06em;
+    text-transform: uppercase; cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  #ix-map .ix-table th:hover { color: var(--color-text); }
+  #ix-map .ix-table th.sort-asc::after { content: " ▲"; color: var(--color-primary); }
+  #ix-map .ix-table th.sort-desc::after { content: " ▼"; color: var(--color-primary); }
+  #ix-map .ix-table td { padding: 11px 8px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+  #ix-map .ix-table tr.ix-row { cursor: pointer; }
+  #ix-map .ix-table tr.ix-row:hover { background: color-mix(in srgb, var(--color-primary) 7%, transparent); }
+  #ix-map .ix-table tr.ix-row.is-open { background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+  #ix-map .ix-name { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--color-text); font-weight: 500; }
+  #ix-map .ix-bytes { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; color: var(--color-text); }
+  #ix-map .ix-bar { display: inline-block; vertical-align: middle; height: 4px; border-radius: 2px; background: var(--color-primary); margin-left: 6px; opacity: .7; }
+  #ix-map td.ix-dim { color: var(--color-text-secondary); }
+  #ix-map .ix-na { color: var(--color-text-muted); }
+
+  /* ── Pills ── */
+  #ix-map .pill {
+    display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap;
+  }
+  #ix-map .pill--success { background: color-mix(in srgb, var(--color-success) 14%, transparent); color: var(--color-success); border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent); }
+  #ix-map .pill--primary { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent); }
+  #ix-map .pill--warning { background: color-mix(in srgb, var(--color-warning) 16%, transparent); color: var(--color-warning); border: 1px solid color-mix(in srgb, var(--color-warning) 38%, transparent); }
+  #ix-map .pill--danger  { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent); }
+  #ix-map .pill--cta     { background: color-mix(in srgb, var(--color-cta) 16%, transparent); color: var(--color-cta); border: 1px solid color-mix(in srgb, var(--color-cta) 38%, transparent); }
+  #ix-map .pill--muted   { background: color-mix(in srgb, var(--color-text-muted) 12%, transparent); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+
+  #ix-map .icf-tag {
+    display: inline-block; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px;
+    background: color-mix(in srgb, var(--color-cta) 12%, transparent); color: var(--color-cta);
+    padding: 1px 6px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--color-cta) 30%, transparent); margin-left: 6px;
+  }
+
+  /* ── Expanded detail ── */
+  #ix-map tr.ix-detail td { padding: 0; border-bottom: 1px solid var(--color-border); }
+  #ix-map .ix-panel { padding: 16px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; background: var(--color-inset); }
+  #ix-map .ix-panel h4 { font-size: 11px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 6px; }
+  #ix-map .ix-panel .path { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--color-primary); word-break: break-word; }
+  #ix-map .ix-panel .meta { color: var(--color-text-secondary); font-size: 12.5px; margin-top: 4px; }
+  #ix-map .ix-panel .meta code { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--color-text); }
+  #ix-map .ix-panel ul.notes { margin: 6px 0 0; padding-left: 18px; }
+  #ix-map .ix-panel ul.notes li { color: var(--color-text-secondary); font-size: 12.5px; margin-bottom: 3px; }
+  #ix-map .ix-panel .full { grid-column: 1 / -1; }
+
+  /* ── Auth grid ── */
+  #ix-map .ix-auth-grid { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); }
+  #ix-map .ix-auth-card { background: var(--color-inset); border: 1px solid var(--color-border); border-radius: 10px; padding: 13px 15px; }
+  #ix-map .ix-auth-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-text-muted); margin-bottom: 5px; font-weight: 600; }
+  #ix-map .ix-auth-who { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--color-text); margin-bottom: 8px; }
+  #ix-map .ix-auth-card ul { margin: 0; padding-left: 16px; font-size: 12px; color: var(--color-text-secondary); }
+  #ix-map .ix-auth-card ul li { margin-bottom: 2px; }
+  #ix-map .ix-auth-card.auth-init { border-top: 2px solid var(--color-warning); }
+  #ix-map .ix-auth-card.auth-one  { border-top: 2px solid var(--color-primary); }
+  #ix-map .ix-auth-card.auth-two  { border-top: 2px solid var(--color-cta); }
+  #ix-map .ix-auth-card.auth-user { border-top: 2px solid var(--color-success); }
+  #ix-map .ix-auth-card.auth-perm { border-top: 2px solid var(--color-border-strong); }
+
+  @media (max-width: 820px) {
+    #ix-map .ix-stats { grid-template-columns: repeat(2, 1fr); }
+    #ix-map .ix-auth-grid { grid-template-columns: 1fr; }
+    #ix-map .ix-panel { grid-template-columns: 1fr; }
+  }
+</style>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.getElementById("ix-map");
+  if (!root) return;
+  var DATA = JSON.parse(document.getElementById("ix-map-data").textContent);
+  var table = document.getElementById("ix-table");
+  var tbody = table.querySelector("tbody");
+  var maxBytes = Math.max.apply(null, DATA.map(function (i) { return i.bytes; }));
+
+  var STATUS_PILL = { live: "pill--success", one: "pill--primary", admin: "pill--warning", dead: "pill--danger" };
+  var AUTH_PILL = { init: "pill--warning", one: "pill--primary", two: "pill--cta", user: "pill--success", perm: "pill--muted" };
+
+  var sortState = { col: "bytes", dir: "desc" };
+  var filterState = "all";
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function dim(s) { return s === "—" ? '<span class="ix-na">—</span>' : esc(s); }
+
+  function passesFilter(ix) {
+    switch (filterState) {
+      case "all": return true;
+      case "live": return ix.status === "live";
+      case "admin": return ix.status === "admin";
+      case "one": return ix.status === "one";
+      case "dead": return ix.status === "dead";
+      case "web3-yes": return ix.web3.file.indexOf("NOT CALLED") !== 0 && ix.web3.file !== "—";
+      case "web2-yes": return ix.web2.file.indexOf("ZERO callers") !== 0;
+      default: return true;
+    }
+  }
+
+  function sortRows(rows) {
+    var k = sortState.col, dir = sortState.dir === "asc" ? 1 : -1;
+    return rows.slice().sort(function (a, b) {
+      var va, vb;
+      if (k === "bytes") { va = a.bytes; vb = b.bytes; }
+      else if (k === "name") { va = a.name; vb = b.name; }
+      else if (k === "auth") { va = a.auth; vb = b.auth; }
+      else if (k === "web3") { va = a.web3Short; vb = b.web3Short; }
+      else if (k === "web2") { va = a.web2Short; vb = b.web2Short; }
+      else { va = a.statusLabel; vb = b.statusLabel; }
+      if (typeof va === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb)) * dir;
+    });
+  }
+
+  function render() {
+    tbody.innerHTML = "";
+    sortRows(DATA.filter(passesFilter)).forEach(function (ix) {
+      var barW = Math.round(56 * ix.bytes / maxBytes);
+      var icf = ix.icf ? ' <span class="icf-tag" title="Shares bytes via identical-code-folding with: ' + esc(ix.icf.join(", ")) + '">ICF</span>' : "";
+      var tr = document.createElement("tr");
+      tr.className = "ix-row";
+      tr.innerHTML =
+        '<td><span class="ix-name">' + esc(ix.name) + "</span>" + icf + "</td>" +
+        '<td><span class="ix-bytes">' + ix.bytes.toLocaleString() + '</span><span class="ix-bar" style="width:' + barW + 'px"></span></td>' +
+        '<td><span class="pill ' + (AUTH_PILL[ix.authClass] || "pill--muted") + '">' + esc(ix.auth) + "</span></td>" +
+        '<td class="ix-dim">' + dim(ix.web3Short) + "</td>" +
+        '<td class="ix-dim">' + dim(ix.web2Short) + "</td>" +
+        '<td><span class="pill ' + (STATUS_PILL[ix.status] || "pill--muted") + '">' + esc(ix.statusLabel) + "</span></td>";
+      tr.addEventListener("click", function () { toggleDetail(tr, ix); });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function metaLine(label, value) {
+    if (!value || value === "—") return "";
+    return '<div class="meta"><strong>' + label + ":</strong> " + esc(value) + "</div>";
+  }
+
+  function toggleDetail(tr, ix) {
+    var next = tr.nextElementSibling;
+    if (next && next.classList.contains("ix-detail")) { next.remove(); tr.classList.remove("is-open"); return; }
+    tbody.querySelectorAll("tr.ix-detail").forEach(function (d) { d.remove(); });
+    tbody.querySelectorAll("tr.ix-row.is-open").forEach(function (r) { r.classList.remove("is-open"); });
+    tr.classList.add("is-open");
+
+    var icfHTML = ix.icf
+      ? '<div class="meta"><strong>ICF shared with:</strong> ' + esc(ix.icf.join(", ")) + " — remove every sibling in the set to free the shared bytes.</div>"
+      : "";
+    var det = document.createElement("tr");
+    det.className = "ix-detail";
+    det.innerHTML =
+      '<td colspan="6"><div class="ix-panel">' +
+        "<div>" +
+          "<h4>Web3 path (browser / Phantom)</h4>" +
+          '<div class="path">' + esc(ix.web3.file) + "</div>" +
+          (ix.web3.fn && ix.web3.fn !== "—" ? '<div class="meta">Fn: <code>' + esc(ix.web3.fn) + "</code></div>" : "") +
+          metaLine("Trigger", ix.web3.trigger) +
+          metaLine("Signer", ix.web3.signer) +
+        "</div>" +
+        "<div>" +
+          "<h4>Web2 path (Rails / Alex Bot)</h4>" +
+          '<div class="path">' + esc(ix.web2.file) + "</div>" +
+          (ix.web2.vault ? '<div class="meta">Builder: <code>' + esc(ix.web2.vault) + "</code></div>" : "") +
+          metaLine("Trigger", ix.web2.trigger) +
+          metaLine("Signer", ix.web2.signer) +
+        "</div>" +
+        '<div class="full">' +
+          "<h4>Notes</h4><ul class=\"notes\">" + ix.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
+          icfHTML +
+        "</div>" +
+      "</div></td>";
+    tr.parentNode.insertBefore(det, tr.nextSibling);
+  }
+
+  table.querySelectorAll("th").forEach(function (th) {
+    th.addEventListener("click", function () {
+      var col = th.dataset.sort;
+      if (!col) return;
+      if (sortState.col === col) sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+      else { sortState.col = col; sortState.dir = col === "bytes" ? "desc" : "asc"; }
+      table.querySelectorAll("th").forEach(function (t) { t.classList.remove("sort-asc", "sort-desc"); });
+      th.classList.add(sortState.dir === "asc" ? "sort-asc" : "sort-desc");
+      render();
+    });
+  });
+
+  root.querySelectorAll(".ix-filter").forEach(function (b) {
+    b.addEventListener("click", function () {
+      root.querySelectorAll(".ix-filter").forEach(function (x) { x.classList.remove("is-active"); });
+      b.classList.add("is-active");
+      filterState = b.dataset.filter;
+      render();
+    });
+  });
+
+  render();
+})();
+</script>

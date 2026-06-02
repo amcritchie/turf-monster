@@ -113,6 +113,8 @@ bin/deploy
 
 `Solana::Config.verify_idl!` will refuse to boot — and to precompile assets — in production when the file's SHA256 ≠ `EXPECTED_IDL_HASH`. Running prod against a drifted IDL silently corrupts every Borsh decode.
 
+**Also refresh the instruction map**: if the deploy changed the instruction set, byte sizes, auth roles, or any Rails call site, update the hand-maintained data in `app/views/admin/instruction_map.html.erb` (the `/admin/instruction_map` reference page). Its version header auto-tracks the re-pinned IDL (`Solana::Config.idl_version`), but the per-instruction byte/caller table does not. Re-measure bytes with a debug-info rebuild (`CARGO_PROFILE_RELEASE_DEBUG=2 … cargo-build-sbf` → `llvm-objdump --syms | rustfilt`, dedup by address, bucket by instruction module).
+
 ### Multisig Settlement Flow
 1. `Contest#grade!` scores entries and calls `settle_onchain!`
 2. `settle_onchain!` calls `Vault#build_settle_contest` → creates a `PendingTransaction` with the partially-signed TX (2-of-3)
