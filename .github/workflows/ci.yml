@@ -116,7 +116,8 @@ jobs:
     # boundary — a whole stack: each shard is a separate runner with its own
     # postgres+redis service + test server, no state shared across shards, and
     # the serial reseed-per-spec model preserved within each shard. ~Nx faster.
-    # Keep the matrix length equal to the `--shard` denominator below.
+    # The `--shard` denominator is derived from `strategy.job-total`, so the
+    # shard count lives in one place — this matrix list.
     strategy:
       fail-fast: false
       matrix:
@@ -170,11 +171,12 @@ jobs:
           RAILS_ENV: test
           DATABASE_URL: postgres://postgres:postgres@localhost:5432
           REDIS_URL: redis://localhost:6379/0
-        # --shard=i/N must match the matrix length above. Playwright shards by
-        # test; safe because every spec is reseed-independent (no beforeAll
-        # state in the chromium project — that lives only in the @devnet specs,
-        # which are excluded here and run by devnet-nightly.yml).
-        run: npm test -- --grep-invert "@devnet" --shard=${{ matrix.shard }}/3
+        # `strategy.job-total` is the matrix size, so the shard denominator
+        # tracks the matrix automatically. Playwright shards by test; safe
+        # because every spec is reseed-independent (no beforeAll state in the
+        # chromium project — that lives only in the @devnet specs, which are
+        # excluded here and run by devnet-nightly.yml).
+        run: npm test -- --grep-invert "@devnet" --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
