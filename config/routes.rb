@@ -330,10 +330,6 @@ Rails.application.routes.draw do
   # Admin: Level badges preview gallery (1–10)
   get "admin/level_badges", to: "admin#level_badges", as: :admin_level_badges
 
-  # Admin: turf-vault on-chain instruction map — per-instruction bytes,
-  # auth role, and web2/web3 caller reference (see admin#instruction_map).
-  get "admin/instruction_map", to: "admin#instruction_map", as: :admin_instruction_map
-
   # Admin: Modal gallery — grid of every modal partial / state variant
   # rendered in isolated iframes (see AdminController::MODAL_VARIANTS).
   get "admin/modals", to: "admin#modals", as: :admin_modals
