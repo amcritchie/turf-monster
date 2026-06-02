@@ -27,9 +27,10 @@
 <%
   is_admin = current_user&.admin?
 
-  # Version pill — from the committed IDL's metadata (what the app is
-  # pinned to), so it tracks the re-pinned IDL on every turf-vault deploy.
-  prog_version = (Solana::Config.idl_version rescue nil).then { |v| v ? "v#{v}" : "v0.19" }
+  # Version pill — major.minor from the committed IDL's metadata (what the
+  # app is pinned to), so it tracks the re-pinned IDL on every turf-vault
+  # deploy while matching the page's "v0.NN" convention.
+  prog_version = (Solana::Config.idl_version rescue nil).then { |v| v ? "v#{v.split('.').first(2).join('.')}" : "v0.19" }
 
   # ─── Hero stats (v0.19, embedded-IDL build) ───────────────────────
   binary_size          = 501_528            # bytes — `llvm-objdump --section-headers turf_vault.so`
