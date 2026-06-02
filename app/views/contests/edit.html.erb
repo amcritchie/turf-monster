@@ -12,7 +12,7 @@
 
     <%# Banner — immediate-save via the shared crop modal (update_banner). Its
         OWN form (HTML can't nest it inside the main edit form below). %>
-    <%= render "shared/cropper_assets" %>
+    <%= render "studio/cropper_assets" %>
     <div class="mb-5"
          x-data="imageUploadHost({ aspectRatio: 4, maxWidth: 2000, maxHeight: 500, transparent: true, autoCropArea: 1, filename: 'banner.png', saving: 'Saving banner…', success: 'Banner updated', successMessage: 'Your new banner is live.', failure: 'Couldn\'t save the banner' })"
          @crop-photo-confirmed.window="applyCrop($event.detail.blob)">

@@ -1,7 +1,0 @@
-<%# Generic "saving" loading card, opened by window.submitFormWithProgress with
-    a { title } prop while a Turbo form uploads. Single root for the host's
-    <template x-if>. %>
-<div>
-  <%= render "studio/modals/blocks/processing_card",
-        title_key: "$store.modals.current()?.props?.title || 'Saving…'" %>
-</div>

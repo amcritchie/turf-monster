@@ -22,6 +22,9 @@
     <%# Solana web3 + nacl — needed by the username modal's signing path. %>
     <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <%# Cropper.js + image-upload factories (cropPhotoModal) — the crop-photo
+        modal preview needs them; ships from studio-engine (v0.4.12). %>
+    <%= render "studio/cropper_assets" %>
     <% content_for :head do %>
       <%# Session context — modal partials read $store.session. Reuses the
           same #session-context JSON tag the application layout writes. %>
@@ -126,7 +129,7 @@
         <%= render "modals/onchain_tx" %>
       </template>
       <template x-if="$store.modals.current().id === 'crop-photo'">
-        <%= render "modals/crop_photo" %>
+        <%= render "studio/modals/crop_photo" %>
       </template>
       <template x-if="$store.modals.current().id === 'wallet-deposit'">
         <%= render "modals/wallet_deposit" %>

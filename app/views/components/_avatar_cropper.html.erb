@@ -12,7 +12,7 @@
 
     Locals: form_field_name (e.g. "user[avatar]") %>
 
-<%= render "shared/cropper_assets" %>
+<%= render "studio/cropper_assets" %>
 
 <div x-data="avatarCropperHost()"
      @crop-photo-confirmed.window="applyCrop($event.detail.blob)"

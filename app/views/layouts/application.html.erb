@@ -578,11 +578,11 @@
           logged_in? because complete_profile renders before the profile is
           finished. %>
       <template x-if="$store.modals.current().id === 'crop-photo'">
-        <%= render "modals/crop_photo" %>
+        <%= render "studio/modals/crop_photo" %>
       </template>
       <%# Generic loading card (submitFormWithProgress) — banner save, avatar upload. %>
       <template x-if="$store.modals.current().id === 'saving'">
-        <%= render "modals/saving" %>
+        <%= render "studio/modals/saving" %>
       </template>
       <%# wallet-deposit — opened by the entry-eligibility blocker when a
           web3 user lacks USDC/USDT for the entry fee. Symmetric to the

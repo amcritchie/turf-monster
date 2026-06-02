@@ -1,7 +1,7 @@
 <%# Cropper.js is loaded on this page so the shared crop-photo modal
     (Alpine.store('modals').open('crop-photo', ...)) has its dependency
     when the user clicks the avatar to upload. %>
-<%= render "shared/cropper_assets" %>
+<%= render "studio/cropper_assets" %>
 
 <%# Auto-open the email-change-pending modal after a held email change.
     AccountsController#update redirects here with flash[:email_change_pending]
