@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+#
+# e2e-parallel — run the Playwright suite across N ISOLATED local stacks in
+# parallel, cutting the single-worker wall-clock roughly N×.
+#
+# Why a launcher instead of Playwright `workers: N`: POST /test/reseed is a
+# stop-the-world reset, so multiple workers hitting ONE server clobber each
+# other. In TEST env the ONLY shared state is Postgres — cache is :null_store,
+# jobs are the :test adapter, Action Cable is :test (async), and rack-attack is
+# disabled (see config/environments/test.rb + config/initializers/rack_attack.rb
+# + config/cable.yml). So the safe unit of isolation is a whole stack: each
+# worker gets its own test-env Rails server on its own port + its own database.
+# We then run N `playwright test --shard=i/N` processes, one per stack, each
+# pointed at its server via PW_BASE_URL. It's the CI sharding model, run locally
+# — no Redis juggling and no spec edits.
+#
+#   bin/e2e-parallel [N] [-- <extra playwright args>]
+#     N   number of parallel stacks (default 4)
+#
+# Examples:
+#   bin/e2e-parallel                                   # full suite, 4 stacks
+#   bin/e2e-parallel 3                                 # full suite, 3 stacks
+#   bin/e2e-parallel 2 -- theme.spec.js navigation.spec.js   # quick check
+#   bin/e2e-parallel 4 -- --retries=1                  # mirror CI's retry policy
+#
+# Ports BASE_PORT..BASE_PORT+N-1 (default 3101+) and DBs turf_monster_e2e_pw_<i>.
+# Stays clear of :3001 (the canonical dev server) and the shared
+# turf_monster_test DB, so it never collides with a running dev stack or
+# `bin/rails test`. Servers are killed and DBs dropped on exit.
+
+set -uo pipefail
+
+N="${1:-4}"
+if ! [[ "$N" =~ ^[0-9]+$ ]] || [ "$N" -lt 1 ]; then
+  echo "usage: bin/e2e-parallel [N] [-- <extra playwright args>]" >&2
+  exit 2
+fi
+shift || true
+# Everything after a literal `--` is forwarded to each `playwright test` call.
+EXTRA=()
+if [ "${1:-}" = "--" ]; then shift; EXTRA=("$@"); fi
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+BASE_PORT="${E2E_BASE_PORT:-3101}"
+DBPREFIX="turf_monster_e2e_pw"
+LOGDIR="$(mktemp -d -t e2e-parallel.XXXXXX)"
+declare -a SERVER_PIDS=()
+
+cleanup() {
+  echo "▶ tearing down $N stacks…"
+  for pid in "${SERVER_PIDS[@]:-}"; do [ -n "${pid:-}" ] && kill "$pid" 2>/dev/null || true; done
+  wait 2>/dev/null || true
+  for i in $(seq 0 $((N - 1))); do dropdb --if-exists --force "${DBPREFIX}_${i}" 2>/dev/null || true; done
+}
+trap cleanup EXIT INT TERM
+
+# The test-env server serves the compiled Tailwind stylesheet; build it once
+# (absent → every page 500s with "asset tailwind.css is not present").
+echo "▶ building Tailwind once…"
+if ! bin/rails tailwindcss:build >"$LOGDIR/tailwind.log" 2>&1; then
+  echo "✗ tailwind build failed — see $LOGDIR/tailwind.log"; exit 1
+fi
+
+# 1) Bring up N isolated test-env stacks in parallel. Each subshell creates +
+#    seeds its own DB, then `exec`s into the server so $! is the server PID.
+echo "▶ starting $N isolated test-env stacks (ports $BASE_PORT..$((BASE_PORT + N - 1)))…"
+for i in $(seq 0 $((N - 1))); do
+  port=$((BASE_PORT + i))
+  db="${DBPREFIX}_${i}"
+  (
+    export DATABASE_URL="postgres:///${db}" RAILS_ENV=test
+    bin/rails db:drop db:create db:schema:load >"$LOGDIR/stack-$i.log" 2>&1
+    bin/rails runner e2e/seed.rb >>"$LOGDIR/stack-$i.log" 2>&1
+    exec bin/rails server -p "$port" -e test >>"$LOGDIR/server-$i.log" 2>&1
+  ) &
+  SERVER_PIDS+=("$!")
+done
+
+# 2) Wait for every server's /up to answer (DB prepare + boot can take a bit).
+echo "▶ waiting for servers…"
+for i in $(seq 0 $((N - 1))); do
+  port=$((BASE_PORT + i))
+  up=false
+  for _ in $(seq 1 90); do
+    if curl -sf "http://127.0.0.1:${port}/up" >/dev/null 2>&1; then up=true; break; fi
+    # If the stack subshell already died, stop waiting and surface its log.
+    kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null || break
+    sleep 1
+  done
+  if [ "$up" != true ]; then
+    echo "✗ stack $i (:$port) never came up. Last lines:"
+    tail -15 "$LOGDIR/server-$i.log" "$LOGDIR/stack-$i.log" 2>/dev/null
+    exit 1
+  fi
+done
+echo "✓ all $N stacks up"
+
+# 3) Run N sharded Playwright processes, one per stack.
+echo "▶ running Playwright across $N shards…"
+declare -a PW_PIDS=()
+for i in $(seq 0 $((N - 1))); do
+  port=$((BASE_PORT + i))
+  shard=$((i + 1))
+  PW_BASE_URL="http://127.0.0.1:${port}" \
+    npx playwright test --project=chromium --shard="${shard}/${N}" "${EXTRA[@]}" \
+    >"$LOGDIR/shard-$i.log" 2>&1 &
+  PW_PIDS+=("$!")
+done
+
+# 4) Collect results.
+fail=0
+for i in "${!PW_PIDS[@]}"; do
+  if wait "${PW_PIDS[$i]}"; then
+    line="$(grep -E '[0-9]+ (passed|failed|flaky)' "$LOGDIR/shard-$i.log" | tail -1)"
+    echo "  ✓ shard $((i + 1))/$N — ${line:-passed}"
+  else
+    echo "  ✗ shard $((i + 1))/$N FAILED:"
+    grep -E '✘|[0-9]+\) |[0-9]+ (passed|failed|flaky)|Error:' "$LOGDIR/shard-$i.log" | tail -15 | sed 's/^/      /'
+    fail=1
+  fi
+done
+
+echo ""
+if [ "$fail" = 0 ]; then
+  echo "✓ all $N shards passed"
+else
+  echo "✗ some shards failed — full logs in $LOGDIR"
+fi
+exit "$fail"
