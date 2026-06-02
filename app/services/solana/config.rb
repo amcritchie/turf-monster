@@ -50,7 +50,21 @@ module Solana
     #
     # IDL_PATH points at the committed IDL JSON. The file is hand-maintained
     # — updated when turf_vault deploys a new version.
-    IDL_PATH = Rails.root.join("config", "turf_vault.idl.json")
+    #
+    # Network-keyed (mainnet launch): the devnet and mainnet IDLs are
+    # byte-identical EXCEPT the `address` field (the program ID), which makes
+    # their SHA256 differ. Each cluster therefore commits its own IDL file and
+    # pins its own EXPECTED_IDL_HASH per Heroku app. Selection is by NETWORK so
+    # a single source tree boots correctly on either cluster:
+    #   - mainnet-beta -> config/turf_vault.mainnet.idl.json (address mnzow…, 70e8f7…)
+    #   - anything else (devnet/localnet) -> config/turf_vault.idl.json (address EQGF…, 99d551…)
+    # The devnet branch is byte-identical to the prior unconditional path, so
+    # the live devnet-prod app's verify_idl!/precompile behavior is unchanged.
+    IDL_PATH = if NETWORK == "mainnet-beta"
+      Rails.root.join("config", "turf_vault.mainnet.idl.json")
+    else
+      Rails.root.join("config", "turf_vault.idl.json")
+    end
 
     # Set after each turf_vault deploy. Empty string = skip verification (dev
     # default; set in production env or here after pinning).
