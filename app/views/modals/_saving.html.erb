@@ -3,5 +3,5 @@
     <template x-if>. %>
 <div>
   <%= render "studio/modals/blocks/processing_card",
-        title_key: "($store.modals.current() && $store.modals.current().props.title) || 'Saving…'" %>
+        title_key: "$store.modals.current()?.props?.title || 'Saving…'" %>
 </div>

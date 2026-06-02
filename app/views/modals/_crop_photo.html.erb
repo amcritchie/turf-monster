@@ -2,26 +2,23 @@
   Crop Photo modal — content partial for the shared modal host.
   Opened via Alpine.store('modals').open('crop-photo', { imageUrl? }).
 
-  Two modes, distinguished by whether the opener passes an imageUrl:
+  The modal always hands the cropped Blob back to its opener via the
+  'crop-photo-confirmed' window event — the opener's host owns the
+  upload. How the image gets IN depends on the props:
 
-    * fromParent (e.g. components/avatar_cropper) — caller has already
-      let the user pick a file and passes the resulting data URL via
-      props.imageUrl. The modal jumps straight to the cropper and, on
-      confirm, hands the cropped Blob back via the 'crop-photo-
-      confirmed' window event. Parent owns the upload (it has its own
-      form / submit path).
+    * imageUrl passed (e.g. components/avatar_cropper, the avatar
+      uploader) — the opener already let the user pick a file; the modal
+      jumps straight to the cropper.
 
-    * standalone (e.g. account-page avatar click — opened with no
-      props) — the modal IS the picker too: a click/drag-drop empty
-      state lets the user pick a file inside the modal, then crops,
-      then POSTs the cropped image to save_profile_account_path and
-      reloads. No parent involved.
+    * no imageUrl (e.g. the contest banner editor's open()) — the modal
+      IS the picker: a click/drag-drop empty state lets the user choose a
+      file inside the modal, then crops.
 
   Single root: lives inside studio/modals/host's <template x-if>, so
   only the outer wizard div is the top-level element here.
 %>
 <%# cropPhotoModal() factory lives in app/javascript/crop_photo_modal.js. %>
-<div x-data="cropPhotoModal({ saveUrl: '<%= save_profile_account_path %>' })">
+<div x-data="cropPhotoModal()">
   <h3 class="text-heading font-bold text-lg text-center mb-4">Crop Photo</h3>
 
   <template x-if="error">
@@ -55,11 +52,10 @@
   </template>
 
   <button type="button" @click="confirm()"
-          :disabled="!imageUrl || uploading"
-          :class="(!imageUrl || uploading) ? 'opacity-60 cursor-not-allowed' : ''"
-          class="btn btn-primary btn-lg w-full">
-    <span x-show="!uploading" x-text="imageUrl ? 'Crop &amp; Save' : 'Upload an Image to Continue'"></span>
-    <span x-show="uploading">Saving…</span>
+          :disabled="!imageUrl"
+          :class="!imageUrl ? 'opacity-60 cursor-not-allowed' : ''"
+          class="btn btn-primary btn-lg w-full"
+          x-text="imageUrl ? 'Crop &amp; Save' : 'Upload an Image to Continue'">
   </button>
 
   <button type="button" @click="cancel()"
