@@ -349,7 +349,10 @@
             // re-verify sigs just to dry-run). We gate the send on err === null.
             modal.show('Checking', 'Simulating the transaction…');
             console.log('[contest-create] simulating (sigVerify:false) before broadcast…');
-            var simResp = await connection.simulateTransaction(signedTx, undefined, false);
+            // signedTx is a VersionedTransaction → use the config-object overload
+            // (NOT the legacy positional (tx, signers, includeAccounts) one, which
+            // routes into Transaction.populate and crashes on numRequiredSignatures).
+            var simResp = await connection.simulateTransaction(signedTx, { sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed' });
             var simVal = simResp && simResp.value ? simResp.value : {};
             console.log('[contest-create] simulation result:', {
               err: simVal.err,
