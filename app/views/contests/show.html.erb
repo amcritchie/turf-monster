@@ -58,7 +58,7 @@
   <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/turf_totals_board", edit_entry: @edit_entry %>
   </div>
-<% elsif @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
+<% elsif @contest.open? && !@contest.cancelled? && (!@has_entry || show_board_for_existing_entry) %>
   <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/turf_totals_board" %>
   </div>
@@ -113,6 +113,11 @@
           <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 0)" class="btn btn-sm bg-yellow-600 hover:bg-yellow-500 text-white">Lock Entries</button>
           <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 60)" class="btn btn-sm bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 60s</button>
         <% end %>
+        <% if @contest.onchain? && @contest.open? && !@contest.onchain_cancelled? %>
+          <%= button_to "Cancel + refund creator", cancel_onchain_contest_path(@contest), method: :post,
+                data: { turbo_confirm: "Cancel this contest and refund the creator's prize pool? This is terminal." },
+                class: "btn btn-danger btn-sm" %>
+        <% end %>
         <% if @current_round %>
           <%= button_to "Grade #{@current_round.name}", grade_round_contest_path(@contest, round_id: @current_round.id), method: :post, class: "btn btn-primary btn-sm" %>
         <% else %>
@@ -144,6 +149,11 @@
           <% if @contest.locked? %>
             <%= button_to "Grade", grade_contest_path(@contest), method: :post, class: "btn btn-primary btn-sm" %>
           <% end %>
+          <% if @contest.onchain? && @contest.open? && !@contest.onchain_cancelled? %>
+            <%= button_to "Cancel + refund creator", cancel_onchain_contest_path(@contest), method: :post,
+                  data: { turbo_confirm: "Cancel this contest and refund the creator's prize pool? This is terminal." },
+                  class: "btn btn-danger btn-sm" %>
+          <% end %>
         </div>
       </div>
       <!-- Simulate actions -->
@@ -159,6 +169,22 @@
           <%= button_to "All", jump_contest_path(@contest), method: :post, class: "btn btn-outline btn-sm" %>
         </div>
       </div>
+    </div>
+  </div>
+<% end %>
+
+<!-- Section 6b: Terminal-state admin (close on-chain to reclaim rent) -->
+<% if current_user&.admin? && @contest.onchain? && (@contest.settled? || @contest.onchain_cancelled?) && !@contest.onchain_closed? %>
+  <div class="mb-8">
+    <h3 class="text-sm font-semibold text-secondary mb-3">Admin</h3>
+    <div class="card p-4">
+      <p class="text-xs font-semibold text-muted mb-2 uppercase tracking-wide">On-chain</p>
+      <div class="flex flex-wrap gap-2">
+        <%= button_to "Reclaim rent (close)", close_onchain_contest_path(@contest), method: :post,
+              data: { turbo_confirm: "Close the on-chain Contest PDA and reclaim its rent? Settlement/refund must already be complete." },
+              class: "btn btn-outline btn-sm" %>
+      </div>
+      <p class="text-xs text-muted mt-2">Closes the on-chain Contest + prize-pool accounts and reclaims their rent. Only available once the contest is settled or cancelled.</p>
     </div>
   </div>
 <% end %>

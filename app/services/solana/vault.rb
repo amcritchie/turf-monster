@@ -1253,6 +1253,15 @@ module Solana
       { signature: signature }
     end
 
+    # Derive the treasury USDC ATA for a given mint — the ATA owned by
+    # VaultState.treasury_authority (the Squads vault PDA). This is the
+    # sweep destination for sweep_operator_revenue. Returns base58.
+    def treasury_ata_for(mint)
+      authority = read_vault_state[:treasury_authority]
+      ata_bytes, _ = Solana::SplToken.find_associated_token_address(authority, mint)
+      Keypair.encode_base58(ata_bytes)
+    end
+
     # --- Sweep operator revenue (2-of-3) ---
 
     # Build a partially-signed sweep_operator_revenue TX. `amount` of 0

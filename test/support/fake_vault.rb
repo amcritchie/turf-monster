@@ -182,6 +182,89 @@ class FakeVault
   def seeds_for_entry(_entry_number)
     25
   end
+
+  # --- Contest close / cancel (unused-instructions cleanup) ---
+
+  def close_contest(contest_slug)
+    @close_calls ||= []
+    @close_calls << contest_slug
+    { signature: "fake-close-#{SecureRandom.hex(2)}" }
+  end
+
+  def close_calls
+    @close_calls ||= []
+  end
+
+  # Real Vault returns the full on-chain Contest hash; tests only need :creator.
+  attr_writer :read_contest_creator
+
+  def read_contest(contest_slug, **_opts)
+    { creator: (@read_contest_creator || "CreAtorXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"), pda: "cpda-#{contest_slug}", status: "Open" }
+  end
+
+  def build_cancel_contest(contest_slug, creator_pubkey:, cosigner_pubkey:)
+    @cancel_calls ||= []
+    @cancel_calls << { slug: contest_slug, creator: creator_pubkey, cosigner: cosigner_pubkey }
+    { serialized_tx: "FAKE_TX_cancel_#{contest_slug}" }
+  end
+
+  def cancel_calls
+    @cancel_calls ||= []
+  end
+
+  # --- Currency registry + sweep (unused-instructions cleanup) ---
+
+  def read_vault_state(**_opts)
+    @vault_state || {
+      pda: "vault-pda",
+      treasury_authority: "TreaSuryXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      accepted_currencies: Array.new(16) { |i| { slot: i, mint: "11111111111111111111111111111111", op_rev_ata: "11111111111111111111111111111111", kind: 0, active: false } }
+    }
+  end
+
+  attr_writer :vault_state
+
+  def build_register_currency(cosigner_pubkey:, mint:, kind: 0)
+    @register_calls ||= []
+    @register_calls << { cosigner: cosigner_pubkey, mint: mint, kind: kind }
+    { serialized_tx: "FAKE_TX_register_#{mint}", op_rev_ata: "oprev-#{mint[0, 4]}" }
+  end
+
+  def register_calls
+    @register_calls ||= []
+  end
+
+  def build_deactivate_currency(cosigner_pubkey:, currency_idx:)
+    @deactivate_calls ||= []
+    @deactivate_calls << { cosigner: cosigner_pubkey, currency_idx: currency_idx }
+    { serialized_tx: "FAKE_TX_deactivate_#{currency_idx}" }
+  end
+
+  def deactivate_calls
+    @deactivate_calls ||= []
+  end
+
+  def treasury_ata_for(mint)
+    "treasury-ata-#{mint[0, 4]}"
+  end
+
+  def op_rev_ata_pda(mint)
+    ["oprev-pda-#{mint[0, 4]}", 253]
+  end
+
+  def vault_state_pda
+    ["vault-state-pda", 255]
+  end
+
+  def build_sweep_operator_revenue(cosigner_pubkey:, currency_mint:, treasury_ata_pubkey:, amount: 0)
+    @sweep_calls ||= []
+    @sweep_calls << { cosigner: cosigner_pubkey, currency_mint: currency_mint, treasury_ata: treasury_ata_pubkey, amount: amount }
+    { serialized_tx: "FAKE_TX_sweep_#{currency_mint[0, 4]}" }
+  end
+
+  def sweep_calls
+    @sweep_calls ||= []
+  end
 end
 
 # Mirrors the relevant slice of Solana::Client used by
