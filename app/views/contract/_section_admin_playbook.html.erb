@@ -14,8 +14,9 @@
   <p class="text-secondary text-sm mb-5 max-w-3xl">
     All 18 instructions, grouped by signer role, with the operational reasoning plus the
     current Rails (<span class="font-mono text-xs">web2</span>) and browser/Phantom
-    (<span class="font-mono text-xs">web3</span>) caller for each. <span class="text-warning">Unused</span>
-    means the builder exists in <code class="font-mono text-xs">Solana::Vault</code> but nothing in the app calls it yet.
+    (<span class="font-mono text-xs">web3</span>) caller for each. Every instruction is now
+    wired to an admin action — the 2-of-3 treasury ops queue a <code class="font-mono text-xs">PendingTransaction</code>
+    you cosign in the Treasury.
   </p>
 
   <div class="space-y-6">
