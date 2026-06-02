@@ -59,7 +59,12 @@ class Rack::Attack
   ### Throttle: devnet faucet / airdrop — money-cost endpoints
   # Faucet is already prod-disabled per OPSEC-020 but rate-limited on devnet
   # too because admin SOL gets burned via mint_spl + ATA creation.
-  throttle("faucet/ip", limit: 5, period: 1.hour) do |req|
+  # Dev: a fast per-60s cap so hammering "Mint USDC" trips the global wait modal
+  # and resets quickly (the rate-limit playground). Prod: the 5/hour money cap
+  # (admin SOL is burned per mint). Both emit the tier-1 "general" 429 → the
+  # _rate_limit_general wait modal (see throttled_responder + authedFetch).
+  faucet_limit, faucet_period = Rails.env.development? ? [3, 60.seconds] : [5, 1.hour]
+  throttle("faucet/ip", limit: faucet_limit, period: faucet_period) do |req|
     req.ip if req.post? && req.path == "/faucet"
   end
 
@@ -127,18 +132,46 @@ class Rack::Attack
     req.ip if req.post? && req.path == "/account/update_username"
   end
 
+  ### Throttle: TIER-1 general interactive writes (rate-limit epic, Phase 1)
+  # A forgiving per-IP flood backstop on the bursty guest/player write actions.
+  # STRICT allowlist: the matcher returns ip ONLY for these enumerated write
+  # paths, so a new POST route defaults to EXEMPT and the dedicated throttles
+  # above are never loosened/duplicated. 90/60s clears a confirm-entry's replay
+  # fan-out (≤6 toggle_selection + enter) without ever tripping a human; on
+  # exceed → the tier-1 "general" 429 → the global wait modal (for paths that
+  # go through authedFetch; the bare-fetch write paths are server-protected
+  # here and get the modal once migrated — Phase 1b).
+  throttle("general/ip", limit: 90, period: 60.seconds) do |req|
+    next unless req.post? || req.patch? || req.put? || req.delete?
+    req.ip if req.path.match?(%r{\A/contests/[^/]+/(toggle_selection|enter|clear_picks)\z})
+  end
+
   ### Response: throttled requests get 429
+  # Tier tag drives the client: tier-1 "general" 429s open the global wait
+  # modal (via authedFetch); "auth"-surface 429s keep their own inline UX.
+  # Phase 1 uses an explicit auth-name set; Phase 2 (the auth ladder) should
+  # switch to prefix-matching (magic_link/*, login/* → auth) so new throttle
+  # names are classified without editing this list.
+  AUTH_THROTTLE_NAMES = %w[
+    login/ip login/email signup/ip
+    magic_link/ip magic_link/email email_verification/ip
+    solana_nonce/ip solana_verify/ip link_solana/ip
+  ].freeze
+
   self.throttled_responder = lambda do |request|
     match_data = request.env["rack.attack.match_data"] || {}
     retry_after = match_data[:period].to_i
+    matched     = request.env["rack.attack.matched"].to_s
+    tier        = AUTH_THROTTLE_NAMES.include?(matched) ? "auth" : "general"
 
     [
       429,
       {
         "Content-Type" => "application/json",
+        "X-RateLimit-Tier" => tier,
         "Retry-After" => retry_after.to_s
       },
-      [{ error: "Too many requests. Try again later.", retry_after: retry_after }.to_json]
+      [{ error: "Too many requests. Try again later.", tier: tier, retry_after: retry_after }.to_json]
     ]
   end
 end

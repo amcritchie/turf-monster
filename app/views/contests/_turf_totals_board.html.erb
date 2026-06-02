@@ -1133,7 +1133,16 @@ window.selectionBoard = function() {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Accept': 'application/json' }
           });
-          if (!response) return; // 401 — authedFetch surfaced the login modal
+          if (!response) {
+            // authedFetch returned null → it surfaced the right modal (401 login
+            // / 429 rate-limit wait). Close OUR "Submitting Entry" overlay and
+            // reset the hold button so the entry flow recovers cleanly — no
+            // double modal, no stuck spinner.
+            if (!insideTokensModal) { try { Alpine.store('solanaModal').close(); } catch (e) {} }
+            try { this.resetHoldButtons(); } catch (e) {}
+            this.submitting = false;
+            return;
+          }
           var data = await response.json();
 
           if (data.success) {
@@ -1279,7 +1288,11 @@ window.selectionBoard = function() {
       if (this.isEditMode) return;
 
       try {
-        await fetch('/contests/' + this.contestId + '/clear_picks', {
+        // authedFetch so a general-tier 429 surfaces the wait modal instead of
+        // being silently swallowed (clear_picks is in the general/ip allowlist).
+        // It returns null on 429/401 after showing the modal; nothing else to do
+        // here — this is a background cart sync.
+        await window.authedFetch('/contests/' + this.contestId + '/clear_picks', {
           method: 'POST',
           headers: {
             'X-CSRF-Token': this.csrfToken,
@@ -1287,7 +1300,7 @@ window.selectionBoard = function() {
           }
         });
       } catch (err) {
-        // silent
+        // network — silent
       }
     },
 

@@ -65,11 +65,15 @@
         <%# Claim button %>
         <button @click="
           $store.solanaModal.show('Minting USDC', 'Sending $' + amount + ' test USDC to your wallet...');
-          fetch('<%= faucet_path %>', {
+          window.authedFetch('<%= faucet_path %>', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name=csrf-token]')?.content || '', 'Accept': 'application/json' },
             body: JSON.stringify({ amount: amount })
-          }).then(r => r.json()).then(data => {
+          }).then(r => {
+            if (!r) { $store.solanaModal.close(); return; }  /* 429 wait modal (or 401 login) shown by authedFetch */
+            return r.json();
+          }).then(data => {
+            if (!data) return;
             if (data.success) {
               $store.solanaModal.success(data.tx, null, {
                 variant: 'generic',
