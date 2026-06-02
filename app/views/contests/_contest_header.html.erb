@@ -49,6 +49,8 @@
             <% if has_edit_items %>
               <div class="border-t border-subtle my-1"></div>
             <% end %>
+            <%= link_to "Edit Contest", edit_contest_path(@contest),
+                  class: "block px-4 py-2 text-sm text-body hover:bg-surface-alt transition" %>
             <%= link_to "Admin View", admin_contest_path(@contest),
                   class: "block px-4 py-2 text-sm text-secondary hover:text-heading hover:bg-surface-alt transition" %>
             <% if @contest.open? && !@contest.locked? %>

@@ -184,11 +184,11 @@ class AdminController < ApplicationController
       url:  "/tokens/processing?preview_state=errored" },
 
     # === Crop Photo (avatar cropper) ====================================
-    # Now goes through the shared modal host — see modals/_crop_photo
+    # Now ships from studio-engine (v0.4.12) — see studio/modals/_crop_photo
     # and the avatar_cropper local override in components/.
     { group: "Crop Photo",
       label: "Crop Photo (placeholder image)", key: "crop-photo",
-      modal_id: "crop-photo", file: "app/views/modals/_crop_photo.html.erb",
+      modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
       props: { imageUrl: "/logo.png" } }
   ].freeze
 

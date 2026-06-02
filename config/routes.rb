@@ -200,6 +200,9 @@ Rails.application.routes.draw do
       post :simulate_game
       post :simulate_batch
       post :reset
+      # Admin "Update banner" flow — swap just the hero image from a modal on
+      # the contest show page (ContestsController#update_banner).
+      patch :banner, action: :update_banner
       get :live
       post :prepare_onchain_contest
       post :confirm_onchain_contest

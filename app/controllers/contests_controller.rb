@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll, :live]
-  before_action :set_contest, only: [:show, :admin, :edit, :update, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -203,6 +203,35 @@ class ContestsController < ApplicationController
     end
   rescue StandardError => e
     render :edit, status: :unprocessable_entity
+  end
+
+  # Admin "Update banner" flow — swap just the contest's hero image. The admin
+  # frames the image in the shared crop-photo modal (imageUploadHost +
+  # cropPhotoModal, same cropper as the avatar) and the persistent uploader host
+  # POSTs the cropped PNG here. Responds with a Turbo Stream that replaces
+  # #contest-banner-preview on the edit screen. (A bad file 422s, but the crop
+  # always yields a valid PNG, so that path is defensive — the picker has an
+  # accept filter too.)
+  def update_banner
+    rescue_and_log(target: @contest) do
+      file = params.dig(:contest, :contest_image)
+
+      if valid_image?(file)
+        @contest.contest_image.attach(file)
+        respond_to do |format|
+          # The crop modal saves immediately; refresh the preview on the edit
+          # screen (the only caller). The contest show-page hero picks up the
+          # new banner on its next full render.
+          format.turbo_stream do
+            render turbo_stream: turbo_stream.replace("contest-banner-preview", partial: "contests/banner_preview")
+          end
+          format.html { redirect_to edit_contest_path(@contest), notice: "Banner updated." }
+        end
+      else
+        message = file.blank? ? "Choose an image to upload." : "Use a PNG, JPG, or WebP under 8 MB."
+        redirect_to edit_contest_path(@contest), alert: message, status: :see_other
+      end
+    end
   end
 
   # Build a partially-signed create_contest transaction for Phantom co-signing.
@@ -1376,7 +1405,10 @@ class ContestsController < ApplicationController
     "fifa"
   end
 
+  # :contest_image is intentionally NOT permitted here — the banner saves through
+  # its own #update_banner action. Permitting it would let any future field on
+  # the edit form submit an empty value and purge the existing attachment.
   def contest_update_params
-    params.require(:contest).permit(:name, :tagline, :rank, :contest_image, :starts_at, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected, :chat_enabled)
+    params.require(:contest).permit(:name, :tagline, :rank, :starts_at, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected, :chat_enabled)
   end
 end

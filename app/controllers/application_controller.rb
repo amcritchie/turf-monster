@@ -377,4 +377,16 @@ class ApplicationController < ActionController::Base
       format.json { render json: { error: msg }, status: :forbidden }
     end
   end
+
+  # Shared server-side guard for user-supplied image uploads (avatars, contest
+  # banners). The browser always crops to a valid PNG before posting, so this is
+  # defense-in-depth against a forged/direct multipart POST — and the only
+  # server-side gate, since neither User#avatar nor Contest#contest_image
+  # declares an attachment validation.
+  IMAGE_UPLOAD_TYPES = %w[image/png image/jpeg image/webp].freeze
+
+  def valid_image?(file, types: IMAGE_UPLOAD_TYPES, max: 8.megabytes)
+    file.respond_to?(:content_type) && file.respond_to?(:size) &&
+      types.include?(file.content_type) && file.size <= max
+  end
 end

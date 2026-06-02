@@ -651,7 +651,11 @@
           logged_in? because complete_profile renders before the profile is
           finished. %>
       <template x-if="$store.modals.current().id === 'crop-photo'">
-        <%= render "modals/crop_photo" %>
+        <%= render "studio/modals/crop_photo" %>
+      </template>
+      <%# Generic loading card (submitFormWithProgress) — banner save, avatar upload. %>
+      <template x-if="$store.modals.current().id === 'saving'">
+        <%= render "studio/modals/saving" %>
       </template>
       <%# wallet-deposit — opened by the entry-eligibility blocker when a
           web3 user lacks USDC/USDT for the entry fee. Symmetric to the
@@ -661,6 +665,7 @@
           <%= render "modals/wallet_deposit" %>
         </template>
       <% end %>
+
 
       <%# Template reference modals — registered in non-production only so
           they don't add JS surface area to prod. Surfaced at the top of
@@ -684,6 +689,8 @@
         </template>
       <% end %>
     <% end %>
+
+
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>
     <% end %>

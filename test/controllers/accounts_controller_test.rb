@@ -19,6 +19,13 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to root_path
   end
 
+  test "save_profile rejects a non-image avatar" do
+    log_in_as @alex
+    post save_profile_account_path, params: { user: { avatar: fixture_file_upload("not_an_image.txt", "text/plain") } }
+    assert_response :unprocessable_entity
+    assert_not @alex.reload.avatar.attached?
+  end
+
   # --- session_state tests ---
 
   test "session_state returns guest shape for unauthenticated callers" do
@@ -182,6 +189,21 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to account_path
     @alex.reload
     assert_equal "New Name", @alex.name
+  end
+
+  test "update attaches a valid avatar" do
+    log_in_as @alex
+    assert_changes -> { @alex.reload.avatar.attached? }, from: false, to: true do
+      patch account_path, params: { user: { avatar: fixture_file_upload("banner.png", "image/png") } }
+    end
+    assert_redirected_to account_path
+  end
+
+  test "update rejects a non-image avatar and does not attach" do
+    log_in_as @alex
+    patch account_path, params: { user: { avatar: fixture_file_upload("not_an_image.txt", "text/plain") } }
+    assert_redirected_to account_path
+    assert_not @alex.reload.avatar.attached?
   end
 
   test "unlink_google clears provider and uid" do
