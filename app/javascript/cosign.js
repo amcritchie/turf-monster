@@ -22,13 +22,11 @@ window.cosignTransaction = async function(slug, serializedTx) {
     // Phantom signs (adds cosigner signature)
     const signed = await provider.signTransaction(tx);
 
-    // Submit to Solana with 60s timeout
+    // Submit to Solana, then HTTP-poll getSignatureStatuses (no WebSocket
+    // subscription, no misleading "unknown" timeout) instead of confirmTransaction.
     const connection = new solanaWeb3.Connection(rpcUrl);
     const signature = await connection.sendRawTransaction(signed.serialize());
-    await Promise.race([
-      connection.confirmTransaction(signature, 'confirmed'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction confirmation timed out after 60s')), 60000))
-    ]);
+    await window.pollConfirmation(rpcUrl, signature);
 
     // Report back to server
     const resp = await fetch('/admin/pending_transactions/' + slug + '/confirm', {

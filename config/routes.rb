@@ -177,6 +177,7 @@ Rails.application.routes.draw do
       get :generator
       post :generate_bundle
       post :finalize_bundle
+      post :rebuild_create_tx
       post :finalize
     end
     member do

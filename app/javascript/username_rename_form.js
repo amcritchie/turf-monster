@@ -78,9 +78,12 @@ function usernameRenameForm(opts) {
       var txBytes = Uint8Array.from(atob(serializedTxB64), function (c) { return c.charCodeAt(0); });
       var tx = solanaWeb3.Transaction.from(txBytes);
       var signed = await provider.signTransaction(tx);
-      var conn = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, "confirmed");
+      var rpcUrl = document.body.dataset.solanaRpcUrl;
+      var conn = new solanaWeb3.Connection(rpcUrl, "confirmed");
       var sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true, maxRetries: 3 });
-      await conn.confirmTransaction(sig, "confirmed");
+      // HTTP poll getSignatureStatuses instead of connection.confirmTransaction
+      // (no WebSocket subscription, no misleading "unknown" timeout).
+      await window.pollConfirmation(rpcUrl, sig);
       return sig;
     },
 

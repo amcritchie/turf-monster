@@ -60,6 +60,46 @@ export async function authedFetch(url, opts) {
   return null;
 }
 
+// Poll getSignatureStatuses over HTTP until confirmed/finalized or error.
+// Replaces web3.js connection.confirmTransaction, which opens a WebSocket
+// signature subscription (auto-derived ws:// at port+1) and surfaces a
+// misleading 30s "unknown" timeout. turf-monster has NO RPC proxy — the
+// client already holds the api-keyed Helius URL (data-solana-rpc-url), so we
+// POST JSON-RPC straight to it. ~1.5s interval, ~60s ceiling.
+//   confirmed/finalized → resolves with the status object
+//   st.err              → throws (tx failed on-chain)
+//   timeout             → throws (tx may still land — check explorer)
+export async function pollConfirmation(rpcUrl, sig, opts) {
+  opts = opts || {};
+  var intervalMs = opts.intervalMs || 1500;
+  var timeoutMs  = opts.timeoutMs  || 60000;
+  var deadline   = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    var resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'getSignatureStatuses',
+        params: [[sig], { searchTransactionHistory: true }]
+      })
+    });
+    if (resp.ok) {
+      var out = await resp.json();
+      if (out.error) throw new Error('getSignatureStatuses RPC error: ' + JSON.stringify(out.error));
+      var st = out.result && out.result.value && out.result.value[0];
+      if (st) {
+        if (st.err) throw new Error('Transaction failed on-chain: ' + JSON.stringify(st.err));
+        var status = st.confirmationStatus;
+        if (status === 'confirmed' || status === 'finalized') return st;
+      }
+    }
+    await new Promise(function(r) { setTimeout(r, intervalMs); });
+  }
+  throw new Error('Confirmation timed out after ' + (timeoutMs / 1000) + 's (the transaction may still land — check the explorer).');
+}
+window.pollConfirmation = pollConfirmation;
+
 // Balance display refresh
 export function refreshBalance() {
   return lockedFetch('balance', '/admin/usdc_balance', {

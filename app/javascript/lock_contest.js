@@ -72,13 +72,10 @@ async function setContestTimeViaPhantom(slug, inSeconds, opts) {
       maxRetries: 3,
     });
 
+    // HTTP poll getSignatureStatuses instead of connection.confirmTransaction
+    // (no WebSocket subscription, no misleading "unknown" timeout).
     if (modal) modal.show("Confirming Onchain", "Waiting for Solana confirmation...");
-    await Promise.race([
-      connection.confirmTransaction(signature, "confirmed"),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Confirmation timed out after 60s")), 60000)
-      ),
-    ]);
+    await window.pollConfirmation(rpcUrl, signature);
 
     // 4. Mirror the timestamp server-side — only after the chain confirms.
     if (modal) modal.show("Saving " + opts.noun, "Recording the time...");

@@ -195,6 +195,7 @@
         userWallet: current_user&.web3_solana_address,
         csrfToken:  form_authenticity_token,
         finalizePath: finalize_contests_path,
+        rebuildPath: rebuild_create_tx_contests_path,
         usdcBalance: display_balance.to_f,
         tierPrizes:  Contest.selectable_formats.transform_values { |c| c[:payouts].values.sum / 100.0 },
         tierEntryFees: Contest.selectable_formats.transform_values { |c| c[:entry_fee_cents] / 100.0 }
@@ -299,19 +300,37 @@
             var prepareData = await prepareResp.json();
             if (!prepareData.success) throw new Error(prepareData.error || 'Failed to build transaction');
 
+            // Step 1.5 — re-issue the partially-signed TX with a FRESH blockhash
+            // immediately before signing. The blockhash baked at /contests time
+            // goes stale while the user reads/decides; a stale blockhash makes
+            // the send fail silently or simulate-fail. The server re-does the
+            // admin partial-sign over the new blockhash (the create_contest TX
+            // is admin co-signed, so the rebuild must go through the server).
+            // Mirrors mcritchie's fetchFreshTx. params_token still binds finalize.
+            var rebuildResp = await fetch(cfg.rebuildPath, {
+              method: 'POST',
+              headers: { 'X-CSRF-Token': cfg.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify({ params_token: prepareData.params_token })
+            });
+            var rebuildData = await rebuildResp.json();
+            if (!rebuildData.success) throw new Error(rebuildData.error || 'Failed to refresh transaction');
+
             modal.show('Sign Transaction', 'Approve the prize-pool USDC transfer in Phantom…');
 
-            // Step 2 — deserialize, sign, broadcast
-            var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
+            // Step 2 — deserialize (fresh-blockhash TX), sign, broadcast
+            var txBytes = Uint8Array.from(atob(rebuildData.serialized_tx), function(c) { return c.charCodeAt(0); });
             var tx = solanaWeb3.Transaction.from(txBytes);
             var signedTx = await provider.signTransaction(tx);
 
             modal.show('Broadcasting', 'Submitting to Solana…');
-            var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
+            var rpcUrl = document.body.dataset.solanaRpcUrl;
+            var connection = new solanaWeb3.Connection(rpcUrl, 'confirmed');
             var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
 
+            // HTTP poll getSignatureStatuses instead of connection.confirmTransaction
+            // (no WebSocket subscription, no misleading "unknown" timeout).
             modal.show('Confirming', 'Waiting for Solana confirmation…');
-            await connection.confirmTransaction(txSig, 'confirmed');
+            await window.pollConfirmation(rpcUrl, txSig);
 
             // Step 3 — POST tx_signature + params_token + image to finalize
             modal.show('Saving', 'Creating the contest record…');

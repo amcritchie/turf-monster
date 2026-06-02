@@ -3,7 +3,7 @@ class ContestsController < ApplicationController
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll, :live]
   before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :require_admin, only: [:new, :create, :rebuild_create_tx, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -156,6 +156,46 @@ class ContestsController < ApplicationController
     }
   rescue StandardError => e
     Rails.logger.error("[ContestsController#create] #{e.class}: #{e.message}")
+    render_create_error(e.message)
+  end
+
+  # Step 1.5 — re-issue the partially-signed create_contest TX with a FRESH
+  # blockhash immediately before the Phantom sign. The blockhash baked at
+  # #create time goes stale while the user dwells in the wallet UI, which
+  # surfaces as "Transaction simulation failed: Blockhash not found" /
+  # silent send failures. The client calls this right before
+  # provider.signTransaction so the TX that gets signed + broadcast carries
+  # a current blockhash.
+  #
+  # Because the admin co-signs server-side (build_partial_signed re-runs the
+  # admin partial-sign over the new blockhash), the re-issue MUST go through
+  # the server — we can't just overwrite the blockhash client-side without
+  # invalidating the admin signature. We reconstruct the contest from the
+  # already-issued, signed params_token (no client-trusted values) and rebuild
+  # over a fresh blockhash. The original params_token stays valid for finalize.
+  def rebuild_create_tx
+    payload = verify_onchain_create_payload(params[:params_token])
+    raise "User mismatch — token was issued to a different user" unless payload[:user_id] == current_user.id
+    raise "Phantom wallet required to create contests" unless current_user.phantom_wallet?
+
+    contest = build_contest_from_payload(payload)
+
+    vault  = Solana::Vault.new
+    result = vault.build_create_contest(
+      current_user.web3_solana_address,
+      payload[:slug],
+      **contest.onchain_params
+    )
+
+    render json: {
+      success:       true,
+      serialized_tx: result[:serialized_tx],
+      contest_pda:   result[:contest_pda]
+    }
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    render_create_error("Invalid or expired form token — restart the contest creation flow.")
+  rescue StandardError => e
+    Rails.logger.error("[ContestsController#rebuild_create_tx] #{e.class}: #{e.message}")
     render_create_error(e.message)
   end
 
@@ -1142,6 +1182,21 @@ class ContestsController < ApplicationController
     end
   end
 
+  # Reconstruct an unpersisted Contest from the signed create payload so its
+  # #onchain_params reproduce the exact instruction data #create built (fees,
+  # max_entries, payouts, prize_pool, lock_timestamp). Used by #rebuild_create_tx
+  # to re-issue the TX over a fresh blockhash without trusting client values.
+  def build_contest_from_payload(payload)
+    Contest.new(
+      name:         payload[:name],
+      contest_type: payload[:contest_type],
+      starts_at:    payload[:starts_at],
+      entry_fee_cents: payload[:entry_fee_cents],
+      max_entries:     payload[:max_entries],
+      status:          :open
+    )
+  end
+
   def build_finalized_contest(payload, derived_pda_b58, tx_signature)
     Contest.new(
       name:                       payload[:name],
@@ -1188,8 +1243,34 @@ class ContestsController < ApplicationController
     ata_b58 = Solana::Keypair.encode_base58(
       Solana::SplToken.find_associated_token_address(creator.web3_solana_address, Solana::Config::USDC_MINT).first
     )
-    balance_info  = vault.client.get_token_account_balance(ata_b58) rescue nil
-    balance_cents = (balance_info&.dig("value", "uiAmount").to_f * 100).round
+
+    # FRESH read for the create decision — never the 60s-cached display_balance.
+    # A nil/failed read (RPC flake, ATA-not-found edge) is NOT treated as a
+    # pass and is NOT silently coerced to $0; it's a HARD BLOCK so a doomed TX
+    # can't slip through on a transient read failure. We capture the raw read
+    # exception separately from a legitimately-empty-but-readable ATA.
+    read_error  = nil
+    balance_info = begin
+      vault.client.get_token_account_balance(ata_b58)
+    rescue StandardError => e
+      read_error = e
+      nil
+    end
+
+    if read_error || balance_info.nil?
+      Rails.logger.warn(
+        "[ContestsController#insufficient_usdc_error] USDC balance read FAILED " \
+        "ata=#{ata_b58} user=#{creator.id} prize_cents=#{prize_cents} " \
+        "error=#{read_error&.class}: #{read_error&.message}"
+      )
+      return "We couldn't verify your USDC balance right now — please try again in a moment."
+    end
+
+    balance_cents = (balance_info.dig("value", "uiAmount").to_f * 100).round
+    Rails.logger.info(
+      "[ContestsController#insufficient_usdc_error] USDC balance read " \
+      "ata=#{ata_b58} user=#{creator.id} balance_cents=#{balance_cents} prize_cents=#{prize_cents}"
+    )
     return nil if balance_cents >= prize_cents
 
     "Insufficient USDC: prize pool needs $#{format('%.2f', prize_cents / 100.0)}, " \
