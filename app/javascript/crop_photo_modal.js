@@ -22,10 +22,22 @@ function cropPhotoModal(opts) {
     uploading: false,
     error: null,
     _saveUrl: opts.saveUrl,
+    // Configurable crop output. Defaults = avatar (square 256px, transparent).
+    // Callers override per-use via the modal props, e.g.
+    //   Alpine.store('modals').open('crop-photo',
+    //     { imageUrl, aspectRatio: 3, maxWidth: 900, maxHeight: 300, transparent: true })
+    aspectRatio: 1,
+    maxWidth: 256,
+    maxHeight: 256,
+    transparent: true,
 
     init() {
       var current = this.$store.modals.current();
       var props = (current && current.props) || {};
+      if (props.aspectRatio) this.aspectRatio = props.aspectRatio;
+      if (props.maxWidth) this.maxWidth = props.maxWidth;
+      if (props.maxHeight) this.maxHeight = props.maxHeight;
+      if (typeof props.transparent === "boolean") this.transparent = props.transparent;
       if (props.imageUrl) {
         this.fromParent = true;
         this.imageUrl = props.imageUrl;
@@ -43,7 +55,7 @@ function cropPhotoModal(opts) {
         if (typeof Cropper === "undefined") return;
         if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
         self.cropper = new Cropper(self.$refs.cropImage, {
-          aspectRatio: 1, viewMode: 1, dragMode: "move",
+          aspectRatio: self.aspectRatio, viewMode: 1, dragMode: "move",
           autoCropArea: 0.9, cropBoxResizable: true,
           cropBoxMovable: true, background: false, guides: true
         });
@@ -86,7 +98,9 @@ function cropPhotoModal(opts) {
     confirm() {
       if (!this.cropper || this.uploading) return;
       var self = this;
-      var canvas = this.cropper.getCroppedCanvas({ width: 256, height: 256 });
+      var canvasOpts = { maxWidth: this.maxWidth, maxHeight: this.maxHeight, imageSmoothingQuality: "high" };
+      if (!this.transparent) canvasOpts.fillColor = "#ffffff";
+      var canvas = this.cropper.getCroppedCanvas(canvasOpts);
       canvas.toBlob(function (blob) {
         if (self.fromParent) {
           try {

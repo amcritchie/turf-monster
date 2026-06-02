@@ -51,20 +51,20 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_not @contest.reload.contest_image.attached?
   end
 
-  test "admin sees the Edit banner control and the banner modal on the show page" do
+  test "admin sees the Edit banner control and the uploader host on the show page" do
     log_in_as(users(:alex))
     get contest_path(@contest)
     assert_response :success
     assert_match "Edit banner", response.body
-    assert_match "Update banner", response.body # modal heading (gated partial)
+    assert_match "banner-image-picker", response.body # persistent uploader (admin)
   end
 
-  test "non-admin sees neither the Edit banner control nor the banner modal" do
+  test "non-admin sees neither the Edit banner control nor the uploader" do
     log_in_as(@user)
     get contest_path(@contest)
     assert_response :success
     assert_no_match "Edit banner", response.body
-    assert_no_match "Update banner", response.body # modal heading (gated partial)
+    assert_no_match "banner-image-picker", response.body # uploader host (admin only)
   end
 
   # --- toggle_selection tests ---

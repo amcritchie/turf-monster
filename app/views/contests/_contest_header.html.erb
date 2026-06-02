@@ -53,7 +53,7 @@
                 admins on contest pages) — same modal as the hero's Edit button,
                 surfaced here next to Edit Entry for discoverability. %>
             <button type="button"
-                    @click="open = false; $store.modals.open('contest-banner')"
+                    @click="open = false; document.getElementById('banner-image-picker').click()"
                     class="block w-full text-left px-4 py-2 text-sm text-body hover:bg-surface-alt transition">
               Edit Banner
             </button>

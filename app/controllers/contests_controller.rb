@@ -205,11 +205,12 @@ class ContestsController < ApplicationController
     render :edit, status: :unprocessable_entity
   end
 
-  # Admin "Update banner" flow — swap just the contest's hero image from a modal
-  # on the show page (Alpine.store('modals').open('contest-banner')). Responds
-  # with Turbo Streams so #contest-hero re-renders in place; the layout's
-  # turbo:submit-end listener closes the modal on a successful (2xx) submit.
-  # A bad file returns 422 + an inline error so the modal stays open.
+  # Admin "Update banner" flow — swap just the contest's hero image. The admin
+  # frames the image in the shared crop-photo modal (contestBannerHost +
+  # cropPhotoModal, same cropper as the avatar) and the persistent uploader host
+  # POSTs the cropped PNG here. Responds with Turbo Streams so #contest-hero
+  # re-renders in place. (A bad file 422s, but the crop always yields a valid
+  # PNG, so that path is defensive — the picker also has an accept filter.)
   def update_banner
     rescue_and_log(target: @contest) do
       file = params.dig(:contest, :contest_image)
