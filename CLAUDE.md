@@ -427,7 +427,7 @@ Violations of these produce silent no-ops or phantom DOM elements, not errors. E
 ## Workflow
 
 - **Debugging**: STOP and show the issue before fixing
-- **Testing**: run `bin/rails test` before every commit — by discipline; there is **no** git pre-commit hook installed (`.git/hooks/*` are all `.sample`). The enforced gate is `bin/deploy`, which runs the suite as a pre-flight check (`SKIP_TESTS=1` bypasses).
+- **Testing**: a **pre-push** git hook (`.githooks/pre-push`, enabled via `core.hooksPath` by `bin/setup`) runs `bin/rails test` before every push, so a red suite never reaches a PR. Commits stay fast — there is no pre-*commit* hook. Bypass a push with `git push --no-verify` or `SKIP_TESTS=1`. `bin/deploy` also runs the suite as a pre-flight gate.
 - **Database**: Migrate and seed freely without asking
 - **Server**: Restart proactively after gems/initializers/routes changes
 - **Git**: Small frequent commits, push immediately after committing
