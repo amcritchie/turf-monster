@@ -13,9 +13,11 @@
 
 <%
   # ── Program-level facts (refresh per turf-vault release) ────────────────
+  # @idl_version + @network come live from Solana::Config (controller) so the
+  # version header tracks the pinned IDL automatically. The byte/caller data
+  # below is still hand-maintained — measured against v0.19 source.
+  idl_version = @idl_version.present? ? "v#{@idl_version}" : "v0.19"
   ix_meta = {
-    source_version: "v0.19",        # programs/turf_vault/Cargo.toml
-    live_version:   "v0.18",        # deployed devnet program
     binary_bytes:   501_528,        # llvm-objdump --section-headers (stripped deploy .so)
     text_bytes:     425_304,        # .text section (stripped deploy .so)
     handler_bytes:  184_640,        # measured handler-attributable .text (debug rebuild)
@@ -335,7 +337,7 @@
   <div class="ix-stats">
     <div class="ix-stat">
       <div class="ix-stat-label">Program</div>
-      <div class="ix-stat-value"><%= ix_meta[:source_version] %> <span class="ix-stat-unit">source · <%= ix_meta[:live_version] %> live</span></div>
+      <div class="ix-stat-value"><%= idl_version %> <span class="ix-stat-unit">IDL-pinned · <%= @network || "devnet" %></span></div>
     </div>
     <div class="ix-stat">
       <div class="ix-stat-label">Instructions</div>

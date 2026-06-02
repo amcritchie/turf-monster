@@ -79,6 +79,18 @@ module Solana
       Digest::SHA256.hexdigest(File.read(IDL_PATH))
     end
 
+    # Version string from the committed IDL's metadata (e.g. "0.19.0") — the
+    # turf_vault version the Rails app is pinned to. The IDL is re-pinned on
+    # every turf-vault deploy (see docs/SOLANA.md "Post-deploy IDL re-pin"),
+    # so this tracks the deployed program without a hardcoded constant.
+    # Returns nil if the IDL is missing or unparseable.
+    def self.idl_version
+      return nil unless File.exist?(IDL_PATH)
+      JSON.parse(File.read(IDL_PATH)).dig("metadata", "version")
+    rescue JSON::ParserError
+      nil
+    end
+
     # Raises Solana::Config::IdlMismatchError if the committed IDL's hash
     # doesn't match EXPECTED_IDL_HASH.
     #

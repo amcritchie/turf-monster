@@ -337,7 +337,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - `prepare_lock_time`, `confirm_lock_time`, `prepare_conclusion_time`, `confirm_conclusion_time` — Phantom-signed (1-of-3) set of the on-chain `lock_timestamp` / `conclusion_timestamp`. Replaces the old `lock_contest`/`unlock_contest`. See `app/javascript/lock_contest.js`.
 - `finalize` — Phantom-driven contest creation step 2 (collection route, no `:id`). See `ContestsController#create` + `#finalize`.
 - `prepare_onchain_contest`, `confirm_onchain_contest` — legacy Phantom-fund-existing-contest flow; still referenced by `e2e/onchain.spec.js`. Not used by the UI anymore.
-- `grade`, `fill`, `jump`, `reset` — admin actions (no more `lock`; locking is the Phantom-signed `*_lock_time` flow above)
+- `grade`, `fill`, `jump`, `reset` — admin actions. `lock` also survives as a **server-signed fallback** (`ContestsController#lock`, 1-of-3 via `Solana::Vault#set_contest_lock_time`) behind the "Lock now"/"Lock in 60s" buttons; the primary path is the Phantom-signed `*_lock_time` flow above. (The retired *on-chain* `lock_contest`/`unlock_contest` instructions are gone — locking is a derived time-gate.)
 - `grade_round` — survivor admin action: scores the current SurvivorRound + marks picks survived/eliminated
 - `payout_entry` — individual entry payout
 

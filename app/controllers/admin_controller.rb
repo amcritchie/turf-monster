@@ -222,10 +222,13 @@ class AdminController < ApplicationController
   end
 
   # Static reference: per-instruction byte cost + auth + web2/web3 caller map
-  # for the turf-vault Solana program. Data is hand-maintained in the view
-  # (see app/views/admin/instruction_map.html.erb) — there is no DB or RPC
-  # read here. Refresh the table after a turf-vault program release.
+  # for the turf-vault Solana program. The per-instruction data is
+  # hand-maintained in the view (no DB/RPC read); only the pinned version +
+  # network are read live from Solana::Config so the header can't drift.
+  # Refresh the view's byte/caller table after a turf-vault program release.
   def instruction_map
+    @idl_version = Solana::Config.idl_version  # from the committed IDL metadata
+    @network     = Solana::Config::NETWORK
   end
 
   def usdc_balance
