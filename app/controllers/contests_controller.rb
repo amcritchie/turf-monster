@@ -746,6 +746,11 @@ class ContestsController < ApplicationController
 
   # Confirm an onchain direct entry after the user has co-signed and submitted the tx.
   def confirm_onchain_entry
+    if @contest.cancelled?
+      return render json: { success: false, error: "This contest was cancelled." },
+                    status: :unprocessable_entity
+    end
+
     entry = @contest.entries.find_by(id: params[:entry_id], user: current_user, status: :cart)
     return render json: { error: "Entry not found" }, status: :not_found unless entry
 

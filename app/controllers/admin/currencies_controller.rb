@@ -33,6 +33,13 @@ module Admin
         raise "Invalid mint pubkey" unless valid_base58_pubkey?(mint)
         raise "Kind must be 0 or 1" unless [0, 1].include?(kind)
 
+        # Preflight against the on-chain registry so we don't queue a 2-of-3
+        # cosign for a TX the program will reject (6023 already-registered /
+        # 6024 registry-full).
+        slots = registered_slots
+        raise "Currency #{mint[0..7]}… is already registered" if slots.any? { |c| c[:mint] == mint }
+        raise "Currency registry is full (all 16 slots used)" if slots.size >= 16
+
         vault  = Solana::Vault.new
         result = vault.build_register_currency(
           cosigner_pubkey: Solana::Config::MULTISIG_COSIGNER,
@@ -60,6 +67,12 @@ module Admin
       rescue_and_log do
         idx = params[:idx].to_i
         raise "Currency slot out of range" unless (0..15).cover?(idx)
+
+        # Preflight: the slot must be populated AND currently active, else the
+        # program reverts (6025 invalid-index / 6026 not-active) after cosign.
+        slot = registered_slots.find { |c| c[:slot].to_i == idx }
+        raise "Slot #{idx} is empty — nothing to deactivate" unless slot
+        raise "Slot #{idx} is already inactive" unless slot[:active]  # boolean from read_vault_state
 
         vault  = Solana::Vault.new
         result = vault.build_deactivate_currency(
@@ -125,6 +138,17 @@ module Admin
     end
 
     private
+
+    # Slots in VaultState.accepted_currencies that hold a real mint (registered,
+    # whether active or deactivated). Reads on-chain; raises on RPC failure
+    # (caught by each action's outer rescue).
+    def registered_slots
+      state = Solana::Vault.new.read_vault_state
+      return [] unless state
+      (state[:accepted_currencies] || []).select do |c|
+        c[:mint].present? && c[:mint] != "11111111111111111111111111111111"
+      end
+    end
 
     def valid_base58_pubkey?(str)
       Solana::Keypair.decode_base58(str).bytesize == 32

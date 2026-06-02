@@ -5,7 +5,8 @@ require "minitest/mock"
 # (read_vault_state + the register/deactivate/sweep builders) is stubbed via the
 # shared FakeVault so nothing hits RPC.
 class Admin::CurrenciesControllerTest < ActionDispatch::IntegrationTest
-  USDC = "222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9".freeze
+  USDC     = "222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9".freeze
+  NEW_MINT = "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ".freeze # not in the registry
 
   setup do
     @admin = users(:alex)
@@ -74,16 +75,27 @@ class Admin::CurrenciesControllerTest < ActionDispatch::IntegrationTest
     vault = vault_with_usdc
     assert_difference -> { PendingTransaction.count }, 1 do
       Solana::Vault.stub :new, vault do
-        post admin_register_currency_path, params: { mint: USDC, kind: 1 }
+        post admin_register_currency_path, params: { mint: NEW_MINT, kind: 1 }
       end
     end
     ptx = PendingTransaction.order(:created_at).last
     assert_equal "register_currency", ptx.tx_type
     assert_nil ptx.target
-    assert_equal USDC, ptx.parsed_metadata["mint"]
+    assert_equal NEW_MINT, ptx.parsed_metadata["mint"]
     assert_equal 1, ptx.parsed_metadata["kind"]
     assert_redirected_to admin_pending_transactions_path
-    assert_equal USDC, vault.register_calls.first[:mint]
+    assert_equal NEW_MINT, vault.register_calls.first[:mint]
+  end
+
+  test "register rejects a mint already in the registry (preflight)" do
+    log_in_as(@admin)
+    vault = vault_with_usdc
+    assert_no_difference -> { PendingTransaction.count } do
+      Solana::Vault.stub :new, vault do
+        post admin_register_currency_path, params: { mint: USDC, kind: 0 }
+      end
+    end
+    assert_redirected_to admin_currencies_path
   end
 
   test "register rejects an invalid mint" do
@@ -111,6 +123,17 @@ class Admin::CurrenciesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "deactivate_currency", ptx.tx_type
     assert_equal 0, ptx.parsed_metadata["currency_idx"]
     assert_equal 0, vault.deactivate_calls.first[:currency_idx]
+  end
+
+  test "deactivate rejects an empty slot (preflight)" do
+    log_in_as(@admin)
+    vault = vault_with_usdc # only slot 0 populated
+    assert_no_difference -> { PendingTransaction.count } do
+      Solana::Vault.stub :new, vault do
+        post admin_deactivate_currency_path(idx: 5)
+      end
+    end
+    assert_redirected_to admin_currencies_path
   end
 
   # --- sweep ---

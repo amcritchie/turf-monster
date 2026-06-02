@@ -58,7 +58,7 @@
   <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/turf_totals_board", edit_entry: @edit_entry %>
   </div>
-<% elsif @contest.open? && (!@has_entry || show_board_for_existing_entry) %>
+<% elsif @contest.open? && !@contest.cancelled? && (!@has_entry || show_board_for_existing_entry) %>
   <div id="board" class="mb-8" style="scroll-margin-top: var(--nav-h, 64px)">
     <%= render "contests/turf_totals_board" %>
   </div>
