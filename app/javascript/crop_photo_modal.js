@@ -64,6 +64,10 @@ function cropPhotoModal(opts) {
           autoCropArea: 0.9, cropBoxResizable: true,
           cropBoxMovable: true, background: false, guides: true
         });
+        // Cropping in progress — lock the modal (no click-outside / escape) so an
+        // accidental click doesn't discard the crop. Cancel still works.
+        var cur = self.$store.modals.current();
+        if (cur && cur.props) cur.props.dismissible = false;
       });
     },
 
@@ -112,7 +116,9 @@ function cropPhotoModal(opts) {
             window.dispatchEvent(new CustomEvent("crop-photo-confirmed", { detail: { blob: blob } }));
           } catch (_) {}
           if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
-          self.$store.modals.close();
+          // dispatch mode: the caller's host owns the post-confirm flow
+          // (processing modal -> success toast), so don't pop the stack here.
+          if (!self.dispatch) self.$store.modals.close();
         } else {
           self.uploadDirect(blob);
         }

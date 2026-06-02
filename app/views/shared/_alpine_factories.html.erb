@@ -359,7 +359,31 @@
         var dt = new DataTransfer();
         dt.items.add(new File([blob], "banner.png", { type: "image/png" }));
         this.$refs.fileInput.files = dt.files;
-        this.$refs.form.requestSubmit();
+
+        // Swap the (still-open) crop modal for a loading card, submit, then close
+        // it + toast when the upload finishes. holdAtLeast keeps the spinner from
+        // flashing on a fast save.
+        var store = window.Alpine && Alpine.store("modals");
+        var hold = (window.StudioModals && window.StudioModals.holdAtLeast)
+          ? window.StudioModals.holdAtLeast(500)
+          : { then: function (cb) { cb(); } };
+        if (store) store.open("banner-saving", { dismissible: false }, { replace: true });
+
+        var form = this.$refs.form;
+        var onEnd = function (e) {
+          form.removeEventListener("turbo:submit-end", onEnd);
+          var ok = e.detail && e.detail.success;
+          hold.then(function () {
+            if (store) store.close();
+            window.dispatchEvent(new CustomEvent("toast", { detail: {
+              type: ok ? "notice" : "alert",
+              title: ok ? "Banner updated" : "Couldn't save the banner",
+              message: ok ? "Your new banner is live." : "Please try again."
+            } }));
+          });
+        };
+        form.addEventListener("turbo:submit-end", onEnd);
+        form.requestSubmit();
       }
     };
   };
