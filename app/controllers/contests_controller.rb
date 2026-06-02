@@ -214,11 +214,8 @@ class ContestsController < ApplicationController
   def update_banner
     rescue_and_log(target: @contest) do
       file = params.dig(:contest, :contest_image)
-      valid = file.respond_to?(:content_type) && file.respond_to?(:size) &&
-              %w[image/png image/jpeg image/webp].include?(file.content_type) &&
-              file.size <= 8.megabytes
 
-      if valid
+      if valid_image?(file)
         @contest.contest_image.attach(file)
         respond_to do |format|
           # The crop modal saves immediately; refresh the preview on the edit
@@ -1407,7 +1404,10 @@ class ContestsController < ApplicationController
     "fifa"
   end
 
+  # :contest_image is intentionally NOT permitted here — the banner saves through
+  # its own #update_banner action. Permitting it would let any future field on
+  # the edit form submit an empty value and purge the existing attachment.
   def contest_update_params
-    params.require(:contest).permit(:name, :tagline, :rank, :contest_image, :starts_at, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected, :chat_enabled)
+    params.require(:contest).permit(:name, :tagline, :rank, :starts_at, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected, :chat_enabled)
   end
 end

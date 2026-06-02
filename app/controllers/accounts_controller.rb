@@ -75,6 +75,9 @@ class AccountsController < ApplicationController
 
   def save_profile
     @user = current_user
+    avatar = params.dig(:user, :avatar)
+    return render_profile_error if avatar.present? && !valid_image?(avatar)
+
     rescue_and_log(target: @user) do
       @user.update!(profile_params)
 
@@ -87,15 +90,7 @@ class AccountsController < ApplicationController
       end
     end
   rescue StandardError
-    title, message = profile_error_toast
-    respond_to do |format|
-      format.html do
-        @profile_error_title = title
-        @profile_error_message = message
-        render :complete_profile, status: :unprocessable_entity
-      end
-      format.json { render json: { error: message }, status: :unprocessable_entity }
-    end
+    render_profile_error
   end
 
   # Passwordless (Lazarus audit #4): changing an EXISTING email is now an
@@ -116,6 +111,18 @@ class AccountsController < ApplicationController
   def update
     @user = current_user
     rescue_and_log(target: @user) do
+      # Avatar saves through its own branch so the name/email update never
+      # carries the attachment param (which, submitted empty, would purge it).
+      if (avatar = params.dig(:user, :avatar)).present?
+        if valid_image?(avatar)
+          @user.avatar.attach(avatar)
+          redirect_to account_path, notice: "Account updated."
+        else
+          redirect_to account_path, alert: "Use a PNG, JPG, or WebP under 8 MB.", status: :see_other
+        end
+        next
+      end
+
       new_params = account_params
       new_email = new_params[:email].to_s.strip
       current_email = @user.email
@@ -419,8 +426,10 @@ class AccountsController < ApplicationController
   end
 
 
+  # :avatar is saved by the dedicated branch in #update and by #save_profile —
+  # not permitted here, so a name/email save can never purge it (see #update).
   def account_params
-    params.require(:user).permit(:name, :email, :avatar)
+    params.require(:user).permit(:name, :email)
   end
 
   def profile_params
@@ -448,6 +457,20 @@ class AccountsController < ApplicationController
       ["Username Taken", "Please choose a new username"]
     else
       ["Couldn't Save Profile", @user.errors.full_messages.first || "Please try again."]
+    end
+  end
+
+  # Renders the complete-profile page (html) or a JSON error for the avatar /
+  # profile save paths — shared by #save_profile's validation guard and rescue.
+  def render_profile_error
+    title, message = profile_error_toast
+    respond_to do |format|
+      format.html do
+        @profile_error_title = title
+        @profile_error_message = message
+        render :complete_profile, status: :unprocessable_entity
+      end
+      format.json { render json: { error: message }, status: :unprocessable_entity }
     end
   end
 
