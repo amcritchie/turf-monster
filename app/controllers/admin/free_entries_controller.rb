@@ -123,14 +123,14 @@ module Admin
     def mint_n_tokens(user, count)
       signatures = []
       count.times do
-        # source_ref MUST be globally unique per mint (v0.19 #9): the on-chain
-        # PDA is sha256(source_ref), so a repeated ref collides on init. The old
-        # `operator_<unix_ts>` collided for every token in the same second —
-        # "Mint N" silently minted 1. A random nonce per mint fixes it.
+        # Globally-unique, <=64-byte source_ref per mint (the on-chain PDA is
+        # sha256(source_ref), so a repeat collides on init). Centralized in
+        # Solana::Vault.operator_source_ref — keyed on user.id + a random nonce;
+        # see that method for why NOT the wallet address (it overflowed [u8;64]).
         result = vault.mint_entry_token(
           wallet_address: user.solana_address,
           source: :operator,
-          source_ref: "operator:#{user.solana_address}:#{SecureRandom.hex(16)}"
+          source_ref: Solana::Vault.operator_source_ref(user)
         )
         signatures << result[:signature]
       end

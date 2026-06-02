@@ -62,4 +62,36 @@ class Solana::EntryTokenPdaTest < ActiveSupport::TestCase
     )
     assert_equal expected, pda
   end
+
+  # --- operator-mint source_ref (Solana::Vault.operator_source_ref) ---
+  # Regression (prod v119 caution): the /admin/free_entries operator mint built
+  # "operator:#{wallet}:#{nonce}" — a ~44-char base58 address pushed it to ~86
+  # bytes, so padded_source_ref RAISED and zero owed free entries minted.
+  # FakeVault masks this (it records the ref, never packs it to [u8;64]), so
+  # these MUST go through the real packer to be meaningful.
+
+  test "operator_source_ref fits the on-chain [u8;64] limit (even at max bigint id)" do
+    [1, 12_345, 9_223_372_036_854_775_807].each do |id|
+      user = Struct.new(:id).new(id)
+      ref  = Solana::Vault.operator_source_ref(user)
+      assert_operator ref.bytesize, :<=, 64,
+        "operator source_ref must fit [u8;64]: #{ref.inspect} (#{ref.bytesize}B)"
+      assert_nothing_raised { @vault.send(:padded_source_ref, ref) }
+    end
+  end
+
+  test "operator_source_ref is globally unique per mint" do
+    user = Struct.new(:id).new(42)
+    refs = Array.new(50) { Solana::Vault.operator_source_ref(user) }
+    assert_equal refs.length, refs.uniq.length,
+      "each operator mint needs a distinct source_ref so it derives a unique PDA"
+  end
+
+  test "the OLD wallet-keyed operator ref WOULD overflow [u8;64] (guards the regression)" do
+    # The exact shape that broke prod: "operator:" + 44-char address + ":" + 32-char nonce.
+    bad = "operator:#{"A" * 44}:#{SecureRandom.hex(16)}"
+    assert_operator bad.bytesize, :>, 64,
+      "sanity: the old wallet-keyed format is the >64-byte shape that regressed"
+    assert_raises(ArgumentError) { @vault.send(:padded_source_ref, bad) }
+  end
 end
