@@ -611,6 +611,11 @@
       <template x-if="$store.modals.current().id === 'magic-link-welcome'">
         <%= render "modals/magic_link_welcome" %>
       </template>
+      <%# Tier-1 "general" rate-limit wait modal — opened by the authedFetch 429
+          interceptor (solana_utils.js) when a general-tier throttle trips. %>
+      <template x-if="$store.modals.current().id === 'rate-limit-general'">
+        <%= render "modals/rate_limit_general" %>
+      </template>
       <template x-if="$store.modals.current().id === 'auth'">
         <%= render "modals/auth" %>
       </template>

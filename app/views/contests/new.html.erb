@@ -232,11 +232,12 @@
           var modal = Alpine.store('solanaModal');
           modal.show('Minting USDC', 'Minting $500 test USDC to your wallet…');
           try {
-            var resp = await fetch('/faucet', {
+            var resp = await window.authedFetch('/faucet', {
               method: 'POST',
               headers: { 'X-CSRF-Token': cfg.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
               body: JSON.stringify({ amount: 500 })
             });
+            if (!resp) { modal.close(); return; }  // 429 wait modal (or 401 login) shown by authedFetch
             var data = await resp.json();
             if (!data.success) throw new Error(data.error || 'Mint failed');
 

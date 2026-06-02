@@ -19,8 +19,28 @@ export function lockedFetch(key, url, opts) {
 //
 // Debounced: a burst of parallel 401s only triggers one modal open.
 var _sessionExpiredHandled = false;
+var _rateLimitHandled = false;
 export async function authedFetch(url, opts) {
   var resp = await fetch(url, opts);
+
+  // Tier-1 "general" rate limit (rack-attack, rate-limit epic Phase 1): surface
+  // the friendly wait modal with a Retry-After countdown and return null so the
+  // caller short-circuits with `if (!resp) return;`. "auth"-tier 429s fall
+  // through to the caller's own inline UX (they don't open this modal).
+  // Debounced like the 401 path so a burst opens one modal.
+  if (resp.status === 429 && (resp.headers.get('X-RateLimit-Tier') || 'general') === 'general') {
+    if (!_rateLimitHandled) {
+      _rateLimitHandled = true;
+      setTimeout(function() { _rateLimitHandled = false; }, 1500);
+      var retryAfter = parseInt(resp.headers.get('Retry-After'), 10) || 60;
+      try {
+        var rlModals = window.Alpine && Alpine.store && Alpine.store('modals');
+        if (rlModals && rlModals.open) rlModals.open('rate-limit-general', { secondsLeft: retryAfter });
+      } catch (e) {}
+    }
+    return null;
+  }
+
   if (resp.status !== 401) return resp;
   if (_sessionExpiredHandled) return null;
   _sessionExpiredHandled = true;

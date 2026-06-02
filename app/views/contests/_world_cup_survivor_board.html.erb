@@ -201,7 +201,14 @@ window.survivorBoard = function() {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Accept': 'application/json' }
           });
-          if (!enterResp) { this.submitting = false; return; } // 401 — login modal surfaced
+          if (!enterResp) {
+            // null → authedFetch surfaced the right modal (401 login / 429
+            // rate-limit). Close our "Submitting Entry" overlay so it doesn't
+            // stack under it, and reset submitting.
+            try { modal.close(); } catch (e) {}
+            this.submitting = false;
+            return;
+          }
           var data = await enterResp.json();
 
           if (data.success) {
