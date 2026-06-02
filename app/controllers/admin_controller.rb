@@ -221,6 +221,13 @@ class AdminController < ApplicationController
     @latest_contest = Contest.order(created_at: :desc).first
   end
 
+  # Static reference: per-instruction byte cost + auth + web2/web3 caller map
+  # for the turf-vault Solana program. Data is hand-maintained in the view
+  # (see app/views/admin/instruction_map.html.erb) — there is no DB or RPC
+  # read here. Refresh the table after a turf-vault program release.
+  def instruction_map
+  end
+
   def usdc_balance
     return render json: { error: "Not logged in" }, status: :unauthorized unless logged_in?
     return render json: { balance: 0 } unless current_user.solana_connected?
