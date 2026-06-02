@@ -349,24 +349,50 @@
             // re-verify sigs just to dry-run). We gate the send on err === null.
             modal.show('Checking', 'Simulating the transaction…');
             console.log('[contest-create] simulating (sigVerify:false) before broadcast…');
-            // signedTx is a VersionedTransaction → use the config-object overload
-            // (NOT the legacy positional (tx, signers, includeAccounts) one, which
-            // routes into Transaction.populate and crashes on numRequiredSignatures).
-            var simResp = await connection.simulateTransaction(signedTx, { sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed' });
-            var simVal = simResp && simResp.value ? simResp.value : {};
-            console.log('[contest-create] simulation result:', {
-              err: simVal.err,
-              unitsConsumed: simVal.unitsConsumed,
-              logsCount: (simVal.logs || []).length
+            // Simulate via RAW JSON-RPC on the serialized bytes — do NOT pass the
+            // signedTx OBJECT to any web3.js Connection method. Phantom's
+            // provider.signTransaction returns a tx built from Phantom's OWN
+            // web3.js bundle, so the page's `instanceof VersionedTransaction`
+            // check fails and connection.simulateTransaction mis-dispatches to the
+            // LEGACY overload → Transaction.populate → "Cannot read properties of
+            // undefined (reading 'numRequiredSignatures')". Bytes are class-agnostic
+            // (same reason sendRawTransaction below is safe). This mirrors the
+            // pollConfirmation / mcritchie signing-module RPC pattern.
+            var simBytes = signedTx.serialize();
+            // Chunked Uint8Array→base64 (avoid String.fromCharCode.apply call-stack
+            // limits on ~788-byte payloads and any future-larger TX).
+            var simBinary = '';
+            var simChunk = 0x8000;
+            for (var si = 0; si < simBytes.length; si += simChunk) {
+              simBinary += String.fromCharCode.apply(null, simBytes.subarray(si, si + simChunk));
+            }
+            var rawB64 = btoa(simBinary);
+            var simRpc = await fetch(rpcUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0', id: 1, method: 'simulateTransaction',
+                params: [ rawB64, { sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed', encoding: 'base64' } ]
+              })
             });
-            if (simVal.logs && simVal.logs.length) {
+            var simJson = await simRpc.json();
+            console.log('[contest-create] raw simulateTransaction JSON-RPC response:', simJson);
+            var simVal = (simJson.result && simJson.result.value) || null;
+            console.log('[contest-create] simulation result:', {
+              rpcError: simJson.error || null,
+              err: simVal ? simVal.err : undefined,
+              unitsConsumed: simVal ? simVal.unitsConsumed : undefined,
+              logsCount: simVal && simVal.logs ? simVal.logs.length : 0
+            });
+            if (simVal && simVal.logs && simVal.logs.length) {
               console.log('[contest-create] simulation program logs:');
               simVal.logs.forEach(function(l) { console.log('[contest-create]   ' + l); });
             }
-            if (simVal.err) {
-              var simErrStr = JSON.stringify(simVal.err);
-              console.error('[contest-create] simulation FAILED — aborting broadcast:', simErrStr, simVal.logs);
-              var tailLogs = (simVal.logs || []).slice(-4).join('\n');
+            if (simJson.error || (simVal && simVal.err !== null && simVal.err !== undefined)) {
+              var simErrStr = JSON.stringify(simJson.error || simVal.err);
+              var simLogs = (simVal && simVal.logs) || [];
+              console.error('[contest-create] simulation FAILED — aborting broadcast:', simErrStr, simLogs);
+              var tailLogs = simLogs.slice(-4).join('\n');
               throw new Error('Pre-flight simulation failed: ' + simErrStr + (tailLogs ? ('\n\n' + tailLogs) : ''));
             }
 
