@@ -381,7 +381,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 ## Testing
 
 ### Rails Tests
-- `bin/rails test` — **~590 tests** (minitest + fixtures), run parallel via `parallelize(workers: :number_of_processors)`; ~10s wall locally. `COVERAGE=1` (or CI) starts SimpleCov.
+- `bin/rails test` — **~590 tests** (minitest + fixtures), run parallel via `parallelize(workers: :number_of_processors)`; ~10s wall locally. `COVERAGE=1` (or CI) starts SimpleCov — **~50% line / ~55% branch**, merged across all parallel workers (each worker gets a unique command_name via `parallelize_setup`; before that fix the report collapsed to one "Worker 0" at ~2%). `ENFORCE_COVERAGE=1` gates at 48% line (opt-in, not wired into CI).
 - Test fixtures: 9 files in `test/fixtures/*.yml` (`slate_matchups`, `teams`, `games`, `users`, `entries`, `landing_pages`, …) — small; loaded for every test via `fixtures :all`.
 - Auth is passwordless (magic-link). Helpers in `test/test_helper.rb`: `log_in_as(user)` mints + consumes a magic-link token (email required); `log_in_as_onchain(user)` for wallet users; `sign_entry_message(...)` for signed on-chain entries. There is no test password.
 

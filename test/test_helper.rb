@@ -2,14 +2,14 @@ ENV["RAILS_ENV"] ||= "test"
 
 # I1 (Stage 3 audit): SimpleCov must start before Rails loads any app code
 # so it can track which lines get hit. Opt-in via COVERAGE=1 to keep the
-# default `bin/rails test` fast. Threshold enforcement is separately opt-in
-# (ENFORCE_COVERAGE=1) because parallel worker fragmentation makes the
-# aggregate look artificially low — read per-file numbers in
-# coverage/index.html to set realistic minimums.
+# default `bin/rails test` fast; ENFORCE_COVERAGE=1 turns the line threshold
+# into a hard gate. Parallel workers each get a UNIQUE command_name + persist
+# their result via the parallelize_setup/teardown hooks below, so the aggregate
+# is real — it used to collapse to a single "Worker 0" (~2%) because every
+# forked worker wrote the resultset under the same name and overwrote the rest.
 if ENV["COVERAGE"] == "1" || ENV["CI"]
   require "simplecov"
   SimpleCov.start "rails" do
-    command_name "Worker #{ENV['TEST_ENV_NUMBER'] || '0'}"
     merge_timeout 3600
     enable_coverage :branch
     add_group "Models",      "app/models"
@@ -21,7 +21,11 @@ if ENV["COVERAGE"] == "1" || ENV["CI"]
     add_filter "/config/"
     add_filter "/db/"
     add_filter "/vendor/"
-    minimum_coverage(line: 70) if ENV["ENFORCE_COVERAGE"] == "1"
+    # Floor set just below the real merged aggregate (~50% line / ~55% branch,
+    # stable across local + eager-load/CI). Was a dormant guess of 70 from when
+    # the broken merge made coverage look like ~2%. Ratchet upward as coverage
+    # grows; ENFORCE_COVERAGE=1 is opt-in (not wired into CI yet).
+    minimum_coverage(line: 48) if ENV["ENFORCE_COVERAGE"] == "1"
   end
 end
 
@@ -37,6 +41,21 @@ OmniAuth.config.test_mode = true
 module ActiveSupport
   class TestCase
     parallelize(workers: :number_of_processors)
+
+    # SimpleCov + Rails parallel testing: each test runs in a forked worker, and
+    # unless each worker writes its resultset under a UNIQUE command_name they
+    # overwrite each other — collapsing the report to one worker's coverage
+    # (~2%). (ENV["TEST_ENV_NUMBER"] is a parallel_tests-gem var, nil under
+    # Rails' built-in parallelize — which is why the old static name was always
+    # "Worker 0".) Name each worker by its index and persist its result on
+    # teardown; SimpleCov merges all the per-worker resultsets in the primary
+    # process at_exit. Registered only under COVERAGE/CI; a no-op when workers
+    # falls back to 1 (the hooks just don't fire).
+    if ENV["COVERAGE"] == "1" || ENV["CI"]
+      parallelize_setup    { |worker| SimpleCov.command_name "Worker #{worker}" }
+      parallelize_teardown { |_worker| SimpleCov.result }
+    end
+
     fixtures :all
   end
 end
