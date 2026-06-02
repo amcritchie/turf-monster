@@ -49,9 +49,11 @@
             <% if has_edit_items %>
               <div class="border-t border-subtle my-1"></div>
             <% end %>
-            <%# Opens the banner-swap modal (registered in the layout host for
-                admins on contest pages) — same modal as the hero's Edit button,
-                surfaced here next to Edit Entry for discoverability. %>
+            <%= link_to "Edit Contest", edit_contest_path(@contest),
+                  class: "block px-4 py-2 text-sm text-body hover:bg-surface-alt transition" %>
+            <%# Picks a new banner: clicks the persistent uploader host's file
+                input (in the layout) -> shared crop modal -> Turbo submit. Same
+                flow as the hero's Edit button. %>
             <button type="button"
                     @click="open = false; document.getElementById('banner-image-picker').click()"
                     class="block w-full text-left px-4 py-2 text-sm text-body hover:bg-surface-alt transition">
