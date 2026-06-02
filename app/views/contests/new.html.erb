@@ -306,31 +306,89 @@
             // the send fail silently or simulate-fail. The server re-does the
             // admin partial-sign over the new blockhash (the create_contest TX
             // is admin co-signed, so the rebuild must go through the server).
+            // The rebuilt TX inherits the ComputeBudget priority-fee +
+            // CU-limit ixs from build_partial_signed (server-side).
             // Mirrors mcritchie's fetchFreshTx. params_token still binds finalize.
+            console.log('[contest-create] rebuilding TX with fresh blockhash via', cfg.rebuildPath);
             var rebuildResp = await fetch(cfg.rebuildPath, {
               method: 'POST',
               headers: { 'X-CSRF-Token': cfg.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
               body: JSON.stringify({ params_token: prepareData.params_token })
             });
             var rebuildData = await rebuildResp.json();
+            console.log('[contest-create] rebuild response:', { success: rebuildData.success, error: rebuildData.error, serialized_tx_len: rebuildData.serialized_tx ? rebuildData.serialized_tx.length : null });
             if (!rebuildData.success) throw new Error(rebuildData.error || 'Failed to refresh transaction');
 
             modal.show('Sign Transaction', 'Approve the prize-pool USDC transfer in Phantom…');
 
-            // Step 2 — deserialize (fresh-blockhash TX), sign, broadcast
+            // Step 2 — deserialize (fresh-blockhash TX), inspect, sign, broadcast
             var txBytes = Uint8Array.from(atob(rebuildData.serialized_tx), function(c) { return c.charCodeAt(0); });
             var tx = solanaWeb3.Transaction.from(txBytes);
-            var signedTx = await provider.signTransaction(tx);
+            try {
+              var rbh = tx.recentBlockhash;
+              var progIds = tx.instructions.map(function(ix) { return ix.programId.toBase58(); });
+              var acctCount = tx.instructions.reduce(function(n, ix) { return n + ix.keys.length; }, 0);
+              console.log('[contest-create] deserialized TX:', {
+                recentBlockhash: rbh,
+                instructionCount: tx.instructions.length,
+                programIds: progIds,
+                totalAccountKeys: acctCount,
+                hasComputeBudgetPrice: progIds.indexOf('ComputeBudget111111111111111111111111111111') !== -1
+              });
+            } catch (logErr) { console.warn('[contest-create] TX inspection failed (non-fatal):', logErr); }
 
-            modal.show('Broadcasting', 'Submitting to Solana…');
+            var signedTx = await provider.signTransaction(tx);
+            console.log('[contest-create] signed by Phantom; raw byte length:', signedTx.serialize().length);
+
             var rpcUrl = document.body.dataset.solanaRpcUrl;
             var connection = new solanaWeb3.Connection(rpcUrl, 'confirmed');
-            var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+
+            // Step 2.5 — simulate BEFORE broadcasting so any program error surfaces
+            // as a real message + logs instead of a silent mainnet drop. sigVerify
+            // is false (the TX is fully signed but we don't need the cluster to
+            // re-verify sigs just to dry-run). We gate the send on err === null.
+            modal.show('Checking', 'Simulating the transaction…');
+            console.log('[contest-create] simulating (sigVerify:false) before broadcast…');
+            var simResp = await connection.simulateTransaction(signedTx, undefined, false);
+            var simVal = simResp && simResp.value ? simResp.value : {};
+            console.log('[contest-create] simulation result:', {
+              err: simVal.err,
+              unitsConsumed: simVal.unitsConsumed,
+              logsCount: (simVal.logs || []).length
+            });
+            if (simVal.logs && simVal.logs.length) {
+              console.log('[contest-create] simulation program logs:');
+              simVal.logs.forEach(function(l) { console.log('[contest-create]   ' + l); });
+            }
+            if (simVal.err) {
+              var simErrStr = JSON.stringify(simVal.err);
+              console.error('[contest-create] simulation FAILED — aborting broadcast:', simErrStr, simVal.logs);
+              var tailLogs = (simVal.logs || []).slice(-4).join('\n');
+              throw new Error('Pre-flight simulation failed: ' + simErrStr + (tailLogs ? ('\n\n' + tailLogs) : ''));
+            }
+
+            modal.show('Broadcasting', 'Submitting to Solana…');
+            // skipPreflight:false → the RPC runs preflight and returns a real
+            // error on send (instead of the old skipPreflight:true which
+            // silently swallowed mainnet drops). maxRetries kept for resends.
+            var broadcastOpts = { skipPreflight: false, maxRetries: 3, preflightCommitment: 'confirmed' };
+            console.log('[contest-create] sendRawTransaction options:', broadcastOpts);
+            var txSig = await connection.sendRawTransaction(signedTx.serialize(), broadcastOpts);
+            console.log('[contest-create] broadcast returned signature:', txSig);
 
             // HTTP poll getSignatureStatuses instead of connection.confirmTransaction
             // (no WebSocket subscription, no misleading "unknown" timeout).
             modal.show('Confirming', 'Waiting for Solana confirmation…');
-            await window.pollConfirmation(rpcUrl, txSig);
+            await window.pollConfirmation(rpcUrl, txSig, {
+              onPoll: function(attempt, st, out) {
+                console.log('[contest-create] poll #' + attempt + ' getSignatureStatuses:', st ? {
+                  confirmationStatus: st.confirmationStatus,
+                  confirmations: st.confirmations,
+                  err: st.err
+                } : 'null (not yet visible)');
+              }
+            });
+            console.log('[contest-create] confirmed on-chain:', txSig);
 
             // Step 3 — POST tx_signature + params_token + image to finalize
             modal.show('Saving', 'Creating the contest record…');
@@ -352,7 +410,7 @@
             modal.show('Done', 'Redirecting to your new contest…');
             window.location.href = finalData.redirect;
           } catch (err) {
-            console.error('[contest create]', err);
+            console.error('[contest-create] FAILED:', err);
             modal.error(err.message || String(err), 'Contest Creation Failed');
             setIdle();
           }

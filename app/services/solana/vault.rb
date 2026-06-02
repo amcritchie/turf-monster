@@ -32,6 +32,31 @@ module Solana
     # ComputeBudget program id (deterministic).
     COMPUTE_BUDGET_PROGRAM_ID = Keypair.decode_base58("ComputeBudget111111111111111111111111111111")
 
+    # Priority fee for the Phantom-signed partial TXs (create_contest,
+    # enter_contest, set_contest_lock_time/conclusion_time, cancel_contest —
+    # everything that routes through `build_partial_signed`).
+    #
+    # WHY: these TXs carried NO priority fee. On an empty devnet a fee-less TX
+    # lands fine; on mainnet-beta under load the leader deprioritizes/drops
+    # fee-less TXs, which is exactly the devnet-works/mainnet-drops trap behind
+    # the two create_contest TXs (22opEv2o…, 4CsVqf…) that never landed
+    # (2026-06-02). Adding a ComputeBudget setComputeUnitPrice (+ a sized
+    # setComputeUnitLimit) makes the leader pick the TX up.
+    #
+    # Value math (defaults): 50_000 µlamports/CU × 200_000 CU limit
+    #   = 1.0e10 µlamports = 10_000 lamports = 0.00001 SOL per TX.
+    # Negligible cost, comfortably above the fee-less floor. Both ENV-overridable
+    # so we can crank them for the first mainnet attempt without a redeploy.
+    PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS =
+      ENV.fetch("SOLANA_PRIORITY_FEE_MICROLAMPORTS", "50000").to_i
+
+    # CU cap for the partial-signed instructions. create_contest does two PDA
+    # inits (contest + prize_pool ATA) plus one SPL transfer — well under
+    # 200_000. A generous-but-bounded limit keeps the priority-fee math
+    # predictable (fee = price × limit) and avoids over-reserving CUs.
+    PARTIAL_TX_COMPUTE_UNIT_LIMIT =
+      ENV.fetch("SOLANA_PARTIAL_TX_COMPUTE_UNIT_LIMIT", "200000").to_i
+
     # Sentinel currency_idx for token-funded entries (spec §3.11 / §11 Q2).
     TOKEN_FUNDED_CURRENCY_IDX = 255
 
@@ -1618,6 +1643,19 @@ module Solana
       }
     end
 
+    # ComputeBudgetInstruction::set_compute_unit_price. Discriminator = 0x03,
+    # followed by a little-endian u64 of µlamports-per-CU. This is the
+    # instruction create_contest lacked — it sets the priority fee the leader
+    # uses to order the TX. Fee paid = price × CU limit.
+    def compute_unit_price_ix(micro_lamports)
+      data = "\x03".b + [micro_lamports].pack("Q<")
+      {
+        program_id: COMPUTE_BUDGET_PROGRAM_ID,
+        accounts: [],
+        data: data
+      }
+    end
+
     # Fetch the user's USDC ATA balance in lamports. Returns 0 if the ATA
     # doesn't exist (user hasn't been funded yet).
     def fetch_usdc_ata_balance_lamports(wallet_address)
@@ -1640,6 +1678,11 @@ module Solana
 
     def build_partial_signed(accounts:, data:, additional_signers:)
       tx = build_tx(Keypair.admin)
+      # ComputeBudget ixs FIRST (priority fee + CU cap), then the program ix.
+      # These give the TX a non-zero priority fee so a mainnet leader picks it
+      # up under load — the fix for the fee-less create_contest drops.
+      tx.add_instruction(**compute_unit_price_ix(PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS))
+      tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
       tx.add_instruction(program_id: @program_id, accounts: accounts, data: data)
       tx.serialize_partial_base64(additional_signers: additional_signers)
     end

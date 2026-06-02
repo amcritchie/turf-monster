@@ -74,8 +74,12 @@ export async function pollConfirmation(rpcUrl, sig, opts) {
   var intervalMs = opts.intervalMs || 1500;
   var timeoutMs  = opts.timeoutMs  || 60000;
   var deadline   = Date.now() + timeoutMs;
+  // Optional per-poll observer (e.g. the contest-create flow logs each result).
+  var onPoll = typeof opts.onPoll === 'function' ? opts.onPoll : null;
+  var attempt = 0;
 
   while (Date.now() < deadline) {
+    attempt++;
     var resp = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -88,6 +92,7 @@ export async function pollConfirmation(rpcUrl, sig, opts) {
       var out = await resp.json();
       if (out.error) throw new Error('getSignatureStatuses RPC error: ' + JSON.stringify(out.error));
       var st = out.result && out.result.value && out.result.value[0];
+      if (onPoll) { try { onPoll(attempt, st, out); } catch (e) { /* observer must never break polling */ } }
       if (st) {
         if (st.err) throw new Error('Transaction failed on-chain: ' + JSON.stringify(st.err));
         var status = st.confirmationStatus;
