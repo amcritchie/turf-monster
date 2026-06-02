@@ -257,38 +257,54 @@
     form.requestSubmit();
   };
 
-  // === contestBannerHost — contests/edit.html.erb =================
-  // Host for the admin banner editor on the contest edit screen. "Edit banner"
-  // calls open(), which opens the SHARED crop-photo modal (cropPhotoModal) in
-  // dropzone + dispatch mode: the modal itself picks the file (click or drag-
-  // drop), shows the cropper, and dispatches the cropped Blob via
-  // 'crop-photo-confirmed'. applyCrop() drops it into the (own) form and submits
-  // immediately via Turbo (update_banner). Same cropper module as the avatar.
-  window.contestBannerHost = function (opts) {
+  // === imageUploadHost — contests/edit.html.erb + accounts/show.html.erb ===
+  // One host for both immediate-save image uploaders: the contest banner editor
+  // and the account avatar. Two entry points feed the SHARED crop-photo modal
+  // (cropPhotoModal) in dispatch mode:
+  //   open()           — the modal itself is the click/drag-drop target (banner)
+  //   onFileSelected() — a native file picker hands the image in (avatar)
+  // Both dispatch the cropped Blob via 'crop-photo-confirmed'; applyCrop() drops
+  // it into the host's own hidden form input and submits immediately with a
+  // loading card + toast (submitFormWithProgress). opts = crop config
+  // (aspectRatio, maxWidth, maxHeight, transparent, autoCropArea) + save copy
+  // (saving, success, successMessage, failure, dismissible, toast, filename).
+  window.imageUploadHost = function (opts) {
     opts = opts || {};
+    function cropProps(extra) {
+      var p = {
+        aspectRatio: opts.aspectRatio || 1,
+        transparent: opts.transparent !== false,
+        dispatch: true
+      };
+      if (opts.maxWidth) p.maxWidth = opts.maxWidth;
+      if (opts.maxHeight) p.maxHeight = opts.maxHeight;
+      if (opts.autoCropArea) p.autoCropArea = opts.autoCropArea;
+      if (extra) { for (var k in extra) { p[k] = extra[k]; } }
+      return p;
+    }
     return {
+      // Banner: the modal itself is the file picker / drop target.
       open() {
         if (!window.Alpine || !Alpine.store("modals")) return;
-        Alpine.store("modals").open("crop-photo", {
-          aspectRatio: opts.aspectRatio || 4,
-          maxWidth: opts.maxWidth || 2000,
-          maxHeight: opts.maxHeight || 500,
-          transparent: opts.transparent !== false,
-          autoCropArea: 1,
-          dispatch: true
-        });
+        Alpine.store("modals").open("crop-photo", cropProps());
+      },
+      // Avatar: a native file picker reads the image, then hands it to the modal.
+      onFileSelected(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          Alpine.store("modals").open("crop-photo", cropProps({ imageUrl: e.target.result }));
+        };
+        reader.readAsDataURL(file);
+        event.target.value = "";
       },
       applyCrop(blob) {
         if (!blob) return;
         var dt = new DataTransfer();
-        dt.items.add(new File([blob], "banner.png", { type: "image/png" }));
+        dt.items.add(new File([blob], opts.filename || "image.png", { type: "image/png" }));
         this.$refs.fileInput.files = dt.files;
-        window.submitFormWithProgress(this.$refs.form, {
-          saving: "Saving banner…",
-          success: "Banner updated",
-          successMessage: "Your new banner is live.",
-          failure: "Couldn't save the banner"
-        });
+        window.submitFormWithProgress(this.$refs.form, opts);
       }
     };
   };

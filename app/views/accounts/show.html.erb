@@ -1,8 +1,7 @@
 <%# Cropper.js is loaded on this page so the shared crop-photo modal
     (Alpine.store('modals').open('crop-photo', ...)) has its dependency
     when the user clicks the avatar to upload. %>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<%= render "shared/cropper_assets" %>
 
 <%# Auto-open the email-change-pending modal after a held email change.
     AccountsController#update redirects here with flash[:email_change_pending]
@@ -66,13 +65,13 @@
 
   <%# -- Profile (avatar + username) -- %>
   <div class="card shadow p-6 mb-6">
-    <div x-data="profileAvatarUploader()"
-         @crop-photo-confirmed.window="onCropConfirmed($event.detail.blob)"
+    <div x-data="imageUploadHost({ aspectRatio: 1, filename: 'avatar.png', saving: 'Saving photo…', dismissible: true, toast: false })"
+         @crop-photo-confirmed.window="applyCrop($event.detail.blob)"
          class="flex flex-col items-center">
       <%# Hidden form auto-submitted after the user confirms a crop. %>
       <%= form_with model: @user, url: account_path, method: :patch,
                     html: { multipart: true, "x-ref": "form", class: "hidden" } do |f| %>
-        <input type="file" name="user[avatar]" x-ref="hiddenFileInput">
+        <input type="file" name="user[avatar]" x-ref="fileInput">
       <% end %>
       <input type="file" x-ref="filePicker" @change="onFileSelected($event)" accept="image/*" class="hidden">
 
@@ -104,32 +103,6 @@
       </button>
     </div>
 
-    <script>
-      function profileAvatarUploader() {
-        return {
-          onFileSelected: function(event) {
-            var file = event.target.files[0];
-            if (!file) return;
-            var reader = new FileReader();
-            reader.onload = function(e) {
-              Alpine.store('modals').open('crop-photo', { imageUrl: e.target.result, dispatch: true });
-            };
-            reader.readAsDataURL(file);
-            event.target.value = '';
-          },
-          onCropConfirmed: function(blob) {
-            if (!blob) return;
-            var dt = new DataTransfer();
-            dt.items.add(new File([blob], 'avatar.png', { type: 'image/png' }));
-            this.$refs.hiddenFileInput.files = dt.files;
-            // Loading card while it uploads. #update redirects, so the reload
-            // (closeAllDismissible) clears the card and the server flash toasts —
-            // hence dismissible + no client toast.
-            window.submitFormWithProgress(this.$refs.form, { saving: 'Saving photo…', dismissible: true, toast: false });
-          }
-        };
-      }
-    </script>
   </div>
 
   <%# -- Identities (wallet + balances + Google + email) -- %>

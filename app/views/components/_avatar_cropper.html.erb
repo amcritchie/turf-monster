@@ -12,8 +12,7 @@
 
     Locals: form_field_name (e.g. "user[avatar]") %>
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<%= render "shared/cropper_assets" %>
 
 <div x-data="avatarCropperHost()"
      @crop-photo-confirmed.window="applyCrop($event.detail.blob)"

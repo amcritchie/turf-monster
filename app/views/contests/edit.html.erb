@@ -11,12 +11,10 @@
     <% end %>
 
     <%# Banner — immediate-save via the shared crop modal (update_banner). Its
-        OWN form (HTML can't nest it inside the main edit form below). cropper.js
-        is loaded here for the shared crop-photo modal. %>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+        OWN form (HTML can't nest it inside the main edit form below). %>
+    <%= render "shared/cropper_assets" %>
     <div class="mb-5"
-         x-data="contestBannerHost({ aspectRatio: 4, maxWidth: 2000, maxHeight: 500, transparent: true })"
+         x-data="imageUploadHost({ aspectRatio: 4, maxWidth: 2000, maxHeight: 500, transparent: true, autoCropArea: 1, filename: 'banner.png', saving: 'Saving banner…', success: 'Banner updated', successMessage: 'Your new banner is live.', failure: 'Couldn\'t save the banner' })"
          @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
       <label class="block text-sm text-secondary mb-2 font-medium">Banner</label>
       <%= render "contests/banner_preview" %>

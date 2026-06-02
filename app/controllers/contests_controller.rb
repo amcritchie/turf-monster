@@ -206,7 +206,7 @@ class ContestsController < ApplicationController
   end
 
   # Admin "Update banner" flow — swap just the contest's hero image. The admin
-  # frames the image in the shared crop-photo modal (contestBannerHost +
+  # frames the image in the shared crop-photo modal (imageUploadHost +
   # cropPhotoModal, same cropper as the avatar) and the persistent uploader host
   # POSTs the cropped PNG here. Responds with Turbo Streams so #contest-hero
   # re-renders in place. (A bad file 422s, but the crop always yields a valid
