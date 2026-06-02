@@ -17,6 +17,12 @@ FileUtils.chdir APP_ROOT do
   system! "gem install bundler --conservative"
   system("bundle check") || system!("bundle install")
 
+  puts "\n== Configuring git hooks =="
+  # Shared hooks live in .githooks/ (tracked). Point git at them so the
+  # pre-push test gate runs for everyone. Idempotent. Bypass a push with
+  # `git push --no-verify` (or SKIP_TESTS=1).
+  system! "git config core.hooksPath .githooks"
+
   # puts "\n== Copying sample files =="
   # unless File.exist?("config/database.yml")
   #   FileUtils.cp "config/database.yml.sample", "config/database.yml"

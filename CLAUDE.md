@@ -381,19 +381,18 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 ## Testing
 
 ### Rails Tests
-- `bin/rails test` — **198 tests** total (minitest + fixtures)
-- Test fixtures: 6 contest_matchups, 6 teams, 2 games
-- Test password: `"password"` (min 6 chars)
-- Test helper: `log_in_as(user)` defaults to password "password"
+- `bin/rails test` — **~590 tests** (minitest + fixtures), run parallel via `parallelize(workers: :number_of_processors)`; ~10s wall locally. `COVERAGE=1` (or CI) starts SimpleCov.
+- Test fixtures: 9 files in `test/fixtures/*.yml` (`slate_matchups`, `teams`, `games`, `users`, `entries`, `landing_pages`, …) — small; loaded for every test via `fixtures :all`.
+- Auth is passwordless (magic-link). Helpers in `test/test_helper.rb`: `log_in_as(user)` mints + consumes a magic-link token (email required); `log_in_as_onchain(user)` for wallet users; `sign_entry_message(...)` for signed on-chain entries. There is no test password.
 
 ### Playwright E2E Tests
-- `npm test` — **72 tests** across 9 spec files (chromium project), plus 17 devnet tests
+- `npm test` — **~60 tests** across 13 spec files (chromium project), plus the `@devnet` specs (`devnet-smoke.spec.js`, ~17 tests, run nightly via `.github/workflows/devnet-nightly.yml`; excluded from `npm test`). Locally single-worker (`workers: 1`); CI runs them in **3 parallel shards** (`--shard=i/3`, see `ci.yml`). In-process workers are unsafe — `/test/reseed` is a stop-the-world DB/Redis reset, so each shard is its own isolated runner instead.
 - `npm run test:headed` / `npm run test:ui` — visual modes
 - Config: `playwright.config.js` — Chromium only, port 3001
 - Seed: `e2e/seed.rb` — 5 users (shared from `db/seeds/users.rb`), 2 contests (turf-totals + survivor), 48 matchups, 1 faucet TransactionLog. Run with `bin/rails runner e2e/seed.rb` (against the dev server's DB by default).
 - Helper: `e2e/helpers.js` — `login(page, email, password)`
 - **`/test/*` routes** (`test/oauth_mock`, `test/set_user_referral_counts`, `test/create_active_entry`, `test/user_info/:slug`) — gated `unless Rails.env.production?` so Playwright (which runs against the dev server) can reach them. Implemented by `TestController`; never reachable in prod.
-- **OmniAuth mocks** — `OmniAuth.config.test_mode = true` is set in `development.rb` after_initialize (gated to dev only) so the `referrals.spec.js` Google-OAuth path uses the mock_auth hash POSTed by Playwright instead of redirecting to Google.
+- **OmniAuth mocks** — dev no longer forces `test_mode` on (commit 85a6870 → real Google login in interactive dev). `TestController#set_oauth_mock` enables `test_mode` + sets the `mock_auth` hash on demand right before Playwright navigates (e.g. `referrals.spec.js`'s Google path); `/test/reseed` flips it back off. The minitest suite keeps `test_mode` on via `test.rb`, plus a per-test baseline reset in `test/test_helper.rb` — `OmniAuth.config` is a process-global, so without the reset a `reseed` in one test leaks `test_mode=false` into later OmniAuth callback tests → `csrf_detected`.
 - **Test contests are off-chain** — `e2e/seed.rb` creates the test contests with `skip_onchain_callback = true`. On-chain entry coverage lives in `e2e/devnet-smoke.spec.js`, which sets up its own fresh on-chain Contest PDAs.
 - **User sequence reset** — seed runs `ALTER SEQUENCE users_id_seq RESTART WITH 1` so seeded users land at IDs 1..5. `referrals.spec.js` hardcodes inviter slugs (`mason-3`, `mack-4`, `turf-5`) that depend on this.
 - **`rack-attack` throttle pollution between runs** — heavy login traffic accumulates throttle counters in Redis. If `loginAdmin` starts timing out across many specs, clear with: `redis-cli --scan --pattern 'rack-attack:*' | xargs redis-cli del`. Worth wrapping in a `globalSetup` in `playwright.config.js` (tracked TODO).
@@ -428,7 +427,7 @@ Violations of these produce silent no-ops or phantom DOM elements, not errors. E
 ## Workflow
 
 - **Debugging**: STOP and show the issue before fixing
-- **Testing**: `bin/rails test` before every commit. Pre-commit hook enforces this.
+- **Testing**: a **pre-push** git hook (`.githooks/pre-push`, enabled via `core.hooksPath` by `bin/setup`) runs `bin/rails test` before every push, so a red suite never reaches a PR. Commits stay fast — there is no pre-*commit* hook. Bypass a push with `git push --no-verify` or `SKIP_TESTS=1`. `bin/deploy` also runs the suite as a pre-flight gate.
 - **Database**: Migrate and seed freely without asking
 - **Server**: Restart proactively after gems/initializers/routes changes
 - **Git**: Small frequent commits, push immediately after committing

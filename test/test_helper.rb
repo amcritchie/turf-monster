@@ -42,6 +42,22 @@ module ActiveSupport
 end
 
 class ActionDispatch::IntegrationTest
+  # OmniAuth.config is a PROCESS-GLOBAL singleton shared by every test in a
+  # parallel worker. TestController#reseed (hit by TestControllerTest's
+  # `post /test/reseed`, and by Playwright at runtime) flips
+  # `test_mode = false` + clears mock_auth to model the real-Google dev flow
+  # (commit 85a6870). Without a per-test reset, whichever OmniAuth callback
+  # test the worker happens to run *after* that reseed lands on the real
+  # OAuth2 strategy and fails with `csrf_detected` — the state check the mock
+  # path skips. Re-assert the test baseline before every integration test so
+  # worker sharding / ordering can't make OmniAuth flaky. Per-class setups run
+  # after this (parent callbacks fire first), so they still layer their own
+  # mock_auth on top of the cleared hash.
+  setup do
+    OmniAuth.config.test_mode = true
+    OmniAuth.config.mock_auth.clear
+  end
+
   # Passwordless: email auth is magic-link only. Logging in = mint a magic-link
   # token the same way MagicLinksController#create does, then GET the consume
   # URL to establish the session (existing email user → sign_in_existing).
