@@ -1,8 +1,8 @@
 {
-  "address": "mnzowM2F9dppGVFGrcTAh5351mMqYunX3b2MvdvgS2S",
+  "address": "DaFv83yokwTz8msP9CzJ13eazSGk15NuUTxjkfzJzxMM",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.19.0",
+    "version": "0.20.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
@@ -1929,6 +1929,69 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "update_signers",
+      "docs": [
+        "Rotate the multisig signer set IN PLACE (no redeploy). 2-of-3 of the",
+        "CURRENT signers. Re-added in v0.20 so a compromised signer key (e.g. a",
+        "leaked Alex Bot server key) is a cheap on-chain rotation rather than a",
+        "full program redeploy. Threshold is PINNED at 2-of-3 — this rotates",
+        "signer pubkeys only (`validate_multisig` ignores the threshold field).",
+        "Enforces signer continuity (BOTH authorizing cosigners survive the",
+        "rotation; no default/zeroed slots — `SignerContinuityRequired` 6017)",
+        "and no duplicate signers (`DuplicateSigner` 6014)."
+      ],
+      "discriminator": [
+        228,
+        82,
+        68,
+        150,
+        92,
+        66,
+        140,
+        174
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_signers",
+          "type": {
+            "array": [
+              "pubkey",
+              3
+            ]
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -2100,7 +2163,7 @@
     {
       "code": 6017,
       "name": "SignerContinuityRequired",
-      "msg": "New signer set must retain at least one current cosigner"
+      "msg": "New signer set must retain BOTH authorizing cosigners (2-of-3) and contain no default/zeroed slots"
     },
     {
       "code": 6018,
