@@ -1,0 +1,24 @@
+{
+  "name": "Turf Totals",
+  "short_name": "Turf Totals",
+  "description": "Solana-powered World Cup pick'em contests. Pick 6 matchups, stack Turf Scores, win on-chain.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#1e1b35",
+  "background_color": "#1e1b35",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

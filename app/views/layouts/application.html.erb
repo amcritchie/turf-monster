@@ -1,8 +1,53 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title><%= content_for(:title) || "Turf Monster" %></title>
-    <link rel="apple-touch-icon" href="/favicon.png">
+    <%#
+      Site identity + trust/unfurl metadata. App-level (not the studio-engine
+      head partial, which renders below) so we don't have to bump the gem.
+      The engine head already ships viewport, csrf/csp, importmap, --nav-h,
+      overflow-anchor, and apple-mobile-web-app-capable — none of which we
+      touch here. og:url/og:image are absolute (wallet scanners + link
+      unfurlers require absolute URLs). Default title/description below;
+      a page can override the <title> via content_for(:title) and the
+      description/share image via content_for(:meta_description) /
+      content_for(:og_image).
+    %>
+    <% page_title = content_for(:title).presence || "Turf Totals — Solana Pick’em Contests" %>
+    <% meta_description = content_for(:meta_description).presence || "Turf Totals: Solana-powered World Cup pick’em contests. Pick 6 matchups, stack Turf Scores, and win prizes settled on-chain." %>
+    <%# logo.png lives in public/ (not the asset pipeline), so build the
+        absolute URL off the request host rather than image_url. %>
+    <% og_image_url = content_for(:og_image).presence || "#{request.base_url}/logo.png" %>
+    <title><%= page_title %></title>
+    <meta name="description" content="<%= meta_description %>">
+
+    <%# Favicons + PWA icons (Turf Totals green monster mark) %>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <%# Brand dark navy (matches --color-page / manifest theme_color). %>
+    <meta name="theme-color" content="#1e1b35">
+    <%# Modern companion to the engine head's apple-mobile-web-app-capable
+        (clears the Chrome deprecation warning). Both are intentionally kept. %>
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <%# Open Graph (Facebook / iMessage / Discord / Slack unfurls). %>
+    <meta property="og:site_name" content="Turf Totals">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="<%= page_title %>">
+    <meta property="og:description" content="<%= meta_description %>">
+    <meta property="og:url" content="<%= request.original_url %>">
+    <meta property="og:image" content="<%= og_image_url %>">
+
+    <%# Twitter / X card. %>
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<%= page_title %>">
+    <meta name="twitter:description" content="<%= meta_description %>">
+    <meta name="twitter:image" content="<%= og_image_url %>">
+
     <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
     <% if session_replay_active? %>
