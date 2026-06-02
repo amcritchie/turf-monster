@@ -153,6 +153,13 @@ window.survivorBoard = function() {
           // was defense-in-depth that doubled signing prompts without
           // strengthening on-chain integrity.
 
+          // prepare_entry is just-in-time: the server rebuilds the
+          // partial-signed entry TX (build_enter_contest → build_partial_signed)
+          // which RE-FETCHES get_latest_blockhash AND prepends the ComputeBudget
+          // priority-fee + CU-limit ixs. We call it immediately before signing
+          // so the blockhash is maximally fresh (mirrors create's rebuild_create_tx).
+          var rpcUrl = document.body.dataset.solanaRpcUrl;
+          console.log('[contest-entry] POST prepare_entry (fresh blockhash + priority fee)…');
           var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -160,16 +167,81 @@ window.survivorBoard = function() {
           });
           if (!prepareResp) { this.submitting = false; return; } // 401 — login modal surfaced
           var prepareData = await prepareResp.json();
+          console.log('[contest-entry] prepare_entry response:', { success: prepareData.success, error: prepareData.error, entry_pda: prepareData.entry_pda, ptx_slug: prepareData.ptx_slug, serialized_tx_len: prepareData.serialized_tx ? prepareData.serialized_tx.length : null });
           if (!prepareData.success) throw new Error(prepareData.error || 'Failed to prepare entry');
           var ptxSlug = prepareData.ptx_slug;
 
           modal.show('Sign Transaction', 'Approve the entry transaction in your wallet…');
           var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
-          var signedTx = await provider.signTransaction(solanaWeb3.Transaction.from(txBytes));
+          var tx = solanaWeb3.Transaction.from(txBytes);
+          try {
+            var progIds = tx.instructions.map(function(ix) { return ix.programId.toBase58(); });
+            console.log('[contest-entry] deserialized TX:', {
+              recentBlockhash: tx.recentBlockhash,
+              instructionCount: tx.instructions.length,
+              programIds: progIds,
+              hasComputeBudgetPrice: progIds.indexOf('ComputeBudget111111111111111111111111111111') !== -1
+            });
+          } catch (logErr) { console.warn('[contest-entry] TX inspection failed (non-fatal):', logErr); }
+
+          var signedTx = await provider.signTransaction(tx);
+          var signedBytes = signedTx.serialize();
+          console.log('[contest-entry] signed by Phantom; raw byte length:', signedBytes.length);
+
+          var connection = new solanaWeb3.Connection(rpcUrl, 'confirmed');
+
+          // Pre-broadcast simulation via RAW JSON-RPC on the serialized bytes —
+          // surfaces program errors as a real message + logs instead of a silent
+          // mainnet drop. Do NOT pass the signedTx OBJECT to
+          // connection.simulateTransaction: Phantom's signTransaction returns a tx
+          // from Phantom's OWN web3.js bundle, so the page's
+          // `instanceof VersionedTransaction` check fails → mis-dispatch to the
+          // legacy overload → "Cannot read properties of undefined
+          // (reading 'numRequiredSignatures')". Bytes are class-agnostic.
+          modal.show('Checking', 'Simulating the transaction…');
+          var simBinary = '';
+          var simChunk = 0x8000;
+          for (var si = 0; si < signedBytes.length; si += simChunk) {
+            simBinary += String.fromCharCode.apply(null, signedBytes.subarray(si, si + simChunk));
+          }
+          var rawB64 = btoa(simBinary);
+          console.log('[contest-entry] simulating (sigVerify:false) before broadcast…');
+          var simRpc = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0', id: 1, method: 'simulateTransaction',
+              params: [ rawB64, { sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed', encoding: 'base64' } ]
+            })
+          });
+          var simJson = await simRpc.json();
+          console.log('[contest-entry] raw simulateTransaction JSON-RPC response:', simJson);
+          var simVal = (simJson.result && simJson.result.value) || null;
+          console.log('[contest-entry] simulation result:', {
+            rpcError: simJson.error || null,
+            err: simVal ? simVal.err : undefined,
+            unitsConsumed: simVal ? simVal.unitsConsumed : undefined,
+            logsCount: simVal && simVal.logs ? simVal.logs.length : 0
+          });
+          if (simVal && simVal.logs && simVal.logs.length) {
+            console.log('[contest-entry] simulation program logs:');
+            simVal.logs.forEach(function(l) { console.log('[contest-entry]   ' + l); });
+          }
+          if (simJson.error || (simVal && simVal.err !== null && simVal.err !== undefined)) {
+            var simErrStr = JSON.stringify(simJson.error || simVal.err);
+            var simLogs = (simVal && simVal.logs) || [];
+            console.error('[contest-entry] simulation FAILED — aborting broadcast:', simErrStr, simLogs);
+            var tailLogs = simLogs.slice(-4).join('\n');
+            throw new Error('Pre-flight simulation failed: ' + simErrStr + (tailLogs ? ('\n\n' + tailLogs) : ''));
+          }
 
           modal.show('Confirming On-chain', 'Submitting to Solana…');
-          var connection = new solanaWeb3.Connection(document.body.dataset.solanaRpcUrl, 'confirmed');
-          var txSig = await connection.sendRawTransaction(signedTx.serialize(), { skipPreflight: true, maxRetries: 3 });
+          // skipPreflight:false → the RPC runs preflight and returns a real error
+          // on send instead of silently swallowing a mainnet drop.
+          var broadcastOpts = { skipPreflight: false, maxRetries: 3, preflightCommitment: 'confirmed' };
+          console.log('[contest-entry] sendRawTransaction options:', broadcastOpts);
+          var txSig = await connection.sendRawTransaction(signedBytes, broadcastOpts);
+          console.log('[contest-entry] broadcast returned signature:', txSig);
           // Server-side signature trail (see _turf_totals_board.html.erb stamp).
           if (ptxSlug) {
             try {
@@ -180,7 +252,20 @@ window.survivorBoard = function() {
               });
             } catch (_) { /* non-fatal */ }
           }
-          await connection.confirmTransaction(txSig, 'confirmed');
+
+          // HTTP poll getSignatureStatuses instead of connection.confirmTransaction
+          // (no WebSocket subscription, no misleading ws://port+1 timeout).
+          modal.show('Confirming On-chain', 'Waiting for Solana confirmation…');
+          await window.pollConfirmation(rpcUrl, txSig, {
+            onPoll: function(attempt, st) {
+              console.log('[contest-entry] poll #' + attempt + ' getSignatureStatuses:', st ? {
+                confirmationStatus: st.confirmationStatus,
+                confirmations: st.confirmations,
+                err: st.err
+              } : 'null (not yet visible)');
+            }
+          });
+          console.log('[contest-entry] confirmed on-chain:', txSig);
 
           modal.show('Confirming Entry', 'Saving your entry…');
           var confirmResp = await window.authedFetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
@@ -226,6 +311,7 @@ window.survivorBoard = function() {
           }
         }
       } catch (err) {
+        console.error('[contest-entry] FAILED:', err);
         var msg = (typeof parseSolanaError === 'function')
           ? parseSolanaError(err.message || 'Entry failed')
           : (err.message || 'Entry failed');
