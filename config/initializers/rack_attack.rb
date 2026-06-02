@@ -82,10 +82,14 @@ class Rack::Attack
   # generous backstop for shared NATs. Consume (GET /magic_link/:token) is not
   # throttled — brute-forcing an HMAC token is infeasible and legit clicks must
   # always go through.
-  throttle("magic_link/ip", limit: 5, period: 1.hour) do |req|
+  # Dev gets looser caps so a single localhost (one IP, many test addresses)
+  # doesn't trip the limit during normal testing; prod stays strict.
+  magic_link_ip_limit    = Rails.env.development? ? 10 : 5
+  magic_link_email_limit = Rails.env.development? ? 5 : 3
+  throttle("magic_link/ip", limit: magic_link_ip_limit, period: 1.hour) do |req|
     req.ip if req.post? && req.path == "/magic_link"
   end
-  throttle("magic_link/email", limit: 3, period: 1.hour) do |req|
+  throttle("magic_link/email", limit: magic_link_email_limit, period: 1.hour) do |req|
     req.params["email"].to_s.downcase.presence if req.post? && req.path == "/magic_link"
   end
 

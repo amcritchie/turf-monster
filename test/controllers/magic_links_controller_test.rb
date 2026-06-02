@@ -43,6 +43,9 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert welcome.present?, "consume should set the welcome modal flash signal"
     assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
     assert (welcome[:message] || welcome["message"]).present?
+    # The welcome modal renders the new user's auto-generated username under
+    # the title; it must be carried in the flash (layout JSON → modal props).
+    assert_equal user.username, welcome[:username] || welcome["username"]
   end
 
   test "consume lands a new signup on the contest return_to with the welcome modal" do
@@ -52,6 +55,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     welcome = flash[:magic_link_welcome]
     assert welcome.present?
     assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
+    assert (welcome[:username] || welcome["username"]).present?, "welcome carries the username"
   end
 
   test "consume logs in an existing user on a safe return_to with the welcome modal" do
@@ -66,6 +70,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     welcome = flash[:magic_link_welcome]
     assert welcome.present?, "existing sign-in should also show the welcome modal"
     assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
+    assert_equal existing.username, welcome[:username] || welcome["username"]
   end
 
   test "consume verifies an existing but never-verified email" do

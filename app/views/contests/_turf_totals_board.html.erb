@@ -226,7 +226,17 @@ window.selectionBoard = function() {
           var step = JSON.parse(stepRaw);
           sessionStorage.removeItem('pendingAuthStep');
           if (step && step.contestSlug === this.contestId) {
-            if (step.step === 'tokens') this.showTokensPanel();
+            if (step.step === 'tokens') {
+              // If the magic-link welcome modal is showing (flag set by the
+              // layout when flash[:magic_link_welcome] is present), give it its
+              // ~3s success beat THEN swap to the tokens picker. Otherwise
+              // (Google / direct) open immediately — no welcome to wait on.
+              if (window.__magicLinkWelcome) {
+                setTimeout(function () { board.showTokensPanel(); }, 3000);
+              } else {
+                this.showTokensPanel();
+              }
+            }
             if (step.step === 'check-email') this.sendVerificationEmail();
           }
         }
@@ -282,8 +292,22 @@ window.selectionBoard = function() {
           }
           if (this.loggedIn && pending.autoEnter && this.selectionCount === this.picksRequired) {
             var self = this;
-            // Let Alpine flush the state, then replay + enter
-            setTimeout(function () { self.afterLoginSuccess(); }, 50);
+            // Let Alpine flush the state, then replay + enter. When the
+            // magic-link welcome modal is showing, hold ~3s first so its
+            // success beat isn't instantly covered by the tokens picker the
+            // auto-enter opens (showTokensPanel swaps the welcome out at fire).
+            var autoEnterDelay = window.__magicLinkWelcome ? 3000 : 50;
+            setTimeout(function () {
+              // Single-owner handoff: if the magic-link welcome modal is up,
+              // neutralize ITS auto-redirect NOW (before the network-heavy
+              // replay below) so it can't navigate to /tokens/buy mid-handoff —
+              // afterLoginSuccess replays 6 selections + enters, and that tail
+              // can outlast the welcome's 3.5s drain. The board owns the
+              // transition; it swaps the welcome out for the picker on resolve.
+              var wc = Alpine.store('modals').current();
+              if (wc && wc.id === 'magic-link-welcome') wc.props.next = null;
+              self.afterLoginSuccess();
+            }, autoEnterDelay);
           }
         }
       } catch (e) {
@@ -709,6 +733,10 @@ window.selectionBoard = function() {
       };
       if (cur && cur.id === 'auth') {
         s.advance(props);
+      } else if (cur && cur.id === 'magic-link-welcome') {
+        // Replace the welcome beat with the picker (directional slide) so the
+        // welcome modal doesn't linger underneath after the hand-off.
+        s.swap('auth', props);
       } else {
         s.open('auth', props);
       }

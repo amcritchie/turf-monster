@@ -48,8 +48,9 @@ class MagicLinksController < ApplicationController
     user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
     redirect_to magic_link_landing_path(result),
                 flash: { magic_link_welcome: {
-                  message: "Signed in — your 6 picks are saved.",
-                  next:    tokens_buy_path
+                  message:  "Signed in — your 6 picks are saved.",
+                  username: user.username,
+                  next:     tokens_buy_path
                 } }
   end
 
@@ -71,8 +72,9 @@ class MagicLinksController < ApplicationController
       # celebratory beat and dropped the user past the contest they came from.
       redirect_to magic_link_landing_path(result),
                   flash: { magic_link_welcome: {
-                    message: "You're in! Your 6 picks are saved.",
-                    next:    tokens_buy_path
+                    message:  "You're in! Your 6 picks are saved.",
+                    username: user.username,
+                    next:     tokens_buy_path
                   } }
     end
   rescue ActiveRecord::RecordNotUnique
