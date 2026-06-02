@@ -1,9 +1,11 @@
 require "test_helper"
 
 class RegistrationsControllerTest < ActionDispatch::IntegrationTest
-  test "signup page renders" do
+  # Unified auth: GET /signup 301-redirects to the canonical /signin page. The
+  # engine POST /signup (account-from-email) still hits this controller — see below.
+  test "GET /signup redirects to the unified signin page" do
     get signup_path
-    assert_response :success
+    assert_redirected_to signin_path
   end
 
   # Passwordless: the engine POST /signup creates the account from email alone

@@ -33,7 +33,7 @@
       <p class="text-sm text-muted text-center py-1">Chat is closed for this contest.</p>
     <% elsif !logged_in? %>
       <p class="text-sm text-muted text-center py-1">
-        <%= link_to "Log in", login_path, class: "text-primary hover:text-primary-300 font-medium" %> to join the chat.
+        <%= link_to "Sign in", signin_path, class: "text-primary hover:text-primary-300 font-medium" %> to join the chat.
       </p>
     <% elsif !can_post %>
       <p class="text-sm text-muted text-center py-1">Enter the contest to join the chat.</p>

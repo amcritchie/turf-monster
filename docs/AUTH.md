@@ -8,7 +8,11 @@ All optional — user needs at least one:
 - **Google OAuth** — via OmniAuth, links to existing email users automatically
 - **Solana wallet (Phantom)** — Ed25519 signature verification, `SolanaSessionsController`
 
+> Email auth is now a passwordless magic link (no password field) — see `MagicLinksController`. `has_secure_password` is kept dormant as a fallback.
+
 > See [`SIGNUP_FLOWS.md`](SIGNUP_FLOWS.md) for end-to-end sequence diagrams of all three sign-up paths — frontend, backend, third parties, and on-chain.
+
+**Unified sign-in page (2026-06-02):** login and signup are one create-or-login flow, so there is a single canonical page at `GET /signin` (`sessions#new`). Legacy `/login` + `/signup` 301-redirect to it, preserving the query string. The CTA label is "Sign in" everywhere. See the CLAUDE.md "Unified `/signin`" note for the routing details.
 
 ## User Model Auth Design
 

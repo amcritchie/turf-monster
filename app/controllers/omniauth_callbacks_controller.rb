@@ -27,7 +27,7 @@ class OmniauthCallbacksController < ApplicationController
     # cleanly instead of NoMethodError on `auth.extra`.
     if auth.nil?
       Rails.logger.warn("[OmniauthCallbacks] missing omniauth.auth — failing gracefully")
-      return finish_oauth((logged_in? ? account_path : login_path), success: false,
+      return finish_oauth((logged_in? ? account_path : signin_path), success: false,
                           alert: "Google sign-in failed. Please try again.")
     end
 
@@ -37,7 +37,7 @@ class OmniauthCallbacksController < ApplicationController
     validator_result = GoogleOauthValidator.new(id_token: auth.extra&.id_token).validate!
     unless validator_result.ok?
       Rails.logger.warn("[OmniauthCallbacks] rejected (#{validator_result.reason}) email=#{auth.info.email}")
-      return finish_oauth((logged_in? ? account_path : login_path), success: false,
+      return finish_oauth((logged_in? ? account_path : signin_path), success: false,
                           alert: "Google sign-in rejected (#{validator_result.reason}). Make sure your Google email is verified.")
     end
 
@@ -74,7 +74,7 @@ class OmniauthCallbacksController < ApplicationController
       result = User.from_omniauth(auth, email_verified: true)
       case result
       when :email_not_verified
-        return finish_oauth(login_path, success: false,
+        return finish_oauth(signin_path, success: false,
                             alert: "Google sign-in rejected: your email is not verified by Google.")
       when :requires_verification
         existing = User.find_by(email: auth.info.email)
@@ -91,12 +91,12 @@ class OmniauthCallbacksController < ApplicationController
             "at"       => Time.current.to_i
           }
           if @oauth_popup
-            return finish_oauth(login_path, success: false,
+            return finish_oauth(signin_path, success: false,
                                 alert: "#{auth.info.email} is a wallet account — log in with your Solana wallet to link Google.")
           end
           return redirect_to link_wallet_path
         end
-        return finish_oauth(login_path, success: false,
+        return finish_oauth(signin_path, success: false,
                             alert: "An account already exists for #{auth.info.email}. Sign in with your password and verify your email before linking Google.")
       end
 
@@ -117,12 +117,12 @@ class OmniauthCallbacksController < ApplicationController
     end
   rescue StandardError => e
     Rails.logger.error("[OmniauthCallbacks] #{e.class}: #{e.message}")
-    finish_oauth((logged_in? ? account_path : login_path), success: false,
+    finish_oauth((logged_in? ? account_path : signin_path), success: false,
                  alert: "Google sign-in failed. Please try again.")
   end
 
   def failure
-    finish_oauth(login_path, success: false, alert: "Google sign-in failed. Please try again.")
+    finish_oauth(signin_path, success: false, alert: "Google sign-in failed. Please try again.")
   end
 
   private

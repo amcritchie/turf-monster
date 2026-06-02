@@ -16,19 +16,19 @@ test("magic link creates a new account and logs the visitor in", async ({ page }
   await page.goto(url);
   await page.waitForURL((u) => !u.pathname.startsWith("/magic_link"));
 
-  // Logged in → an auth-gated page stays put instead of bouncing to /login.
+  // Logged in → an auth-gated page stays put instead of bouncing to /signin.
   await page.goto("/account");
   await expect(page).toHaveURL(/\/account/);
 });
 
 test("an invalid magic-link token is rejected", async ({ page }) => {
   await page.goto("/magic_link/bogus.token.value");
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).toHaveURL(/\/signin/);
   await expect(page.locator("body")).toContainText(/invalid|expired/i);
 });
 
 test("the wallet hub offers install options when no wallet is present", async ({ page }) => {
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.locator('button:has-text("Solana")').click();
   // No injected wallet in headless Chromium → featured install links appear.
   // The hub (_wallet_connect) renders each uninstalled wallet as a link to its
@@ -44,7 +44,7 @@ test("the hub does not surface the keypair test provider", async ({ page }) => {
   await page.addInitScript(() => {
     window.__WALLET_KEYPAIR_SECRET = new Uint8Array(64);
   });
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.waitForFunction(() => window.walletProvider && typeof window.walletProvider.available === "function");
   const names = await page.evaluate(() =>
     window.walletProvider.available().map((w) => (w.name || "").toLowerCase())

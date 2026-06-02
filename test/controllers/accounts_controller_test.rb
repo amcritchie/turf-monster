@@ -10,7 +10,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
 
   test "show requires login" do
     get account_path
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "save_profile saves and redirects to root" do
@@ -244,7 +244,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     @alex.update_column(:session_token, SecureRandom.hex(32))
 
     get account_path
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   # --- Out-of-band email change (Lazarus audit #4) ---

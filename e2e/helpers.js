@@ -7,7 +7,7 @@ const { setupOnchainMocks, computeMockTransaction } = require("./rpc-mock");
  * we mint a token through the dev-only /test/magic_link_token endpoint and
  * navigate to the consume URL (same browser context, so the session cookie
  * sticks). The `password` arg is ignored (kept for call-site compatibility).
- * Waits for the URL to leave /login and /magic_link.
+ * Waits for the URL to leave /signin and /magic_link.
  */
 async function login(page, email, _password) {
   const resp = await page.request.post("/test/magic_link_token", { data: { email } });
@@ -17,7 +17,7 @@ async function login(page, email, _password) {
   const { url } = await resp.json();
   await page.goto(url);
   await page.waitForURL(
-    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link")
+    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link")
   );
 }
 
@@ -35,14 +35,14 @@ async function loginAdmin(page) {
  * Opens the multi-wallet hub, then picks the detected (mock) Phantom wallet.
  */
 async function loginViaPhantom(page) {
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.locator('button:has-text("Solana")').click();
   // The hub reads walletProvider.available() at click time; wait for the
   // detected-wallet button to appear once the wallet_provider module loads.
   const wallet = page.locator('button:has-text("phantom")').first();
   await wallet.waitFor({ state: "visible" });
   await wallet.click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  await page.waitForURL((url) => !url.pathname.startsWith("/signin"));
 }
 
 /**

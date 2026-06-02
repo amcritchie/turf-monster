@@ -36,7 +36,7 @@ class EmailVerificationsControllerTest < ActionDispatch::IntegrationTest
     )
 
     get email_verifications_verify_path(token: token)
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
     assert @alex.reload.email_verified_at.present?
   end
 

@@ -2,8 +2,8 @@
 
 <% if !logged_in? %>
   <div class="card shadow p-6 text-center">
-    <p class="text-secondary mb-4">Log in to see your contest entries.</p>
-    <%= link_to "Log in", login_path, class: "btn btn-primary btn-lg" %>
+    <p class="text-secondary mb-4">Sign in to see your contest entries.</p>
+    <%= link_to "Sign in", signin_path, class: "btn btn-primary btn-lg" %>
   </div>
 <% elsif @my_entries.empty? %>
   <div class="card shadow p-6 text-center">

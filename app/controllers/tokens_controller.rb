@@ -155,7 +155,7 @@ class TokensController < ApplicationController
     # the fetch would follow it, and SessionsController#new would 500 on
     # the missing JSON template. Mirror ApplicationController#require_authentication.
     respond_to do |format|
-      format.html { redirect_to login_path, alert: "Please log in to buy entry tokens." }
+      format.html { redirect_to signin_path, alert: "Please sign in to buy entry tokens." }
       format.json { render json: { error: "unauthenticated" }, status: :unauthorized }
       format.any  { head :unauthorized }
     end

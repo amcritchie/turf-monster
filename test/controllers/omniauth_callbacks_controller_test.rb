@@ -48,13 +48,13 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
       get "/auth/google_oauth2/callback"
     end
 
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
     assert_nil session[:turf_user_id]
   end
 
   test "failure redirects to login" do
     get "/auth/failure"
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   # ── Feature 1: Google sign-in colliding with a wallet-secured account ──────
@@ -99,6 +99,6 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
 
   test "GET /login/wallet without a pending link redirects to login" do
     get link_wallet_path
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 end
