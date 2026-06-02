@@ -45,26 +45,53 @@
        get isCredentialsStep() {
          var s = this.props.step;
          if (!s) return true;
-         if (s === 'redirect' || s === 'magic-link-sent') return false;
+         if (s === 'redirect' || s === 'magic-link-sent' || s === 'magic-link-resent') return false;
          if (s.indexOf && s.indexOf('tokens-') === 0) return false;
          return true;
        },
        // Self-contained resend for the magic-link-sent step (login page or
        // in-contest). postMagicLink resolves rather than throwing on a non-2xx,
        // so this reads the result and surfaces visible feedback either way.
-       // NOTE: keep comments in this x-data free of double-quotes/backticks --
-       // x-data is a double-quoted HTML attribute, so an inner double-quote
-       // closes it and silently breaks the whole modal (regressed PR #30).
+       // After a successful resend, a 60s cooldown disables the button and
+       // counts down so the user cannot hammer it. NOTE: keep this x-data free
+       // of double-quotes and backticks -- it is a double-quoted HTML
+       // attribute, so an inner double-quote closes it and silently breaks the
+       // whole modal (regressed PR #30).
+       _resendTimer: null,
+       startResendCooldown(seconds) {
+         var self = this;
+         var p = this.props;
+         if (!p) return;
+         p.resendCooldown = seconds || 60;
+         if (this._resendTimer) clearInterval(this._resendTimer);
+         this._resendTimer = setInterval(function () {
+           var pp = self.props;
+           if (!pp) { clearInterval(self._resendTimer); self._resendTimer = null; return; }
+           pp.resendCooldown = (pp.resendCooldown || 0) - 1;
+           if (pp.resendCooldown <= 0) {
+             pp.resendCooldown = 0;
+             clearInterval(self._resendTimer);
+             self._resendTimer = null;
+           }
+         }, 1000);
+       },
+       destroy() {
+         if (this._resendTimer) { clearInterval(this._resendTimer); this._resendTimer = null; }
+       },
        async resendMagicLink() {
          var p = this.props;
-         if (!p || p.submitting) return;
+         if (!p || p.submitting || (p.resendCooldown || 0) > 0) return;
          p.resendError = '';
          p.resent = false;
          p.submitting = 'magic-link';
          try {
            var data = await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks });
            if (data && data.success) {
-             p.resent = true;
+             // Swap to the dedicated success step — the directional slide IS
+             // the visual confirmation. Re-advancing on each resend re-runs the
+             // slide, so every resend gets its own little confirmation beat.
+             Alpine.store('modals').advance({ step: 'magic-link-resent' });
+             this.startResendCooldown(60);
            } else {
              p.resendError = (data && data.error) || 'Could not resend — wait a moment and try again.';
            }
@@ -143,32 +170,38 @@
   </div>
 
   <%# === MAGIC-LINK-SENT STEP =============================================== %>
+  <%# Follows the standard check-email template: icon-on-top via the shared
+      card_header block, email inline in the subtext. Resend is a centered LINK
+      (not a button) + a Close link, matching the studio _check_email convention
+      (one difference: resend stays a link, per the design call). %>
   <template x-if="props.step === 'magic-link-sent'">
-    <div class="text-center">
-      <div class="relative mb-3 -mt-2">
-        <h3 class="text-heading font-bold text-lg leading-tight text-center pt-1">Check your inbox</h3>
-        <button @click="$store.modals.close()"
-                class="absolute top-0 right-0 -mr-2 text-secondary hover:text-heading text-xl leading-none"
-                aria-label="Close">&times;</button>
-      </div>
-      <div class="text-4xl mb-3" aria-hidden="true">📬</div>
-      <p class="text-sm text-secondary mb-1">We emailed a one-tap sign-in link to</p>
-      <p class="text-heading font-medium mb-4 break-all" x-text="props.sentEmail"></p>
-      <p class="text-xs text-muted mb-5">Open it on this device to finish — your 6 picks are saved. The link expires in 15 minutes and can only be used once.</p>
-      <button @click="resendMagicLink()" :disabled="props.submitting"
-              class="text-sm text-primary hover:text-primary-300 underline underline-offset-2 disabled:opacity-50">
-        <span :class="props.submitting === 'magic-link' ? 'auth-text-shimmer' : ''"
-              x-text="props.submitting === 'magic-link' ? 'Resending…' : 'Resend link'"></span>
-      </button>
-      <%# Visible resend feedback — success confirmation OR error. Plain x-show
-          inside the step's single template root (the parent <template x-if> owns
-          the one-root rule; these siblings live under its child <div>). %>
-      <p x-show="props.resent && props.submitting !== 'magic-link'" x-cloak
-         class="text-xs text-emerald-400 mt-3">
-        Sent again — check your inbox at <span class="font-medium" x-text="props.sentEmail"></span>.
-      </p>
-      <p x-show="props.resendError" x-cloak
-         class="text-xs text-red-400 mt-3" x-text="props.resendError"></p>
+    <div>
+      <%= render 'modals/blocks/card_header', icon_emoji: '📬', title: 'Check your inbox' do %>
+        We emailed <span class="text-heading font-medium break-all" x-text="props.sentEmail"></span>
+        a one-tap sign-in link. Check your email and
+        <span class="text-heading font-semibold">Click the Magic Link</span> to continue.
+      <% end %>
+      <%# Resend (link) + error + Close — shared with the resent step. A failed
+          resend stays here and shows the error; a success swaps to the resent
+          step (the slide is the confirmation). %>
+      <%= render 'modals/auth/resend_footer' %>
+    </div>
+  </template>
+
+  <%# === MAGIC-LINK-RESENT STEP ============================================ %>
+  <%# Success confirmation after a resend — resendMagicLink advances here so the
+      directional slide is the visual "it sent!" beat. Check-pill icon via
+      card_header (matches _check_email's resent state). Single root <div>. Keeps
+      its own resend link so the user can resend again once the cooldown clears
+      (re-advancing re-runs the slide). %>
+  <template x-if="props.step === 'magic-link-resent'">
+    <div>
+      <%= render 'modals/blocks/card_header', icon_color: 'primary', title: 'Link Resent!' do %>
+        We just resent <span class="text-heading font-medium break-all" x-text="props.sentEmail"></span>
+        a one-tap sign-in link. Check your email and
+        <span class="text-heading font-semibold">Click the Magic Link</span> to continue.
+      <% end %>
+      <%= render 'modals/auth/resend_footer' %>
     </div>
   </template>
 

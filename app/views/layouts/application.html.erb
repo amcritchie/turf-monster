@@ -543,8 +543,14 @@
           style. %>
       <% welcome = flash[:magic_link_welcome].with_indifferent_access %>
       <script type="application/json" id="magic-link-welcome-data">
-        <%= raw({ message: welcome[:message], next: welcome[:next] }.to_json) %>
+        <%= raw({ message: welcome[:message], username: welcome[:username], next: welcome[:next] }.to_json) %>
       </script>
+      <%# Stable flag (the JSON tag above gets consumed + removed by the
+          auto-open script, so the contest board can't rely on it). The board
+          reads this to defer its post-login tokens-picker (both the ?picks
+          auto-enter path and the pendingAuthStep path) until AFTER the welcome
+          modal has had its ~3s success beat. %>
+      <script>window.__magicLinkWelcome = true;</script>
     <% end %>
     <script>
       (function() {
@@ -560,7 +566,7 @@
             var m = (window.Alpine && Alpine.store) ? Alpine.store('modals') : null;
             if (m && typeof m.open === 'function') {
               fired = true;
-              m.open('magic-link-welcome', { message: data.message, next: data.next });
+              m.open('magic-link-welcome', { message: data.message, username: data.username, next: data.next });
               // Drop the one-shot payload so a later turbo:load (bfcache restore,
               // re-navigation) can't replay it.
               el.remove();

@@ -25,15 +25,19 @@
   <%= render 'modals/blocks/card_header',
         size:        :lg,
         icon_emoji:  '🎉',
-        title:       "Welcome to Turf Totals" do %>
-    <span x-text="props.message || 'You\'re in! Your 6 picks are saved.'"></span>
+        title:       "Welcome" do %>
+    <span class="block text-heading font-semibold text-base" x-show="props.username" x-cloak x-text="props.username"></span>
+    <span class="block mt-1" x-text="props.message || 'You\'re in! Your 6 picks are saved.'"></span>
   <% end %>
 
-  <%# Drains for ~2.5s then transfers to props.next (entry tokens). The CTA is a
-      real link to props.next, so clicking it navigates immediately. props.next
-      is server-controlled (tokens_buy_path), never user input. %>
+  <%# Drains ~3.5s then transfers to props.next (entry tokens). When the user
+      came from a contest mid-entry, the board hands off to the IN-CONTEST tokens
+      picker at ~3s instead — it swaps this modal out, which clears this timer —
+      so this redirect is the STANDALONE fallback (signed up NOT mid-entry → goes
+      to the /tokens/buy page). The CTA is a real link to props.next, so clicking
+      it navigates immediately. props.next is server-controlled, never user input. %>
   <%= render 'modals/blocks/cta_redirect',
         href_key:         "props.next",
         label_html:       "Get entry tokens &rarr;",
-        duration_seconds: 2.5 %>
+        duration_seconds: 3.5 %>
 </div>
