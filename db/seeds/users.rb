@@ -4,8 +4,8 @@
 # Uses find_or_create_by! for idempotency.
 
 CORE_USERS = [
-  { email: "alex@mcritchie.studio",    name: "Alex McRitchie",  username: "alex",     role: "admin", wallet: "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr" },
-  { email: "alexbot@mcritchie.studio", name: "Alex Bot",        username: "alex-bot", role: "admin", wallet: "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ" },
+  { email: "alex@mcritchie.studio",    name: "Mr. McRitchie",   username: "mcritchie", role: "admin", wallet: "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr" },
+  { email: "alexbot@mcritchie.studio", name: "Alex",            username: "alex",      role: "admin", wallet: "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" },
   { email: "mason@mcritchie.studio",   name: "Mason McRitchie", username: "mason",    wallet: "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR" },
   { email: "mack@mcritchie.studio",    name: "Mack McRitchie",  username: "mack",     wallet: "foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds" },
   { email: "turf@mcritchie.studio",    name: "Turf Monster",    username: "turf",     wallet: "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" },
