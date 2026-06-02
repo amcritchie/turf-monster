@@ -81,8 +81,9 @@ Rails.application.configure do
   # Redis is shared + cross-process, so both work correctly. Shares the Sidekiq
   # Redis (REDIS_URL), namespaced to avoid key collisions; the error_handler
   # degrades gracefully (a Redis blip logs instead of 500ing the request).
-  config.cache_store = :redis_cache_store, {
-    url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"),
+  cache_redis_url = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
+  cache_store_options = {
+    url: cache_redis_url,
     namespace: "tm-cache",
     expires_in: 90.minutes,
     reconnect_attempts: 1,
@@ -90,6 +91,19 @@ Rails.application.configure do
       Rails.logger.error("[cache] #{method} failed: #{exception.class}: #{exception.message}")
     }
   }
+  # Heroku Redis serves rediss:// (TLS) with a self-signed cert; redis-client
+  # verifies peer certs by default and would REJECT it. Because the error_handler
+  # above swallows the connection error, that failure would be SILENT — every
+  # Rails.cache op returns nil/false, which (a) breaks MagicLink single-use
+  # (consume's `cache.delete` returns false → "link already used" on first click,
+  # and magic-link is the only email-auth path) and (b) no-ops every rack-attack
+  # throttle (counters never increment). Mirror config/initializers/sidekiq.rb:
+  # keep the connection encrypted, skip chain verification (Heroku's documented
+  # guidance for their Redis add-on).
+  if cache_redis_url.start_with?("rediss://")
+    cache_store_options[:ssl_params] = { verify_mode: OpenSSL::SSL::VERIFY_NONE }
+  end
+  config.cache_store = :redis_cache_store, cache_store_options
 
   # Background jobs via Sidekiq (worker dyno + Heroku Redis).
   # NB1 (audit 2026-05-23): was :async, which ran jobs in the web dyno's
