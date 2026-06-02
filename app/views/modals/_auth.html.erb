@@ -111,8 +111,7 @@
       (or) → email magic link. %>
   <div x-show="isCredentialsStep" x-cloak>
       <div class="relative mb-3 -mt-2">
-        <h3 class="text-heading font-bold text-lg leading-tight text-center pt-1"
-            x-text="props.mode === 'signup' ? 'Sign in or create your account' : 'Log in to enter'"></h3>
+        <h3 class="text-heading font-bold text-lg leading-tight text-center pt-1">Sign in</h3>
         <button @click="$store.modals.close()"
                 class="absolute top-0 right-0 -mr-2 text-secondary hover:text-heading text-xl leading-none"
                 aria-label="Close">&times;</button>

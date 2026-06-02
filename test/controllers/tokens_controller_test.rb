@@ -9,7 +9,7 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
 
   test "buy requires login" do
     get tokens_buy_path
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "buy renders for logged in user" do
@@ -46,7 +46,7 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
 
   test "stripe_checkout requires login" do
     post tokens_stripe_checkout_path, params: { pack: "single" }
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "stripe_checkout rejects an unknown pack" do

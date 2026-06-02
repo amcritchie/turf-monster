@@ -1,9 +1,4 @@
-<%# Local override of the engine signup page. Unified create-or-login: renders
-    the same shared auth card as the login page (Google -> wallet hub ->
-    magic-link email). Kept as a distinct route so inbound /signup deep links +
-    funnel attribution keep working. %>
-<%= render "shared/auth_card",
-      subheading:        "Create your account",
-      footer_prompt:     "Already have an account?",
-      footer_link_label: "Log in",
-      footer_link_path:  login_path %>
+<%# Local override of the engine signup page. /signup now 301-redirects to
+    /signin (config/routes.rb), so this only renders on a POST /signup create
+    failure — it shows the same unified auth card as /signin for consistency. %>
+<%= render "shared/auth_card" %>

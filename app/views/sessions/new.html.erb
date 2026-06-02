@@ -1,7 +1,4 @@
-<%# Local override of the engine login page. Unified create-or-login: renders
-    the shared auth card (Google -> wallet hub -> magic-link email). %>
-<%= render "shared/auth_card",
-      subheading:        "Sign in to play",
-      footer_prompt:     "New here?",
-      footer_link_label: "Create an account",
-      footer_link_path:  signup_path %>
+<%# Canonical /signin page (local override of the engine login page). Login and
+    signup are one create-or-login flow, so this renders the single unified auth
+    card. /login + /signup redirect here (see config/routes.rb). %>
+<%= render "shared/auth_card" %>

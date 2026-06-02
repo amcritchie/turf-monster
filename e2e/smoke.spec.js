@@ -46,12 +46,12 @@ test("login with valid credentials", async ({ page }) => {
 
 test("requesting a magic link confirms the email was sent", async ({ page }) => {
   // Passwordless: there are no invalid credentials — any well-formed email
-  // gets a one-tap link. Submitting the email form returns to /login with a
-  // "check your inbox" notice.
-  await page.goto("/login");
+  // gets a one-tap link. Submitting the email form opens the "check your inbox"
+  // modal in place (staying on /signin).
+  await page.goto("/signin");
   await page.fill('input[name="email"]', "someone@example.com");
   await page.getByRole("button", { name: "Email Link" }).click();
-  await page.waitForURL((url) => url.pathname.startsWith("/login"));
+  await page.waitForURL((url) => url.pathname.startsWith("/signin"));
   await expect(page.locator("body")).toContainText(/inbox|sign-in link/i);
 });
 

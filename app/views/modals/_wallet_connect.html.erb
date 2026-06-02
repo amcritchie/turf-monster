@@ -73,7 +73,7 @@
          if (this.connecting) return;
          if (this.props.backTo === 'auth') {
            Alpine.store('modals').swap('auth',
-             { step: 'credentials', mode: 'signup', submitting: null, formError: '', phantomError: '', googleError: '' },
+             { step: 'credentials', submitting: null, formError: '', phantomError: '', googleError: '' },
              { direction: 'back' });
          } else {
            Alpine.store('modals').close();

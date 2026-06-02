@@ -165,7 +165,7 @@ sequenceDiagram
 
 ## Flow 3 — Manual (email + password)
 
-**Entry:** `GET /signup` → `POST /signup`
+**Entry:** `GET /signup` now 301-redirects to the unified `/signin` page (`sessions#new`); the magic-link request is the primary email surface. `POST /signup` (engine, account-from-email) stays as a fallback.
 **Key files:** `registrations/new.html.erb` (view override; the controller `RegistrationsController`
 lives in the **studio-engine gem**), `email_verifications_controller.rb` + `user_mailer.rb` (separate verify flow)
 

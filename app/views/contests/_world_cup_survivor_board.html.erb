@@ -128,7 +128,7 @@ window.survivorBoard = function() {
     // wallets go through the server enter path. Mirrors the Turf Totals flow.
     async confirmEntry() {
       var sess = Alpine.store('session');
-      if (sess.isGuest) { window.location.href = '/login'; return; }
+      if (sess.isGuest) { window.location.href = '/signin'; return; }
       if (this.submitting) return;
       this.submitting = true;
 
