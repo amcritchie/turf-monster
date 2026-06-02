@@ -30,6 +30,7 @@ function cropPhotoModal(opts) {
     maxWidth: 256,
     maxHeight: 256,
     transparent: true,
+    autoCropArea: 0.9,
     // dispatch: emit the cropped Blob via 'crop-photo-confirmed' instead of
     // POSTing it (uploadDirect). For callers whose own host owns the upload even
     // though the MODAL picked the file (e.g. the contest banner editor).
@@ -43,6 +44,7 @@ function cropPhotoModal(opts) {
       if (props.maxHeight) this.maxHeight = props.maxHeight;
       if (typeof props.transparent === "boolean") this.transparent = props.transparent;
       if (props.dispatch) this.dispatch = true;
+      if (props.autoCropArea) this.autoCropArea = props.autoCropArea;
       if (props.imageUrl) {
         this.fromParent = true;
         this.imageUrl = props.imageUrl;
@@ -61,7 +63,7 @@ function cropPhotoModal(opts) {
         if (self.cropper) { self.cropper.destroy(); self.cropper = null; }
         self.cropper = new Cropper(self.$refs.cropImage, {
           aspectRatio: self.aspectRatio, viewMode: 1, dragMode: "move",
-          autoCropArea: 0.9, cropBoxResizable: true,
+          autoCropArea: self.autoCropArea, cropBoxResizable: true,
           cropBoxMovable: true, background: false, guides: true
         });
         // Cropping in progress — lock the modal (no click-outside / escape) so an
@@ -107,7 +109,12 @@ function cropPhotoModal(opts) {
     confirm() {
       if (!this.cropper || this.uploading) return;
       var self = this;
-      var canvasOpts = { maxWidth: this.maxWidth, maxHeight: this.maxHeight, imageSmoothingQuality: "high" };
+      // Cap WIDTH only. For a fixed-aspect crop the aspect already bounds the
+      // height (= width / aspectRatio); also passing maxHeight makes cropper.js
+      // downscale the whole SOURCE to fit maxHeight when the source is taller
+      // (a 1983x793 upload -> 500/793 ~= 0.63x), tanking fidelity. maxWidth alone
+      // keeps the crop at source resolution up to the cap.
+      var canvasOpts = { maxWidth: this.maxWidth, imageSmoothingQuality: "high" };
       if (!this.transparent) canvasOpts.fillColor = "#ffffff";
       var canvas = this.cropper.getCroppedCanvas(canvasOpts);
       canvas.toBlob(function (blob) {
