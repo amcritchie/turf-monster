@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_01_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_02_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -66,6 +66,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_01_000001) do
     t.boolean "chat_enabled", default: true, null: false
     t.string "game_type", default: "turf_totals", null: false
     t.datetime "concludes_at"
+    t.boolean "onchain_closed", default: false, null: false
+    t.boolean "onchain_cancelled", default: false, null: false
     t.index ["game_type"], name: "index_contests_on_game_type"
     t.index ["rank"], name: "index_contests_on_rank"
     t.index ["slate_id"], name: "index_contests_on_slate_id"

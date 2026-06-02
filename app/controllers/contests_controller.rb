@@ -2,8 +2,8 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll, :live]
-  before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
-  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :close_onchain, :cancel_onchain, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
+  before_action :require_admin, only: [:new, :create, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :close_onchain, :cancel_onchain, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
   before_action :require_unfrozen_account, only: [:enter, :prepare_entry, :confirm_onchain_entry, :toggle_selection]
@@ -391,6 +391,14 @@ class ContestsController < ApplicationController
   end
 
   def enter
+    # Cancelled contests are terminal — no new entries (the on-chain program
+    # rejects enter_contest on a Cancelled Contest PDA; mirror it here so the
+    # UI fails fast with a clear message).
+    if @contest.cancelled?
+      return render json: { success: false, error: "This contest was cancelled." },
+                    status: :unprocessable_entity
+    end
+
     # Self-custody guard (task #11 Stage 3). Runs FIRST so it catches
     # self-custodied users regardless of cart / contest state. The server
     # must not auto-sign for them; route to the Phantom-prepare path.
@@ -546,6 +554,11 @@ class ContestsController < ApplicationController
   # Build a partially-signed enter_contest_direct transaction for Phantom users.
   # Admin signs (pays rent), returns base64 tx for user to co-sign client-side.
   def prepare_entry
+    if @contest.cancelled?
+      return render json: { success: false, error: "This contest was cancelled." },
+                    status: :unprocessable_entity
+    end
+
     entry = @contest.entries.cart.find_by(user: current_user)
     # Survivor contests have no pick-building phase — see #enter.
     entry ||= @contest.entries.find_or_create_by!(user: current_user, status: :cart) if @contest.world_cup_survivor?
@@ -1047,6 +1060,63 @@ class ContestsController < ApplicationController
     rescue_and_log(target: @contest) do
       simulated = @contest.simulate_games!(count)
       redirect_to @contest, notice: "Simulated #{simulated} game(s)."
+    end
+  rescue StandardError => e
+    redirect_to @contest || root_path, alert: e.message
+  end
+
+  # Reclaim on-chain rent (close_contest, 1-of-3 server-signed). The program
+  # only allows close once the Contest PDA is in a terminal state (Settled or
+  # Cancelled — error 6005 otherwise), so we gate on the same. Single vault
+  # signer = the bot's admin keypair signs + broadcasts itself; no
+  # PendingTransaction / cosign needed.
+  def close_onchain
+    rescue_and_log(target: @contest) do
+      raise "Contest must be settled or cancelled before closing on-chain" unless @contest.settled? || @contest.onchain_cancelled?
+      raise "Contest is already closed on-chain" if @contest.onchain_closed?
+
+      result = Solana::Vault.new.close_contest(@contest.slug)
+      @contest.update!(onchain_closed: true)
+      redirect_to @contest, notice: "On-chain rent reclaimed (close_contest: #{result[:signature]})."
+    end
+  rescue StandardError => e
+    redirect_to @contest || root_path, alert: e.message
+  end
+
+  # Cancel an open contest + refund the creator's prize pool (cancel_contest,
+  # 2-of-3). Builds a partially-signed TX and queues it for cosign in the
+  # Treasury (mirrors Contest#settle_onchain!). The creator MUST be the
+  # authoritative on-chain creator — the program constrains
+  # creator_token_account.authority == contest.creator — so read it off-chain
+  # rather than trusting contest.user.solana_address.
+  def cancel_onchain
+    rescue_and_log(target: @contest) do
+      raise "Contest is not on-chain" unless @contest.onchain?
+      raise "Only open contests can be cancelled" unless @contest.open?
+      raise "Contest is already cancelled" if @contest.onchain_cancelled?
+
+      vault = Solana::Vault.new
+      onchain = vault.read_contest(@contest.slug)
+      raise "Could not read on-chain contest" unless onchain
+      creator_pubkey = onchain[:creator]
+      raise "On-chain creator unavailable" if creator_pubkey.blank?
+
+      result = vault.build_cancel_contest(
+        @contest.slug,
+        creator_pubkey: creator_pubkey,
+        cosigner_pubkey: Solana::Config::MULTISIG_COSIGNER
+      )
+
+      PendingTransaction.create!(
+        tx_type: "cancel_contest",
+        serialized_tx: result[:serialized_tx],
+        target: @contest,
+        initiator_address: Solana::Keypair.admin.to_base58,
+        metadata: { creator: creator_pubkey }.to_json
+      )
+
+      redirect_to admin_pending_transactions_path,
+        notice: "Cancel queued for cosign — refunds #{creator_pubkey[0..7]}… in the Treasury."
     end
   rescue StandardError => e
     redirect_to @contest || root_path, alert: e.message

@@ -213,6 +213,8 @@ Rails.application.routes.draw do
       post :simulate_game
       post :simulate_batch
       post :reset
+      post :close_onchain
+      post :cancel_onchain
       # Admin "Update banner" flow — swap just the hero image from a modal on
       # the contest show page (ContestsController#update_banner).
       patch :banner, action: :update_banner
