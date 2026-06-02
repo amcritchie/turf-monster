@@ -10,6 +10,28 @@
       </div>
     <% end %>
 
+    <%# Banner — immediate-save via the shared crop modal (update_banner). Its
+        OWN form (HTML can't nest it inside the main edit form below). cropper.js
+        is loaded here for the shared crop-photo modal. %>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+    <div class="mb-5"
+         x-data="contestBannerHost({ aspectRatio: 4, maxWidth: 2000, maxHeight: 500, transparent: true })"
+         @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
+      <label class="block text-sm text-secondary mb-2 font-medium">Banner</label>
+      <%= render "contests/banner_preview" %>
+      <button type="button" @click="open()" class="btn btn-outline btn-sm mt-2 inline-flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+        </svg>
+        Edit banner
+      </button>
+      <%= form_with model: @contest, url: banner_contest_path(@contest), method: :patch,
+            html: { multipart: true, id: "contest-banner-form", "x-ref": "form" } do |bf| %>
+        <%= bf.file_field :contest_image, class: "hidden", "x-ref": "fileInput" %>
+      <% end %>
+    </div>
+
     <%= form_with model: @contest, method: :patch, html: { multipart: true } do |f| %>
       <div class="mb-5">
         <label for="contest_name" class="block text-sm text-secondary mb-2 font-medium">Name</label>
@@ -90,37 +112,6 @@
           </div>
         </div>
         <p class="text-xs text-muted mt-1">When the contest locks and stops accepting entries.</p>
-      </div>
-
-      <div class="mb-5" x-data="imageDropzone({ fileName: '<%= j (@contest.contest_image.attached? ? @contest.contest_image.filename.to_s : '') %>', previewUrl: '<%= j (@contest.contest_image.attached? ? url_for(@contest.contest_image) : '') %>' })">
-        <label class="block text-sm text-secondary mb-2 font-medium">Contest Image</label>
-
-        <!-- Drop zone (no preview) -->
-        <div x-show="!previewUrl"
-             @click="$refs.fileInput.click()"
-             @dragover.prevent="dragging = true"
-             @dragleave.prevent="dragging = false"
-             @drop.prevent="dropFile($event)"
-             :class="dragging ? 'border-primary bg-primary/10' : 'border-subtle hover:border-strong'"
-             class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition">
-          <svg class="mx-auto mb-2 text-muted" style="width:2rem;height:2rem" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-          </svg>
-          <p class="text-sm text-secondary">Drop an image here or <span class="text-primary font-medium">browse</span></p>
-          <p class="text-xs text-muted mt-1">PNG, JPG, WebP</p>
-        </div>
-
-        <!-- Preview (has image) -->
-        <div x-show="previewUrl" class="relative rounded-lg overflow-hidden border border-subtle">
-          <img :src="previewUrl" class="w-full h-32 object-cover">
-          <div class="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition flex items-center justify-center">
-            <button type="button" @click="clear()" class="btn btn-sm text-white" style="background:rgba(0,0,0,0.6)">Remove</button>
-          </div>
-          <div class="px-3 py-2 bg-surface-alt text-xs text-secondary truncate" x-text="fileName"></div>
-        </div>
-
-        <%= f.file_field :contest_image, "x-ref": "fileInput", "@change": "pickFile($event)",
-              class: "hidden", accept: "image/*" %>
       </div>
 
       <div class="mb-6">

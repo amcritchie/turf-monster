@@ -30,6 +30,10 @@ function cropPhotoModal(opts) {
     maxWidth: 256,
     maxHeight: 256,
     transparent: true,
+    // dispatch: emit the cropped Blob via 'crop-photo-confirmed' instead of
+    // POSTing it (uploadDirect). For callers whose own host owns the upload even
+    // though the MODAL picked the file (e.g. the contest banner editor).
+    dispatch: false,
 
     init() {
       var current = this.$store.modals.current();
@@ -38,6 +42,7 @@ function cropPhotoModal(opts) {
       if (props.maxWidth) this.maxWidth = props.maxWidth;
       if (props.maxHeight) this.maxHeight = props.maxHeight;
       if (typeof props.transparent === "boolean") this.transparent = props.transparent;
+      if (props.dispatch) this.dispatch = true;
       if (props.imageUrl) {
         this.fromParent = true;
         this.imageUrl = props.imageUrl;
@@ -102,7 +107,7 @@ function cropPhotoModal(opts) {
       if (!this.transparent) canvasOpts.fillColor = "#ffffff";
       var canvas = this.cropper.getCroppedCanvas(canvasOpts);
       canvas.toBlob(function (blob) {
-        if (self.fromParent) {
+        if (self.fromParent || self.dispatch) {
           try {
             window.dispatchEvent(new CustomEvent("crop-photo-confirmed", { detail: { blob: blob } }));
           } catch (_) {}

@@ -218,29 +218,20 @@ class ContestsController < ApplicationController
               %w[image/png image/jpeg image/webp].include?(file.content_type) &&
               file.size <= 8.megabytes
 
-      unless valid
-        message = file.blank? ? "Choose an image to upload." : "Use a PNG, JPG, or WebP under 8 MB."
+      if valid
+        @contest.contest_image.attach(file)
         respond_to do |format|
+          # The crop modal saves immediately; refresh the preview on the edit
+          # screen (the only caller). #contest-hero on the show page picks up the
+          # new banner on its next render.
           format.turbo_stream do
-            render turbo_stream: turbo_stream.update("contest-banner-error",
-              helpers.content_tag(:p, message, class: "text-red-400 text-sm text-center mb-3")),
-              status: :unprocessable_entity
+            render turbo_stream: turbo_stream.replace("contest-banner-preview", partial: "contests/banner_preview")
           end
-          format.html { redirect_to contest_path(@contest), alert: message }
+          format.html { redirect_to edit_contest_path(@contest), notice: "Banner updated." }
         end
-        next
-      end
-
-      @contest.contest_image.attach(file)
-      @creator = @contest.user
-      respond_to do |format|
-        format.turbo_stream do
-          render turbo_stream: [
-            turbo_stream.replace("contest-hero", partial: "contests/hero"),
-            turbo_stream.update("contest-banner-error", "")
-          ]
-        end
-        format.html { redirect_to contest_path(@contest), notice: "Banner updated." }
+      else
+        message = file.blank? ? "Choose an image to upload." : "Use a PNG, JPG, or WebP under 8 MB."
+        redirect_to edit_contest_path(@contest), alert: message, status: :see_other
       end
     end
   end

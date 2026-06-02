@@ -613,26 +613,6 @@
       <% end %>
     <% end %>
 
-    <%# Admin banner editor (contest pages only). cropper.js is loaded here for
-        the shared crop-photo modal, and the persistent uploader host lives here
-        too — OUTSIDE the modal host and #contest-hero — so it survives the crop
-        modal stacking and the hero's Turbo replace. The hero / dropdown "Edit
-        banner" controls click #banner-image-picker; the picked file is framed in
-        the shared crop-photo modal (same cropper as the avatar, at 4:1 /
-        2000x500) and submitted here via Turbo. %>
-    <% if current_user&.admin? && @contest&.persisted? %>
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
-      <script defer src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-      <div x-data="contestBannerHost({ aspectRatio: 4, maxWidth: 2000, maxHeight: 500, transparent: true })"
-           @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
-        <input id="banner-image-picker" type="file" x-ref="picker" @change="pick($event)"
-               accept="image/png,image/jpeg,image/webp" class="hidden">
-        <%= form_with model: @contest, url: banner_contest_path(@contest), method: :patch,
-              html: { multipart: true, id: "contest-banner-form", "x-ref": "form" } do |f| %>
-          <%= f.file_field :contest_image, class: "hidden", "x-ref": "fileInput" %>
-        <% end %>
-      </div>
-    <% end %>
 
     <% if logged_in? && current_user.solana_connected? %>
       <%= render "shared/phantom_watcher" %>

@@ -16,7 +16,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   # --- update_banner tests ---
 
-  test "update_banner attaches a new banner and re-renders the hero for an admin" do
+  test "update_banner attaches a new banner and refreshes the edit-screen preview" do
     log_in_as(users(:alex)) # admin
 
     assert_changes -> { @contest.reload.contest_image.attached? }, from: false, to: true do
@@ -26,18 +26,17 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :success
-    assert_match "contest-hero", response.body
+    assert_match "contest-banner-preview", response.body
   end
 
-  test "update_banner rejects a non-image file with 422 and does not attach" do
+  test "update_banner rejects a non-image file and does not attach" do
     log_in_as(users(:alex)) # admin
 
     patch banner_contest_path(@contest),
       params: { contest: { contest_image: fixture_file_upload("not_an_image.txt", "text/plain") } },
       as: :turbo_stream
 
-    assert_response :unprocessable_entity
-    assert_match "contest-banner-error", response.body
+    assert_response :redirect
     assert_not @contest.reload.contest_image.attached?
   end
 
@@ -51,20 +50,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_not @contest.reload.contest_image.attached?
   end
 
-  test "admin sees the Edit banner control and the uploader host on the show page" do
+  test "admin sees the Edit banner control on the edit screen" do
     log_in_as(users(:alex))
-    get contest_path(@contest)
+    get edit_contest_path(@contest)
     assert_response :success
     assert_match "Edit banner", response.body
-    assert_match "banner-image-picker", response.body # persistent uploader (admin)
-  end
-
-  test "non-admin sees neither the Edit banner control nor the uploader" do
-    log_in_as(@user)
-    get contest_path(@contest)
-    assert_response :success
-    assert_no_match "Edit banner", response.body
-    assert_no_match "banner-image-picker", response.body # uploader host (admin only)
+    assert_match "contest-banner-form", response.body # the banner editor's own form
   end
 
   # --- toggle_selection tests ---
