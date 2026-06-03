@@ -743,7 +743,13 @@ module Solana
           { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
         ],
         data: data,
-        additional_signers: [wallet_bytes]
+        additional_signers: [wallet_bytes],
+        # Contest-create is the flow that died on mainnet BlockhashNotFound (a
+        # flagged-dApp Phantom warning ate the ~90s blockhash window). When a
+        # durable nonce is configured, anchor on it so the half-signed tx can't
+        # expire while the operator clicks through Phantom. Default (unset) =
+        # recent blockhash, unchanged.
+        durable_nonce: durable_nonce_config
       )
 
       { serialized_tx: serialized, contest_pda: Keypair.encode_base58(contest_pda_addr) }
@@ -1639,18 +1645,49 @@ module Solana
       0
     end
 
-    def build_tx(signer)
-      blockhash = client.get_latest_blockhash
+    # When `durable_nonce` ({ pubkey:, authority: }) is given, anchor the tx on
+    # the nonce instead of a recent blockhash: set recentBlockhash = the stored
+    # nonce and prepend SystemProgram.advanceNonceAccount as instruction #0. The
+    # tx then NEVER expires until it lands — immune to slow signing (the mainnet
+    # BlockhashNotFound incident). The authority signs the advance; it's the admin
+    # managed wallet, which is already `signer` here, so no extra signature.
+    def build_tx(signer, durable_nonce: nil)
       tx = Transaction.new
-      tx.set_recent_blockhash(blockhash)
-      tx.add_signer(signer)
+      if durable_nonce
+        tx.set_recent_blockhash(fetch_nonce_value(durable_nonce.fetch(:pubkey)))
+        tx.add_signer(signer)
+        adv = Solana::SystemProgram.advance_nonce_account(
+          nonce: durable_nonce.fetch(:pubkey), authority: durable_nonce.fetch(:authority)
+        )
+        tx.add_instruction(program_id: adv[:program_id], accounts: adv[:accounts], data: adv[:data])
+      else
+        tx.set_recent_blockhash(client.get_latest_blockhash)
+        tx.add_signer(signer)
+      end
       tx
     end
 
-    def build_partial_signed(accounts:, data:, additional_signers:)
-      tx = build_tx(Keypair.admin)
+    def build_partial_signed(accounts:, data:, additional_signers:, durable_nonce: nil)
+      tx = build_tx(Keypair.admin, durable_nonce: durable_nonce)
       tx.add_instruction(program_id: @program_id, accounts: accounts, data: data)
       tx.serialize_partial_base64(additional_signers: additional_signers)
+    end
+
+    # Opt-in durable-nonce config — set SOLANA_DURABLE_NONCE_PUBKEY to make
+    # operator flows anchor on it; authority is the admin managed wallet (already
+    # cosigns server-side). Returns nil (= default recent-blockhash) when unset.
+    def durable_nonce_config
+      pubkey = ENV["SOLANA_DURABLE_NONCE_PUBKEY"].presence or return nil
+      { pubkey: pubkey, authority: Keypair.admin.address }
+    end
+
+    # Read + verify the stored nonce value off a nonce account.
+    def fetch_nonce_value(pubkey)
+      result = client.get_account_info(pubkey)
+      b64 = result&.dig("value", "data", 0) or raise "durable nonce account #{pubkey} not found"
+      na = Solana::NonceAccount.parse(Base64.decode64(b64).b)
+      raise "durable nonce account #{pubkey} is not initialized" unless na.initialized?
+      na.nonce
     end
 
     def with_account_init_retry(attempts: 4)
