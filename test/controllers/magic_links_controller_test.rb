@@ -178,11 +178,13 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   # the emailed link from a fresh browser is exactly this path.)
   test "consume creates + logs in the new user even when prior before-action session writes are present" do
     # Simulate the geo before_action having written to the session before
-    # consume runs (the real detect_geo_state path).
-    get magic_link_path(token: MagicLink.generate(email: "warmup@example.com"))
+    # consume runs (the real detect_geo_state path). A prior consume establishes
+    # + rotates a real session so the next consume runs with session writes
+    # already present in the jar.
+    post magic_link_consume_path(token: MagicLink.generate(email: "warmup@example.com"))
     # Now a genuinely new email; the jar already holds a rotated session.
     assert_difference "User.count", 1 do
-      get magic_link_path(token: MagicLink.generate(email: "fresh-browser@example.com"))
+      post magic_link_consume_path(token: MagicLink.generate(email: "fresh-browser@example.com"))
     end
     user = User.find_by(email: "fresh-browser@example.com")
     assert_equal user.id, session[Studio.session_key], "new user must be logged in after reset_session"
@@ -201,7 +203,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
 
     token = MagicLink.generate(email: "switcheroo@example.com")
     assert_difference "User.count", 1 do
-      get magic_link_path(token: token)
+      post magic_link_consume_path(token: token)
     end
     switched = User.find_by(email: "switcheroo@example.com")
     assert_not_equal prior.id, session[Studio.session_key]
