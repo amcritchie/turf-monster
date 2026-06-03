@@ -15,7 +15,7 @@
 # also guards defensively in case an entry's user loses its email between
 # enqueue and perform.
 class WinnerNotificationJob < ApplicationJob
-  queue_as :mailers
+  queue_as :default
 
   def perform(entry_id)
     entry = Entry.find_by(id: entry_id)
