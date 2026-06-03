@@ -1,10 +1,79 @@
-<% content_for :title, "Terms — Turf Monster" %>
+<% content_for :title, "Terms of Service — Turf Totals" %>
+<% content_for :meta_description, "Terms of Service for Turf Totals, the Solana-powered World Cup pick'em game. Eligibility, entries, payments, payouts, and the referral program." %>
 
 <div class="max-w-3xl mx-auto py-10 px-2 space-y-12">
   <header>
-    <h1 class="text-4xl font-extrabold text-heading mb-2">Terms</h1>
+    <h1 class="text-4xl font-extrabold text-heading mb-2">Terms of Service</h1>
     <p class="text-secondary text-sm">Last updated <%= Date.today.strftime("%B %d, %Y") %>.</p>
   </header>
+
+  <section class="space-y-4">
+    <p class="text-body leading-relaxed">
+      These Terms of Service govern your use of Turf Totals, a skill-based sports pick&rsquo;em game
+      operated by McRitchie Studio (&ldquo;we,&rdquo; &ldquo;us&rdquo;). By creating an account or entering a
+      contest you agree to these terms. If you do not agree, please do not use the game.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Eligibility</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>You must be of legal age in your jurisdiction to use Turf Totals.</li>
+      <li>
+        Turf Totals is a game of <strong>skill</strong>, not chance. It is available only where
+        skill-based contests are permitted. We use approximate location to enforce this; you may
+        not use a VPN or other means to circumvent geo-eligibility.
+      </li>
+      <li>One account per person. Operating multiple accounts may result in suspension and forfeiture of entries.</li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">How contests work</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>Each contest presents a slate of team matchups. You select six to form an entry.</li>
+      <li>Each pick is scored as the team&rsquo;s goals scored multiplied by its Turf Score; your entry score is the sum.</li>
+      <li>Entries are ranked highest score first, and prizes are paid per the published payout table for that contest.</li>
+      <li>
+        Once a contest locks (at its published lock time, enforced on-chain), entries can no longer
+        be submitted or changed. Settlement occurs after the relevant real-world matches conclude.
+      </li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Payments, entry fees, and payouts</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>
+        Entry fees and prizes are denominated in <strong>USDC</strong> and settle on the
+        <strong>Solana</strong> blockchain. Your USDC remains in your own wallet until you enter a
+        contest; entering transfers exactly the entry fee and nothing more. We do not request
+        token approvals, spending delegation, or custody of an open-ended balance.
+      </li>
+      <li>
+        Entry tokens may be purchased through <strong>Stripe</strong>. Each token redeems for one
+        contest entry. Card data is handled by Stripe under its own secure systems &mdash; we never
+        see your full card number.
+      </li>
+      <li>
+        Prize payouts are released from a per-contest prize-pool account secured by a 2-of-3
+        multisig. No single key can move prize funds.
+      </li>
+      <li>
+        All blockchain transactions are final and irreversible once confirmed. Network fees and
+        third-party (e.g. Stripe) fees are non-refundable.
+      </li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Acceptable use</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>Do not cheat, collude, exploit bugs, or use automated agents to gain an unfair advantage.</li>
+      <li>Do not attempt to access other users&rsquo; accounts or interfere with the game&rsquo;s operation.</li>
+      <li>We may suspend or terminate accounts that violate these terms, and void affected entries.</li>
+    </ul>
+  </section>
 
   <section id="referrals" class="space-y-4 scroll-mt-24">
     <h2 class="text-2xl font-bold text-heading">Referral Program</h2>
@@ -17,7 +86,7 @@
 
     <h3 class="text-lg font-semibold text-heading">How a referral is recorded</h3>
     <ul class="list-disc list-inside text-body space-y-1 text-sm">
-      <li>When a visitor lands on <em>any</em> Turf Monster page with a <code class="text-xs bg-inset px-1 rounded">?ref=</code> parameter, the referrer slug is saved in the visitor&rsquo;s browser before the URL is cleaned up.</li>
+      <li>When a visitor lands on <em>any</em> Turf Totals page with a <code class="text-xs bg-inset px-1 rounded">?ref=</code> parameter, the referrer slug is saved in the visitor&rsquo;s browser before the URL is cleaned up.</li>
       <li>The referrer is locked in the moment they sign up <em>or</em> log in for the first time after clicking. After that, the link is associated with their account permanently and cannot be changed.</li>
       <li>If a visitor already has an account, the referrer is recorded only if they don&rsquo;t already have one.</li>
       <li>Self-referrals are rejected.</li>
@@ -34,12 +103,38 @@
     <h3 class="text-lg font-semibold text-heading">Eligibility &amp; abuse</h3>
     <ul class="list-disc list-inside text-body space-y-1 text-sm">
       <li>Inviter and invitee must be different real users. Multiple accounts controlled by the same person disqualify the referral chain and may result in account freezes.</li>
-      <li>Turf Monster reserves the right to void referrals, revoke earned free entries, or freeze accounts that abuse the program.</li>
+      <li>Turf Totals reserves the right to void referrals, revoke earned free entries, or freeze accounts that abuse the program.</li>
       <li>The program may change or end at any time; entries already earned will be honored.</li>
     </ul>
   </section>
 
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Disclaimers and limitation of liability</h2>
+    <p class="text-body leading-relaxed">
+      The game is provided &ldquo;as is&rdquo; without warranties of any kind. Blockchain networks,
+      wallet software, and third-party providers are outside our control and may experience
+      delays, congestion, or outages. To the fullest extent permitted by law, our liability for
+      any claim arising from your use of Turf Totals is limited to the entry fees you paid for the
+      contest giving rise to the claim.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Changes to these terms</h2>
+    <p class="text-body leading-relaxed">
+      We may update these terms as the product evolves. Material changes will be reflected by the
+      &ldquo;last updated&rdquo; date above. Continued use after a change constitutes acceptance.
+    </p>
+  </section>
+
   <section class="space-y-2 text-sm text-secondary border-t border-subtle pt-6">
-    <p>Questions? Email <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>.</p>
+    <p>
+      Questions? Email
+      <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>.
+      See also our
+      <%= link_to "Privacy Policy", privacy_path, class: "text-primary hover:underline" %>
+      and
+      <%= link_to "About page", about_path, class: "text-primary hover:underline" %>.
+    </p>
   </section>
 </div>
