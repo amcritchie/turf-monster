@@ -147,7 +147,7 @@ Why the isolation matters (each of these silently collides otherwise):
 
 ## Tech Stack
 
-- Ruby 3.1 / Rails 7.2 / PostgreSQL 14
+- Ruby 3.3 / Rails 7.2 / PostgreSQL 14
 - Tailwind CSS via `tailwindcss-rails` gem (compiled, not CDN)
 - Alpine.js via CDN for interactivity
 - ERB views, import maps, no JS frameworks
