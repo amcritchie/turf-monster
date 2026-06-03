@@ -28,12 +28,21 @@
                        + auto-redirect destination)
     seeds_earned_key — expression returning seeds awarded this entry
     seeds_total_key  — expression returning user's total seeds
+
+  Optional local:
+    kickoff_at       — Time when the contest locks / kicks off (Contest
+                       #starts_at). When present, a live "Kicks off in"
+                       countdown renders below the seeds bar so the user
+                       knows when their contest begins. Server value (the
+                       contest is known at render time on the contest page);
+                       omitted in the /admin/modals gallery preview.
 %>
 <%
   tx_signature_key = local_assigns.fetch(:tx_signature_key)
   lobby_url_key    = local_assigns.fetch(:lobby_url_key)
   seeds_earned_key = local_assigns.fetch(:seeds_earned_key)
   seeds_total_key  = local_assigns.fetch(:seeds_total_key)
+  kickoff_at       = local_assigns[:kickoff_at]
 %>
 <div x-data="{
        _confettiTimer: null,
@@ -159,6 +168,23 @@
       </template>
     </div>
   </template>
+
+  <%# Kickoff countdown — live "Kicks off in" timer to the contest's lock
+      time (Contest#starts_at, the moment entries close and play begins).
+      Only renders when kickoff_at is passed (a real entry on a contest
+      page); skipped in the gallery preview where no contest is in scope.
+      Reuses contests/_timestamp_countdown (no on_done_modal here — the
+      contest page's own countdown owns the "It Begins" hand-off). %>
+  <% if kickoff_at.present? %>
+    <div class="flex justify-center mb-4">
+      <%= render "contests/timestamp_countdown",
+            target:        kickoff_at,
+            label:         "Kicks off in",
+            done_label:    "🟢 Contest underway",
+            tone:          "yellow",
+            wrapper_class: "" %>
+    </div>
+  <% end %>
 
   <%# Primary CTA — drain-overlay button + 5s auto-redirect, all
       managed by modals/blocks/_cta_redirect. When lobby_url_key

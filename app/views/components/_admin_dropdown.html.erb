@@ -1,7 +1,8 @@
 <%# Navbar gear — settings dropdown.
     Logged-out: not rendered (this partial is only included from
     _user_nav, which itself guards on logged_in?).
-    Non-admin: short user menu (Account / Log out).
+    Non-admin: curated user menu (My Profile / My Contests / How to Play /
+      Proof of Reserves / Refresh Wallet / Log out).
     Admin: full admin menu (curated shortlist of admin/hub.html.erb). %>
 <% return unless current_user %>
 
@@ -22,15 +23,11 @@
        x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
        class="absolute right-0 mt-2 w-48 bg-surface border border-subtle rounded-lg shadow-lg z-50 py-1" style="display: none;">
 
-    <%# Everyone sees Account + Proof of Reserves at the top. %>
-    <% if defined?(account_path) %>
-      <%= link_to "Account", account_path, class: link_class %>
-    <% end %>
-    <% if defined?(proof_of_reserves_path) %>
-      <%= link_to "Proof of Reserves", proof_of_reserves_path, class: link_class %>
-    <% end %>
-
     <% if current_user.admin? %>
+      <%# Admin top — Account + Proof of Reserves, then curated shortcuts. %>
+      <%= link_to "Account", account_path, class: link_class %>
+      <%= link_to "Proof of Reserves", proof_of_reserves_path, class: link_class %>
+
       <%# === Admin shortcuts (curated from admin/hub.html.erb) === %>
       <%= link_to "Contests", contests_path, class: link_class %>
       <%= link_to "Seasons", admin_seasons_path, class: link_class %>
@@ -69,6 +66,21 @@
 
       <div class="border-t border-subtle my-1"></div>
       <%= link_to "Link Hub", admin_hub_path, class: muted_class %>
+    <% else %>
+      <%# === Non-admin — curated user menu ===
+          Order: My Profile → My Contests → How to Play → Proof of Reserves
+          → Refresh Wallet, then Log out (shared, below). %>
+      <%= link_to "My Profile", account_path, class: link_class %>
+      <%= link_to "My Contests", my_contests_path, class: link_class %>
+      <%= link_to "How to Play", help_how_to_play_path, class: link_class %>
+      <%= link_to "Proof of Reserves", proof_of_reserves_path, class: link_class %>
+      <%# Refresh Wallet — runs the standard wallet data resync (USDC +
+          tokens + seeds) and shows the navbar spinner while it's in flight.
+          Same showNavSpinner + refreshSession pair the admin hub uses; an
+          action, so it's a <button>, not a link. Closes the menu on click. %>
+      <button type="button"
+              @click="open = false; if (window.showNavSpinner) window.showNavSpinner(); if (window.refreshSession) { window.refreshSession().finally(function() { if (window.hideNavSpinner) window.hideNavSpinner(); }); }"
+              class="<%= link_class %> w-full text-left">Refresh Wallet</button>
     <% end %>
 
     <%# Log out — everyone, last item. Studio-engine ships /logout as

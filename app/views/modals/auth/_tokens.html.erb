@@ -149,7 +149,8 @@
           tx_signature_key: "props.txSignature",
           lobby_url_key:    "props.redirectUrl",
           seeds_earned_key: "props.seedsEarned",
-          seeds_total_key:  "props.seedsTotal" %>
+          seeds_total_key:  "props.seedsTotal",
+          kickoff_at:       @contest&.starts_at %>
     </template>
 
     <%# ==================================================================
