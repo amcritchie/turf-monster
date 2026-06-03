@@ -42,8 +42,15 @@ Rails.application.configure do
   # Mount Action Cable outside main process or domain.
   # config.action_cable.mount_path = nil
   # config.action_cable.url = "wss://example.com/cable"
+  # APP_HOST is the canonical public hostname for this deployment. Defaults to
+  # the devnet-prod host so the existing turf-monster app is byte-for-byte
+  # unchanged (var unset there); the mainnet app sets APP_HOST=app.turfmonster.media.
+  # Drives: ActionCable origin allowlist, mailer/OAuth-callback default_url_options,
+  # and the host-authorization allowlist below.
+  app_host = ENV.fetch("APP_HOST", "turf.mcritchie.studio")
+
   # ActionCable (contest chat) — restrict WebSocket origins to the app host.
-  config.action_cable.allowed_request_origins = [ %r{\Ahttps://turf\.mcritchie\.studio\z} ]
+  config.action_cable.allowed_request_origins = [ %r{\Ahttps://#{Regexp.escape(app_host)}\z} ]
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   # Can be used together with config.force_ssl for Strict-Transport-Security and secure cookies.
@@ -119,7 +126,7 @@ Rails.application.configure do
   # OPSEC-005: production delivery via Resend (config/initializers/resend.rb).
   # MAILER_FROM defaults to noreply@mcritchie.studio (set in
   # ApplicationMailer). The sending domain must be verified in Resend.
-  config.action_mailer.default_url_options = { host: ENV.fetch("MAILER_HOST", "turf.mcritchie.studio"), protocol: "https" }
+  config.action_mailer.default_url_options = { host: ENV.fetch("MAILER_HOST", app_host), protocol: "https" }
   config.action_mailer.raise_delivery_errors = true
   config.action_mailer.perform_deliveries = true
 
@@ -145,9 +152,15 @@ Rails.application.configure do
   # attackers replay Stripe-signed webhook payloads against the dyno's direct
   # *.herokuapp.com URL (bypassing CDN/WAF allowlists) and enables DNS-rebinding
   # to reach the app under a foreign origin's cookie scope.
+  # Primary public host (app_host) + this app's direct Heroku dyno host. The
+  # dyno host is parameterized via DYNO_HOST so each Heroku app (devnet
+  # turf-monster.herokuapp.com, mainnet turf-monster-mainnet-*.herokuapp.com)
+  # authorizes its own *.herokuapp.com without a code change. Devnet leaves
+  # both unset → identical allowlist to before. (Avoid the HEROKU_* namespace,
+  # which the platform reserves and may clobber.)
   config.hosts = [
-    "turf.mcritchie.studio",      # primary prod URL
-    "turf-monster.herokuapp.com", # direct Heroku dyno URL (health checks, etc.)
+    app_host,                                                      # primary public URL
+    ENV.fetch("DYNO_HOST", "turf-monster.herokuapp.com"),          # direct Heroku dyno URL (health checks, etc.)
   ]
   # /up is the Rails health-check endpoint Heroku polls — Heroku's load balancer
   # may use internal addressing, so exclude it from host authorization to avoid

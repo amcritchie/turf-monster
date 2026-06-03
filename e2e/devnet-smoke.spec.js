@@ -18,8 +18,8 @@ const RUNNER_OPTS = { cwd: process.cwd(), timeout: 15000, stdio: "pipe", env: { 
  * require a small amount of pre-existing USDC ($20) to cover the gap.
  *
  * Prerequisites:
- *   - SOLANA_BOT_KEY env var set to Alex Bot's base58-encoded private key
- *   - Alex Bot wallet funded with ~0.2 SOL + ~$20 USDC on devnet
+ *   - SOLANA_BOT_KEY env var set to the server bot's (Alex) base58-encoded private key
+ *   - the bot wallet funded with ~0.2 SOL + ~$20 USDC on devnet
  *   - Mack wallet funded with ~1 SOL on devnet (USDC seeded by faucet test)
  *   - Test server seeded with SOLANA_BOT_PUBKEY=<bot pubkey>
  *
@@ -96,7 +96,7 @@ test.beforeAll(async () => {
   // CI / devnet runs explicitly supply the key.
   test.skip(
     !process.env.SOLANA_BOT_KEY,
-    "SOLANA_BOT_KEY env var is required. Set it to Alex Bot's base58 private key."
+    "SOLANA_BOT_KEY env var is required. Set it to the server bot's (Alex) base58 private key."
   );
 
   // 2. Save original wallets, swap alex to bot key, clear Mack's wallet for fresh registration

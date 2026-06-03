@@ -14,9 +14,34 @@ module Solana
     RPC_URL = ENV.fetch("SOLANA_RPC_URL", "https://api.devnet.solana.com")
     NETWORK = ENV.fetch("SOLANA_NETWORK", "devnet")
 
-    # Devnet test mints (created via spl-token create-token --decimals 6)
-    USDC_MINT = ENV.fetch("SOLANA_USDC_MINT", "222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9")
-    USDT_MINT = ENV.fetch("SOLANA_USDT_MINT", "9mxkN8KaVA8FFgDE2LEsn2UbYLPG8Xg9bf4V9MYYi8Ne")
+    # USDC / USDT mints.
+    #
+    # The mainnet launch surfaced a silent-default footgun (§8): these used to
+    # default UNCONDITIONALLY to the devnet test mints, so a mainnet app that
+    # forgot SOLANA_USDC_MINT / SOLANA_USDT_MINT would read balances against the
+    # wrong ATA ($0.00 everywhere) and derive op-rev PDAs / entry source ATAs
+    # against a mint that doesn't exist on mainnet. The env override always wins;
+    # only the DEFAULT is now network-keyed so a future mainnet app can't boot on
+    # devnet mints by omission.
+    #   - mainnet-beta -> Circle USDC / Tether USDT canonical mints
+    #   - anything else (devnet/localnet/test) -> the existing devnet test mints
+    #     (created via `spl-token create-token --decimals 6`) — byte-identical to
+    #     the prior unconditional default, so dev/test behavior is unchanged.
+    #
+    # Ultimate source of truth is the on-chain VaultState `accepted_currencies`
+    # slots 0/1 (see Solana::Vault#read_vault_state). The `solana:preflight` rake
+    # asserts these env/default values match the vault before serving traffic.
+    DEVNET_USDC_MINT  = "222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9"
+    DEVNET_USDT_MINT  = "9mxkN8KaVA8FFgDE2LEsn2UbYLPG8Xg9bf4V9MYYi8Ne"
+    MAINNET_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" # Circle USDC
+    MAINNET_USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" # Tether USDT
+
+    USDC_MINT = ENV.fetch("SOLANA_USDC_MINT") do
+      NETWORK == "mainnet-beta" ? MAINNET_USDC_MINT : DEVNET_USDC_MINT
+    end
+    USDT_MINT = ENV.fetch("SOLANA_USDT_MINT") do
+      NETWORK == "mainnet-beta" ? MAINNET_USDT_MINT : DEVNET_USDT_MINT
+    end
 
     # Admin keypair path for signing settlement transactions
     ADMIN_KEYPAIR_PATH = ENV.fetch("SOLANA_ADMIN_KEYPAIR", File.expand_path("~/.config/solana/id.json"))
@@ -50,7 +75,21 @@ module Solana
     #
     # IDL_PATH points at the committed IDL JSON. The file is hand-maintained
     # — updated when turf_vault deploys a new version.
-    IDL_PATH = Rails.root.join("config", "turf_vault.idl.json")
+    #
+    # Network-keyed (mainnet launch): the devnet and mainnet IDLs are
+    # byte-identical EXCEPT the `address` field (the program ID), which makes
+    # their SHA256 differ. Each cluster therefore commits its own IDL file and
+    # pins its own EXPECTED_IDL_HASH per Heroku app. Selection is by NETWORK so
+    # a single source tree boots correctly on either cluster:
+    #   - mainnet-beta -> config/turf_vault.mainnet.idl.json (address mnzow…, 70e8f7…)
+    #   - anything else (devnet/localnet) -> config/turf_vault.idl.json (address EQGF…, 99d551…)
+    # The devnet branch is byte-identical to the prior unconditional path, so
+    # the live devnet-prod app's verify_idl!/precompile behavior is unchanged.
+    IDL_PATH = if NETWORK == "mainnet-beta"
+      Rails.root.join("config", "turf_vault.mainnet.idl.json")
+    else
+      Rails.root.join("config", "turf_vault.idl.json")
+    end
 
     # Set after each turf_vault deploy. Empty string = skip verification (dev
     # default; set in production env or here after pinning).

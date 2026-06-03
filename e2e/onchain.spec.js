@@ -57,14 +57,16 @@ async function selectMatchups(page) {
 // ---------------------------------------------------------------------------
 
 test("phantom sign-in with existing user", async ({ page }) => {
-  await setupPhantomMock(page); // seed byte 1 = matches alex's solana_address
+  await setupPhantomMock(page); // seed byte 1 = matches the human operator's solana_address
 
   await loginViaPhantom(page);
 
-  // Alex's username should appear in the nav (nav shows username, not display name).
+  // The human operator's username should appear in the nav (nav shows username,
+  // not display name). After the 2026-06-02 naming flip the human's username is
+  // `mcritchie` (the bare `alex` username now belongs to the server bot).
   // Filter by hasText to ignore the dropdown's same-href "Account" link.
   await expect(
-    page.locator('a[href="/account"]').filter({ hasText: "alex" }).first()
+    page.locator('a[href="/account"]').filter({ hasText: "mcritchie" }).first()
   ).toBeVisible();
 
   // "Sign in" link should NOT be visible (proves we're authenticated)
@@ -83,7 +85,8 @@ test("phantom sign-in creates new user", async ({ page }) => {
   // animal slug like "cumquat-shark" right at signup, so the profile-
   // modal-auto-open prompt the old assertion checked for no longer
   // fires — instead we verify the username chip in the nav is now
-  // SOMETHING OTHER than "alex" (which would be the existing-user case).
+  // SOMETHING OTHER than "mcritchie" (which would be the existing-user case;
+  // the human operator's username post-2026-06-02 naming flip).
   await setupPhantomMock(page, { seedByte: 2 });
 
   await loginViaPhantom(page);
@@ -91,16 +94,17 @@ test("phantom sign-in creates new user", async ({ page }) => {
   // "Sign in" link should NOT be visible (proves we're authenticated)
   await expect(page.locator('a[href="/signin"]')).not.toBeVisible();
 
-  // A non-alex username chip must be visible in the nav. We filter by
-  // a hyphen — Studio::UsernameGenerator always emits a kebab-case
-  // "<food>-<animal>" slug — which uniquely separates the chip from
-  // the dropdown's same-href "Account" link.
+  // A new-user (generated) username chip must be visible in the nav, distinct
+  // from the existing human operator's `mcritchie`. We filter by a hyphen —
+  // Studio::UsernameGenerator always emits a kebab-case "<food>-<animal>" slug
+  // — which uniquely separates the chip from the dropdown's same-href
+  // "Account" link.
   const usernameChip = page
     .locator('a[href="/account"]')
     .filter({ hasText: "-" })
     .first();
   await expect(usernameChip).toBeVisible({ timeout: 3000 });
-  await expect(usernameChip).not.toContainText("alex");
+  await expect(usernameChip).not.toContainText("mcritchie");
 });
 
 // ---------------------------------------------------------------------------
@@ -202,7 +206,7 @@ test.fixme("onchain entry via Phantom with mocked devnet", async ({ page }) => {
 //   2. Client deserializes the TX, Phantom mock partialSigns (real Ed25519).
 //   3. connection.sendRawTransaction(signedTx.serialize(), …) — here
 //      solanaWeb3 calls verifySignatures by default and rejects with
-//      "Invalid signature for public key F6f8…" (alex-bot, the seed's
+//      "Invalid signature for public key F6f8…" (the bot, the seed's
 //      admin keypair). Source: the server-side recent blockhash stub
 //      produces a TX shape whose admin signature solanaWeb3 disagrees
 //      with on the round-trip — could be a wire-format mismatch between

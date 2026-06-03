@@ -12,7 +12,13 @@
  *   // Now walletProvider.detect() returns the KeypairProvider
  */
 
-// Alex Bot pubkey (derived from SOLANA_BOT_KEY)
+// Server-bot pubkey (derived from SOLANA_BOT_KEY). This is the LEGACY bot
+// wallet. The bot's seeded display wallet rotated to 8K81w4e6… on 2026-06-02
+// (and the bot's name/username is now "Alex"/`alex`), but SOLANA_BOT_KEY is the
+// private key for THIS (F6f8…) wallet. For the @devnet keypair-login test to
+// resolve to the seeded bot again, EITHER seed the bot with F6f8… on devnet OR
+// generate a SOLANA_BOT_KEY for 8K81… and update this constant. Devnet-nightly
+// only — excluded from `npm test`.
 const BOT_PUBKEY = "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ";
 
 /**
@@ -55,7 +61,7 @@ async function setupKeypairProvider(page, base58Key) {
   if (!key) {
     throw new Error(
       "SOLANA_BOT_KEY env var is required for devnet smoke tests. " +
-        "Set it to Alex Bot's base58-encoded private key (64 bytes)."
+        "Set it to the server bot's (Alex) base58-encoded private key (64 bytes)."
     );
   }
 
