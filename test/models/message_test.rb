@@ -56,4 +56,51 @@ class MessageTest < ActiveSupport::TestCase
     assert_not_includes result, removed
     assert_operator result.index(newer), :<, result.index(older)
   end
+
+  # --- join announcements (system messages) ---
+
+  test "announce_join! posts a system message mentioning the username once" do
+    assert_difference "Message.count", 1 do
+      Message.announce_join!(contest: @contest, user: @user)
+    end
+
+    msg = @contest.messages.system_messages.find_by(user: @user)
+    assert msg.present?
+    assert msg.system?
+    assert_includes msg.body, @user.display_name
+    assert_includes msg.body, "joined the contest"
+  end
+
+  test "announce_join! is idempotent — a second call does not repost" do
+    Message.announce_join!(contest: @contest, user: @user)
+
+    assert_no_difference "Message.count" do
+      Message.announce_join!(contest: @contest, user: @user)
+    end
+  end
+
+  test "announce_join! does nothing when chat is disabled" do
+    @contest.update!(chat_enabled: false)
+
+    assert_no_difference "Message.count" do
+      result = Message.announce_join!(contest: @contest, user: @user)
+      assert_nil result
+    end
+  end
+
+  test "announce_join! does not block a re-confirm even after the announcement is hidden" do
+    msg = Message.announce_join!(contest: @contest, user: @user)
+    msg.hide!(@admin)
+
+    # A hidden announcement still counts — re-confirming must not repost it.
+    assert_no_difference "Message.count" do
+      Message.announce_join!(contest: @contest, user: @user)
+    end
+  end
+
+  test "join_announced? reflects whether a system message exists for the user" do
+    assert_not Message.join_announced?(contest: @contest, user: @user)
+    Message.announce_join!(contest: @contest, user: @user)
+    assert Message.join_announced?(contest: @contest, user: @user)
+  end
 end

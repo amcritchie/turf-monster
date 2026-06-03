@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_03_042214) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_03_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -204,7 +204,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_03_042214) do
     t.bigint "hidden_by_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "system", default: false, null: false
     t.index ["contest_id", "created_at"], name: "index_messages_on_contest_id_and_created_at"
+    t.index ["contest_id", "user_id", "system"], name: "index_messages_on_contest_user_system", where: "system"
     t.index ["hidden_by_id"], name: "index_messages_on_hidden_by_id", where: "(hidden_by_id IS NOT NULL)"
     t.index ["user_id"], name: "index_messages_on_user_id"
   end

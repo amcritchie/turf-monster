@@ -2,6 +2,18 @@
     broadcast (Message#broadcast_new_message) — so it must NOT use current_user
     or any per-viewer state. The "Hide" button is revealed by CSS only inside
     a .chat-admin panel (see contests/_chat_panel). %>
+<% if message.system? %>
+  <%# System/announcement line (e.g. a join announcement): centered, avatar-less,
+      reads as an event in the room rather than a typed message. Admins can still
+      hide it — the Hide button is revealed by .chat-admin CSS like the bubbles. %>
+  <div id="message_<%= message.id %>" class="group flex items-center justify-center gap-2 py-0.5">
+    <p class="text-xs text-muted text-center break-words"><%= message.body %></p>
+    <button type="button"
+            class="chat-admin-only flex-shrink-0 text-xs font-medium text-muted hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+            data-message-url="<%= contest_message_path(message.contest, message) %>"
+            onclick="hideChatMessage(this)">Hide</button>
+  </div>
+<% else %>
 <div id="message_<%= message.id %>" class="group flex items-start gap-2.5">
   <%= render "components/avatar", user: message.user, size: "nav" %>
   <div class="min-w-0 flex-1">
@@ -16,3 +28,4 @@
     <p class="text-sm text-secondary break-words whitespace-pre-wrap leading-snug mt-0.5"><%= message.body %></p>
   </div>
 </div>
+<% end %>
