@@ -79,7 +79,8 @@
               <% if tx.pending? %>
                 <button data-tx-slug="<%= tx.slug %>"
                         data-tx-serialized="<%= tx.serialized_tx %>"
-                        onclick="cosignTransaction(this.dataset.txSlug, this.dataset.txSerialized)"
+                        data-tx-label="<%= tx.tx_type.titleize %>"
+                        onclick="cosignTransaction(this.dataset.txSlug, this.dataset.txSerialized, this.dataset.txLabel)"
                         class="btn btn-primary btn-sm">
                   Co-sign
                 </button>
