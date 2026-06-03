@@ -10,9 +10,9 @@ async function doLogin(page) {
   });
   const { url } = await resp.json();
   await page.goto(url);
-  // / redirects to /contests/:slug — wait for any URL outside /login + /magic_link
+  // / redirects to /contests/:slug — wait for any URL outside /signin + /magic_link
   await page.waitForURL(
-    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link")
+    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link")
   );
 }
 

@@ -46,7 +46,7 @@ class ApplicationController < ActionController::Base
     return if logged_in?
 
     respond_to do |format|
-      format.html         { redirect_to login_path }
+      format.html         { redirect_to signin_path }
       format.json         { render json: { error: "unauthenticated" }, status: :unauthorized }
       format.turbo_stream { head :unauthorized }
       format.any          { head :unauthorized }
@@ -114,7 +114,7 @@ class ApplicationController < ActionController::Base
     @current_user = nil
     clear_app_session
     respond_to do |format|
-      format.html { redirect_to login_path, alert: "Your session expired. Please sign in again." }
+      format.html { redirect_to signin_path, alert: "Your session expired. Please sign in again." }
       format.json { render json: { error: "session expired" }, status: :unauthorized }
     end
   end

@@ -6,14 +6,14 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert_emails 1 do
       post magic_link_request_path, params: { email: "newbie@example.com" }
     end
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "create sends no email for a malformed address but still responds success" do
     assert_emails 0 do
       post magic_link_request_path, params: { email: "not-an-email" }
     end
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "create responds JSON success for the modal" do
@@ -83,7 +83,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
 
   test "consume rejects an invalid token" do
     get magic_link_path(token: "bogus.token.value")
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "consume sanitizes a protocol-relative return_to (open-redirect guard)" do

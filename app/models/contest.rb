@@ -368,6 +368,14 @@ class Contest < ApplicationRecord
     onchain_contest_id.present?
   end
 
+  # On-chain cancellation (cancel_contest, 2-of-3). A cancelled contest is
+  # terminal — entries are refunded to the creator and no new entry may be
+  # submitted. Aliased as #cancelled? for read sites that don't care it's an
+  # on-chain flag. Distinct from #settled? (the other terminal state).
+  def cancelled?
+    onchain_cancelled?
+  end
+
   def onchain_params
     fee_cents  = entry_fee_cents.to_i
     guaranteed = guaranteed_prize_cents

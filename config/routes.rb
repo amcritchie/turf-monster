@@ -89,6 +89,19 @@ Rails.application.routes.draw do
   # matching OmniAuth's /auth/:provider/callback wildcard
   get  "auth/phantom/callback", to: "solana_sessions#phantom_callback"
 
+  # Unified auth — login + signup are one create-or-login flow, so they share a
+  # single canonical page at /signin (sessions#new). The legacy /login + /signup
+  # GETs 301 here, preserving the query string so ?reference= funnel attribution
+  # (ApplicationController#capture_reference) and ?email= prefill survive the hop.
+  # These are defined BEFORE Studio.routes so they win GET recognition; the engine
+  # still draws /login + /signup below, keeping the login_path/signup_path helpers
+  # and the POST /login + POST /signup actions intact. as: nil avoids a name clash
+  # with those engine-named routes.
+  get "signin", to: "sessions#new", as: :signin
+  signin_redirect = ->(_params, req) { req.query_string.present? ? "/signin?#{req.query_string}" : "/signin" }
+  get "login",  to: redirect(&signin_redirect), as: nil
+  get "signup", to: redirect(&signin_redirect), as: nil
+
   Studio.routes(self)
 
   # Solana wallet auth
@@ -201,6 +214,8 @@ Rails.application.routes.draw do
       post :simulate_game
       post :simulate_batch
       post :reset
+      post :close_onchain
+      post :cancel_onchain
       # Admin "Update banner" flow — swap just the hero image from a modal on
       # the contest show page (ContestsController#update_banner).
       patch :banner, action: :update_banner
@@ -276,6 +291,13 @@ Rails.application.routes.draw do
     resources :slates, only: [], param: :slug do
       member { get :manage }
     end
+
+    # Currency registry (on-chain accepted_currencies). register / deactivate /
+    # sweep are 2-of-3 → they queue a PendingTransaction for Treasury cosign.
+    get  "currencies",                         to: "currencies#index",      as: :currencies
+    post "currencies/register",                to: "currencies#register",   as: :register_currency
+    post "currencies/:idx/deactivate",         to: "currencies#deactivate", as: :deactivate_currency
+    post "currencies/sweep",                   to: "currencies#sweep",      as: :sweep_operator_revenue
 
     # Free entries (on-chain token minting console)
     get  "free_entries",                       to: "free_entries#index",    as: :free_entries

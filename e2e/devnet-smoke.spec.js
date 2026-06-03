@@ -18,8 +18,8 @@ const RUNNER_OPTS = { cwd: process.cwd(), timeout: 15000, stdio: "pipe", env: { 
  * require a small amount of pre-existing USDC ($20) to cover the gap.
  *
  * Prerequisites:
- *   - SOLANA_BOT_KEY env var set to Alex Bot's base58-encoded private key
- *   - Alex Bot wallet funded with ~0.2 SOL + ~$20 USDC on devnet
+ *   - SOLANA_BOT_KEY env var set to the server bot's (Alex) base58-encoded private key
+ *   - the bot wallet funded with ~0.2 SOL + ~$20 USDC on devnet
  *   - Mack wallet funded with ~1 SOL on devnet (USDC seeded by faucet test)
  *   - Test server seeded with SOLANA_BOT_PUBKEY=<bot pubkey>
  *
@@ -96,7 +96,7 @@ test.beforeAll(async () => {
   // CI / devnet runs explicitly supply the key.
   test.skip(
     !process.env.SOLANA_BOT_KEY,
-    "SOLANA_BOT_KEY env var is required. Set it to Alex Bot's base58 private key."
+    "SOLANA_BOT_KEY env var is required. Set it to the server bot's (Alex) base58 private key."
   );
 
   // 2. Save original wallets, swap alex to bot key, clear Mack's wallet for fresh registration
@@ -223,9 +223,9 @@ async function selectFirstSlate(page) {
 // ---------------------------------------------------------------------------
 
 async function loginViaKeypair(page) {
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.locator('button:has-text("Connect Wallet")').click();
-  await page.waitForURL(/^(?!.*login)/, { timeout: 30000 });
+  await page.waitForURL(/^(?!.*signin)/, { timeout: 30000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +242,7 @@ async function loginViaEmail(page, email) {
   const { url } = await resp.json();
   await page.goto(url);
   await page.waitForURL(
-    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link"),
+    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link"),
     { timeout: 15000 }
   );
 }
@@ -439,7 +439,7 @@ test("@devnet 3 — Mason registers via magic link → completes profile", async
   const { url } = await resp.json();
   await page.goto(url);
   await page.waitForURL(
-    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link"),
+    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link"),
     { timeout: 30000 }
   );
 
@@ -490,11 +490,11 @@ test("@devnet 5 — Mack wallet connect → complete profile", async ({
   await setupKeypairProvider(page, MACK_KEY);
 
   // 1. Connect wallet — creates a new user since we cleared Mack's address in beforeAll
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.locator('button:has-text("Connect Wallet")').click();
 
   // May redirect to "/" or "/account/complete_profile" depending on whether profile is complete
-  await page.waitForURL(/^(?!.*login)/, { timeout: 30000 });
+  await page.waitForURL(/^(?!.*signin)/, { timeout: 30000 });
 
   // 2. Complete profile if needed
   if (page.url().includes("complete_profile")) {

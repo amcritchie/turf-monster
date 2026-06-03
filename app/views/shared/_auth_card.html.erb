@@ -1,14 +1,14 @@
-<%# Shared sign-in / sign-up card. Under unified create-or-login the two pages
-    are identical except for copy, so both sessions/new and registrations/new
-    render this. CTA order: Google -> Solana wallet hub -> (or) -> email magic
-    link. No password field — email auth is a one-tap magic link.
-    locals: (subheading:, footer_prompt:, footer_link_label:, footer_link_path:) %>
+<%# Unified Sign in card. Login and signup are one create-or-login flow (magic
+    link / Google / Solana wallet all find-or-create), so there is a single
+    canonical page at /signin rendering this — no separate "sign up" variant and
+    no required locals. CTA order: Google -> Solana wallet hub -> (or) -> email
+    magic link. No password field — email auth is a one-tap magic link. %>
 <div class="min-h-[70vh] flex items-center justify-center">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
       <img src="/logo.png" alt="Turf Monster" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
       <h1 class="text-3xl font-extrabold text-heading tracking-tight">Turf <span class="text-primary">Totals</span></h1>
-      <p class="text-secondary mt-2"><%= subheading %></p>
+      <p class="text-secondary mt-2">Sign in to play</p>
     </div>
 
     <div class="card shadow p-8">
@@ -71,11 +71,6 @@
         <p x-show="error" x-cloak class="text-xs text-red-400 text-center mt-2" x-text="error"></p>
         <p class="text-xs text-muted text-center mt-2">We'll email you a one-tap link — no password needed.</p>
       </form>
-
-      <p class="text-center text-secondary text-sm mt-6">
-        <%= footer_prompt %>
-        <%= link_to footer_link_label, footer_link_path, class: "text-primary hover:text-primary-300 font-medium underline underline-offset-2" %>
-      </p>
     </div>
   </div>
 </div>

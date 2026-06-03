@@ -140,7 +140,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     post enter_contest_path(@contest)
 
     assert_response :redirect
-    assert_redirected_to login_path
+    assert_redirected_to signin_path
   end
 
   test "enter with HTML redirects on success" do

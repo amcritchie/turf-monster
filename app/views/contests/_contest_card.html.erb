@@ -14,9 +14,10 @@
       <p class="text-xs text-secondary font-medium mb-1"><%= contest.slate.name %></p>
     <% end %>
 
+    <% card_status = contest.cancelled? ? "cancelled" : contest.status %>
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-lg font-bold text-heading"><%= contest.name %></h2>
-      <span class="badge text-[10px] <%= contest_badge_classes(contest.status) %>"><%= contest.status.capitalize %></span>
+      <span class="badge text-[10px] <%= contest_badge_classes(card_status) %>"><%= card_status.capitalize %></span>
     </div>
 
     <div class="flex items-center gap-4 text-sm text-secondary mb-2">

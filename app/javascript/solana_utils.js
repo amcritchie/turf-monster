@@ -55,7 +55,7 @@ export async function authedFetch(url, opts) {
   } catch (e) {}
   try {
     var modals = window.Alpine && Alpine.store && Alpine.store('modals');
-    if (modals && modals.open) modals.open('auth', { mode: 'login' });
+    if (modals && modals.open) modals.open('auth', { step: 'credentials' });
   } catch (e) {}
   return null;
 }

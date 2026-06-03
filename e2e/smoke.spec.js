@@ -35,23 +35,24 @@ test("guest clicking matchup card does not crash the page", async ({ page }) => 
 
 test("login with valid credentials", async ({ page }) => {
   await login(page, "alex@mcritchie.studio", "password");
-  // Username should appear in header nav. .filter({ hasText: "alex" }) skips
-  // the dropdown's "Account" link (same href, different text) so the
-  // assertion isn't sensitive to nav DOM ordering between the dropdown and
-  // the username chip.
+  // Username should appear in header nav. The human operator's username is
+  // `mcritchie` after the 2026-06-02 naming flip (the bare `alex` username now
+  // belongs to the server bot). .filter({ hasText: "mcritchie" }) skips the
+  // dropdown's "Account" link (same href, different text) so the assertion
+  // isn't sensitive to nav DOM ordering between the dropdown and the chip.
   await expect(
-    page.locator('a[href="/account"]').filter({ hasText: "alex" }).first()
+    page.locator('a[href="/account"]').filter({ hasText: "mcritchie" }).first()
   ).toBeVisible();
 });
 
 test("requesting a magic link confirms the email was sent", async ({ page }) => {
   // Passwordless: there are no invalid credentials — any well-formed email
-  // gets a one-tap link. Submitting the email form returns to /login with a
-  // "check your inbox" notice.
-  await page.goto("/login");
+  // gets a one-tap link. Submitting the email form opens the "check your inbox"
+  // modal in place (staying on /signin).
+  await page.goto("/signin");
   await page.fill('input[name="email"]', "someone@example.com");
   await page.getByRole("button", { name: "Email Link" }).click();
-  await page.waitForURL((url) => url.pathname.startsWith("/login"));
+  await page.waitForURL((url) => url.pathname.startsWith("/signin"));
   await expect(page.locator("body")).toContainText(/inbox|sign-in link/i);
 });
 

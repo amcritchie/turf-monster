@@ -20,7 +20,7 @@ class SessionsController < ApplicationController
   # here (a stale form, a bot, a deep-link) is bounced to /login with a hint to
   # use the emailed link. Wallet auth (SolanaSessionsController) is unchanged.
   def create
-    redirect_to login_path, alert: "We use magic links — check your email for a sign-in link."
+    redirect_to signin_path, alert: "We use magic links — check your email for a sign-in link."
   end
 
   def sso_login
@@ -43,6 +43,6 @@ class SessionsController < ApplicationController
     session.delete(:solana_nonce)    # delete-before-verify replay guard
     session.delete(:solana_nonce_at)
     session.delete(:return_to)       # require_profile_completion redirect target
-    redirect_to login_path, notice: "Logged out."
+    redirect_to signin_path, notice: "Logged out."
   end
 end

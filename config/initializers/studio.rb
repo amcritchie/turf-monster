@@ -6,6 +6,13 @@
 # magic-link flow), so no engine code path relies on #authenticate here.
 Studio.validate_user_contract = false
 
+# This app defines its own magic_link + solana routes (with extras like
+# email_verification, phantom_callback, google_popup, link_wallet) in
+# config/routes.rb, so the engine must NOT also draw its magic_link/solana
+# routes — that would collide on the `magic_link` route NAME and crash boot.
+# (studio-engine >= 0.5.1)
+Studio.draw_auth_routes = false
+
 Studio.configure do |config|
   config.app_name = "Turf Monster"
   config.session_key = :turf_user_id
