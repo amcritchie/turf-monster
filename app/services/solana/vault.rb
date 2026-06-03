@@ -1078,7 +1078,13 @@ module Solana
           season_pda:         s_pda
         ),
         data: data,
-        additional_signers: [wallet_bytes]
+        additional_signers: [wallet_bytes],
+        # Mirror create_contest: the half-signed entry tx also waits on a Phantom
+        # click, so anchor it on the durable nonce when one is configured to
+        # survive a slow/flagged-dApp signing window (the mainnet
+        # BlockhashNotFound class of failure). Opt-in: unset
+        # SOLANA_DURABLE_NONCE_PUBKEY = recent blockhash, unchanged.
+        durable_nonce: durable_nonce_config
       )
       { serialized_tx: serialized, entry_pda: Keypair.encode_base58(e_pda) }
     end

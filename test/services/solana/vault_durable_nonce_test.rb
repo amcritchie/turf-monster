@@ -50,4 +50,53 @@ class Solana::VaultDurableNonceTest < ActiveSupport::TestCase
     vault = Solana::Vault.new(client: fake_client)
     assert_nil vault.send(:durable_nonce_config)
   end
+
+  # --- entry flow: build_enter_contest opts into the same nonce ----------------
+  # Mirrors build_create_contest. With SOLANA_DURABLE_NONCE_PUBKEY set, the entry
+  # tx must anchor on the stored nonce + carry the System advance ix; unset, it
+  # falls back to a recent blockhash with no advance ix.
+
+  WALLET = "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd".freeze
+
+  test "build_enter_contest anchors on the durable nonce when the env var is set" do
+    authority = Solana::Keypair.admin.address
+    nonce_val = Solana::Keypair.generate.to_base58
+    buf   = nonce_buffer(authority_b58: authority, nonce_b58: nonce_val)
+    vault = Solana::Vault.new(client: fake_client(nonce_b64: Base64.strict_encode64(buf)))
+
+    out = nil
+    with_durable_nonce_env(Solana::Keypair.generate.to_base58) do
+      out = vault.build_enter_contest(WALLET, "dnonce-entry-test", 0, currency_idx: 0, season_id: 1)
+    end
+
+    raw = Base64.strict_decode64(out[:serialized_tx]).b
+    # System program (32 zero bytes) is referenced only by the prepended advance ix.
+    assert raw.include?("\x00".b * 32), "expected the System advance instruction in the entry tx"
+    # The nonce value is baked in as the recentBlockhash.
+    assert raw.include?(Solana::Keypair.decode_base58(nonce_val)), "expected the nonce value as recentBlockhash"
+    assert out[:entry_pda].present?
+  end
+
+  test "build_enter_contest falls back to a recent blockhash when the env var is unset" do
+    vault = Solana::Vault.new(client: fake_client)
+    ensure_durable_nonce_unset!
+
+    out = vault.build_enter_contest(WALLET, "dnonce-entry-test", 0, currency_idx: 0, season_id: 1)
+    assert out[:serialized_tx].is_a?(String) && !out[:serialized_tx].empty?
+    assert out[:entry_pda].present?
+  end
+
+  private
+
+  def with_durable_nonce_env(pubkey)
+    prev = ENV["SOLANA_DURABLE_NONCE_PUBKEY"]
+    ENV["SOLANA_DURABLE_NONCE_PUBKEY"] = pubkey
+    yield
+  ensure
+    if prev.nil? then ENV.delete("SOLANA_DURABLE_NONCE_PUBKEY") else ENV["SOLANA_DURABLE_NONCE_PUBKEY"] = prev end
+  end
+
+  def ensure_durable_nonce_unset!
+    ENV.delete("SOLANA_DURABLE_NONCE_PUBKEY")
+  end
 end
