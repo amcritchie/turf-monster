@@ -460,6 +460,18 @@ class Contest < ApplicationRecord
     # Don't block DB settlement — onchain can be retried
   end
 
+  # Notify every winner (payout_cents > 0) of their winnings by email, AFTER
+  # the on-chain settlement has landed. Delegates to Contests::WinnerNotifier
+  # (enqueues a background job per emailable winner; skips wallet-only winners;
+  # idempotent on repeat calls via each entry's winner_notified_at flag).
+  #
+  # Trigger: Admin::PendingTransactionsController#confirm calls this once a
+  # settle_contest tx confirms and onchain_settled flips true. Also callable
+  # standalone from the console to (re-)notify an already-settled contest.
+  def notify_winners!
+    Contests::WinnerNotifier.call(self)
+  end
+
   def locks_at
     starts_at
   end

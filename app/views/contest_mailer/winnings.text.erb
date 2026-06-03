@@ -1,0 +1,13 @@
+🏆 You won <%= @payout %>!
+
+Hi <%= @user.display_name %>,
+
+Congratulations — your entry finished #<%= @rank %> in <%= @contest.name %> and won <%= @payout %>.
+
+Your winnings have settled on-chain. Head back to the contest to see the final leaderboard:
+
+<%= @contest_url %>
+
+Thanks for playing.
+
+— Turf Monster
