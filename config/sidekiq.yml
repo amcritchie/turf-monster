@@ -1,0 +1,14 @@
+# Sidekiq server config (loaded by `bundle exec sidekiq -C config/sidekiq.yml`).
+#
+# Queues this worker drains, highest priority first. `default` carries every
+# ApplicationJob in app/jobs (all use `queue_as :default`). `mailers` is the
+# Rails ActionMailer convention queue — under load_defaults 7.2,
+# `deliver_later_queue_name` is nil so MailDeliveryJob currently enqueues onto
+# `default`, NOT `mailers`. We drain `mailers` anyway so the config matches the
+# Procfile.dev / bin/tm convention and future-proofs any job that opts into it
+# (e.g. a re-introduced `queue_as :mailers`) without silently stranding it.
+:queues:
+  - default
+  - mailers
+
+:concurrency: <%= ENV.fetch("SIDEKIQ_CONCURRENCY", 5) %>
