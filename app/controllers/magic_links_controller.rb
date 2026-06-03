@@ -43,7 +43,26 @@ class MagicLinksController < ApplicationController
 
   private
 
+  # Hard-reset any prior session BEFORE establishing the magic-link user's.
+  # A magic link is a fresh WEB2 (email) login: if the browser already held a
+  # web3/Phantom-linked session, its state (onchain flag, sso_* awareness,
+  # geo override, return_to, etc.) must not bleed into the new session — that
+  # bleed is what made a web2 magic-link user still look phantom-linked and
+  # triggered the Phantom unlock probe on the landing. reset_session rotates
+  # the session id and drops every key; we then explicitly clear the onchain
+  # privilege flag (set_app_session also deletes it, but be belt-and-braces
+  # in case the engine helper changes) and Current so no request-scoped
+  # identity from the old session lingers. The layout's user-change cleanup
+  # (compares data-user-id) clears stale phantom_dl_* + wallet localStorage on
+  # the landing render, completing the client side.
+  def reset_prior_session!
+    reset_session
+    session.delete(:onchain)
+    Current.reset
+  end
+
   def sign_in_existing(user, result)
+    reset_prior_session!
     set_app_session(user)
     user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
     redirect_to magic_link_landing_path(result),
@@ -59,6 +78,7 @@ class MagicLinksController < ApplicationController
   # the entry-tokens upsell. There is no password — email auth is magic-link
   # only across the whole app (the password_digest column is dormant).
   def sign_up_new(result)
+    reset_prior_session!
     user = User.new(email: result.email, reference: cookies[:reference].presence&.to_s&.first(64))
     Studio.configure_new_user.call(user)
     rescue_and_log(target: user) do

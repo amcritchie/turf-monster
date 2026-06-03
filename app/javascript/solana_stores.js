@@ -15,6 +15,15 @@ function registerWalletStore() {
     watching: false,
 
     init: function() {
+      // Only WEB3 (live Phantom-signature) sessions may engage Phantom. A
+      // web2/managed/guest user has a server-held keypair (or no wallet), so
+      // probing Phantom — even silently with onlyIfTrusted — pops the unlock
+      // prompt on an installed+previously-trusted extension on EVERY page
+      // load. Gate on the canonical session mode (the #session-context JSON,
+      // the same source Alpine.store('session') hydrates from) read directly,
+      // so this is correct regardless of alpine:init store-registration order.
+      if (!this._isWeb3Session()) return;
+
       var provider = window.walletProvider.detect();
       var serverAddr = this._serverAddress();
       if (!provider || !serverAddr) return;
@@ -48,6 +57,21 @@ function registerWalletStore() {
     },
 
     _serverAddress: function() { return document.body.dataset.walletAddress || ''; },
+
+    // True only for a live Phantom-signature (web3) session. Reads the
+    // canonical session mode from the server-rendered #session-context JSON
+    // (SessionContext#to_h → { mode: 'web3' | 'web2' | 'guest', ... }) rather
+    // than the Alpine session store, so it doesn't depend on which store
+    // registered first during alpine:init. Falls back to the store, then to
+    // false (never engage Phantom on unknown/managed sessions).
+    _isWeb3Session: function() {
+      try {
+        var el = document.getElementById('session-context');
+        if (el) return JSON.parse(el.textContent).mode === 'web3';
+      } catch (e) { /* fall through to store / safe default */ }
+      var s = (typeof Alpine !== 'undefined' && Alpine.store) ? Alpine.store('session') : null;
+      return !!(s && s.mode === 'web3');
+    },
 
     _reauth: function(pubkeyB58) {
       var provider = window.walletProvider.detect();
