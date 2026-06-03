@@ -48,7 +48,13 @@ module Admin
         # state change (the source of truth is the on-chain VaultState / ATAs).
         case @tx.tx_type
         when "settle_contest"
-          @tx.target.update!(onchain_settled: true) if @tx.target.is_a?(Contest)
+          if @tx.target.is_a?(Contest)
+            @tx.target.update!(onchain_settled: true)
+            # The payout has now provably landed on-chain — only here do we
+            # tell winners they won (never at grade time). Idempotent + skips
+            # wallet-only winners; enqueues a background job per emailable winner.
+            @tx.target.notify_winners!
+          end
         when "cancel_contest"
           @tx.target.update!(onchain_cancelled: true) if @tx.target.is_a?(Contest)
         end

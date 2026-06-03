@@ -123,4 +123,46 @@ class Admin::PendingTransactionsControllerTest < ActionDispatch::IntegrationTest
 
     assert @contest.reload.onchain_settled?
   end
+
+  test "confirm of settle_contest enqueues winner notifications" do
+    log_in_as(@admin)
+    @contest.entries.create!(
+      user: @admin, status: "complete", rank: 1, payout_cents: 4500, score: 1.0
+    )
+    tx = ptx("settle_contest", { settlements: [] }, target: @contest)
+    cosigner = Solana::Config::MULTISIG_SIGNERS.first
+
+    Solana::Vault.stub :new, FakeVault.new do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          assert_enqueued_jobs 1, only: WinnerNotificationJob do
+            post confirm_admin_pending_transaction_path(slug: tx.slug),
+              params: { cosigner_address: cosigner, tx_signature: "sig_settle_notify" }, as: :json
+          end
+        end
+      end
+    end
+
+    assert @contest.reload.onchain_settled?
+  end
+
+  test "confirm of cancel_contest does NOT enqueue winner notifications" do
+    log_in_as(@admin)
+    @contest.entries.create!(
+      user: @admin, status: "complete", rank: 1, payout_cents: 4500, score: 1.0
+    )
+    tx = ptx("cancel_contest", { creator: "c" }, target: @contest)
+    cosigner = Solana::Config::MULTISIG_SIGNERS.first
+
+    Solana::Vault.stub :new, FakeVault.new do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          assert_no_enqueued_jobs only: WinnerNotificationJob do
+            post confirm_admin_pending_transaction_path(slug: tx.slug),
+              params: { cosigner_address: cosigner, tx_signature: "sig_cancel_notify" }, as: :json
+          end
+        end
+      end
+    end
+  end
 end

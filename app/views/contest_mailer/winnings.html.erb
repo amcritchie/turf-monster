@@ -1,0 +1,20 @@
+<h1>🏆 You won <%= @payout %>!</h1>
+
+<p>Hi <%= @user.display_name %>,</p>
+
+<p>
+  Congratulations — your entry finished
+  <strong>#<%= @rank %></strong> in <strong><%= @contest.name %></strong>
+  and won <strong><%= @payout %></strong>.
+</p>
+
+<p>Your winnings have settled on-chain. Head back to the contest to see the final leaderboard:</p>
+
+<p><%= link_to "View the contest →".html_safe, @contest_url %></p>
+
+<p>If the button doesn't work, copy and paste this URL into your browser:</p>
+<p><%= @contest_url %></p>
+
+<p>Thanks for playing.</p>
+
+<p>— Turf Monster</p>
