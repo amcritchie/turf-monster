@@ -5,8 +5,12 @@ const { setupOnchainMocks, computeMockTransaction } = require("./rpc-mock");
  * Log in (or create the account) via the magic link.
  * Email auth is now a passwordless magic link, so there's no form to fill —
  * we mint a token through the dev-only /test/magic_link_token endpoint and
- * navigate to the consume URL (same browser context, so the session cookie
+ * navigate to the emailed URL (same browser context, so the session cookie
  * sticks). The `password` arg is ignored (kept for call-site compatibility).
+ *
+ * The emailed link's GET is a scanner-safe "Confirm sign-in" interstitial that
+ * does NOT consume the token — only the human's button press (a POST) burns it.
+ * So we land on the interstitial, then click through.
  * Waits for the URL to leave /signin and /magic_link.
  */
 async function login(page, email, _password) {
@@ -16,6 +20,7 @@ async function login(page, email, _password) {
   }
   const { url } = await resp.json();
   await page.goto(url);
+  await page.locator('button:has-text("Sign in to Turf Monster")').click();
   await page.waitForURL(
     (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link")
   );
