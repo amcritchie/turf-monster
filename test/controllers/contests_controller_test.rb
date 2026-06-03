@@ -1124,6 +1124,139 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to contest_path(survivor)
   end
 
+  # --- Phantom-driven contest creation: precheck hardening + fresh-blockhash rebuild ---
+  #
+  # #create / #rebuild_create_tx / #finalize are admin-only AND require a Phantom
+  # wallet (the creator co-signs the prize-pool USDC transfer). Use a dedicated
+  # admin user with a web3 address.
+  def admin_phantom
+    @admin_phantom ||= User.create!(
+      name: "Admin Phantom", username: "admin_phantom", role: :admin,
+      email: "admin_phantom@mcritchie.studio",
+      web3_solana_address: "AdMiNPhantoM1111111111111111111111111111111"
+    )
+  end
+
+  test "create blocks when the USDC balance read fails (RPC exception is a HARD BLOCK, not a $0 pass)" do
+    log_in_as(admin_phantom)
+    vault = FakeVault.new(usdc_balance_raises: true)
+
+    Solana::Vault.stub :new, vault do
+      post contests_path,
+        params: { contest: { name: "Blockhash Cup A", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+    end
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_equal false, json["success"]
+    assert_match(/couldn't verify your USDC balance/i, json["error"])
+    # Never reached the TX build — a failed read must short-circuit.
+    assert_empty vault.create_contest_calls
+  end
+
+  test "create blocks when the USDC balance read returns nil (unreadable response is a HARD BLOCK)" do
+    log_in_as(admin_phantom)
+    vault = FakeVault.new(usdc_balance: nil) # get_token_account_balance → nil
+
+    Solana::Vault.stub :new, vault do
+      post contests_path,
+        params: { contest: { name: "Blockhash Cup B", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+    end
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_match(/couldn't verify your USDC balance/i, json["error"])
+    assert_empty vault.create_contest_calls
+  end
+
+  test "create blocks with insufficient-USDC message when a readable balance is below the prize pool" do
+    log_in_as(admin_phantom)
+    vault = FakeVault.new(usdc_balance: 1.0) # $1 readable, tiny needs $45
+
+    Solana::Vault.stub :new, vault do
+      post contests_path,
+        params: { contest: { name: "Blockhash Cup C", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+    end
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_match(/Insufficient USDC/i, json["error"])
+    assert_empty vault.create_contest_calls
+  end
+
+  test "create builds the partial-signed TX when a readable balance covers the prize pool" do
+    log_in_as(admin_phantom)
+    vault = FakeVault.new(usdc_balance: 100.0) # $100 covers tiny's $45
+
+    Solana::Vault.stub :new, vault do
+      post contests_path,
+        params: { contest: { name: "Blockhash Cup D", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert_equal true, json["success"]
+    assert_equal "FAKE_TX_create_blockhash-cup-d", json["serialized_tx"]
+    assert json["params_token"].present?, "create must issue a params_token for rebuild + finalize"
+    assert_equal 1, vault.create_contest_calls.length
+  end
+
+  test "rebuild_create_tx re-issues a fresh partial-signed TX from the create params_token" do
+    log_in_as(admin_phantom)
+    token = nil
+    build_vault = FakeVault.new(usdc_balance: 100.0)
+
+    Solana::Vault.stub :new, build_vault do
+      post contests_path,
+        params: { contest: { name: "Blockhash Cup E", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+      token = JSON.parse(response.body)["params_token"]
+    end
+    assert token.present?
+
+    # The rebuild call must NOT re-run the precheck (no balance read) — it
+    # only re-issues the admin-cosigned TX over a fresh blockhash. A vault with
+    # NO balance configured (would block in precheck) still succeeds here.
+    rebuild_vault = FakeVault.new
+    Solana::Vault.stub :new, rebuild_vault do
+      post rebuild_create_tx_contests_path, params: { params_token: token }, as: :json
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert_equal true, json["success"]
+    assert_equal "FAKE_TX_create_blockhash-cup-e", json["serialized_tx"]
+    assert_equal 1, rebuild_vault.create_contest_calls.length
+  end
+
+  test "rebuild_create_tx rejects a token issued to a different user" do
+    log_in_as(admin_phantom)
+    token = nil
+    Solana::Vault.stub :new, FakeVault.new(usdc_balance: 100.0) do
+      post contests_path,
+        params: { contest: { name: "Blockhash Cup F", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+      token = JSON.parse(response.body)["params_token"]
+    end
+
+    # Re-issue as a different admin+phantom user — the token's user_id won't match.
+    other = User.create!(name: "Other", username: "other_phantom", role: :admin,
+                         email: "other_phantom@mcritchie.studio",
+                         web3_solana_address: "9aBcD3FgHjKmNpQrStUvWxYz1234567890aBcDeFgH12")
+    log_in_as(other)
+    Solana::Vault.stub :new, FakeVault.new do
+      post rebuild_create_tx_contests_path, params: { params_token: token }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_match(/User mismatch/i, json["error"])
+  end
+
   # A free, off-chain contest — the only kind a successful #enter can be
   # exercised against without a Solana RPC mock (paid entries need a real
   # on-chain token consume / vault transfer). Free entries skip the payment gate.

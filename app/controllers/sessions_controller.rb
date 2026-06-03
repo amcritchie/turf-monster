@@ -7,6 +7,10 @@
 # reverting session_store.rb + sessions/new.html.erb. See docs/AUTH.md.
 class SessionsController < ApplicationController
   skip_before_action :require_authentication
+  # An already-logged-in viewer has no business on the "Sign in to play" form —
+  # bounce them to their account. Only the GET form render (:new), never the
+  # POST create or the (404'd) SSO actions.
+  before_action :redirect_if_authenticated, only: [:new]
 
   def new
   end

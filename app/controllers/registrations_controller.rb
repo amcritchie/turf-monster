@@ -3,6 +3,9 @@
 # upsell) instead of the app root.
 class RegistrationsController < ApplicationController
   skip_before_action :require_authentication
+  # Already authenticated? The signup form is a dead end — send them to their
+  # account. Guards only the GET form render (:new), never the POST create.
+  before_action :redirect_if_authenticated, only: [:new]
 
   def new
     @user = User.new

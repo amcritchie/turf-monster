@@ -8,6 +8,9 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to signin_path
   end
 
+  # (The authed-user redirect guard lives on /signin, where GET /signup 301s to;
+  # it's covered in sessions_controller_test. GET /signup itself just redirects.)
+
   # Passwordless: the engine POST /signup creates the account from email alone
   # (Studio.registration_params is [:email, :reference]). The primary email
   # signup surface is now the magic link; this path stays as a fallback.

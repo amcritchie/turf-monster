@@ -19,11 +19,15 @@ class FakeVault
   attr_reader :mint_calls, :transfer_calls, :enter_calls, :ensure_account_calls,
               :fund_calls, :deposit_calls
 
-  def initialize(fail_after: nil, starting_sequence: 0, tokens: [], signature_statuses: {})
+  def initialize(fail_after: nil, starting_sequence: 0, tokens: [], signature_statuses: {},
+                 usdc_balance: nil, usdc_balance_raises: false, account_infos: {})
     @fail_after = fail_after
     @starting_sequence = starting_sequence
     @tokens = tokens
     @signature_statuses = signature_statuses
+    @usdc_balance = usdc_balance            # uiAmount dollars to return from get_token_account_balance
+    @usdc_balance_raises = usdc_balance_raises
+    @account_infos = account_infos          # pda_b58 => {"value" => ...} for get_account_info (PDA-exists check)
     @mint_calls = []
     @transfer_calls = []
     @enter_calls = []
@@ -39,7 +43,22 @@ class FakeVault
   # `Solana::Vault.new.client.confirm_transaction(sig).dig("value", 0)`,
   # so the stub mirrors that envelope shape.
   def client
-    @client ||= FakeSolanaClient.new(@signature_statuses)
+    @client ||= FakeSolanaClient.new(@signature_statuses,
+                                     usdc_balance: @usdc_balance,
+                                     usdc_balance_raises: @usdc_balance_raises,
+                                     account_infos: @account_infos)
+  end
+
+  # Used by ContestsController#create / #rebuild_create_tx. Returns the same
+  # envelope shape as the real Solana::Vault#build_create_contest.
+  def build_create_contest(wallet_address, contest_slug, **_params)
+    @create_contest_calls ||= []
+    @create_contest_calls << { wallet: wallet_address, slug: contest_slug }
+    { serialized_tx: "FAKE_TX_create_#{contest_slug}", contest_pda: "cpda-#{contest_slug}" }
+  end
+
+  def create_contest_calls
+    @create_contest_calls ||= []
   end
 
   # Recovery flow re-derives the entry PDA server-side before verifying the
@@ -274,11 +293,30 @@ end
 # here, so the array has at most one element. An unknown signature
 # returns {"value" => [nil]} per the JSON-RPC spec.
 class FakeSolanaClient
-  def initialize(statuses)
+  def initialize(statuses, usdc_balance: nil, usdc_balance_raises: false, account_infos: {})
     @statuses = statuses || {}
+    @usdc_balance = usdc_balance
+    @usdc_balance_raises = usdc_balance_raises
+    @account_infos = account_infos || {}
   end
 
   def confirm_transaction(signature)
     { "value" => [@statuses[signature]] }
+  end
+
+  # ContestsController#insufficient_usdc_error reads value/uiAmount. A nil
+  # @usdc_balance simulates a failed/unreadable response (returns nil);
+  # @usdc_balance_raises simulates an RPC exception (the hardened code must
+  # treat BOTH as a hard block, not a $0 pass).
+  def get_token_account_balance(_ata_b58)
+    raise StandardError, "simulated RPC failure" if @usdc_balance_raises
+    return nil if @usdc_balance.nil?
+    { "value" => { "uiAmount" => @usdc_balance, "amount" => (@usdc_balance * 1_000_000).to_i.to_s } }
+  end
+
+  # ContestsController#onchain_create_precheck reads dig("value") to decide
+  # whether the contest PDA already exists on-chain.
+  def get_account_info(pda_b58)
+    @account_infos[pda_b58]
   end
 end

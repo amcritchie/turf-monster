@@ -6,8 +6,31 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  # Unified auth: /login + /signup are one create-or-login flow, so both
-  # 301-redirect to the canonical /signin page (preserving the query string).
+  # An already-logged-in viewer hitting /signin is bounced to their account by
+  # redirect_if_authenticated, instead of a dead-end form. (/login + /signup
+  # 301 to /signin first, so the guard lives on /signin.)
+  test "authenticated user GET /signin is redirected to account" do
+    log_in_as users(:alex)
+    get signin_path
+    assert_redirected_to account_path
+  end
+
+  # A relative ?return_to is honoured so a deep-linked authed user lands where
+  # they intended (safe_return_to).
+  test "authenticated user GET /signin honours a relative return_to" do
+    log_in_as users(:alex)
+    get signin_path(return_to: "/contests")
+    assert_redirected_to "/contests"
+  end
+
+  # An absolute/protocol-relative return_to is ignored (open-redirect guard).
+  test "authenticated user GET /signin ignores an off-site return_to" do
+    log_in_as users(:alex)
+    get signin_path(return_to: "//evil.example.com")
+    assert_redirected_to account_path
+  end
+
+  # Unified auth: legacy /login + /signup 301-redirect to /signin (query preserved).
   test "legacy /login + /signup redirect to /signin" do
     get login_path
     assert_redirected_to signin_path
