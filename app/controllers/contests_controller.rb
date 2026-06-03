@@ -567,6 +567,9 @@ class ContestsController < ApplicationController
         entry.confirm!(tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
       end
 
+      # Confirmed (managed/token path) — announce the join in chat once.
+      announce_contest_join(entry)
+
       respond_to do |format|
         format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
         format.json {
@@ -815,6 +818,9 @@ class ContestsController < ApplicationController
             PendingTransaction.where(target: entry, status: %w[pending submitted],
                                      initiator_address: current_user.web3_solana_address).order(:created_at).last
       ptx&.update!(tx_signature: params[:tx_signature], status: "confirmed")
+
+      # Confirmed (Phantom direct-USDC path) — announce the join in chat once.
+      announce_contest_join(entry)
 
       seeds = post_entry_seeds_payload(entry,
                                       path: "phantom-direct",
@@ -1183,6 +1189,18 @@ class ContestsController < ApplicationController
   #
   # Returns `{ seeds_earned:, seeds_total:, seeds_level: }` for splat into
   # the JSON response.
+  # Post the "🎉 <name> joined the contest" announcement to the contest chat
+  # on a user's FIRST confirmed entry. Idempotent (Message.announce_join! is a
+  # no-op for an already-announced user) so re-confirms / the 3-entries-per-user
+  # allowance never double-post, and chat-disabled contests get nothing. The
+  # Message's after_create_commit broadcast handles real-time delivery — no new
+  # cable plumbing here. Best-effort: a chat hiccup must not fail the entry that
+  # already confirmed (Message.announce_join! rescues internally).
+  def announce_contest_join(entry)
+    return unless entry&.user
+    Message.announce_join!(contest: @contest, user: entry.user)
+  end
+
   def post_entry_seeds_payload(entry, path:, tx_signature:, token_consumed: nil)
     seeds_earned = 0
     seeds_total  = 0

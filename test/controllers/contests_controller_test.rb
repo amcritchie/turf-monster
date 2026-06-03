@@ -156,6 +156,62 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to contest_path(contest)
   end
 
+  # --- join announcement (chat) on confirmed entry ---
+
+  test "enter posts a single join announcement to chat on first confirmed entry" do
+    log_in_as(@user)
+    contest = free_contest
+
+    entry = contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    assert_difference -> { contest.messages.system_messages.count }, 1 do
+      post enter_contest_path(contest), headers: { "Accept" => "application/json" }
+    end
+
+    assert_response :success
+    announcement = contest.messages.system_messages.find_by(user: @user)
+    assert announcement.present?
+    assert_includes announcement.body, @user.display_name
+    assert_includes announcement.body, "joined the contest"
+  end
+
+  test "enter does NOT re-announce when the user already has a join announcement" do
+    log_in_as(@user)
+    contest = free_contest
+
+    # Simulate the user's first confirmed entry having already announced them
+    # (the fixtures only carry 6 matchups, so a second DISTINCT 6-combo — which
+    # the Sybil check requires — can't be built here; pre-seeding the
+    # announcement exercises the same controller idempotency boundary).
+    Message.announce_join!(contest: contest, user: @user)
+    assert_equal 1, contest.messages.system_messages.where(user: @user).count
+
+    entry = contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    assert_no_difference -> { contest.messages.system_messages.count } do
+      post enter_contest_path(contest), headers: { "Accept" => "application/json" }
+    end
+    assert_response :success
+    assert entry.reload.active?
+  end
+
+  test "enter posts no join announcement when chat is disabled" do
+    log_in_as(@user)
+    contest = free_contest
+    contest.update!(chat_enabled: false)
+
+    entry = contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    assert_no_difference "Message.count" do
+      post enter_contest_path(contest), headers: { "Accept" => "application/json" }
+    end
+    assert_response :success
+    assert entry.reload.active?
+  end
+
   # --- post_entry_seeds_payload tests ---
   #
   # The shared seeds-payload helper extracted in the R1 refactor is the
