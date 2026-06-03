@@ -103,7 +103,7 @@
       auth: "permissionless",
       auth_class: "auth1",
       summary: "First-touch onboarding. Creates your on-chain UserAccount PDA — the stats record that tracks your seeds, entries, wins, and total payouts.",
-      detail: "Permissionless and idempotent: anyone can pay the rent to create another wallet's UserAccount. Turf Monster's server (Alex Bot) does this for every new signup via an after_commit job."
+      detail: "Permissionless and idempotent: anyone can pay the rent to create another wallet's UserAccount. Turf Monster's server bot (Alex) does this for every new signup via an after_commit job."
     },
     {
       name: "create_contest",
@@ -120,7 +120,7 @@
   operator_instructions = {
     "INIT_AUTHORITY (one-time)" => [
       { name: "initialize", bytes: 30_500, auth_class: "init",
-        playbook: "Runs exactly once, ever. Creates the singleton VaultState PDA, pins the payout mint to canonical Circle USDC, and registers USDC + USDT as the first two accepted currencies. Mainnet build requires the admin signature to match the hardcoded INIT_AUTHORITY (Alex's Phantom key)." }
+        playbook: "Runs exactly once, ever. Creates the singleton VaultState PDA, pins the payout mint to canonical Circle USDC, and registers USDC + USDT as the first two accepted currencies. Mainnet build requires the admin signature to match the hardcoded INIT_AUTHORITY (Mr. McRitchie's Phantom key)." }
     ],
     "1-of-3 routine ops" => [
       { name: "create_season",      bytes:  8_400, auth_class: "auth1", playbook: "Open a new season with an immutable seed-award schedule. Locked at season-creation time so contests can't be retroactively re-rewarded." },

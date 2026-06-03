@@ -31,7 +31,9 @@ puts "Seeding test database for Playwright (additive overlay)..."
 
 # ── Step 1: canonical state via db/seeds.rb ──────────────────────────
 # Loads idempotently. Creates / preserves teams, slates, matchups, games.
-# Also seeds the 5 core users (alex/alex-bot/mason/mack/turf) but we
+# Also seeds the 5 core users (mcritchie/alex/mason/mack/turf — the human
+# operator is `mcritchie`, the server bot is `alex` after the 2026-06-02
+# naming flip) but we
 # wipe + redo them below for deterministic IDs.
 load Rails.root.join("db/seeds.rb")
 
@@ -66,7 +68,11 @@ ActiveRecord::Base.connection.execute("ALTER SEQUENCE users_id_seq RESTART WITH 
 # ── Step 3: re-seed core users (deterministic IDs) ───────────────────
 load Rails.root.join("db/seeds/users.rb")
 users = seed_core_users!
-alex  = users["alex"]
+# The human operator — username `mcritchie` after the 2026-06-02 naming flip
+# (was `alex`; the bare `alex` username now belongs to the server bot). This is
+# the account whose Phantom wallet you connect with in the browser and the
+# creator of the e2e fixture contest below.
+human = users["mcritchie"]
 
 # ── Step 4: build e2e fixture contests on the canonical Group-1 slate ─
 slate = Slate.find_by!(name: "World Cup 2026 Group 1")
@@ -129,7 +135,7 @@ survivor.update_column(:slug, "world-cup-survivor") unless survivor.slug == "wor
 
 # ── Wallet overrides ─────────────────────────────────────────────────
 #
-#   1. Default (manual dev work): alex keeps the canonical admin wallet
+#   1. Default (manual dev work): the human (mcritchie) keeps the canonical admin wallet
 #      seeded by db/seeds/users.rb (7ZDJp7FU…) — the real Phantom wallet
 #      you connect with in the browser.
 #
@@ -138,21 +144,22 @@ survivor.update_column(:slug, "world-cup-survivor") unless survivor.slug == "wor
 #      Playwright cold-starts (playwright.config.js's webServer.env).
 #
 #   3. SOLANA_BOT_PUBKEY=<pubkey>: explicit override (devnet-smoke
-#      tests signing with Alex Bot's real key). Wins over both above.
+#      tests signing with the server bot's real key — the bot is named "Alex"
+#      after the 2026-06-02 naming flip). Wins over both above.
 #
 # For local Playwright runs (reuseExistingServer = true) the swap is
 # done at-test-time via globalSetup → POST /test/use_phantom_mock_admin.
 PHANTOM_MOCK_WALLET = "6ASf5EcmmEHTgDJ4X4ZT5vT6iHVJBXPg5AN5YoTCpGWt".freeze
 
-alex_wallet =
+human_wallet =
   if (explicit = ENV["SOLANA_BOT_PUBKEY"]).present?
     explicit
   elsif ENV["PLAYWRIGHT_SEED"] == "true"
     PHANTOM_MOCK_WALLET
   else
-    alex.web3_solana_address  # canonical wallet from db/seeds/users.rb
+    human.web3_solana_address  # canonical wallet from db/seeds/users.rb
   end
-alex.update!(web3_solana_address: alex_wallet)
+human.update!(web3_solana_address: human_wallet)
 
 # Clear encrypted keypairs so approve/deny tests don't trigger onchain withdrawals.
 # Keep web2_solana_address so managed_wallet? stays true (needed for deposits).
@@ -160,7 +167,7 @@ User.update_all(encrypted_web2_solana_private_key: nil)
 
 # Pre-seed a faucet TransactionLog so admin transaction log tests have something to render.
 TransactionLog.create!(
-  user: alex,
+  user: human,
   transaction_type: "faucet",
   amount_cents: 10_00,
   direction: "credit",

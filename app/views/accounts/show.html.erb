@@ -117,10 +117,14 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
           </svg>
           <span class="text-body font-mono text-sm break-all"><%= @user.solana_address %></span>
-          <% if @user.managed_wallet? %>
-            <span class="text-xs text-muted px-2 py-0.5 rounded bg-surface-alt">Managed</span>
-          <% else %>
+          <%# Badge keys on wallet_kind (phantom takes precedence), NOT
+              managed_wallet? — every account gets an after_create managed
+              wallet, so managed_wallet? is always true and mislabeled Phantom
+              users as "Managed". %>
+          <% if @user.wallet_kind == :phantom %>
             <span class="text-xs text-violet px-2 py-0.5 rounded bg-violet/10">Phantom</span>
+          <% else %>
+            <span class="text-xs text-muted px-2 py-0.5 rounded bg-surface-alt">Managed</span>
           <% end %>
         </div>
       </div>

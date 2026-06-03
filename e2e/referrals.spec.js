@@ -21,11 +21,14 @@ test.beforeEach(async ({ request }) => await reseed(request));
 const CONTEST_SLUG = "world-cup-2026";
 
 // Seeded users — slugs are {username}-{id} since the seed creates them in
-// CORE_USERS order against an empty users table.
+// CORE_USERS order against an empty users table (users_id_seq RESTART WITH 1).
+// CORE_USERS order: human (mcritchie, id 1), bot (alex, id 2), mason (3),
+// mack (4), turf (5). After the 2026-06-02 naming flip the human's username is
+// `mcritchie` (slug mcritchie-1) and the bot's is `alex` (slug alex-2).
 const INVITER_FOR_PHANTOM = "mason-3";
 const INVITER_FOR_GOOGLE  = "mack-4";
 const INVITER_FOR_EMAIL   = "turf-5";
-const ALEX_SLUG           = "alex-1";
+const ALEX_SLUG           = "mcritchie-1"; // the human operator (id 1)
 
 // --- Helpers --------------------------------------------------------------
 

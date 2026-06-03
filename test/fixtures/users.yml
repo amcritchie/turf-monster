@@ -1,8 +1,14 @@
 # Passwordless: email auth is magic-link only. No password_digest is set —
 # the column is dormant (DB default ""), kept only so the schema is unchanged.
+# Fixture label `alex` (referenced by entries.yml / contests.yml as `user: alex`)
+# is the HUMAN operator. Per the 2026-06-02 naming flip the human is now
+# "Mr. McRitchie" / username `mcritchie`; the bot took over the bare `alex`
+# name/username (the bot is not represented as a fixture). The fixture LABEL
+# stays `alex` to avoid churning the entry/contest fixture references — it is a
+# Rails fixture identifier, not the username or slug.
 alex:
-  name: Alex
-  username: alex_test
+  name: Mr. McRitchie
+  username: mcritchie_test
   email: alex@mcritchie.studio
   role: admin
   session_token: <%= SecureRandom.hex(32) %>

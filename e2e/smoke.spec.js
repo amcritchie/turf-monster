@@ -35,12 +35,13 @@ test("guest clicking matchup card does not crash the page", async ({ page }) => 
 
 test("login with valid credentials", async ({ page }) => {
   await login(page, "alex@mcritchie.studio", "password");
-  // Username should appear in header nav. .filter({ hasText: "alex" }) skips
-  // the dropdown's "Account" link (same href, different text) so the
-  // assertion isn't sensitive to nav DOM ordering between the dropdown and
-  // the username chip.
+  // Username should appear in header nav. The human operator's username is
+  // `mcritchie` after the 2026-06-02 naming flip (the bare `alex` username now
+  // belongs to the server bot). .filter({ hasText: "mcritchie" }) skips the
+  // dropdown's "Account" link (same href, different text) so the assertion
+  // isn't sensitive to nav DOM ordering between the dropdown and the chip.
   await expect(
-    page.locator('a[href="/account"]').filter({ hasText: "alex" }).first()
+    page.locator('a[href="/account"]').filter({ hasText: "mcritchie" }).first()
   ).toBeVisible();
 });
 

@@ -4,8 +4,11 @@ class Admin::VaultInitControllerTest < ActionDispatch::IntegrationTest
   # Three real-looking base58 pubkeys for happy-path validation. Pulled
   # from turf-vault/CLAUDE.md so the fixtures stay aligned with the
   # documented signer set.
+  # Legacy bot multisig signer pubkey (MULTISIG_SIGNERS slot 0). The bot's
+  # *display* wallet rotated to 8K81w4e6… in the seed (2026-06-02) and its name
+  # is now "Alex"; this constant mirrors the on-chain signer set, not the seed.
   ALEX_BOT = "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ".freeze
-  ALEX     = Admin::VaultInitController::INIT_AUTHORITY # "7ZDJp7…r2J"
+  ALEX     = Admin::VaultInitController::INIT_AUTHORITY # human (Mr. McRitchie) "7ZDJp7…r2J"
   MASON    = "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR".freeze
   SIGNERS  = [ALEX_BOT, ALEX, MASON].freeze
   # v0.16 added treasury_authority as a 4th initialize arg (pinned to the
@@ -141,7 +144,7 @@ class Admin::VaultInitControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "validate: does not enforce INIT_AUTHORITY off-mainnet (creator can be any signer)" do
-    # Default config is devnet — Alex Bot as creator is fine there.
+    # Default config is devnet — the bot as creator is fine there.
     assert_nothing_raised {
       validate!(creator: ALEX_BOT, signers: [ALEX_BOT, MASON, ALEX], threshold: 2)
     }
