@@ -28,7 +28,7 @@ module Admin
         raise "Cosigner not in multisig set" unless Solana::Config::MULTISIG_SIGNERS.include?(cosigner)
 
         instruction_name = instruction_for_tx_type(@tx.tx_type)
-        writable_pubkey  = writable_for_target(@tx.target)
+        writable_pubkey  = writable_for_target(@tx)
 
         Solana::TxVerifier.verify!(
           signature: params[:tx_signature],
@@ -43,9 +43,14 @@ module Admin
           tx_signature: params[:tx_signature]
         )
 
-        # Mark contest as settled onchain if target is a Contest
-        if @tx.target.is_a?(Contest)
-          @tx.target.update!(onchain_settled: true)
+        # Flip the post-confirm DB state per tx_type. settle/cancel both target a
+        # Contest; the currency/sweep types have no Contest target and need no DB
+        # state change (the source of truth is the on-chain VaultState / ATAs).
+        case @tx.tx_type
+        when "settle_contest"
+          @tx.target.update!(onchain_settled: true) if @tx.target.is_a?(Contest)
+        when "cancel_contest"
+          @tx.target.update!(onchain_cancelled: true) if @tx.target.is_a?(Contest)
         end
 
         respond_to do |format|
@@ -69,10 +74,33 @@ module Admin
       rescue_and_log(target: @tx) do
         raise "Transaction is #{@tx.status}, cannot rebuild" unless @tx.pending?
 
-        settlements = JSON.parse(@tx.metadata)["settlements"].map(&:symbolize_keys)
-        vault = Solana::Vault.new
+        vault    = Solana::Vault.new
         cosigner = Solana::Config::MULTISIG_COSIGNER
-        result = vault.build_settle_contest(@tx.target.slug, settlements, cosigner_pubkey: cosigner)
+        meta     = JSON.parse(@tx.metadata)
+
+        result =
+          case @tx.tx_type
+          when "settle_contest"
+            settlements = meta["settlements"].map(&:symbolize_keys)
+            vault.build_settle_contest(@tx.target.slug, settlements, cosigner_pubkey: cosigner)
+          when "cancel_contest"
+            vault.build_cancel_contest(@tx.target.slug, creator_pubkey: meta["creator"], cosigner_pubkey: cosigner)
+          when "register_currency"
+            vault.build_register_currency(cosigner_pubkey: cosigner, mint: meta["mint"], kind: meta["kind"].to_i)
+          when "deactivate_currency"
+            vault.build_deactivate_currency(cosigner_pubkey: cosigner, currency_idx: meta["currency_idx"].to_i)
+          when "sweep_operator_revenue"
+            mint = meta["currency_mint"]
+            vault.build_sweep_operator_revenue(
+              cosigner_pubkey: cosigner,
+              currency_mint: mint,
+              treasury_ata_pubkey: vault.treasury_ata_for(mint),
+              amount: meta["amount"].to_i
+            )
+          else
+            raise "Unsupported tx_type for rebuild: #{@tx.tx_type}"
+          end
+
         @tx.update!(serialized_tx: result[:serialized_tx], status: "pending")
 
         respond_to do |format|
@@ -94,23 +122,36 @@ module Admin
       return redirect_to admin_pending_transactions_path, alert: "Transaction not found" unless @tx
     end
 
-    # Map PendingTransaction#tx_type → Anchor instruction name. Today only
-    # settle_contest is used; add cases here as new pending-tx types ship.
+    # Map PendingTransaction#tx_type → Anchor instruction name. The instruction
+    # name equals the tx_type for every supported type today.
     def instruction_for_tx_type(tx_type)
       case tx_type
-      when "settle_contest" then "settle_contest"
+      when "settle_contest", "cancel_contest",
+           "register_currency", "deactivate_currency", "sweep_operator_revenue"
+        tx_type
       else
         raise "Unsupported tx_type for verification: #{tx_type}"
       end
     end
 
-    # Resolve the writable PDA that the TX is expected to mutate. Based on the
-    # polymorphic target. For Contest, that's the on-chain contest PDA.
-    def writable_for_target(target)
-      case target
-      when Contest
+    # Resolve the writable PDA the TX is expected to mutate, per tx_type. Some
+    # types carry no Contest target (the writable account lives in metadata), so
+    # this takes the whole PendingTransaction. Returns nil for anything unknown;
+    # TxVerifier.verify! then skips the writable assertion.
+    def writable_for_target(tx)
+      case tx.tx_type
+      when "settle_contest", "cancel_contest"
+        target = tx.target
+        return nil unless target.is_a?(Contest)
         target.onchain_contest_id.presence ||
           Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(target.slug).first)
+      when "register_currency", "deactivate_currency"
+        # Both mutate the VaultState PDA (the accepted_currencies registry).
+        Solana::Keypair.encode_base58(Solana::Vault.new.vault_state_pda.first)
+      when "sweep_operator_revenue"
+        # Mutates the op_rev ATA for the swept mint (the source of the transfer).
+        mint = JSON.parse(tx.metadata)["currency_mint"]
+        Solana::Keypair.encode_base58(Solana::Vault.new.op_rev_ata_pda(mint).first)
       else
         nil
       end

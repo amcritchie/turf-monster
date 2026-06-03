@@ -223,9 +223,9 @@ async function selectFirstSlate(page) {
 // ---------------------------------------------------------------------------
 
 async function loginViaKeypair(page) {
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.locator('button:has-text("Connect Wallet")').click();
-  await page.waitForURL(/^(?!.*login)/, { timeout: 30000 });
+  await page.waitForURL(/^(?!.*signin)/, { timeout: 30000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +242,7 @@ async function loginViaEmail(page, email) {
   const { url } = await resp.json();
   await page.goto(url);
   await page.waitForURL(
-    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link"),
+    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link"),
     { timeout: 15000 }
   );
 }
@@ -439,7 +439,7 @@ test("@devnet 3 — Mason registers via magic link → completes profile", async
   const { url } = await resp.json();
   await page.goto(url);
   await page.waitForURL(
-    (u) => !u.pathname.startsWith("/login") && !u.pathname.startsWith("/magic_link"),
+    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link"),
     { timeout: 30000 }
   );
 
@@ -490,11 +490,11 @@ test("@devnet 5 — Mack wallet connect → complete profile", async ({
   await setupKeypairProvider(page, MACK_KEY);
 
   // 1. Connect wallet — creates a new user since we cleared Mack's address in beforeAll
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.locator('button:has-text("Connect Wallet")').click();
 
   // May redirect to "/" or "/account/complete_profile" depending on whether profile is complete
-  await page.waitForURL(/^(?!.*login)/, { timeout: 30000 });
+  await page.waitForURL(/^(?!.*signin)/, { timeout: 30000 });
 
   // 2. Complete profile if needed
   if (page.url().includes("complete_profile")) {

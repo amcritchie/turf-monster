@@ -66,7 +66,7 @@ class EmailVerificationsController < ApplicationController
     elsif logged_in?
       redirect_to account_path, notice: "Email verified. Thanks!"
     else
-      redirect_to login_path, notice: "Email verified. You can sign in now."
+      redirect_to signin_path, notice: "Email verified. You can sign in now."
     end
   rescue ActiveSupport::MessageVerifier::InvalidSignature
     redirect_to root_path, alert: "Verification link is invalid or expired. Request a fresh one from your account page."

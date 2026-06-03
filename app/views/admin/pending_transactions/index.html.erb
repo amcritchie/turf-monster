@@ -9,7 +9,7 @@
   <% if @pending.empty? %>
     <%= render "components/empty_state",
           message: "No treasury transactions yet.",
-          detail:  "Settlement transactions requiring cosigning will appear here." %>
+          detail:  "Multisig transactions requiring cosigning will appear here." %>
   <% else %>
     <div class="space-y-3">
       <% @pending.each do |tx| %>
@@ -53,6 +53,23 @@
                   <div class="mt-2 text-xs text-muted">
                     <%= meta["settlements"].size %> settlement(s),
                     total payout: $<%= (meta["settlements"].sum { |s| s["payout"].to_i } / 1_000_000.0).round(2) %>
+                  </div>
+                <% end %>
+                <% case tx.tx_type %>
+                <% when "register_currency" %>
+                  <div class="mt-2 text-xs text-muted">
+                    Mint: <span class="font-mono"><%= meta["mint"] %></span><% if meta["kind"] %> · kind <%= meta["kind"] %><% end %>
+                  </div>
+                <% when "deactivate_currency" %>
+                  <div class="mt-2 text-xs text-muted">Slot: <%= meta["currency_idx"] %></div>
+                <% when "sweep_operator_revenue" %>
+                  <div class="mt-2 text-xs text-muted">
+                    Mint: <span class="font-mono"><%= meta["currency_mint"] %></span> ·
+                    amount: <%= meta["amount"].to_i.zero? ? "all" : meta["amount"] %>
+                  </div>
+                <% when "cancel_contest" %>
+                  <div class="mt-2 text-xs text-muted">
+                    Refund creator: <span class="font-mono"><%= meta["creator"] %></span>
                   </div>
                 <% end %>
               <% end %>

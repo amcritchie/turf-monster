@@ -81,11 +81,9 @@
       <% else %>
         <div class="flex items-center justify-end gap-3">
           <span class="hidden md:flex"><%= render "components/theme_toggle_morph" %></span>
-          <%# Default CTA is Sign up (not Log in) — the signup card has
-              "Already have an account? Log in" inline, so existing users
-              still have a one-click path while net-new visitors land on
-              the conversion-positive path. %>
-          <%= link_to "Sign up", signup_path, class: "btn btn-primary" %>
+          <%# Single unified CTA — login + signup are one create-or-login flow
+              at /signin (magic link / Google / wallet all find-or-create). %>
+          <%= link_to "Sign in", signin_path, class: "btn btn-primary" %>
         </div>
       <% end %>
     </div>

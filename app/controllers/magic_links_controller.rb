@@ -22,7 +22,7 @@ class MagicLinksController < ApplicationController
     end
     respond_to do |format|
       format.json { render json: { success: true } }
-      format.html { redirect_to login_path, notice: "Check your inbox — we just emailed you a sign-in link." }
+      format.html { redirect_to signin_path, notice: "Check your inbox — we just emailed you a sign-in link." }
     end
   end
 
@@ -38,7 +38,7 @@ class MagicLinksController < ApplicationController
     user = User.find_by(email: result.email)
     user ? sign_in_existing(user, result) : sign_up_new(result)
   rescue MagicLink::InvalidToken
-    redirect_to login_path, alert: "That sign-in link is invalid or has expired. Request a fresh one below."
+    redirect_to signin_path, alert: "That sign-in link is invalid or has expired. Request a fresh one below."
   end
 
   private
@@ -84,10 +84,10 @@ class MagicLinksController < ApplicationController
     existing = User.find_by(email: result.email)
     return sign_in_existing(existing, result) if existing
 
-    redirect_to login_path, alert: "We couldn't finish creating your account. Please try again."
+    redirect_to signin_path, alert: "We couldn't finish creating your account. Please try again."
   rescue StandardError => e
     Rails.logger.error("[MagicLinksController#consume] signup failed #{e.class}: #{e.message}")
-    redirect_to login_path, alert: "We couldn't finish creating your account. Please try again."
+    redirect_to signin_path, alert: "We couldn't finish creating your account. Please try again."
   end
 
   # Derives the post-consume landing path server-side (so it rides inside the

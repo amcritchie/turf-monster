@@ -16,7 +16,7 @@ const { reseed } = require("./helpers");
 test.beforeEach(async ({ request }) => await reseed(request));
 
 test("requesting a magic link from the login form opens the Check your inbox modal", async ({ page }) => {
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.fill('input[name="email"]', `authmodal-${Date.now()}@example.com`);
   await page.getByRole("button", { name: "Email Link" }).click();
 
@@ -27,7 +27,7 @@ test("requesting a magic link from the login form opens the Check your inbox mod
 });
 
 test("resending swaps to the Link Resent confirmation and starts the cooldown", async ({ page }) => {
-  await page.goto("/login");
+  await page.goto("/signin");
   await page.fill('input[name="email"]', `authmodal-resend-${Date.now()}@example.com`);
   await page.getByRole("button", { name: "Email Link" }).click();
   await expect(page.getByText("Check your inbox")).toBeVisible();

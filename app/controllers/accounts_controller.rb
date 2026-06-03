@@ -210,7 +210,7 @@ class AccountsController < ApplicationController
       )
       UserMailer.email_verification(user, verify_token).deliver_later
 
-      target = logged_in? ? account_path : login_path
+      target = logged_in? ? account_path : signin_path
       redirect_to target, notice: "Email changed — verify your new address (link sent to #{user.email})."
     end
   rescue ActiveSupport::MessageVerifier::InvalidSignature

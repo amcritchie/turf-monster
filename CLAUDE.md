@@ -256,6 +256,8 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 
 **Routes:** `Studio.routes(self)` draws `/login`, `/signup`, `/logout`, `/sso_continue`, `/sso_login`, `/auth/:provider/callback`, `/error_logs`, `/admin/theme`. `/sso_continue` and `/sso_login` return 404 — the local `SessionsController` overrides them. Cookie key is `_turf_session` (not the hub's `_studio_session`) and no longer scoped to `.mcritchie.studio` — the hub session is invisible here.
 
+**Unified `/signin` (2026-06-02):** login + signup are one create-or-login flow (magic link / Google / wallet all find-or-create), so there is a single canonical page at `GET /signin` → `sessions#new` (renders `shared/_auth_card`). The legacy `GET /login` + `GET /signup` 301-redirect to `/signin` **preserving the query string** (so `?reference=` funnel attribution + `?email=` prefill survive) — defined in `config/routes.rb` *before* `Studio.routes` so they win GET recognition. The engine still draws `/login` + `/signup` below, so `login_path`/`signup_path` helpers and the `POST /login` + `POST /signup` actions (and their rack-attack throttles) stay intact. Internal redirects + all nav links use `signin_path`; the label is "Sign in" everywhere (navbar, page, the in-contest auth modal title in `modals/_auth.html.erb`).
+
 **S3 config:** `config.s3_bucket_prefix = "turf-monster"` overrides the engine default — bucket resolves to `turf-monster-dev` (dev/test) or `turf-monster-production` (prod). All 4 studio buckets are public-read; `mcritchie-studio-dev` has a 90-day GLACIER_IR archive rule. AWS creds via shared `op://` refs in `/Users/alex/projects/.env` (Heroku needs `heroku config:set AWS_*` separately — not yet done). `image_caches` table created 2026-04-29; not yet used by any model in this app.
 
 **Updating:** After changes to the studio repo, run `bundle update studio-engine` here.
@@ -337,7 +339,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - `prepare_lock_time`, `confirm_lock_time`, `prepare_conclusion_time`, `confirm_conclusion_time` — Phantom-signed (1-of-3) set of the on-chain `lock_timestamp` / `conclusion_timestamp`. Replaces the old `lock_contest`/`unlock_contest`. See `app/javascript/lock_contest.js`.
 - `finalize` — Phantom-driven contest creation step 2 (collection route, no `:id`). See `ContestsController#create` + `#finalize`.
 - `prepare_onchain_contest`, `confirm_onchain_contest` — legacy Phantom-fund-existing-contest flow; still referenced by `e2e/onchain.spec.js`. Not used by the UI anymore.
-- `grade`, `fill`, `jump`, `reset` — admin actions (no more `lock`; locking is the Phantom-signed `*_lock_time` flow above)
+- `grade`, `fill`, `jump`, `reset` — admin actions. `lock` also survives as a **server-signed fallback** (`ContestsController#lock`, 1-of-3 via `Solana::Vault#set_contest_lock_time`) behind the "Lock now"/"Lock in 60s" buttons; the primary path is the Phantom-signed `*_lock_time` flow above. (The retired *on-chain* `lock_contest`/`unlock_contest` instructions are gone — locking is a derived time-gate.)
 - `grade_round` — survivor admin action: scores the current SurvivorRound + marks picks survived/eliminated
 - `payout_entry` — individual entry payout
 

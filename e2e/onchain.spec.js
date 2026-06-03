@@ -69,8 +69,8 @@ test("phantom sign-in with existing user", async ({ page }) => {
     page.locator('a[href="/account"]').filter({ hasText: "mcritchie" }).first()
   ).toBeVisible();
 
-  // "Log in" link should NOT be visible (proves we're authenticated)
-  await expect(page.locator('a[href="/login"]').first()).not.toBeVisible();
+  // "Sign in" link should NOT be visible (proves we're authenticated)
+  await expect(page.locator('a[href="/signin"]').first()).not.toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -91,8 +91,8 @@ test("phantom sign-in creates new user", async ({ page }) => {
 
   await loginViaPhantom(page);
 
-  // "Log in" link should NOT be visible (proves we're authenticated)
-  await expect(page.locator('a[href="/login"]')).not.toBeVisible();
+  // "Sign in" link should NOT be visible (proves we're authenticated)
+  await expect(page.locator('a[href="/signin"]')).not.toBeVisible();
 
   // A new-user (generated) username chip must be visible in the nav, distinct
   // from the existing human operator's `mcritchie`. We filter by a hyphen —

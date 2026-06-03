@@ -17,7 +17,7 @@ class SolanaSessionsController < ApplicationController
   # the situation and prompts a wallet login; #verify then completes the link.
   def link_wallet
     pending = session[:pending_google_link]
-    return redirect_to login_path unless pending
+    return redirect_to signin_path unless pending
 
     @pending_email = pending["email"]
   end

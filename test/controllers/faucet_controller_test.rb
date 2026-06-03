@@ -29,10 +29,10 @@ class FaucetControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href=?]", account_path
   end
 
-  test "show displays login CTA when not logged in" do
+  test "show displays sign-in CTA when not logged in" do
     get faucet_path
     assert_response :success
-    assert_select "a[href=?]", login_path
+    assert_select "a[href=?]", signin_path
   end
 
   # --- claim ---
