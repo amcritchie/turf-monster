@@ -56,7 +56,15 @@ class Solana::VaultDurableNonceTest < ActiveSupport::TestCase
   # tx must anchor on the stored nonce + carry the System advance ix; unset, it
   # falls back to a recent blockhash with no advance ix.
 
-  WALLET = "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd".freeze
+  # A real entrant's wallet — MUST differ from the admin managed wallet (the
+  # payer). enter_contest's account list marks BOTH the payer (admin, a local
+  # signer) and the user (this wallet, the client-side "additional" signer) as
+  # signers, so provided (2) must equal required (2). If this equalled the admin
+  # address the two signer slots would collapse to one key (required == 1) and
+  # build_partial_signed's OPSEC-017 guard would correctly reject it — a
+  # degenerate self-entry, never a real flow. (Mason's seed wallet; the admin /
+  # Alex Bot wallet is 8K81w4e6…aRYd.)
+  WALLET = "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR".freeze
 
   test "build_enter_contest anchors on the durable nonce when the env var is set" do
     authority = Solana::Keypair.admin.address
