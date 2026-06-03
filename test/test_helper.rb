@@ -78,9 +78,14 @@ class ActionDispatch::IntegrationTest
   end
 
   # Passwordless: email auth is magic-link only. Logging in = mint a magic-link
-  # token the same way MagicLinksController#create does, then GET the consume
-  # URL to establish the session (existing email user → sign_in_existing).
+  # token the same way MagicLinksController#create does, then drive the consume
+  # to establish the session (existing email user → sign_in_existing).
   # Signature kept as log_in_as(user) so the many call sites are unchanged.
+  #
+  # The emailed link's GET is now a scanner-safe "Confirm sign-in" interstitial
+  # that does NOT consume the token; the human's button press POSTs to
+  # /magic_link/:token, and THAT burns the token + signs in. So log_in_as POSTs
+  # to consume directly (a prior GET to the interstitial would be a no-op).
   #
   # MagicLinksController#sign_in_existing stamps email_verified_at when blank
   # (clicking the link IS proof of ownership). That's correct product behavior
@@ -91,7 +96,7 @@ class ActionDispatch::IntegrationTest
     raise ArgumentError, "log_in_as requires a user with an email (use log_in_as_onchain for wallet users)" if user.email.blank?
     verified_before = user.email_verified_at
     token = MagicLink.generate(email: user.email)
-    get magic_link_path(token: token)
+    post magic_link_consume_path(token: token)
     user.update_column(:email_verified_at, verified_before) if user.reload.email_verified_at != verified_before
   end
 

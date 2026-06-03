@@ -125,9 +125,21 @@ Rails.application.routes.draw do
        constraints: { token: %r{[^/]+} }, format: false
 
   # Unified create-or-login magic link. Same token-with-dots constraint as
-  # email_verification above. POST requests a link; GET consumes it.
+  # email_verification above.
+  #
+  #   POST /magic_link         — request a link (email [, contest, picks, return_to])
+  #   GET  /magic_link/:token  — "Confirm sign-in" interstitial (does NOT consume)
+  #   POST /magic_link/:token  — consume the token + sign in / create the account
+  #
+  # The GET is deliberately INERT: email link-scanners / Gmail-image-proxies /
+  # corporate SafeLinks pre-fetch the emailed URL, and if the GET consumed the
+  # single-use token the human's first real click would already see "link used".
+  # So the GET only renders a one-button confirmation page; the human's click
+  # POSTs back here and THAT burns the token. A scanner's GET does nothing.
   post "magic_link",        to: "magic_links#create",  as: :magic_link_request
-  get  "magic_link/:token", to: "magic_links#consume", as: :magic_link,
+  get  "magic_link/:token", to: "magic_links#confirm", as: :magic_link,
+       constraints: { token: %r{[^/]+} }, format: false
+  post "magic_link/:token", to: "magic_links#consume", as: :magic_link_consume,
        constraints: { token: %r{[^/]+} }, format: false
 
   # Account management

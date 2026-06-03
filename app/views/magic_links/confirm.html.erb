@@ -1,0 +1,38 @@
+<%# "Confirm sign-in" interstitial for the magic link (GET /magic_link/:token).
+
+    SCANNER-SAFE BY DESIGN: this page does NOT consume the single-use token.
+    Email link-scanners / Gmail-image-proxies / SafeLinks pre-fetch the emailed
+    URL with a GET; landing them here is a harmless no-op. Only the human's
+    button press POSTs to /magic_link/:token, and THAT burns the token and
+    signs them in. One extra click is the price of not letting a scanner burn
+    the link before the human ever clicks it.
+
+    button_to emits a real <form> with the CSRF authenticity token, so the
+    consume POST is doubly protected: a scanner can't forge it. %>
+<div class="min-h-[70vh] flex items-center justify-center">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <img src="/logo.png" alt="Turf Monster" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
+      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Turf <span class="text-primary">Totals</span></h1>
+      <p class="text-secondary mt-2">Confirm your sign-in</p>
+    </div>
+
+    <div class="card shadow p-8 text-center">
+      <p class="text-secondary mb-6">
+        You're one tap away. Press the button below to finish signing in
+        <span class="text-muted">(or to create your account — no password needed).</span>
+      </p>
+
+      <%= button_to magic_link_consume_path(token: @token), method: :post,
+            data: { turbo: false },
+            class: "btn btn-primary btn-lg w-full" do %>
+        Sign in to Turf Monster
+      <% end %>
+
+      <p class="text-xs text-muted text-center mt-4">
+        This link expires shortly and can only be used once. If you didn't request
+        it, you can safely close this page.
+      </p>
+    </div>
+  </div>
+</div>

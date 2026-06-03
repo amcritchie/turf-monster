@@ -21,8 +21,10 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
   test "magic-link signup persists the reference cookie onto the new user" do
     get faucet_path, params: { reference: "friends-test" }
     token = MagicLink.generate(email: "ml-ref@mcritchie.studio")
+    # Signup happens on the human's POST (the GET is the inert, scanner-safe
+    # interstitial); the reference cookie set on the faucet visit rides through.
     assert_difference "User.count", 1 do
-      get magic_link_path(token: token)
+      post magic_link_consume_path(token: token)
     end
     assert_equal "friends-test", User.find_by(email: "ml-ref@mcritchie.studio").reference
   end

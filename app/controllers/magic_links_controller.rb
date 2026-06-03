@@ -1,7 +1,9 @@
 # Unified create-or-login email magic link (replaces the password UI).
 #
 #   POST /magic_link        — request a link (email [, contest, picks, return_to])
-#   GET  /magic_link/:token — consume it: log in OR create the account
+#   GET  /magic_link/:token — "Confirm sign-in" interstitial (does NOT consume —
+#                             scanner-safe; see #confirm)
+#   POST /magic_link/:token — consume it: log in OR create the account
 #
 # create-or-login: clicking the link IS proof of email ownership, so an email
 # that collides with a Google/wallet-only account that was never email-verified
@@ -26,13 +28,35 @@ class MagicLinksController < ApplicationController
     end
   end
 
+  # GET /magic_link/:token — the "Confirm sign-in" interstitial.
+  #
+  # This action is DELIBERATELY INERT: it does NOT consume the token. It only
+  # renders a one-button page whose button POSTs back to #consume. This is the
+  # scanner-safe core of the flow: email link-scanners (Outlook SafeLinks,
+  # Mimecast, corporate AV), the Gmail image proxy, and link-preview prefetchers
+  # all issue a GET/HEAD against the emailed URL. If that GET consumed the
+  # single-use token, the burn would land BEFORE the human's first real click,
+  # and the human would see "link already used" on a link they never used — the
+  # operator's "hard time creating an account" symptom and a real tester risk.
+  # Because the GET is inert, a scanner's pre-fetch is a no-op; only the human's
+  # POST burns the token.
+  #
+  # The token never leaves the URL here, so keep it out of Referer on this
+  # page's subresource loads (logo, fonts, analytics).
+  def confirm
+    response.set_header("Referrer-Policy", "no-referrer")
+    @token = params[:token]
+    # We render WITHOUT verifying the signature: a verify here would have to
+    # decode + check expiry, and surfacing "expired" vs "invalid" on a GET adds
+    # nothing — the POST does the authoritative check and shows the same error.
+    # Keeping confirm signature-free also means a malformed/garbage token still
+    # gets a friendly page instead of a 500.
+  end
+
+  # POST /magic_link/:token — the authoritative consume. This is the ONLY place
+  # the single-use token is burned, and it only runs on the human's button press
+  # (a scanner won't POST a CSRF-protected form). Mirrors the prior GET behavior.
   def consume
-    # The token sits in the URL; keep it out of Referer headers on the
-    # consume page's subresource loads (logo, fonts, analytics). Single-use +
-    # 15-min TTL is the primary defence; this closes the passive-leak gap.
-    # NOTE: aggressive email link-scanners (Outlook SafeLinks, Mimecast) may
-    # pre-fetch the link and burn the single-use token before the human clicks
-    # — a known magic-link tradeoff; documented for support.
     response.set_header("Referrer-Policy", "no-referrer")
     result = MagicLink.consume(params[:token])
     user = User.find_by(email: result.email)

@@ -24,15 +24,77 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert JSON.parse(response.body)["success"]
   end
 
-  # ── consume (GET /magic_link/:token) ─────────────────────────────────────
-  # consume now redirects to the LANDING page (return_to, else root) and carries
+  # ── confirm interstitial (GET /magic_link/:token) ────────────────────────
+  # The emailed link's GET is now a scanner-safe "Confirm sign-in" interstitial.
+  # It MUST NOT consume the token or establish a session — email link-scanners,
+  # the Gmail image proxy, and SafeLinks pre-fetch the URL, and if the GET
+  # consumed the single-use token the human's first real click would already
+  # see "link already used". The GET only renders a one-button page.
+  test "confirm GET renders the interstitial WITHOUT consuming or signing in" do
+    token = MagicLink.generate(email: "brand-new@example.com")
+    assert_no_difference "User.count", "GET must not create the account (scanner pre-fetch)" do
+      get magic_link_path(token: token)
+    end
+    assert_response :success
+    assert_nil session[Studio.session_key], "GET must not establish a session"
+    # The page offers the human a POST button back to the consume endpoint.
+    assert_select "form[action=?][method=post]", magic_link_consume_path(token: token)
+  end
+
+  test "confirm GET renders the interstitial even for a bogus token (no 500)" do
+    get magic_link_path(token: "bogus.token.value")
+    assert_response :success
+  end
+
+  # ── REGRESSION: a prefetch GET must NOT burn the single-use token ─────────
+  # The core of the fix. Single-use enforcement is disabled under the test
+  # cache (:null_store), so to actually prove "the GET doesn't burn the jti" we
+  # inject a real MemoryStore (the same seam MagicLink's unit test uses), where
+  # consume DOES delete the jti. We then simulate a scanner pre-fetch (GET) and
+  # assert the human's later POST still succeeds — which can only happen if the
+  # GET left the jti untouched.
+  test "a scanner prefetch GET does not burn the token; the human's POST still signs in" do
+    store = ActiveSupport::Cache::MemoryStore.new
+    MagicLink.cache = store
+    token = MagicLink.generate(email: users(:alex).email)
+
+    # 1. Scanner / Gmail-proxy pre-fetches the emailed URL.
+    get magic_link_path(token: token)
+    assert_response :success
+    assert_nil session[Studio.session_key], "the prefetch GET must not sign anyone in"
+
+    # 2. The human clicks the button → POST consumes the still-live token.
+    post magic_link_consume_path(token: token)
+    assert_equal users(:alex).id, session[Studio.session_key],
+                 "the human's POST must succeed — the GET must not have burned the jti"
+  ensure
+    MagicLink.cache = nil
+  end
+
+  test "single-use still holds: a second POST with the same token is rejected" do
+    store = ActiveSupport::Cache::MemoryStore.new
+    MagicLink.cache = store
+    token = MagicLink.generate(email: users(:alex).email)
+
+    post magic_link_consume_path(token: token)
+    assert_equal users(:alex).id, session[Studio.session_key]
+
+    # Replay the exact token (e.g. a double-submit / forwarded link) → rejected.
+    post magic_link_consume_path(token: token)
+    assert_redirected_to signin_path
+  ensure
+    MagicLink.cache = nil
+  end
+
+  # ── consume (POST /magic_link/:token) ────────────────────────────────────
+  # consume redirects to the LANDING page (return_to, else root) and carries
   # the welcome SUCCESS MODAL via flash[:magic_link_welcome] = { message, next };
   # the modal auto-redirects to the entry-tokens upsell client-side. It does NOT
   # redirect straight to tokens_buy_path nor set a :notice toast anymore.
   test "consume creates a passwordless, email-verified account and shows the welcome modal" do
     token = MagicLink.generate(email: "brand-new@example.com")
     assert_difference "User.count", 1 do
-      get magic_link_path(token: token)
+      post magic_link_consume_path(token: token)
     end
     user = User.find_by(email: "brand-new@example.com")
     assert user.email_verified_at.present?, "new user should be email-verified by clicking the link"
@@ -50,7 +112,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
 
   test "consume lands a new signup on the contest return_to with the welcome modal" do
     token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3")
-    get magic_link_path(token: token)
+    post magic_link_consume_path(token: token)
     assert_redirected_to "/contests/the-cup?picks=1,2,3"
     welcome = flash[:magic_link_welcome]
     assert welcome.present?
@@ -62,7 +124,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     existing = users(:alex)
     token = MagicLink.generate(email: existing.email, return_to: "/account")
     assert_no_difference "User.count" do
-      get magic_link_path(token: token)
+      post magic_link_consume_path(token: token)
     end
     assert_redirected_to "/account"
     assert_equal existing.id, session[Studio.session_key]
@@ -77,7 +139,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     existing = users(:alex)
     existing.update!(email_verified_at: nil)
     token = MagicLink.generate(email: existing.email)
-    get magic_link_path(token: token)
+    post magic_link_consume_path(token: token)
     assert existing.reload.email_verified_at.present?
   end
 
@@ -94,7 +156,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
 
     email_user = users(:jordan)
     token = MagicLink.generate(email: email_user.email)
-    get magic_link_path(token: token)
+    post magic_link_consume_path(token: token)
 
     # New session belongs to the magic-link user, not the prior web3 user.
     assert_equal email_user.id, session[Studio.session_key]
@@ -147,13 +209,13 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "consume rejects an invalid token" do
-    get magic_link_path(token: "bogus.token.value")
+    post magic_link_consume_path(token: "bogus.token.value")
     assert_redirected_to signin_path
   end
 
   test "consume sanitizes a protocol-relative return_to (open-redirect guard)" do
     token = MagicLink.generate(email: users(:alex).email, return_to: "//evil.com/x")
-    get magic_link_path(token: token)
+    post magic_link_consume_path(token: token)
     assert_redirected_to root_path
   end
 end
