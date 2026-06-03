@@ -146,9 +146,6 @@
             <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 0)" class="btn btn-sm bg-yellow-600 hover:bg-yellow-500 text-white">Lock</button>
             <button type="button" onclick="lockContestViaPhantom('<%= @contest.slug %>', 60)" class="btn btn-sm bg-yellow-700 hover:bg-yellow-600 text-white">Lock in 60s</button>
           <% end %>
-          <% if @contest.locked? %>
-            <%= button_to "Grade", grade_contest_path(@contest), method: :post, class: "btn btn-primary btn-sm" %>
-          <% end %>
           <% if @contest.onchain? && @contest.open? && !@contest.onchain_cancelled? %>
             <%= button_to "Cancel + refund creator", cancel_onchain_contest_path(@contest), method: :post,
                   data: { turbo_confirm: "Cancel this contest and refund the creator's prize pool? This is terminal." },

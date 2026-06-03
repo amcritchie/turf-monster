@@ -56,6 +56,13 @@
                   class: "block px-4 py-2 text-sm text-body hover:bg-surface-alt transition" %>
             <%= link_to "Admin View", admin_contest_path(@contest),
                   class: "block px-4 py-2 text-sm text-secondary hover:text-heading hover:bg-surface-alt transition" %>
+            <%= link_to "Pending Transactions", admin_pending_transactions_path,
+                  class: "block px-4 py-2 text-sm text-secondary hover:text-heading hover:bg-surface-alt transition" %>
+            <% if @contest.locked? && !@contest.settled? %>
+              <%= button_to "Grade", grade_contest_path(@contest), method: :post,
+                    form_class: "block",
+                    class: "block w-full text-left px-4 py-2 text-sm text-body hover:bg-surface-alt transition" %>
+            <% end %>
             <% if @contest.open? && !@contest.locked? %>
               <%# Testing aid: schedule the lock 60s out (Phantom-signed) to watch the countdown engage. %>
               <button type="button"
