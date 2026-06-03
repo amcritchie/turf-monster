@@ -111,6 +111,90 @@ class ContestTest < ActiveSupport::TestCase
     assert_equal "test-contest", @contest.slug
   end
 
+  # ── name/slug decouple (epic Part A, 2026-06-02) ──────────────────────────
+  # Names repeat (branded); slug is the globally-unique, manually-set key that
+  # seeds the on-chain PDA + every URL. Sluggable's auto-overwrite is neutralized.
+
+  test "an explicit slug is NOT overwritten from the name on save (decoupled)" do
+    c = Contest.create!(name: "Branded Name", slug: "hand-picked-slug",
+                        slate: slates(:one), status: :open, contest_type: "small")
+    assert_equal "hand-picked-slug", c.slug
+    # Rename — slug (and therefore the on-chain PDA) must stay put.
+    c.update!(name: "A Totally Different Name")
+    assert_equal "hand-picked-slug", c.reload.slug
+  end
+
+  test "two contests with the SAME name but DIFFERENT slugs both save (no name uniqueness)" do
+    a = Contest.create!(name: "World Cup Group A", slug: "wc-group-a-morning",
+                        slate: slates(:one), status: :open, contest_type: "small")
+    b = Contest.create!(name: "World Cup Group A", slug: "wc-group-a-evening",
+                        slate: slates(:one), status: :open, contest_type: "small")
+    assert a.persisted?
+    assert b.persisted?
+    assert_equal a.name, b.name
+    assert_not_equal a.slug, b.slug
+  end
+
+  test "duplicate slug is rejected" do
+    Contest.create!(name: "First", slug: "shared-slug",
+                    slate: slates(:one), status: :open, contest_type: "small")
+    dup = Contest.new(name: "Second", slug: "shared-slug",
+                      slate: slates(:one), status: :open, contest_type: "small")
+    assert_not dup.valid?
+    assert_includes dup.errors[:slug], "has already been taken"
+  end
+
+  test "slug rejects spaces, uppercase, and symbols" do
+    ["has spaces", "HasUpper", "has_underscore", "has!bang", "-leading", "trailing-",
+     "double--hyphen"].each do |bad|
+      c = Contest.new(name: "Fmt", slug: bad, slate: slates(:one), status: :open, contest_type: "small")
+      assert_not c.valid?, "expected slug #{bad.inspect} to be invalid"
+      assert c.errors[:slug].any?, "expected a slug format error for #{bad.inspect}"
+    end
+    # A valid url-safe slug passes the format check.
+    ok = Contest.new(name: "Fmt", slug: "world-cup-group-a-2026", slate: slates(:one), status: :open, contest_type: "small")
+    ok.valid?
+    assert_empty ok.errors[:slug]
+  end
+
+  test "name over 96 bytes is rejected (UTF-8 bytesize, not char length)" do
+    c = Contest.new(name: "a" * 97, slug: "long-name", slate: slates(:one), status: :open, contest_type: "small")
+    assert_not c.valid?
+    assert c.errors[:name].any?
+    # Exactly 96 bytes is allowed.
+    ok = Contest.new(name: "a" * 96, slug: "name-at-limit", slate: slates(:one), status: :open, contest_type: "small")
+    ok.valid?
+    assert_empty ok.errors[:name]
+  end
+
+  test "name byte limit counts UTF-8 bytes, not characters" do
+    # "é" is 2 bytes in UTF-8. 49 of them = 98 bytes (> 96) but only 49 chars.
+    multibyte = "é" * 49
+    assert_equal 49, multibyte.length
+    assert_equal 98, multibyte.bytesize
+    c = Contest.new(name: multibyte, slug: "multibyte-name", slate: slates(:one), status: :open, contest_type: "small")
+    assert_not c.valid?, "a 98-byte (49-char) name must be rejected by the bytesize cap"
+    assert c.errors[:name].any?
+  end
+
+  test "slug over 64 bytes is rejected" do
+    over = ("a" * 32) + "-" + ("b" * 32) # 65 bytes
+    assert_equal 65, over.bytesize
+    c = Contest.new(name: "Long Slug", slug: over, slate: slates(:one), status: :open, contest_type: "small")
+    assert_not c.valid?
+    assert c.errors[:slug].any?
+  end
+
+  test "Contest.create!(name:) without a slug backfills a unique slug from the name" do
+    a = Contest.create!(name: "Backfill Me", slate: slates(:one), status: :open, contest_type: "small")
+    assert_equal "backfill-me", a.slug
+    # Same name again → de-duped, not a collision.
+    b = Contest.create!(name: "Backfill Me", slate: slates(:one), status: :open, contest_type: "small")
+    assert b.persisted?
+    assert_not_equal a.slug, b.slug
+    assert_match(/\Abackfill-me(-[0-9a-f]{4})?\z/, b.slug)
+  end
+
   test "lock_time_display formats starts_at" do
     @contest.starts_at = Time.new(2026, 6, 11, 12, 0, 0)
     assert_match(/Locks June 11, 2026/, @contest.lock_time_display)

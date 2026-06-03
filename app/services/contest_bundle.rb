@@ -20,6 +20,7 @@ module ContestBundle
       label: "Turf Totals Alpha",
       contest: {
         name: "Turf Totals Alpha Contest",
+        slug: "turf-totals-alpha-contest",
         game_type: "turf_totals",
         contest_type: "medium",
         slate_name: "World Cup 2026 Group 1"
@@ -38,6 +39,7 @@ module ContestBundle
       label: "World Cup Survivor Free Roll",
       contest: {
         name: "World Cup Survivor Free Roll",
+        slug: "world-cup-survivor-free-roll",
         game_type: "world_cup_survivor",
         contest_type: "survivor_wc_free",
         slate_name: nil
@@ -56,6 +58,7 @@ module ContestBundle
       label: "World Cup $1,000",
       contest: {
         name: "World Cup $1000 Turf Total Contest",
+        slug: "world-cup-1000-turf-total-contest",
         game_type: "turf_totals",
         contest_type: "large",
         slate_name: "World Cup 2026 Group 1"
@@ -100,7 +103,7 @@ module ContestBundle
   # its LandingPage. Idempotent.
   def self.finalize_phantom!(key, creator, contest_pda, tx_signature)
     spec = spec_for(key)
-    contest = Contest.find_or_create_by!(name: spec[:contest][:name]) do |c|
+    contest = Contest.find_or_create_by!(slug: spec[:contest][:slug]) do |c|
       apply_contest_attrs(c, spec[:contest], creator)
       c.onchain_contest_id    = contest_pda
       c.onchain_tx_signature  = tx_signature
@@ -111,7 +114,7 @@ module ContestBundle
   end
 
   def self.find_or_create_contest(spec, creator)
-    Contest.find_or_create_by!(name: spec[:name]) do |c|
+    Contest.find_or_create_by!(slug: spec[:slug]) do |c|
       apply_contest_attrs(c, spec, creator)
     end
   end
@@ -120,6 +123,10 @@ module ContestBundle
     slate  = resolve_slate(spec[:slate_name])
     format = Contest::FORMATS[spec[:contest_type]] || {}
     contest.name            = spec[:name]
+    # Slug is set explicitly now that Contest no longer auto-derives it from name
+    # (name/slug epic Part A). Fall back to a parameterized name for forward-compat
+    # if a future spec omits it.
+    contest.slug            = spec[:slug] || spec[:name].to_s.parameterize
     contest.game_type       = spec[:game_type]
     contest.contest_type    = spec[:contest_type]
     contest.slate           = slate

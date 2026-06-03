@@ -1137,6 +1137,45 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     )
   end
 
+  # Step 1 of the Phantom create flow: POST /contests, returns the parsed JSON
+  # (serialized_tx, contest_pda, slug, params_token). Uses FakeVault with a
+  # balance that covers any tier's prize pool.
+  def run_create_via_phantom(name:, slug:, contest_type: "tiny", slate_id: slates(:one).id)
+    json = nil
+    Solana::Vault.stub :new, FakeVault.new(usdc_balance: 100_000.0) do
+      post contests_path,
+        params: { contest: { name: name, slug: slug, slate_id: slate_id, contest_type: contest_type } },
+        as: :json
+      json = JSON.parse(response.body)
+    end
+    json
+  end
+
+  # Full Phantom create → finalize flow (steps 1 + 3; the on-chain sign/broadcast
+  # in between is the client's job). Returns { create_json:, contest: } where
+  # contest is the persisted record. Solana verification is stubbed.
+  def create_contest_via_phantom(name:, slug:, contest_type: "tiny", slate_id: slates(:one).id)
+    create_json = run_create_via_phantom(name: name, slug: slug, contest_type: contest_type, slate_id: slate_id)
+    assert_equal true, create_json["success"], "create step failed: #{create_json.inspect}"
+
+    Solana::Vault.stub :new, FakeVault.new do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post finalize_contests_path, params: {
+            params_token: create_json["params_token"],
+            contest_pda:  create_json["contest_pda"],
+            tx_signature: "sig-#{slug}-#{SecureRandom.hex(2)}"
+          }, as: :json
+        end
+      end
+    end
+    assert_response :success
+    finalize_json = JSON.parse(response.body)
+    assert_equal true, finalize_json["success"], "finalize step failed: #{finalize_json.inspect}"
+
+    { create_json: create_json, contest: Contest.find_by!(slug: finalize_json["slug"]) }
+  end
+
   test "create blocks when the USDC balance read fails (RPC exception is a HARD BLOCK, not a $0 pass)" do
     log_in_as(admin_phantom)
     vault = FakeVault.new(usdc_balance_raises: true)
@@ -1203,6 +1242,56 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "FAKE_TX_create_blockhash-cup-d", json["serialized_tx"]
     assert json["params_token"].present?, "create must issue a params_token for rebuild + finalize"
     assert_equal 1, vault.create_contest_calls.length
+  end
+
+  # ── name/slug decouple (epic Part A) — create path keys off the manual slug ──
+
+  # THE KEY CASE: two contests with the SAME name but DIFFERENT manual slugs both
+  # create successfully through the full Phantom create → finalize flow, and the
+  # on-chain contest_id / PDA + serialized_tx derive from the MANUAL slug (not the
+  # name). Proves duplicate names no longer collide on slug or on the PDA.
+  test "two contests with the same name but different slugs both create; PDA derives from the manual slug" do
+    log_in_as(admin_phantom)
+
+    first  = create_contest_via_phantom(name: "World Cup Group A", slug: "wc-group-a-morning", contest_type: "tiny")
+    second = create_contest_via_phantom(name: "World Cup Group A", slug: "wc-group-a-evening", contest_type: "tiny")
+
+    # Both persisted, same name, distinct slugs.
+    assert first[:contest].persisted?
+    assert second[:contest].persisted?
+    assert_equal "World Cup Group A", first[:contest].name
+    assert_equal "World Cup Group A", second[:contest].name
+    assert_equal "wc-group-a-morning", first[:contest].slug
+    assert_equal "wc-group-a-evening", second[:contest].slug
+
+    # The on-chain leg keyed off the MANUAL slug, not the (shared) name:
+    #   build_create_contest was called with the slug, and the contest_pda /
+    #   serialized_tx the client signs both derive from it.
+    assert_equal "wc-group-a-morning", first[:create_json]["slug"]
+    assert_equal "cpda-wc-group-a-morning", first[:create_json]["contest_pda"]
+    assert_equal "FAKE_TX_create_wc-group-a-morning", first[:create_json]["serialized_tx"]
+    assert_equal "cpda-wc-group-a-evening", second[:create_json]["contest_pda"]
+
+    # The persisted on-chain id mirrors the slug-derived PDA the TX created.
+    assert_equal "cpda-wc-group-a-morning", first[:contest].onchain_contest_id
+    assert_equal "cpda-wc-group-a-evening", second[:contest].onchain_contest_id
+  end
+
+  test "create blocks a second contest reusing an existing slug (different name)" do
+    log_in_as(admin_phantom)
+    create_contest_via_phantom(name: "Original", slug: "dup-slug-x", contest_type: "tiny")
+
+    # Same slug, DIFFERENT name → the precheck must refuse before a Phantom
+    # signature is burned. The user-facing error keys off the slug, not the name.
+    second = run_create_via_phantom(name: "Different Name", slug: "dup-slug-x", contest_type: "tiny")
+
+    assert_response :unprocessable_entity
+    assert_equal false, second["success"]
+    # Rejected on the slug (the model's uniqueness check fires first), never the
+    # name — proving the dup-name guard moved onto the slug.
+    assert_match(/slug.*(already|taken)/i, second["error"])
+    assert_no_match(/name/i, second["error"])
+    assert_nil second["params_token"], "a blocked create must not issue a finalize token"
   end
 
   test "rebuild_create_tx re-issues a fresh partial-signed TX from the create params_token" do
