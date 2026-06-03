@@ -61,6 +61,14 @@ Rails.application.routes.draw do
   get "turf-totals-v1", to: "pages#turf_totals_v1", as: :turf_totals_v1
   get "terms",          to: "pages#terms",          as: :terms
 
+  # Site-legitimacy / trust pages. A real Privacy Policy, Terms of Service, and
+  # About/Contact page are signals wallet scanners (Phantom / Blowfish) and link
+  # unfurlers look for when deciding whether a new domain is a legitimate
+  # consumer product vs a throwaway drain site. Linked from the global footer.
+  get "privacy", to: "pages#privacy", as: :privacy
+  get "about",   to: "pages#about",   as: :about
+  get "contact", to: "pages#contact", as: :contact
+
   # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
   # vault USDC token account from the browser via Solana RPC, then displays
   # them next to the Rails-reported figures.

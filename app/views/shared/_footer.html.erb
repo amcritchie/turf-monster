@@ -1,0 +1,64 @@
+<%# Global site footer. Carries the brand mark + the site-legitimacy links
+    (About, Contact, Terms, Privacy) that wallet scanners and link unfurlers
+    look for when judging a new domain, plus the existing nav + on-chain
+    transparency pages. Rendered from the application layout only; the landing
+    funnel layout intentionally omits it to keep visitors on the CTA. Static
+    content, no Alpine x-data. %>
+<footer class="border-t border-subtle mt-16">
+  <div class="max-w-7xl mx-auto px-4 py-10">
+    <div class="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+      <%# Brand block %>
+      <div class="max-w-xs space-y-3">
+        <%= link_to root_path, class: "inline-flex items-center gap-2 group" do %>
+          <img src="/logo.png" alt="Turf Totals" class="w-8 h-8 rounded-full shadow">
+          <span class="font-extrabold text-heading text-lg tracking-tight"><span class="dm-salmon">Turf</span><span class="text-primary">Totals</span></span>
+        <% end %>
+        <p class="text-secondary text-sm leading-relaxed">
+          Solana-powered World Cup pick&rsquo;em. Pick 6 matchups, stack Turf Scores, and win
+          prizes settled on-chain.
+        </p>
+      </div>
+
+      <%# Link columns %>
+      <div class="grid grid-cols-2 gap-8 sm:grid-cols-3">
+        <div class="space-y-2">
+          <div class="text-heading text-xs font-bold uppercase tracking-wider">Play</div>
+          <ul class="space-y-1.5 text-sm">
+            <li><%= link_to "Contests", contests_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Rules", turf_totals_v1_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "How to Play", help_how_to_play_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Help Center", help_path, class: "text-secondary hover:text-primary transition" %></li>
+          </ul>
+        </div>
+
+        <div class="space-y-2">
+          <div class="text-heading text-xs font-bold uppercase tracking-wider">Transparency</div>
+          <ul class="space-y-1.5 text-sm">
+            <li><%= link_to "Proof of Reserves", proof_of_reserves_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Smart Contract", contract_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Phantom Wallet", help_phantom_path, class: "text-secondary hover:text-primary transition" %></li>
+          </ul>
+        </div>
+
+        <div class="space-y-2">
+          <div class="text-heading text-xs font-bold uppercase tracking-wider">Company</div>
+          <ul class="space-y-1.5 text-sm">
+            <li><%= link_to "About", about_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Contact", contact_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Terms of Service", terms_path, class: "text-secondary hover:text-primary transition" %></li>
+            <li><%= link_to "Privacy Policy", privacy_path, class: "text-secondary hover:text-primary transition" %></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-10 pt-6 border-t border-subtle flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-secondary text-xs">
+        &copy; <%= Date.today.year %> McRitchie Studio. Turf Totals is a game of skill. Play responsibly.
+      </p>
+      <p class="text-secondary text-xs">
+        Questions? <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>
+      </p>
+    </div>
+  </div>
+</footer>

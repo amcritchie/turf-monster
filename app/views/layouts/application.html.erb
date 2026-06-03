@@ -632,6 +632,11 @@
       <%= yield %>
     </div>
 
+    <%# Global footer — brand + site-legitimacy links (About / Contact / Terms /
+        Privacy) + on-chain transparency pages. Rendered in the app layout only;
+        the landing funnel layout omits it on purpose to keep the CTA focused. %>
+    <%= render "shared/footer" %>
+
     <%= render "shared/solana_errors" %>
     <%# Generic modal host from studio-engine. Owns Alpine.store('modals'),
         the StudioModals.holdAtLeast helper, the backdrop / scroll lock /

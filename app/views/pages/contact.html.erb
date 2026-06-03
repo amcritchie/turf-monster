@@ -1,0 +1,52 @@
+<% content_for :title, "Contact — Turf Totals" %>
+<% content_for :meta_description, "Get in touch with the Turf Totals team. Email support, help center, and legal links for the Solana World Cup pick'em game." %>
+
+<div class="max-w-2xl mx-auto py-10 px-2 space-y-8">
+  <header>
+    <h1 class="text-4xl font-extrabold text-heading mb-2">Contact</h1>
+    <p class="text-secondary text-sm">We&rsquo;re a small team and we read every message.</p>
+  </header>
+
+  <div class="card p-6 space-y-4">
+    <div class="flex items-start gap-3">
+      <span class="text-2xl">&#9993;</span>
+      <div>
+        <div class="text-heading font-semibold">Email support</div>
+        <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>
+        <p class="text-secondary text-sm mt-1">
+          Account, payment, payout, and on-chain transaction questions. We typically reply within one business day.
+        </p>
+      </div>
+    </div>
+
+    <div class="flex items-start gap-3">
+      <span class="text-2xl">&#9917;</span>
+      <div>
+        <div class="text-heading font-semibold">Help Center</div>
+        <%= link_to "How to play, Phantom wallet basics, and a glossary", help_path, class: "text-primary hover:underline" %>
+      </div>
+    </div>
+
+    <div class="flex items-start gap-3">
+      <span class="text-2xl">&#128279;</span>
+      <div>
+        <div class="text-heading font-semibold">On-chain transparency</div>
+        <%= link_to "Proof of Reserves", proof_of_reserves_path, class: "text-primary hover:underline" %>
+        <span class="text-secondary">&middot;</span>
+        <%= link_to "Smart Contract", contract_path, class: "text-primary hover:underline" %>
+      </div>
+    </div>
+  </div>
+
+  <div class="text-sm text-secondary space-y-2 border-t border-subtle pt-6">
+    <p>
+      Learn more about who builds Turf Totals and how the game settles on Solana on our
+      <%= link_to "About page", about_path, class: "text-primary hover:underline" %>.
+    </p>
+    <p>
+      <%= link_to "Terms of Service", terms_path, class: "text-primary hover:underline" %>
+      <span class="text-secondary">&middot;</span>
+      <%= link_to "Privacy Policy", privacy_path, class: "text-primary hover:underline" %>
+    </p>
+  </div>
+</div>

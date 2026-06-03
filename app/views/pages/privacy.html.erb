@@ -1,0 +1,152 @@
+<% content_for :title, "Privacy Policy — Turf Totals" %>
+<% content_for :meta_description, "How Turf Totals collects, uses, and protects your data. Plain-language privacy policy for the Solana World Cup pick'em game." %>
+
+<div class="max-w-3xl mx-auto py-10 px-2 space-y-12">
+  <header>
+    <h1 class="text-4xl font-extrabold text-heading mb-2">Privacy Policy</h1>
+    <p class="text-secondary text-sm">Last updated <%= Date.today.strftime("%B %d, %Y") %>.</p>
+  </header>
+
+  <section class="space-y-4">
+    <p class="text-body leading-relaxed">
+      This policy explains what information Turf Totals collects, why we collect it, and the
+      choices you have. We try to collect as little as possible, and we never sell your
+      personal data.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Information we collect</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>
+        <strong>Account details.</strong> If you sign in by email we store your email address to
+        send you a one-time magic link &mdash; we do not store passwords. If you sign in with a
+        Solana wallet (such as Phantom) we store your public wallet address. You may optionally
+        set a display name and username, which are public on contest leaderboards.
+      </li>
+      <li>
+        <strong>Sign-in with Google.</strong> If you choose Google sign-in, we receive your email
+        address and basic profile information from Google to create or match your account.
+      </li>
+      <li>
+        <strong>Gameplay data.</strong> Your contest entries, picks, scores, and referral activity.
+      </li>
+      <li>
+        <strong>Payment data.</strong> Token and entry-fee purchases are processed by
+        <strong>Stripe</strong>. We never see or store your full card number; Stripe handles card
+        data under its own PCI-compliant systems. We retain a purchase audit record (amount,
+        Stripe session id, status) to fulfill your order and for accounting.
+      </li>
+      <li>
+        <strong>On-chain data.</strong> Contest entries, prize pools, and payouts settle on the
+        public Solana blockchain. Your wallet address and the associated transactions are
+        inherently public on-chain &mdash; this is true of any Solana application, not unique to us.
+      </li>
+      <li>
+        <strong>Technical &amp; usage data.</strong> Standard server logs (IP address, browser type,
+        pages visited) and approximate location derived from IP for the eligibility check
+        described below.
+      </li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">How we use your information</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>To run the game: create your account, record entries, score contests, and distribute payouts.</li>
+      <li>To process token and entry-fee purchases through Stripe.</li>
+      <li>To send transactional email (magic-link sign-in, receipts, account notices) via our email provider, Resend.</li>
+      <li>To confirm you are accessing the game from a permitted jurisdiction (geo-eligibility).</li>
+      <li>To detect and prevent fraud, abuse, and multi-account referral manipulation.</li>
+      <li>To diagnose bugs and improve the product.</li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Analytics and session replay</h2>
+    <p class="text-body leading-relaxed">
+      We use error monitoring (Sentry) and, on a sampled basis, session-replay tooling (LogRocket)
+      to reproduce and fix bugs. When session replay is active we identify your session by an
+      <strong>opaque account slug only</strong> &mdash; we deliberately do <em>not</em> send your email
+      address or other personal identifiers to these vendors. Your public display name may be
+      attached because it already appears on leaderboards.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Who we share data with</h2>
+    <p class="text-body leading-relaxed">
+      We share data only with the service providers that make the game work, and only the data
+      they need:
+    </p>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li><strong>Stripe</strong> &mdash; payment processing.</li>
+      <li><strong>Resend</strong> &mdash; transactional email delivery.</li>
+      <li><strong>Solana RPC providers</strong> &mdash; reading and broadcasting on-chain transactions.</li>
+      <li><strong>Google</strong> &mdash; only if you use Google sign-in.</li>
+      <li><strong>Sentry / LogRocket</strong> &mdash; error monitoring and bug reproduction, as described above.</li>
+    </ul>
+    <p class="text-body leading-relaxed">
+      We do not sell your personal information. We may disclose information if required by law or
+      to protect the rights, safety, and integrity of the game and its players.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Cookies</h2>
+    <p class="text-body leading-relaxed">
+      We use a small number of first-party cookies that are necessary for the site to work &mdash;
+      principally your sign-in session and CSRF protection. We do not use third-party advertising
+      cookies.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Data retention</h2>
+    <p class="text-body leading-relaxed">
+      We keep account and gameplay data for as long as your account is active. Payment audit
+      records are retained as required for accounting and dispute resolution. Operational logs
+      are trimmed on a rolling basis. On-chain data is permanent and outside our control by the
+      nature of public blockchains.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Your choices and rights</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>You can update your display name and username on your account page at any time.</li>
+      <li>You can unlink Google sign-in from your account.</li>
+      <li>
+        You can request access to, correction of, or deletion of your personal data by emailing
+        us. Note we cannot delete data already written to the public Solana blockchain.
+      </li>
+    </ul>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Children</h2>
+    <p class="text-body leading-relaxed">
+      Turf Totals is not directed to children. You must be of legal age in your jurisdiction to
+      use the game.
+    </p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-bold text-heading">Changes to this policy</h2>
+    <p class="text-body leading-relaxed">
+      We may update this policy as the product evolves. Material changes will be reflected by the
+      &ldquo;last updated&rdquo; date above.
+    </p>
+  </section>
+
+  <section class="space-y-2 text-sm text-secondary border-t border-subtle pt-6">
+    <p>
+      Questions about your privacy? Email
+      <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>.
+      See also our
+      <%= link_to "Terms of Service", terms_path, class: "text-primary hover:underline" %>
+      and
+      <%= link_to "About page", about_path, class: "text-primary hover:underline" %>.
+    </p>
+  </section>
+</div>
