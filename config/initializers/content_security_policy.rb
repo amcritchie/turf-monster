@@ -24,6 +24,7 @@ Rails.application.configure do
     policy.script_src  :self, :https, :unsafe_inline, :unsafe_eval
     policy.style_src   :self, :https, :unsafe_inline
     policy.connect_src :self, :https, :wss   # XHR + Solana RPC + websockets
+    policy.worker_src  :self, :blob          # canvas-confetti + LogRocket spawn Web Workers from blob: URLs (default_src has no blob → blocked in prod)
     policy.frame_src   :self, "https://js.stripe.com", "https://hooks.stripe.com"
     policy.frame_ancestors :none   # clickjacking protection — we never embed in iframes
     policy.base_uri    :self
