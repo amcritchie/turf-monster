@@ -71,7 +71,7 @@ class ContestsController < ApplicationController
     vault  = Solana::Vault.new
     result = vault.build_create_contest(
       current_user.web3_solana_address,
-      contest.name_slug,
+      contest.slug,
       **contest.onchain_params
     )
 
@@ -79,7 +79,7 @@ class ContestsController < ApplicationController
       success:       true,
       serialized_tx: result[:serialized_tx],
       contest_pda:   result[:contest_pda],
-      slug:          contest.name_slug,
+      slug:          contest.slug,
       params_token:  sign_bundle_payload(params[:key], contest, current_user)
     }
   rescue StandardError => e
@@ -143,7 +143,7 @@ class ContestsController < ApplicationController
     vault  = Solana::Vault.new
     result = vault.build_create_contest(
       current_user.web3_solana_address,
-      contest.name_slug,
+      contest.slug,
       **contest.onchain_params
     )
 
@@ -151,7 +151,7 @@ class ContestsController < ApplicationController
       success:       true,
       serialized_tx: result[:serialized_tx],
       contest_pda:   result[:contest_pda],
-      slug:          contest.name_slug,
+      slug:          contest.slug,
       params_token:  sign_onchain_create_payload(contest, current_user)
     }
   rescue StandardError => e
@@ -205,7 +205,7 @@ class ContestsController < ApplicationController
 
     derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(payload[:slug]).first)
     raise "Contest PDA mismatch — slug=#{payload[:slug]}" unless params[:contest_pda] == derived_pda_b58
-    raise "A contest with that name already exists" if Contest.exists?(slug: payload[:slug])
+    raise "A contest with that slug already exists" if Contest.exists?(slug: payload[:slug])
 
     # OPSEC-010: assert the tx is the create_contest IX targeting THIS PDA,
     # signed by the original creator from the server-issued params_token.
@@ -1264,6 +1264,7 @@ class ContestsController < ApplicationController
   def build_contest_from_payload(payload)
     Contest.new(
       name:         payload[:name],
+      slug:         payload[:slug],
       contest_type: payload[:contest_type],
       starts_at:    payload[:starts_at],
       entry_fee_cents: payload[:entry_fee_cents],
@@ -1275,6 +1276,7 @@ class ContestsController < ApplicationController
   def build_finalized_contest(payload, derived_pda_b58, tx_signature)
     Contest.new(
       name:                       payload[:name],
+      slug:                       payload[:slug],
       slate_id:                   payload[:slate_id],
       contest_type:               payload[:contest_type],
       starts_at:                  payload[:starts_at],
@@ -1294,9 +1296,21 @@ class ContestsController < ApplicationController
   # why we should refuse to build a TX. The on-chain checks (PDA existence,
   # wallet USDC balance) make round-trips to devnet, so order them last.
   def onchain_create_precheck(contest, creator)
-    slug = contest.name_slug
-    return "Name is required" if slug.blank?
-    return "A contest with that name already exists" if Contest.exists?(slug: slug)
+    # Slug is the manual, globally-unique key — it seeds the on-chain PDA
+    # (contest_id = sha256(slug)). Validate the model first so a malformed slug
+    # (spaces/uppercase/symbols, > 64 bytes, name > 96 bytes) is rejected before
+    # we burn an RPC round-trip or a Phantom signature.
+    contest.validate
+    if (slug_errors = contest.errors[:slug]).any?
+      return "Slug #{slug_errors.first}"
+    end
+    if (name_errors = contest.errors[:name]).any?
+      return "Name #{name_errors.first}"
+    end
+
+    slug = contest.slug
+    return "Slug is required" if slug.blank?
+    return "A contest with that slug already exists" if Contest.exists?(slug: slug)
 
     vault   = Solana::Vault.new
     pda_b58 = Solana::Keypair.encode_base58(vault.contest_pda(slug).first)
@@ -1305,7 +1319,7 @@ class ContestsController < ApplicationController
       # failed AFTER the on-chain TX succeeded. Anchor's `init` constraint
       # would reject a re-mint anyway — fail loudly here instead of letting
       # the user waste a Phantom signature.
-      return "On-chain Contest PDA #{pda_b58.first(8)}… already exists for this name. Pick a different name."
+      return "On-chain Contest PDA #{pda_b58.first(8)}… already exists for this slug. Pick a different slug."
     end
 
     insufficient_usdc_error(contest, creator, vault)
@@ -1358,7 +1372,7 @@ class ContestsController < ApplicationController
   # symbol keys to strings — #verify wraps the result in HashWithIndifferentAccess.
   def sign_onchain_create_payload(contest, creator)
     payload = {
-      slug:                       contest.name_slug,
+      slug:                       contest.slug,
       name:                       contest.name,
       slate_id:                   contest.slate_id,
       contest_type:               contest.contest_type,
@@ -1391,7 +1405,7 @@ class ContestsController < ApplicationController
     Rails.application.message_verifier(ONCHAIN_BUNDLE_TOKEN_KEY)
          .generate({
            key:            key,
-           slug:           contest.name_slug,
+           slug:           contest.slug,
            user_id:        creator.id,
            creator_pubkey: creator.web3_solana_address
          }, expires_in: ONCHAIN_BUNDLE_TOKEN_TTL)
@@ -1545,7 +1559,7 @@ class ContestsController < ApplicationController
   end
 
   def contest_params
-    params.require(:contest).permit(:name, :slate_id, :contest_type, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
+    params.require(:contest).permit(:name, :slug, :slate_id, :contest_type, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
   end
 
   # Best-effort sport derivation from a slate's name. Slate/Team don't carry

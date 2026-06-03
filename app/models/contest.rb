@@ -7,7 +7,31 @@ class Contest < ApplicationRecord
   belongs_to :user, optional: true
   has_one_attached :contest_image
 
+  # Name is repeatable + branded — NO uniqueness. Slug is the unique key.
+  # 96-byte cap matches the future on-chain fixed `name` field (Part B / v0.21);
+  # validate UTF-8 bytesize, not char length, so multibyte names can't overflow
+  # the on-chain buffer.
   validates :name, presence: true
+  validate :name_within_byte_limit
+
+  # Slug is the GLOBALLY-unique, manually-set identifier. It seeds the on-chain
+  # Contest PDA (contest_id = sha256(slug)) and every URL. Decoupled from name
+  # (2026-06-02, name/slug epic Part A) so duplicate names no longer collide on
+  # slug OR on the PDA. 64-byte cap matches the future on-chain fixed `slug`.
+  NAME_MAX_BYTES = 96
+  SLUG_MAX_BYTES = 64
+  SLUG_FORMAT = /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/
+  validates :slug, presence: true, uniqueness: true, format: { with: SLUG_FORMAT, message: "must be lowercase letters, numbers, and hyphens" }
+  validate :slug_within_byte_limit
+
+  # Backfill a slug from the name on create ONLY when none was set explicitly,
+  # so `Contest.create!(name:)` (server-funded fallback, seeds, console, tests)
+  # still works without re-coupling slug to name. Runs at before_validation so
+  # the presence/format/uniqueness checks see the backfilled value. An explicit
+  # slug is left untouched (the UI create path always supplies one). See #set_slug
+  # for why Sluggable's overwrite-on-save is neutralized.
+  before_validation :backfill_slug, on: :create
+
   # Turf Totals contests run off a Slate; World Cup Survivor contests don't.
   validates :slate, presence: true, if: :turf_totals?
 
@@ -184,9 +208,13 @@ class Contest < ApplicationRecord
       # World Cup Survivor sets entry scores during round grading — skip matchup scoring.
       score_entries! unless world_cup_survivor?
 
-      ranked = entries.where(status: [:active, :complete]).order(score: :desc).includes(:user).to_a
+      # `id: :asc` is a deterministic tiebreaker: tied scores order by creation,
+      # so the integer-remainder payout split (below) always credits the earliest
+      # entry. Without it Postgres returns ties in physical/arbitrary order, making
+      # the split non-deterministic (a money bug + flaky tests once other rows exist).
+      ranked = entries.where(status: [:active, :complete]).order(score: :desc, id: :asc).includes(:user).to_a
       ranked.each { |e| e.update!(status: "complete") if e.active? }
-      ranked = entries.complete.order(score: :desc).includes(:user).to_a
+      ranked = entries.complete.order(score: :desc, id: :asc).includes(:user).to_a
 
       return update!(status: "settled") if ranked.empty?
 
@@ -504,7 +532,86 @@ class Contest < ApplicationRecord
     entries.where(user_id: user.id, status: [:active, :complete]).exists?
   end
 
+  # Still referenced by Entry#name_slug (entry slugs embed the contest slug) and
+  # by the contest generator/bundle paths as a suggested slug. NOT the source of
+  # the persisted `slug` anymore.
   def name_slug
     name.parameterize
+  end
+
+  private
+
+  # NEUTRALIZE Sluggable's auto-derive. Sluggable runs `before_save :set_slug`,
+  # which by default does `self.slug = name_slug` on EVERY save — that re-couples
+  # slug to name, so a duplicate name re-collides on slug AND on the on-chain PDA
+  # (contest_id = sha256(slug)). Override it to a NO-OP for Contest: the slug is
+  # set explicitly (UI create path) or backfilled once on create (see
+  # #backfill_slug), and is NEVER overwritten from the name afterwards — rename
+  # the contest and the slug + its PDA stay put. The slug column + Sluggable's
+  # `to_param` (slug-based URLs) are preserved; only the auto-overwrite is killed.
+  def set_slug
+    # intentionally no-op — Contest slug is decoupled from name (epic Part A)
+  end
+
+  # Concurrent-backfill safety. #backfill_slug probes for a free generated slug
+  # before insert, but two simultaneous `Contest.create!(name:)` calls (seeds,
+  # the server-funded fallback, parallel jobs) can both probe the SAME base, both
+  # see it free, and then race the insert — the DB unique index on `slug` lets
+  # exactly one win and raises ActiveRecord::RecordNotUnique on the loser. Only
+  # backfilled slugs are auto-regenerated + retried here; an EXPLICIT slug that
+  # collides must still surface the validation/uniqueness error to the caller
+  # (the UI create path supplies its own slug and expects a clear "taken" error).
+  MAX_BACKFILL_SLUG_RETRIES = 5
+  def create_or_update(...)
+    attempts = 0
+    begin
+      super
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless @slug_backfilled && (attempts += 1) <= MAX_BACKFILL_SLUG_RETRIES
+      raise unless e.message.to_s.include?("index_contests_on_slug") || e.message.to_s.include?("slug")
+
+      self.slug = generate_unique_backfill_slug
+      retry
+    end
+  end
+
+  # One-time slug backfill for new records created WITHOUT an explicit slug
+  # (`Contest.create!(name:)` from the server-funded fallback, seeds, console,
+  # tests). Derives from the name and de-dupes with a short random suffix so two
+  # new contests with the SAME name don't collide on the generated slug. A slug
+  # supplied by the caller is left untouched. Skipped on update — existing
+  # contests keep their stored slug.
+  def backfill_slug
+    return if slug.present?
+    return if name.blank?
+
+    @slug_backfilled = true
+    self.slug = generate_unique_backfill_slug
+  end
+
+  # Derive a url-safe, globally-unique slug from the name. The probe loop
+  # de-dupes against committed rows; the DB unique index is the real arbiter
+  # (see #create_or_update for the concurrent-insert retry). A blank name_slug
+  # (e.g. a name of only non-url-safe chars) falls back to a pure hex slug so
+  # the SLUG_FORMAT/presence validations always see a valid value.
+  def generate_unique_backfill_slug
+    base = name_slug.presence || "contest-#{SecureRandom.hex(3)}"
+    candidate = base
+    candidate = "#{base}-#{SecureRandom.hex(2)}" while Contest.where(slug: candidate).exists?
+    candidate
+  end
+
+  def name_within_byte_limit
+    return if name.blank?
+    if name.to_s.bytesize > NAME_MAX_BYTES
+      errors.add(:name, "is too long (maximum is #{NAME_MAX_BYTES} bytes)")
+    end
+  end
+
+  def slug_within_byte_limit
+    return if slug.blank?
+    if slug.to_s.bytesize > SLUG_MAX_BYTES
+      errors.add(:slug, "is too long (maximum is #{SLUG_MAX_BYTES} bytes)")
+    end
   end
 end
