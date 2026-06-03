@@ -107,6 +107,45 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert_not ctx.web3?
   end
 
+  # Regression for PR #58: consume calls reset_session BEFORE set_app_session.
+  # Application before_actions (notably detect_geo_state) write to session on
+  # the SAME request that runs consume, so reset_session discards those prior
+  # writes and rotates the session id mid-request. A brand-new signup must
+  # still complete and land logged-in — the discarded geo keys are re-detected
+  # next request and are not load-bearing for auth. (A friend tester clicking
+  # the emailed link from a fresh browser is exactly this path.)
+  test "consume creates + logs in the new user even when prior before-action session writes are present" do
+    # Simulate the geo before_action having written to the session before
+    # consume runs (the real detect_geo_state path).
+    get magic_link_path(token: MagicLink.generate(email: "warmup@example.com"))
+    # Now a genuinely new email; the jar already holds a rotated session.
+    assert_difference "User.count", 1 do
+      get magic_link_path(token: MagicLink.generate(email: "fresh-browser@example.com"))
+    end
+    user = User.find_by(email: "fresh-browser@example.com")
+    assert_equal user.id, session[Studio.session_key], "new user must be logged in after reset_session"
+    assert user.email_verified_at.present?
+    assert user.username.present?, "auto-generated username must be set"
+    assert_not session[:onchain], "a magic-link signup is web2, not web3"
+  end
+
+  # Regression for PR #58: clicking a magic link for a NEW email while already
+  # logged in as a DIFFERENT user must switch the session to the new user with
+  # no identity bleed from the prior session.
+  test "consume for a new email while logged in as another user switches the session cleanly" do
+    prior = users(:alex)
+    log_in_as(prior)
+    assert_equal prior.id, session[Studio.session_key], "precondition: logged in as the prior user"
+
+    token = MagicLink.generate(email: "switcheroo@example.com")
+    assert_difference "User.count", 1 do
+      get magic_link_path(token: token)
+    end
+    switched = User.find_by(email: "switcheroo@example.com")
+    assert_not_equal prior.id, session[Studio.session_key]
+    assert_equal switched.id, session[Studio.session_key], "session must belong to the new user, not the prior one"
+  end
+
   test "consume rejects an invalid token" do
     get magic_link_path(token: "bogus.token.value")
     assert_redirected_to signin_path
