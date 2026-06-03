@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Alpine x-cloak: hide [x-cloak] elements until Alpine initializes and strips
+   the attribute. Alpine 3 does NOT ship this rule itself — without it x-cloak
+   is a no-op and x-show elements flash visible for a frame before hydration
+   (e.g. the contests index settled rows). Canonical Alpine convention. */
+[x-cloak] { display: none !important; }
+
 @layer utilities {
   .px-1 {
     padding-left: 0.25rem;
