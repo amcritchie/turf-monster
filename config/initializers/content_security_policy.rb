@@ -4,7 +4,8 @@
 # loads:
 #   - Phantom wallet from injected window object (no external script)
 #   - Solana web3 + Alpine via CDN (script-src https:)
-#   - Stripe Checkout redirect (no embed; just redirect target — no CSP entry needed for navigation)
+#   - Stripe Checkout redirect (form POST to checkout.stripe.com — needs a form-action entry)
+#   - Google OAuth (OmniAuth google_oauth2 form POST to accounts.google.com — needs a form-action entry)
 #   - Resend is server-side only
 #
 # Inline scripts/styles are used by Alpine and several inline blocks in the
@@ -26,7 +27,7 @@ Rails.application.configure do
     policy.frame_src   :self, "https://js.stripe.com", "https://hooks.stripe.com"
     policy.frame_ancestors :none   # clickjacking protection — we never embed in iframes
     policy.base_uri    :self
-    policy.form_action :self, "https://checkout.stripe.com"
+    policy.form_action :self, "https://checkout.stripe.com", "https://accounts.google.com"
   end
 
   config.content_security_policy_report_only = !Rails.env.production?
