@@ -1,13 +1,10 @@
 <% page_title = @landing_page.headline.presence || @landing_page.name %>
 <% content_for :title, "#{page_title} — Turf Totals" %>
-<% content_for :head do %>
-  <meta property="og:title" content="<%= page_title %>">
-  <% if @landing_page.subheadline.present? %>
-    <meta property="og:description" content="<%= @landing_page.subheadline %>">
-  <% end %>
-  <meta property="og:type" content="website">
-  <meta property="og:image" content="<%= request.base_url %>/logo.png">
-<% end %>
+<%# Drive the unfurl metadata through the layout's canonical og/twitter tags
+    (title from :title, description from :meta_description, image from the
+    default landscape og.png with width/height). Emitting og:title/og:type/
+    og:image here too would duplicate those tags and pin a stale image. %>
+<% content_for :meta_description, @landing_page.subheadline if @landing_page.subheadline.present? %>
 
 <%= render "landing_pages/backgrounds/#{@landing_page.background_partial}" %>
 
