@@ -81,6 +81,32 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert existing.reload.email_verified_at.present?
   end
 
+  # ── prior-session hard reset on consume ──────────────────────────────────
+  # A magic link is a fresh WEB2 (email) login. If the browser already held a
+  # web3/Phantom-signature session, none of its state may bleed into the new
+  # one — that bleed is what made a web2 magic-link user still look web3 and
+  # popped the Phantom unlock probe on the landing. consume must reset_session
+  # + clear the :onchain privilege flag before establishing the new session.
+  test "consume hard-resets a prior web3 session and lands the email user as web2" do
+    onchain_user = users(:sam)
+    log_in_as_onchain(onchain_user)
+    assert_equal true, session[:onchain], "precondition: prior session is a live web3 session"
+
+    email_user = users(:jordan)
+    token = MagicLink.generate(email: email_user.email)
+    get magic_link_path(token: token)
+
+    # New session belongs to the magic-link user, not the prior web3 user.
+    assert_equal email_user.id, session[Studio.session_key]
+    # The onchain privilege flag is gone — the new session is web2, not web3.
+    assert_not session[:onchain], "onchain flag must not bleed into the magic-link session"
+
+    # SessionContext for the new session reports web2 (onchain_session false).
+    ctx = SessionContext.new(user: email_user, onchain_session: false)
+    assert ctx.web2?, "magic-link email user should be web2"
+    assert_not ctx.web3?
+  end
+
   test "consume rejects an invalid token" do
     get magic_link_path(token: "bogus.token.value")
     assert_redirected_to signin_path
