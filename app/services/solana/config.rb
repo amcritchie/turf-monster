@@ -46,9 +46,13 @@ module Solana
     # Admin keypair path for signing settlement transactions
     ADMIN_KEYPAIR_PATH = ENV.fetch("SOLANA_ADMIN_KEYPAIR", File.expand_path("~/.config/solana/id.json"))
 
-    # Multisig signers (base58 addresses)
+    # Multisig signers (base58 public keys). Default = the rotated 2-of-3 set
+    # (post leaked-Alex-Bot rotation 2026-06-02): new Alex Bot 8K81…, cosigner
+    # 7ZDJ…, Mason CytJ…. These are PUBLIC keys and are overridden by the
+    # SOLANA_MULTISIG_SIGNERS env var (and authoritatively by VaultState.signers
+    # on-chain) in every deployed environment — the literal is a fallback only.
     MULTISIG_SIGNERS = ENV.fetch("SOLANA_MULTISIG_SIGNERS",
-      "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ,7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr,CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR"
+      "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd,7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr,CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR"
     ).split(",")
     MULTISIG_THRESHOLD = ENV.fetch("SOLANA_MULTISIG_THRESHOLD", "2").to_i
 
@@ -81,7 +85,7 @@ module Solana
     # their SHA256 differ. Each cluster therefore commits its own IDL file and
     # pins its own EXPECTED_IDL_HASH per Heroku app. Selection is by NETWORK so
     # a single source tree boots correctly on either cluster:
-    #   - mainnet-beta -> config/turf_vault.mainnet.idl.json (address mnzow…, 70e8f7…)
+    #   - mainnet-beta -> config/turf_vault.mainnet.idl.json (address DaFv…, e13ffd11…)
     #   - anything else (devnet/localnet) -> config/turf_vault.idl.json (address EQGF…, 99d551…)
     # The devnet branch is byte-identical to the prior unconditional path, so
     # the live devnet-prod app's verify_idl!/precompile behavior is unchanged.

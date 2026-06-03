@@ -153,8 +153,8 @@ Why the isolation matters (each of these silently collides otherwise):
 - ERB views, import maps, no JS frameworks
 - bcrypt + Google OAuth + Solana wallet auth (Phantom)
 - **Sidekiq** + Redis for background jobs (web UI at `/admin/jobs`, admin-only)
-- **Studio engine gem** — `gem "studio-engine", "~> 0.4.0"` (RubyGems; current 0.4.10). `Studio.routes(self)` + `Studio.configure` in `config/initializers/studio.rb`.
-- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.3"` (RubyGems; current 0.4.3). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair. 0.4.3 fixes the `Net::HTTP::Post.new(@uri.path)` query-string-dropping bug that broke Helius auth in 0.4.2 (see solana-studio PR #1 + CHANGELOG).
+- **Studio engine gem** — `gem "studio-engine", "~> 0.5"` (RubyGems; current 0.5.1, locked). `Studio.routes(self)` + `Studio.configure` in `config/initializers/studio.rb`.
+- **SolanaStudio gem** — `gem "solana-studio", "~> 0.4.6"` (RubyGems; current 0.4.6, locked). Pure-Ruby primitives — Solana::Client (RPC), Solana::Borsh, Solana::Transaction, Solana::SplToken, Solana::Keypair. 0.4.3 fixed the `Net::HTTP::Post.new(@uri.path)` query-string-dropping bug that broke Helius auth in 0.4.2 (see solana-studio PR #1 + CHANGELOG).
 
 ## JS Modules (importmap)
 
