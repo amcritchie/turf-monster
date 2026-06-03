@@ -1,12 +1,36 @@
+<%
+  # Shared Redis-adapter config for ActionCable (contest chat + the live
+  # contest page's leaderboard/score/goal broadcasts via Contest::LiveBroadcast).
+  #
+  # Heroku Redis serves rediss:// (TLS) with a SELF-SIGNED cert. redis-client
+  # verifies peer certs by default and would REJECT the connection — and because
+  # ActionCable's pubsub failure is silent (no boot crash, the /cable WebSocket
+  # still upgrades to 101), every broadcast would simply never reach subscribers
+  # on other connections/dynos. Symptom: a chat message only appears after a
+  # manual refresh (HTTP refetch), and the live leaderboard never updates on a
+  # goal. Mirror config/initializers/sidekiq.rb + the production cache_store
+  # (config/environments/production.rb): keep the connection encrypted, skip
+  # chain verification (Heroku's documented guidance for their Redis add-on).
+  cable_redis_url = ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" }
+  cable_redis_ssl = cable_redis_url.start_with?("rediss://")
+%>
 development:
   adapter: redis
-  url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
+  url: <%= cable_redis_url %>
   channel_prefix: turf_monster_development
+  <%- if cable_redis_ssl -%>
+  ssl_params:
+    verify_mode: <%= OpenSSL::SSL::VERIFY_NONE %>
+  <%- end -%>
 
 test:
   adapter: test
 
 production:
   adapter: redis
-  url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
+  url: <%= cable_redis_url %>
   channel_prefix: turf_monster_production
+  <%- if cable_redis_ssl -%>
+  ssl_params:
+    verify_mode: <%= OpenSSL::SSL::VERIFY_NONE %>
+  <%- end -%>
