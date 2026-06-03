@@ -553,6 +553,28 @@ class Contest < ApplicationRecord
     # intentionally no-op — Contest slug is decoupled from name (epic Part A)
   end
 
+  # Concurrent-backfill safety. #backfill_slug probes for a free generated slug
+  # before insert, but two simultaneous `Contest.create!(name:)` calls (seeds,
+  # the server-funded fallback, parallel jobs) can both probe the SAME base, both
+  # see it free, and then race the insert — the DB unique index on `slug` lets
+  # exactly one win and raises ActiveRecord::RecordNotUnique on the loser. Only
+  # backfilled slugs are auto-regenerated + retried here; an EXPLICIT slug that
+  # collides must still surface the validation/uniqueness error to the caller
+  # (the UI create path supplies its own slug and expects a clear "taken" error).
+  MAX_BACKFILL_SLUG_RETRIES = 5
+  def create_or_update(...)
+    attempts = 0
+    begin
+      super
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless @slug_backfilled && (attempts += 1) <= MAX_BACKFILL_SLUG_RETRIES
+      raise unless e.message.to_s.include?("index_contests_on_slug") || e.message.to_s.include?("slug")
+
+      self.slug = generate_unique_backfill_slug
+      retry
+    end
+  end
+
   # One-time slug backfill for new records created WITHOUT an explicit slug
   # (`Contest.create!(name:)` from the server-funded fallback, seeds, console,
   # tests). Derives from the name and de-dupes with a short random suffix so two
@@ -563,10 +585,20 @@ class Contest < ApplicationRecord
     return if slug.present?
     return if name.blank?
 
-    base = name_slug
+    @slug_backfilled = true
+    self.slug = generate_unique_backfill_slug
+  end
+
+  # Derive a url-safe, globally-unique slug from the name. The probe loop
+  # de-dupes against committed rows; the DB unique index is the real arbiter
+  # (see #create_or_update for the concurrent-insert retry). A blank name_slug
+  # (e.g. a name of only non-url-safe chars) falls back to a pure hex slug so
+  # the SLUG_FORMAT/presence validations always see a valid value.
+  def generate_unique_backfill_slug
+    base = name_slug.presence || "contest-#{SecureRandom.hex(3)}"
     candidate = base
-    candidate = "#{base}-#{SecureRandom.hex(2)}" while candidate.present? && Contest.where(slug: candidate).exists?
-    self.slug = candidate
+    candidate = "#{base}-#{SecureRandom.hex(2)}" while Contest.where(slug: candidate).exists?
+    candidate
   end
 
   def name_within_byte_limit

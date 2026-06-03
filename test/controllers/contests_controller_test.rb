@@ -1294,6 +1294,58 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_nil second["params_token"], "a blocked create must not issue a finalize token"
   end
 
+  # Bundle provisioning (generate_bundle → finalize_bundle) keys the on-chain
+  # contest_id/PDA off the bundle spec's EXPLICIT slug, not a name-derived one.
+  # The "survivor" bundle has slug "world-cup-survivor-free-roll" but a name of
+  # "World Cup Survivor Free Roll" — proving the PDA derives from the slug
+  # (FakeVault returns cpda-<slug>), the round-trip persists, and finalize stores
+  # that slug-derived PDA as onchain_contest_id.
+  test "generate_bundle/finalize_bundle derive the PDA from the bundle's explicit slug" do
+    log_in_as(admin_phantom)
+    bundle_slug = ContestBundle::ALL["survivor"][:contest][:slug]
+    assert_equal "world-cup-survivor-free-roll", bundle_slug
+
+    # Step 1: generate_bundle builds the partially-signed create TX. The
+    # contest_pda + serialized_tx + returned slug all derive from the explicit
+    # bundle slug (FakeVault: cpda-<slug> / FAKE_TX_create_<slug>).
+    gen = nil
+    Solana::Vault.stub :new, FakeVault.new(usdc_balance: 100_000.0) do
+      post generate_bundle_contests_path(key: "survivor")
+      gen = JSON.parse(response.body)
+    end
+    assert_response :success
+    assert_equal true, gen["success"], gen.inspect
+    assert_equal bundle_slug, gen["slug"]
+    assert_equal "cpda-#{bundle_slug}", gen["contest_pda"]
+    assert_equal "FAKE_TX_create_#{bundle_slug}", gen["serialized_tx"]
+    assert gen["params_token"].present?
+
+    # Step 3: finalize_bundle persists the Contest + LandingPage. The PDA it
+    # verifies + stores is re-derived server-side from the SAME slug (identity
+    # encode_base58 stub → cpda-<slug>), so onchain_contest_id matches.
+    fin = nil
+    Solana::Vault.stub :new, FakeVault.new do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        Solana::TxVerifier.stub :verify!, true do
+          post finalize_bundle_contests_path, params: {
+            params_token: gen["params_token"],
+            contest_pda:  gen["contest_pda"],
+            tx_signature: "sig-bundle-#{SecureRandom.hex(2)}"
+          }
+        end
+      end
+    end
+    assert_response :success
+    fin = JSON.parse(response.body)
+    assert_equal true, fin["success"], fin.inspect
+
+    contest = Contest.find_by!(slug: bundle_slug)
+    assert_equal bundle_slug, contest.slug
+    assert_equal "World Cup Survivor Free Roll", contest.name # slug != parameterized name path; explicit
+    assert_equal "cpda-#{bundle_slug}", contest.onchain_contest_id
+    assert LandingPage.exists?(slug: "survivor")
+  end
+
   test "rebuild_create_tx re-issues a fresh partial-signed TX from the create params_token" do
     log_in_as(admin_phantom)
     token = nil
