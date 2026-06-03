@@ -6,6 +6,20 @@ class RegistrationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # A guest still sees the signup form.
+  test "guest GETting /signup sees the form" do
+    get signup_path
+    assert_response :success
+    assert_nil session[Studio.session_key]
+  end
+
+  # An already-logged-in viewer hitting /signup is bounced to their account.
+  test "authenticated user GETting /signup is redirected to account" do
+    log_in_as users(:alex)
+    get signup_path
+    assert_redirected_to account_path
+  end
+
   # Passwordless: the engine POST /signup creates the account from email alone
   # (Studio.registration_params is [:email, :reference]). The primary email
   # signup surface is now the magic link; this path stays as a fallback.

@@ -55,6 +55,32 @@ class ApplicationController < ActionController::Base
 
   private
 
+  # Bounce an already-authenticated viewer away from the auth-entry GET pages
+  # (the /login + /signup form renders). A logged-in user landing on "Sign in
+  # to play" is a dead end — send them to their account instead. Honours a
+  # `?return_to` param if one is supplied (same key the login flow uses), but
+  # only for in-app relative paths so it can't be used as an open-redirect.
+  #
+  # Apply this only to the form-render `:new` actions. It must NOT guard the
+  # mid-auth callbacks (magic-link consume, OmniAuth callback, solana verify,
+  # wallet-link landing, the POST create actions) — those legitimately run
+  # while a session is being established and would be hijacked by a redirect.
+  def redirect_if_authenticated
+    return unless logged_in?
+
+    redirect_to safe_return_to || account_path
+  end
+
+  # A `return_to` is honoured only when it's a relative, single-leading-slash
+  # path (no scheme/host) — otherwise we ignore it to avoid open redirects.
+  def safe_return_to
+    target = params[:return_to].presence
+    return nil unless target
+    return nil unless target.start_with?("/") && !target.start_with?("//")
+
+    target
+  end
+
   # Populates Current.* for the request lifecycle so OutboundRequestLogger can
   # attribute Stripe / Solana calls back to the user without param threading.
   def set_current_context
