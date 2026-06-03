@@ -1,17 +1,21 @@
 <%# Link tile for the admin Link Hub (app/views/admin/hub.html.erb).
     Locals:
-      name   — link label (String)
-      url    — link target (path or String)
-      status — optional review state, drives the tile colour:
-                 :reviewed — green; filed into the navbar gear dropdown
-                 :flagged  — red; reviewed but deliberately left out of the gear
-      note   — optional line under the name; :flagged tiles default it to
-               "Not added to the gear" %>
-<% status = local_assigns[:status] %>
-<% note   = local_assigns[:note] || ("Not added to the gear" if status == :flagged) %>
+      name     — link label (String)
+      url      — link target (path or String)
+      status   — optional review state, drives the tile colour:
+                   :reviewed — green; filed into the navbar gear dropdown
+                   :flagged  — red; reviewed but deliberately left out of the gear
+      note     — optional line under the name; :flagged tiles default it to
+                 "Not added to the gear"
+      external — optional bool; when true opens the url in a new tab with
+                 target="_blank" rel="noopener" and shows a NE-arrow glyph %>
+<% status   = local_assigns[:status] %>
+<% external = local_assigns[:external] %>
+<% note     = local_assigns[:note] || ("Not added to the gear" if status == :flagged) %>
 <% accent = { reviewed: "var(--color-success)", flagged: "var(--color-danger)" }[status] %>
 <% accent_style = "color: #{accent}" if accent %>
 <%= link_to url, class: "card card-hover flex items-center justify-between gap-2 px-4 py-3 group",
+      target: (external ? "_blank" : nil), rel: (external ? "noopener" : nil),
       data: (status ? { status: status } : {}) do %>
   <span class="flex flex-col gap-0.5">
     <span class="text-sm font-medium transition <%= "text-heading group-hover:text-primary" unless accent %>"
@@ -21,5 +25,5 @@
     <% end %>
   </span>
   <span class="text-xs transition <%= "text-muted group-hover:text-primary" unless accent %>"
-        style="<%= accent_style %>">&rarr;</span>
+        style="<%= accent_style %>"><%= external ? "&nearr;".html_safe : "&rarr;".html_safe %></span>
 <% end %>
