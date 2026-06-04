@@ -132,6 +132,29 @@ module Solana
       Transaction.find_pda([b("entry"), contest_id, wallet_bytes, entry_num_bytes], @program_id)
     end
 
+    # Lowest entry slot in 0...max whose on-chain Entry PDA does NOT already
+    # exist for (contest, wallet), skipping any indices in `skip`. Returns nil
+    # if every slot is taken.
+    #
+    # WHY probe the chain instead of counting DB rows: the Entry PDA is seeded
+    # on the entry index, and on-chain Entry accounts OUTLIVE their DB rows — a
+    # contest Reset (Contest#reset!) destroys the DB entries but never closes
+    # their on-chain accounts. Deriving the next index from a live DB count then
+    # reuses a slot whose PDA is still allocated, and EnterContest's System
+    # `Allocate` fails with "account ... already in use" (custom program error
+    # 0x0) at pre-flight. The chain is the only source of truth for which slots
+    # are free. See Entry#assign_onchain_entry_number!.
+    def next_free_entry_index(contest_slug, wallet_address, max:, skip: [])
+      skip = Array(skip).map(&:to_i)
+      (0...max).each do |n|
+        next if skip.include?(n)
+        pda = Keypair.encode_base58(entry_pda(contest_slug, wallet_address, n).first)
+        info = @client.get_account_info(pda)
+        return n unless info && info["value"]
+      end
+      nil
+    end
+
     # Build the source_ref for an operator-initiated entry-token mint (the
     # /admin/free_entries "Mint N" / "Mint All" buttons). It MUST be globally
     # unique per mint — the on-chain PDA is sha256(source_ref), so a repeat

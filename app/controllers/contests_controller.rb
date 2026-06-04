@@ -514,10 +514,11 @@ class ContestsController < ApplicationController
           token = current_user.next_unconsumed_entry_token
           raise "No entry tokens. Buy at /tokens/buy" unless token
 
-          entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
-          entry.save! if entry.entry_number_changed?
-
           vault = Solana::Vault.new
+          # Probe the chain for a free entry slot (handles orphaned PDAs left by
+          # a contest Reset). See Entry#assign_onchain_entry_number!.
+          entry.assign_onchain_entry_number!(current_user.solana_address, vault)
+
           vault.ensure_user_account(current_user.solana_address, username: current_user.username) if current_user.solana_connected?
           # OPSEC-004: pass the managed wallet's keypair — turf-vault v0.12.0
           # requires the token owner to sign the consume.
@@ -543,12 +544,13 @@ class ContestsController < ApplicationController
           # the SPL transfer; managed wallets supply it from the encrypted
           # `solana_keypair` column. Default to currency_idx 0 (USDC) for
           # Phase 1 — currency picker is a Phase 2 task.
-          entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
-          entry.save! if entry.entry_number_changed?
-
           raise "Managed wallet missing keypair (cannot sign entry)" unless current_user.solana_keypair
 
           vault = Solana::Vault.new
+          # Probe the chain for a free entry slot (handles orphaned PDAs left by
+          # a contest Reset). See Entry#assign_onchain_entry_number!.
+          entry.assign_onchain_entry_number!(current_user.solana_address, vault)
+
           vault.ensure_user_account(current_user.solana_address, username: current_user.username) if current_user.solana_connected?
           vault.ensure_ata(current_user.solana_address, mint: Solana::Config::USDC_MINT)
 
@@ -632,11 +634,13 @@ class ContestsController < ApplicationController
         raise "#{s.slate_matchup.team.name}'s game has already started" if s.slate_matchup.locked?
       end
 
-      # Assign entry number
-      entry.entry_number ||= @contest.entries.where(user: current_user).where.not(entry_number: nil).count
-      entry.save! if entry.entry_number_changed?
-
       vault = Solana::Vault.new
+
+      # Assign entry slot by probing the chain for a free index — guards against
+      # the orphaned-PDA collision a contest Reset leaves behind (the System
+      # `Allocate` "already in use" / 0x0 pre-flight failure). See
+      # Entry#assign_onchain_entry_number!.
+      entry.assign_onchain_entry_number!(current_user.web3_solana_address, vault)
 
       # Ensure user's onchain account exists and is current (auto-migrate if needed).
       # v0.16: username is required at PDA creation (validate_username on chain

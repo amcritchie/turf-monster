@@ -139,6 +139,20 @@ class FakeVault
     ["epda-#{contest_slug}-#{wallet_address[0, 4]}-#{entry_num}", 255]
   end
 
+  # Mirrors Solana::Vault#next_free_entry_index. The FakeVault world has no
+  # orphaned on-chain PDAs, so the lowest slot not in `skip` is free — which
+  # reproduces the old "first entry is index 0" behavior the entry-flow tests
+  # assume. `@account_infos` can seed "occupied" slots if a test needs them.
+  def next_free_entry_index(contest_slug, wallet_address, max:, skip: [])
+    skip = Array(skip).map(&:to_i)
+    (0...max).find do |n|
+      next false if skip.include?(n)
+      pda = entry_pda(contest_slug, wallet_address, n).first
+      info = @account_infos[pda]
+      info.nil? || info["value"].nil?
+    end
+  end
+
   # Used by ContestsController#prepare_lock_time (Phantom-signed lock flow).
   def build_set_contest_lock_time(contest_slug, lock_timestamp, admin_pubkey:)
     @lock_calls ||= []

@@ -227,14 +227,39 @@ class Entry < ApplicationRecord
     # Seeds (25 per entry) are awarded on-chain by the turf_vault Anchor program
   end
 
+  # Assign (or re-assign) this entry's on-chain slot to the lowest index whose
+  # Entry PDA isn't already allocated for `wallet_address`, and isn't claimed by
+  # another of this user's live entries in the contest. Probes the chain (not a
+  # DB count) because on-chain Entry PDAs outlive DB rows — a contest Reset
+  # destroys entries but not their PDAs, so a count-derived index collides with
+  # an orphaned PDA ("Allocate ... already in use" / custom program error 0x0 at
+  # EnterContest). No-op once this entry is confirmed on-chain (it keeps the slot
+  # it was created under). Raises when the user has used every slot.
+  def assign_onchain_entry_number!(wallet_address, vault = Solana::Vault.new)
+    return entry_number if onchain_tx_signature.present?
+
+    max = contest.max_entries_per_user
+    taken = contest.entries.where(user_id: user_id)
+                   .where.not(id: id)
+                   .where(status: [:cart, :active, :complete])
+                   .where.not(entry_number: nil)
+                   .pluck(:entry_number)
+
+    free = vault.next_free_entry_index(contest.slug, wallet_address, max: max, skip: taken)
+    raise "You've already used all #{max} of your entry slots for this contest." if free.nil?
+
+    update!(entry_number: free) if entry_number != free
+    free
+  end
+
   def enter_onchain!
     return unless contest.onchain? && user.solana_connected?
 
-    # Assign entry number (per-user, per-contest counter)
-    self.entry_number ||= contest.entries.where(user: user).where.not(entry_number: nil).count
-    save! if entry_number_changed?
-
     vault = Solana::Vault.new
+
+    # Assign entry slot by probing the chain for a free index (see
+    # #assign_onchain_entry_number! — guards against orphaned-PDA collisions).
+    assign_onchain_entry_number!(user.solana_address, vault)
 
     # Ensure user's onchain account exists before entering.
     # v0.16 requires a valid username (>= 3 chars) at PDA creation.
