@@ -88,15 +88,16 @@
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
-    <%# Left — leaderboard. compact: true renders just the ranked list (no
-        contest-details / admin chrome) so both columns start at the same place.
-        Keeps id="leaderboard-container" for the leaderboard_poll JS. %>
-    <div id="leaderboard-container" :class="tab === 'leaderboard' ? '' : 'hidden'" class="md:block">
-      <%= render (@contest.world_cup_survivor? ? "contests/world_cup_survivor_leaderboard" : "contests/turf_totals_leaderboard"), compact: true %>
-    </div>
-    <%# Right — contest chat panel (see contests/_chat_panel). %>
+    <%# Left — contest chat panel (see contests/_chat_panel). %>
     <div x-cloak :class="tab === 'chat' ? '' : 'hidden'" class="md:block">
       <%= render "contests/chat_panel", contest: @contest %>
+    </div>
+    <%# Right — leaderboard. compact: true renders just the ranked list (no
+        contest-details / admin chrome) so both columns start at the same place.
+        Keeps id="leaderboard-container" for the leaderboard_poll JS + the chat
+        panel's height-matching ResizeObserver (both key off this id). %>
+    <div id="leaderboard-container" :class="tab === 'leaderboard' ? '' : 'hidden'" class="md:block">
+      <%= render (@contest.world_cup_survivor? ? "contests/world_cup_survivor_leaderboard" : "contests/turf_totals_leaderboard"), compact: true %>
     </div>
   </div>
 </div>
