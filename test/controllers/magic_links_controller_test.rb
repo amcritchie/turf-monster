@@ -88,41 +88,48 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     end
     user = User.find_by(email: "brand-new@example.com")
     assert user.email_verified_at.present?, "new user should be email-verified by clicking the link"
-    # No contest return_to → lands on root, not straight on the tokens page.
-    assert_redirected_to root_path
+    # No contest return_to → a NEW generic signup lands on the live featured
+    # contest (resolved at click) and gets the celebratory welcome modal.
+    assert_redirected_to contest_path(contests(:one))
     assert_nil flash[:notice], "the welcome should be a modal, not a toast"
+    assert_nil flash[:auth_toast], "a generic new signup gets the modal, not the toast"
     welcome = flash[:magic_link_welcome]
     assert welcome.present?, "consume should set the welcome modal flash signal"
-    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
+    # No token upsell on a generic welcome (the user hasn't picked anything) —
+    # the CTA just closes onto the contest, so next is nil.
+    assert_nil welcome[:next] || welcome["next"]
     assert (welcome[:message] || welcome["message"]).present?
     # The welcome modal renders the new user's auto-generated username under
     # the title; it must be carried in the flash (layout JSON → modal props).
     assert_equal user.username, welcome[:username] || welcome["username"]
   end
 
-  test "consume lands a new signup on the contest return_to with the welcome modal" do
+  test "consume lands a new signup on the contest return_to with an auth toast + tokens picker" do
     token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3")
     post magic_link_consume_path(token: token)
     assert_redirected_to "/contests/the-cup?picks=1,2,3"
-    welcome = flash[:magic_link_welcome]
-    assert welcome.present?
-    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
-    assert (welcome[:username] || welcome["username"]).present?, "welcome carries the username"
+    # New user on a SPECIFIC contest: a toast confirms auth; the board opens the
+    # get-entry-tokens picker. No celebratory modal here.
+    assert_nil flash[:magic_link_welcome]
+    toast = flash[:auth_toast]
+    assert toast.present?, "a new user on a contest gets the auth toast"
+    assert (toast[:title] || toast["title"]).present?
   end
 
-  test "consume logs in an existing user on a safe return_to with the welcome modal" do
+  test "consume logs in an existing user on a safe return_to with a welcome-back toast" do
     existing = users(:alex)
     token = MagicLink.generate(email: existing.email, return_to: "/account")
     assert_no_difference "User.count" do
       post magic_link_consume_path(token: token)
     end
+    # An explicit non-contest return_to (e.g. /account) is still honored.
     assert_redirected_to "/account"
     assert_equal existing.id, session[Studio.session_key]
-    assert_nil flash[:notice], "the welcome should be a modal, not a toast"
-    welcome = flash[:magic_link_welcome]
-    assert welcome.present?, "existing sign-in should also show the welcome modal"
-    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
-    assert_equal existing.username, welcome[:username] || welcome["username"]
+    # Returning login: a quiet welcome-back toast, no celebratory modal.
+    assert_nil flash[:magic_link_welcome], "returning login should not show the welcome modal"
+    toast = flash[:auth_toast]
+    assert toast.present?, "returning login gets the welcome-back toast"
+    assert_equal "Welcome back", toast[:title] || toast["title"]
   end
 
   test "consume verifies an existing but never-verified email" do
@@ -208,6 +215,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   test "consume sanitizes a protocol-relative return_to (open-redirect guard)" do
     token = MagicLink.generate(email: users(:alex).email, return_to: "//evil.com/x")
     post magic_link_consume_path(token: token)
-    assert_redirected_to root_path
+    # The evil path is dropped to nil → falls back to the safe featured contest.
+    assert_redirected_to contest_path(contests(:one))
   end
 end

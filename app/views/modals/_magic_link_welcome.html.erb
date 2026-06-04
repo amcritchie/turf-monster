@@ -5,12 +5,12 @@
   provides backdrop, card chrome, scroll lock, escape, click-outside and the
   mount animation.
 
-  Celebration handoff after a consumed magic link (MagicLinksController#consume,
-  both the new-signup and returning-sign-in paths). The user just landed on the
-  contest they came from; this modal shows a brief "You're in!" beat, then the
-  cta_redirect block drains for ~2.5s and transfers to the entry-tokens upsell
-  (props.next). The user can click the CTA to go there immediately — it's a real
-  link to props.next, so a click navigates now instead of waiting out the drain.
+  Celebration beat for a NEW user who signed in via a GENERIC /signin magic link
+  (no contest). The user just landed on the featured contest; this modal welcomes
+  them by username, then the cta_redirect block drains for a few seconds and
+  closes (props.next is null), dropping them onto the contest underneath. Clicking
+  the CTA closes immediately. Returning logins and new-user-on-a-contest flows get
+  a toast instead (flash[:auth_toast]) — this modal is the generic-new-user case.
 
   Auto-opened from the server flash[:magic_link_welcome] via the inline script in
   layouts/application.html.erb (mirrors the email-change-pending auto-open on
@@ -27,17 +27,14 @@
         icon_emoji:  '🎉',
         title:       "Welcome" do %>
     <span class="block text-heading font-semibold text-base" x-show="props.username" x-cloak x-text="props.username"></span>
-    <span class="block mt-1" x-text="props.message || 'You\'re in! Your 6 picks are saved.'"></span>
+    <span class="block mt-1" x-text="props.message || 'You\'re all set — let\'s play.'"></span>
   <% end %>
 
-  <%# Drains ~3.5s then transfers to props.next (entry tokens). When the user
-      came from a contest mid-entry, the board hands off to the IN-CONTEST tokens
-      picker at ~3s instead — it swaps this modal out, which clears this timer —
-      so this redirect is the STANDALONE fallback (signed up NOT mid-entry → goes
-      to the /tokens/buy page). The CTA is a real link to props.next, so clicking
-      it navigates immediately. props.next is server-controlled, never user input. %>
+  <%# props.next is null for this welcome (the user is already ON the featured
+      contest), so the cta_redirect block drains then simply CLOSES the modal,
+      revealing the contest underneath. Clicking the CTA closes immediately. %>
   <%= render 'modals/blocks/cta_redirect',
         href_key:         "props.next",
-        label_html:       "Get entry tokens &rarr;",
-        duration_seconds: 3.5 %>
+        label_html:       "Let's go &rarr;",
+        duration_seconds: 4 %>
 </div>
