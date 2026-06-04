@@ -63,25 +63,38 @@ class MessagesController < ApplicationController
 
     rescue_and_log(target: message, parent: @contest) do
       existing = message.reactions.find_by(user_id: current_user.id, emoji: emoji)
-      if existing
-        existing.destroy!
-        render json: { ok: true, reacted: false }
-      else
-        message.reactions.create!(user: current_user, emoji: emoji)
-        render json: { ok: true, reacted: true }
-      end
+      reacted =
+        if existing
+          existing.destroy!
+          false
+        else
+          message.reactions.create!(user: current_user, emoji: emoji)
+          true
+        end
+      # Return the re-rendered pills so the actor's own page updates instantly
+      # (no wait on the cable round-trip — which can race a WS reconnect). The
+      # Reaction broadcast still keeps OTHER viewers in sync; that replace is
+      # idempotent against this same markup.
+      render json: { ok: true, reacted: reacted, html: reactions_html(message) }
     end
   rescue ActiveRecord::RecordNotFound
     head :not_found
   rescue ActiveRecord::RecordNotUnique
     # Lost a double-click race against an identical concurrent add — the row
     # the other request created is the desired end state, so report success.
-    render json: { ok: true, reacted: true }
+    message = @contest.messages.visible.find_by(id: params[:id])
+    render json: { ok: true, reacted: true, html: (message && reactions_html(message)) }
   rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
   private
+
+  # The same partial Reaction#broadcast_reactions sends over the cable, rendered
+  # for the toggling request so the actor's DOM updates immediately.
+  def reactions_html(message)
+    render_to_string(partial: "messages/reactions", locals: { message: message }, formats: [:html])
+  end
 
   def set_contest
     @contest = Contest.find_by(slug: params[:contest_id])

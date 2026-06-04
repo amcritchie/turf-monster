@@ -104,6 +104,8 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     end
     assert_response :success
     assert_equal true, response.parsed_body["reacted"]
+    # Instant-feedback payload: the re-rendered pills for the actor's own page.
+    assert_includes response.parsed_body["html"].to_s, "❤️"
   end
 
   test "reacting with the same emoji again toggles it off" do
@@ -115,6 +117,8 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     end
     assert_response :success
     assert_equal false, response.parsed_body["reacted"]
+    # Pills HTML now reflects the removal (no heart pill left).
+    assert_not_includes response.parsed_body["html"].to_s, "❤️"
   end
 
   test "the contest sport emoji is an accepted reaction" do
