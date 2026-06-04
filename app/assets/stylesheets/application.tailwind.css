@@ -950,3 +950,58 @@ body.modal-open { overflow: hidden; }
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
           mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
 }
+
+/* === Chat emoji reactions ==============================================
+   Hover quick-bar (messages/_message) + pills (messages/_reactions) + the
+   shared "+" picker (contests/_chat_panel). The quick-bar and picker are
+   gated to participants by .chat-react-only / .chat-can-react — the same
+   container-class trick as .chat-admin-only, since broadcast partials can't
+   know the viewer. Pills render for everyone; the "reacted" highlight is
+   applied client-side (markMyReactions) by comparing data-reactor-ids to the
+   viewer's id. Surface/border come from theme-aware Tailwind utilities in the
+   markup; this file owns only the gate, accents, state, and picker geometry. */
+.chat-react-only { display: none; }
+.chat-can-react .chat-react-only { display: flex; }
+
+.chat-react-quick,
+.chat-react-add { cursor: pointer; }
+.chat-react-add { font-size: 1.15rem; }
+.chat-react-quick:hover,
+.chat-react-add:hover {
+  background: rgb(var(--color-primary-rgb) / 0.18);
+  transform: scale(1.15);
+}
+
+/* Pills are read-only for non-participants (counts visible, not clickable). */
+.chat-reaction-pill { cursor: default; }
+.chat-can-react .chat-reaction-pill { cursor: pointer; }
+.chat-can-react .chat-reaction-pill:hover { border-color: rgb(var(--color-primary-rgb) / 0.6); }
+.chat-reaction-pill.reacted {
+  background: rgb(var(--color-primary-rgb) / 0.18);
+  border-color: rgb(var(--color-primary-rgb) / 0.65);
+}
+.chat-reaction-pill.reacted .chat-reaction-count { color: rgb(var(--color-primary-rgb)); }
+
+/* Picker — position:fixed (set by openReactionPicker) so the message-list
+   overflow can't clip it; hidden until .is-open. */
+.chat-reaction-picker {
+  position: fixed;
+  z-index: 130;
+  display: none;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: 13.5rem;
+  padding: 6px;
+}
+.chat-reaction-picker.is-open { display: flex; }
+.chat-reaction-picker button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.9rem; height: 1.9rem;
+  border-radius: 0.4rem;
+  font-size: 1.05rem; line-height: 1;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+.chat-reaction-picker button:hover {
+  background: rgb(var(--color-primary-rgb) / 0.18);
+  transform: scale(1.12);
+}

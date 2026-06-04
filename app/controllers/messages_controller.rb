@@ -2,7 +2,7 @@ class MessagesController < ApplicationController
   # require_authentication is inherited from ApplicationController — both
   # actions need a logged-in user, so nothing is skipped here.
   before_action :set_contest
-  before_action :require_chat_enabled, only: [:create]
+  before_action :require_chat_enabled, only: [:create, :toggle_reaction]
 
   # POST /contests/:contest_id/messages
   def create
@@ -41,6 +41,42 @@ class MessagesController < ApplicationController
     end
   rescue ActiveRecord::RecordNotFound
     head :not_found
+  rescue StandardError => e
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
+  # POST /contests/:contest_id/messages/:id/toggle_reaction
+  # Body: { emoji: "❤️" }. Adds the reaction if the viewer hasn't used it on
+  # this message, removes it if they have (Slack/Discord toggle). The updated
+  # reactions row broadcasts to everyone via Reaction's after-commit hooks.
+  def toggle_reaction
+    unless @contest.chat_participant?(current_user)
+      return render json: { error: "Enter the contest to react." }, status: :forbidden
+    end
+
+    emoji = params[:emoji].to_s
+    unless Reaction::ALLOWED.include?(emoji)
+      return render json: { error: "Unsupported reaction." }, status: :unprocessable_entity
+    end
+
+    message = @contest.messages.visible.find(params[:id])
+
+    rescue_and_log(target: message, parent: @contest) do
+      existing = message.reactions.find_by(user_id: current_user.id, emoji: emoji)
+      if existing
+        existing.destroy!
+        render json: { ok: true, reacted: false }
+      else
+        message.reactions.create!(user: current_user, emoji: emoji)
+        render json: { ok: true, reacted: true }
+      end
+    end
+  rescue ActiveRecord::RecordNotFound
+    head :not_found
+  rescue ActiveRecord::RecordNotUnique
+    # Lost a double-click race against an identical concurrent add — the row
+    # the other request created is the desired end state, so report success.
+    render json: { ok: true, reacted: true }
   rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
   end

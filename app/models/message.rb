@@ -3,6 +3,12 @@ class Message < ApplicationRecord
 
   belongs_to :contest
   belongs_to :user
+  # Ordered so grouped reaction pills render oldest-first (stable left-to-right
+  # order as new emoji are added). delete_all (not :destroy) clears rows by FK
+  # in one statement when a message is hard-deleted — no per-reaction broadcast
+  # is wanted once the whole bubble is gone, and it sidesteps the stale in-memory
+  # collection cache that can leave :destroy iterating an empty target.
+  has_many :reactions, -> { order(:created_at, :id) }, dependent: :delete_all
 
   before_validation { self.body = body.strip if body.is_a?(String) }
 
@@ -59,7 +65,7 @@ class Message < ApplicationRecord
   # reads top to bottom with the freshest message on top.
   def self.recent_for(contest, limit: 50)
     visible.where(contest: contest)
-           .includes(user: { avatar_attachment: :blob })
+           .includes(user: { avatar_attachment: :blob }, reactions: :user)
            .order(created_at: :desc, id: :desc)
            .limit(limit)
            .to_a
@@ -91,6 +97,23 @@ class Message < ApplicationRecord
 
   def broadcast_removal
     broadcast_remove_to([contest, :messages], target: "message_#{id}")
+  rescue => e
+    ErrorLog.capture!(e)
+  end
+
+  public
+
+  # Re-render this message's reactions row for everyone in the room. Called
+  # from Reaction's after-commit hooks. Replaces the per-message reactions
+  # container (id "message_<id>_reactions") so counts + the viewer's "reacted"
+  # highlight (applied client-side) stay live. Best-effort — see above.
+  def broadcast_reactions
+    broadcast_replace_to(
+      [contest, :messages],
+      target: "message_#{id}_reactions",
+      partial: "messages/reactions",
+      locals: { message: self }
+    )
   rescue => e
     ErrorLog.capture!(e)
   end

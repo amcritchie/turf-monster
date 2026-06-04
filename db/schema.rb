@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_03_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_03_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -263,6 +263,17 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_03_120000) do
     t.index ["team_slug"], name: "index_players_on_team_slug"
   end
 
+  create_table "reactions", force: :cascade do |t|
+    t.bigint "message_id", null: false
+    t.bigint "user_id", null: false
+    t.string "emoji", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["message_id", "user_id", "emoji"], name: "index_reactions_uniqueness", unique: true
+    t.index ["message_id"], name: "index_reactions_on_message_id"
+    t.index ["user_id"], name: "index_reactions_on_user_id"
+  end
+
   create_table "season_configs", force: :cascade do |t|
     t.integer "current_season_id", default: 0, null: false
     t.string "slug", null: false
@@ -484,6 +495,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_03_120000) do
   add_foreign_key "landing_pages", "contests", on_delete: :nullify
   add_foreign_key "messages", "contests"
   add_foreign_key "messages", "users"
+  add_foreign_key "reactions", "messages"
+  add_foreign_key "reactions", "users"
   add_foreign_key "season_configs", "contests", column: "main_contest_id", on_delete: :nullify
   add_foreign_key "selections", "entries"
   add_foreign_key "selections", "slate_matchups"
