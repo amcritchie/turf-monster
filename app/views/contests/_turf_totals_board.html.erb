@@ -1584,13 +1584,9 @@ window.selectionBoard = function() {
 
   </div><!-- /blurrable -->
 
-  <!-- FAB: selection count badge to reopen cart (desktop only) -->
-  <button x-show="!cartOpen && selectionCount > 0"
-          x-transition
-          @click="cartOpen = true"
-          class="hidden md:flex fixed bottom-6 right-6 z-30 w-14 h-14 bg-primary hover:bg-primary-700 text-white rounded-full shadow-lg shadow-primary/30 items-center justify-center text-lg font-bold transition">
-    <span x-text="selectionCount"></span><span class="text-xs">/<%= @contest.picks_required %></span>
-  </button>
+<%# Reopen FAB removed: the cart now opens on every pick-add and can no
+    longer be dismissed while picks exist, so !cartOpen && selectionCount > 0
+    is unreachable. %>
 
   <%# Cart Sidebar: Desktop (right panel). Sits below the navbar via the
        --nav-h CSS variable (a ResizeObserver in _navbar.html.erb keeps it
@@ -1748,7 +1744,7 @@ window.selectionBoard = function() {
       </button>
     <% else %>
       <button @click="clearSelections()" class="w-full text-center text-xs font-semibold text-secondary hover:text-red-400 transition mt-2">
-        Clear <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
+        Unselect <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
       </button>
     <% end %>
   </div>
