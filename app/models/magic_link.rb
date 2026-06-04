@@ -25,21 +25,20 @@ class MagicLink < ApplicationRecord
     # is URL-safe base64 (no "/", "+", "="), so it satisfies the %r{[^/]+} route
     # constraint and survives URL generation without extra encoding.
     def generate(email:, return_to: nil)
-      row = nil
-      # 96 bits of randomness — collision is astronomically unlikely, but retry
-      # on the off chance the unique index rejects a dupe.
-      3.times do
-        row = create!(
-          token:      SecureRandom.urlsafe_base64(12),
-          email:      normalize_email(email),
-          return_to:  sanitize_path(return_to),
-          expires_at: TTL.from_now
-        )
-        break
+      email      = normalize_email(email)
+      return_to  = sanitize_path(return_to)
+      # 96 bits of randomness — collision is astronomically unlikely, but retry a
+      # few times on the off chance the unique index rejects a dupe. The final
+      # attempt is outside the rescue so a persistent failure raises cleanly
+      # rather than returning a nil row.
+      2.times do
+        return create!(token: SecureRandom.urlsafe_base64(12), email: email,
+                       return_to: return_to, expires_at: TTL.from_now).token
       rescue ActiveRecord::RecordNotUnique
         next
       end
-      row.token
+      create!(token: SecureRandom.urlsafe_base64(12), email: email,
+              return_to: return_to, expires_at: TTL.from_now).token
     end
 
     # Authoritative consume: validates existence + not-expired + not-yet-used,

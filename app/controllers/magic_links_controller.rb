@@ -192,13 +192,10 @@ class MagicLinksController < ApplicationController
     result.return_to.to_s.start_with?("/contests/")
   end
 
-  # The admin-curated featured contest, resolved at CLICK time (not baked into
-  # the token) so it's always current. Mirrors ContestsController#world_cup:
-  # explicit main contest → open-only main → newest open/settled.
+  # The featured contest, resolved at CLICK time (not baked into the token) so
+  # it's always current. Single source of truth shared with the root redirect.
   def featured_contest
-    @featured_contest ||= SeasonConfig.main_contest_explicit ||
-                          SeasonConfig.main_contest ||
-                          Contest.where(status: [:open, :settled]).order(created_at: :desc).first
+    @featured_contest ||= Contest.featured
   end
 
   # Where a login lands: honor any explicit (already-sanitized) return_to — a

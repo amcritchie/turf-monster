@@ -647,9 +647,12 @@
         else document.addEventListener('DOMContentLoaded', openMagicLinkWelcome);
       })();
 
-      // Auth toast (welcome back / signed-in). Wait for Alpine so the toast
-      // manager's @toast.window listener is wired, then dispatch once and drop
-      // the one-shot payload so a later turbo:load can't replay it.
+      // Auth toast (welcome back / signed-in). The toast manager's
+      // @toast.window listener is wired during Alpine's DOM walk (NOT at
+      // alpine:init, when the stores register) — so we dispatch on
+      // alpine:initialized, which fires AFTER that walk, to avoid racing the
+      // listener and dropping the event. Drop the one-shot payload so a later
+      // turbo:load can't replay it.
       (function() {
         var fired = false;
         function fireAuthToast() {
@@ -658,22 +661,17 @@
           if (!el) return;
           var data;
           try { data = JSON.parse(el.textContent); } catch (e) { return; }
-          var attempts = 0;
-          (function tryFire() {
-            if (window.Alpine && Alpine.store && Alpine.store('modals')) {
-              fired = true;
-              el.remove();
-              window.dispatchEvent(new CustomEvent('toast', { detail: {
-                type: 'notice', title: data.title, message: data.message, duration: 5000
-              } }));
-              return;
-            }
-            if (attempts++ < 50) setTimeout(tryFire, 50);
-          })();
+          fired = true;
+          el.remove();
+          window.dispatchEvent(new CustomEvent('toast', { detail: {
+            type: 'notice', title: data.title, message: data.message, duration: 5000
+          } }));
         }
+        // Alpine already started (its components — incl. the toast manager — are
+        // initialized) → fire now; otherwise wait for it to finish starting.
+        if (window.Alpine && window.Alpine.version) fireAuthToast();
+        else document.addEventListener('alpine:initialized', fireAuthToast, { once: true });
         document.addEventListener('turbo:load', fireAuthToast);
-        if (document.readyState !== 'loading') fireAuthToast();
-        else document.addEventListener('DOMContentLoaded', fireAuthToast);
       })();
     </script>
     <%= render "layouts/studio/flash" %>
