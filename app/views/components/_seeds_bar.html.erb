@@ -305,14 +305,9 @@
     <%# Rotating-integer counter %>
     <div class="flex items-center justify-end mt-2 font-mono text-[11px] text-secondary">
       <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: var(--color-cta);">
-        <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 3.1ch; line-height: 1.25em;">
-          <span class="block"
-                :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.2s cubic-bezier(0.16, 1, 0.3, 1)' }">
-            <template x-for="n in 101" :key="n">
-              <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
-            </template>
-          </span>
-        </span>
+        <%= render "components/digit_reel",
+              value: "displaySeeds", max: 100, width: "3.1ch", cell_em: 1.25,
+              transition: "'transform 1.2s cubic-bezier(0.16, 1, 0.3, 1)'" %>
         <span class="text-secondary text-xs font-normal">seeds</span>
       </span>
     </div>

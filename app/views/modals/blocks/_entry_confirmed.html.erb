@@ -73,6 +73,25 @@
       _onchain_success). Mounts only when the signature is set. %>
   <%= render "modals/blocks/solana_tx_link", tx_signature_key: tx_signature_key %>
 
+  <%# Kickoff countdown — live "Kicks off in" timer to the contest's lock
+      time (Contest#starts_at, the moment entries close and play begins).
+      Sits ABOVE the seeds bar so "when does it start" reads before the
+      celebratory seeds animation. Only renders when kickoff_at is passed (a
+      real entry on a contest page); skipped in the gallery preview where no
+      contest is in scope. Reuses contests/_timestamp_countdown in plain mode
+      (uniform digit sizing — no emphasize); no on_done_modal here, the contest
+      page's own countdown owns the "It Begins" hand-off. %>
+  <% if kickoff_at.present? %>
+    <div class="flex justify-center mb-4">
+      <%= render "contests/timestamp_countdown",
+            target:        kickoff_at,
+            label:         "Kicks off in",
+            done_label:    "🟢 Contest underway",
+            tone:          "yellow",
+            wrapper_class: "" %>
+    </div>
+  <% end %>
+
   <%# Seeds bar + level-up celebration. Mounts only when this entry
       awarded seeds; otherwise the card falls back to header + tx + CTA.
       Animation walks the bar from the user's previous toward-next value
@@ -147,14 +166,9 @@
           </div>
           <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
             <span class="inline-flex items-baseline gap-1 font-mono font-bold text-sm" style="color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.7);">
-              <span class="relative overflow-hidden inline-block text-right" style="height: 1.25em; width: 3.2ch; line-height: 1.25em;">
-                <span class="block"
-                      :style="{ transform: 'translateY(-' + (displaySeeds * 1.25) + 'em)', transition: 'transform 1.9s cubic-bezier(0.16, 1, 0.3, 1)' }">
-                  <template x-for="n in 101" :key="n">
-                    <span class="block" style="height: 1.25em; line-height: 1.25em;" x-text="n - 1">0</span>
-                  </template>
-                </span>
-              </span>
+              <%= render "components/digit_reel",
+                    value: "displaySeeds", max: 100, width: "3.2ch", cell_em: 1.25,
+                    transition: "'transform 1.9s cubic-bezier(0.16, 1, 0.3, 1)'" %>
               <span class="text-[10px] font-normal opacity-90">seeds</span>
             </span>
           </div>
@@ -168,23 +182,6 @@
       </template>
     </div>
   </template>
-
-  <%# Kickoff countdown — live "Kicks off in" timer to the contest's lock
-      time (Contest#starts_at, the moment entries close and play begins).
-      Only renders when kickoff_at is passed (a real entry on a contest
-      page); skipped in the gallery preview where no contest is in scope.
-      Reuses contests/_timestamp_countdown (no on_done_modal here — the
-      contest page's own countdown owns the "It Begins" hand-off). %>
-  <% if kickoff_at.present? %>
-    <div class="flex justify-center mb-4">
-      <%= render "contests/timestamp_countdown",
-            target:        kickoff_at,
-            label:         "Kicks off in",
-            done_label:    "🟢 Contest underway",
-            tone:          "yellow",
-            wrapper_class: "" %>
-    </div>
-  <% end %>
 
   <%# Primary CTA — drain-overlay button + 5s auto-redirect, all
       managed by modals/blocks/_cta_redirect. When lobby_url_key

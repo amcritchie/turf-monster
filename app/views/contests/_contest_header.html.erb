@@ -125,10 +125,11 @@
         time is set and the contest isn't settled. %>
     <% if @contest.locks_at.present? && !@contest.settled? %>
       <div class="w-px h-5 bg-subtle"></div>
-      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Locks in",
+      <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Until Lock",
             done_label: (@contest.turf_totals? ? "Watch Live" : "🔒 Entries closed"),
             done_href: (@contest.turf_totals? ? live_contest_path(@contest) : nil),
-            tone: "yellow", on_done_modal: "it-begins", on_done_url: contest_path(@contest), wrapper_class: "" %>
+            tone: "yellow", on_done_modal: "it-begins", on_done_url: contest_path(@contest),
+            wrapper_class: "", bare: true, label_after: true, emphasize: true %>
     <% end %>
   </div>
 </div>
