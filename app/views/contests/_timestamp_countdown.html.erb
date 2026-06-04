@@ -117,12 +117,9 @@
           <%# Units that bind :class own their own display; the rest are inline-flex. %>
           <span class="items-baseline<%= " inline-flex" unless u[:bind] %><%= " #{u[:cls]}" if u[:cls] %>"
                 <% if u[:show] %>x-show="<%= u[:show] %>"<% end %>
-                <% if u[:bind] %>:class="<%= u[:bind] %>"<% end %>>
-            <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:<%= u[:w] %>;text-align:right;">
-              <span class="block" :style="{ transform: 'translateY(-' + <%= u[:v] %> + 'em)', transition: tr(anim<%= u[:v].upcase %>) }">
-                <% (0..u[:max]).each do |n| %><span class="block" style="height:1em;line-height:1em;"><%= u[:pad] ? format("%02d", n) : n %></span><% end %>
-              </span>
-            </span><span><%= u[:v] %></span>
+                <% if u[:bind] %>:class="<%= u[:bind] %>"<% end %>><%= render "components/digit_reel",
+                  value: u[:v], max: u[:max], pad: u[:pad], width: u[:w],
+                  transition: "tr(anim#{u[:v].upcase})" %><span><%= u[:v] %></span>
           </span>
         <% end %>
       </span>
