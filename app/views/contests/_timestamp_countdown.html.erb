@@ -2,9 +2,17 @@
     conclusion). The chain value is authoritative; this is a visual mirror off
     the viewer's wall clock. Inline x-data (no named factory) to dodge the
     importmap-timing trap. Renders nothing when target is nil.
+
+    The digits TICK DOWN on rolling reels — each unit is a vertical stack of
+    its values translated by `translateY`, the same mechanism the entry-success
+    seeds bar uses to roll UP (modals/blocks/_entry_confirmed). The value
+    decreases each second, so the reel slides down. A normal -1 step animates;
+    a rollover (e.g. 00s -> 59s when the minute borrows) snaps without a
+    transition so the reel never whips back up through every value.
+
     Locals:
       target        (Time|nil) — the timestamp to count down to
-      label         (String)   — shown while counting, e.g. "Locks in"
+      label         (String)   — shown beside the digits, e.g. "Locks in"
       done_label    (String)   — shown once passed, e.g. "🔒 Entries closed"
       tone          (String)   — "yellow" (lock) | "orange" (conclusion)
       on_done_modal (String?)  — modal id to open the instant the timer crosses
@@ -12,34 +20,92 @@
       on_done_url   (String?)  — lobbyUrl prop passed to that modal
       done_href     (String?)  — if set, the done state renders as a CTA link to
                                  this URL (e.g. the live page) instead of the badge
-      wrapper_class (String?)  — outer margin class (default "mt-2"; "" for inline) %>
+      wrapper_class (String?)  — outer margin class (default "mt-2"; "" for inline)
+      bare          (Bool?)    — drop the bordered pill (no border/bg/padding);
+                                 just the inline digits + label (default false)
+      label_after   (Bool?)    — render the label AFTER the digits instead of
+                                 before, e.g. "7d 14h 29m 34s Until Lock"
+                                 (default false) %>
 <% if target.present? %>
   <% done_classes = tone.to_s == "orange" ? "border-orange-700 bg-orange-900/50 text-orange-400" : "border-yellow-700 bg-yellow-900/50 text-yellow-400" %>
   <% on_done_modal = local_assigns[:on_done_modal] %>
   <% on_done_url   = local_assigns[:on_done_url] %>
+  <% bare        = local_assigns.fetch(:bare, false) %>
+  <% label_after = local_assigns.fetch(:label_after, false) %>
+  <%# Days reel is sized in Ruby from the time remaining at render — days only
+      ever count down from this max, so 0..dmax (plus a 1-day buffer) covers it. %>
+  <% secs_left = [target.to_i - Time.current.to_i, 0].max %>
+  <% dmax = (secs_left / 86400) + 1 %>
   <div
     class="<%= local_assigns.fetch(:wrapper_class, "mt-2") %>"
     x-data="{
       target: <%= target.to_i * 1000 %>,
       now: Date.now(),
+      d: 0, h: 0, m: 0, s: 0,
+      animD: false, animH: false, animM: false, animS: false,
       _t: null,
-      get diff() { return Math.max(this.target - this.now, 0); },
       get done() { return this.target - this.now <= 0; },
-      get d() { return Math.floor(this.diff / 86400000); },
-      get h() { return Math.floor((this.diff % 86400000) / 3600000); },
-      get m() { return Math.floor((this.diff % 3600000) / 60000); },
-      get s() { return Math.floor((this.diff % 60000) / 1000); },
-      p(n) { return String(n).padStart(2, '0'); },
+      _set(animate) {
+        var diff = Math.max(this.target - this.now, 0);
+        var nd = Math.floor(diff / 86400000);
+        var nh = Math.floor((diff % 86400000) / 3600000);
+        var nm = Math.floor((diff % 3600000) / 60000);
+        var ns = Math.floor((diff % 60000) / 1000);
+        // Animate a unit only when it ticks DOWN by a step; snap (no transition)
+        // on a rollover, where the new value is larger than the one it replaces.
+        this.animD = animate && nd <= this.d;
+        this.animH = animate && nh <= this.h;
+        this.animM = animate && nm <= this.m;
+        this.animS = animate && ns <= this.s;
+        this.d = nd; this.h = nh; this.m = nm; this.s = ns;
+      },
+      tr(on) { return on ? 'transform .55s cubic-bezier(0.16, 1, 0.3, 1)' : 'none'; },
       destroy() { if (this._t) { clearInterval(this._t); this._t = null; } }
     }"
-    x-init="if (target - now > 0) { _t = setInterval(() => { now = Date.now(); if (target - now <= 0) { clearInterval(_t); _t = null; <% if on_done_modal.present? %>if (window.Alpine && Alpine.store('modals')) { Alpine.store('modals').open('<%= j on_done_modal %>', { lobbyUrl: '<%= j on_done_url.to_s %>' }); }<% end %> } }, 1000); }"
+    x-init="now = Date.now(); _set(false);
+            if (target - now > 0) {
+              _t = setInterval(() => {
+                now = Date.now(); _set(true);
+                if (target - now <= 0) { clearInterval(_t); _t = null; <% if on_done_modal.present? %>if (window.Alpine && Alpine.store('modals')) { Alpine.store('modals').open('<%= j on_done_modal %>', { lobbyUrl: '<%= j on_done_url.to_s %>' }); }<% end %> }
+              }, 1000);
+            }"
   >
     <div x-show="!done" x-cloak
-         class="inline-flex items-center gap-2 rounded-lg border border-subtle bg-surface-alt px-3 py-1.5">
-      <span class="text-[10px] uppercase tracking-wider text-muted"><%= label %></span>
-      <span class="font-mono text-sm font-bold text-heading tabular-nums">
-        <span x-show="d > 0"><span x-text="d"></span>d </span><span x-text="p(h)"></span>h <span x-text="p(m)"></span>m <span x-text="p(s)"></span>s
+         class="<%= bare ? "inline-flex items-baseline gap-2" : "inline-flex items-center gap-2 rounded-lg border border-subtle bg-surface-alt px-3 py-1.5" %>">
+      <% unless label_after %>
+        <span class="text-[10px] uppercase tracking-wider text-muted"><%= label %></span>
+      <% end %>
+      <span class="font-mono text-sm font-bold text-heading tabular-nums inline-flex items-baseline">
+        <%# Days — hidden while zero; reel width scales to the day-count digits. %>
+        <span x-show="d > 0" class="inline-flex items-baseline">
+          <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:<%= dmax.to_s.length %>ch;text-align:right;">
+            <span class="block" :style="{ transform: 'translateY(-' + d + 'em)', transition: tr(animD) }">
+              <% (0..dmax).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= v %></span><% end %>
+            </span>
+          </span><span class="mr-[0.4em]">d</span>
+        </span>
+        <%# Hours 00-23 %>
+        <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
+          <span class="block" :style="{ transform: 'translateY(-' + h + 'em)', transition: tr(animH) }">
+            <% (0..23).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
+          </span>
+        </span><span class="mr-[0.4em]">h</span>
+        <%# Minutes 00-59 %>
+        <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
+          <span class="block" :style="{ transform: 'translateY(-' + m + 'em)', transition: tr(animM) }">
+            <% (0..59).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
+          </span>
+        </span><span class="mr-[0.4em]">m</span>
+        <%# Seconds 00-59 %>
+        <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
+          <span class="block" :style="{ transform: 'translateY(-' + s + 'em)', transition: tr(animS) }">
+            <% (0..59).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
+          </span>
+        </span><span>s</span>
       </span>
+      <% if label_after %>
+        <span class="text-[10px] uppercase tracking-wider text-muted"><%= label %></span>
+      <% end %>
     </div>
     <% if local_assigns[:done_href].present? %>
       <%# Done state as a CTA link (e.g. "Watch Live" the instant a contest locks). %>
