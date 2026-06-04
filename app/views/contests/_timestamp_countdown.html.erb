@@ -82,14 +82,10 @@
         <span class="text-[10px] uppercase tracking-wider text-muted"><%= label %></span>
       <% end %>
       <%# Each unit is one rolling reel + its letter in a baseline-aligned
-          wrapper that carries the unit's font size. The two leading VISIBLE
-          units take the large "N/M Entries" size (text-lg font-extrabold) and
-          the trailing pair stays small: days + hours lead while shown, but once
-          we drop under an hour (d == 0 && h == 0, so neither "0d" nor "0h"
-          renders) minutes + seconds inherit the large size instead. Reel cells
-          are em/ch-sized, so each unit's digits scale with its wrapper's size.
-          One config row per unit drives a single reel template below — the
-          letter is just the unit key, and anim<Var> is the per-unit snap flag. %>
+          wrapper that carries the unit's font size. One config row per unit
+          drives the single reel template below — the letter is just the unit
+          key, the per-unit snap flag is anim<Var>, and reel cells are em/ch-
+          sized so the digits scale with whatever size the wrapper sets (next). %>
       <%
         # `emphasize` (opt-in, default off): the two leading units take the large
         # "N/M Entries" size and, above an hour, m/s hide on mobile (the contest
