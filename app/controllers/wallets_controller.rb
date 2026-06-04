@@ -9,13 +9,13 @@ class WalletsController < ApplicationController
     @pending_withdrawals = TransactionLog.where(user: current_user, transaction_type: "withdrawal", status: %w[pending approved]).order(created_at: :desc)
     @recent_transactions = TransactionLog.where(user: current_user).order(created_at: :desc).limit(10)
 
-    # SOL balance comes from @wallet_balances, which
-    # ApplicationController#preload_navbar_solana_data already populated in
-    # parallel with the other on-chain reads. Devnet-only display gate
-    # preserved.
-    if Solana::Config.devnet? && @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:sol)
-      @sol_balance = @wallet_balances[:sol]
-    end
+    # /wallet is a specific page where a blocking balance read is expected —
+    # the navbar preload no longer populates @wallet_balances (it renders
+    # cache-first now), so this page fetches its own. This also populates
+    # @wallet_balances[:usdc] so display_balance returns it for the on-page
+    # balance card without a second read. Devnet-only SOL display gate
+    # preserved. Fail-safe to nil so the view falls back to its own JS sync.
+    load_wallet_balances
   end
 
   def stripe_deposit
@@ -164,6 +164,7 @@ class WalletsController < ApplicationController
       @user = current_user
       @pending_withdrawals = TransactionLog.where(user: current_user, transaction_type: "withdrawal", status: %w[pending approved]).order(created_at: :desc)
       @recent_transactions = TransactionLog.where(user: current_user).order(created_at: :desc).limit(10)
+      load_wallet_balances
       render :show
     end
   rescue StandardError => e
@@ -171,6 +172,22 @@ class WalletsController < ApplicationController
   end
 
   private
+
+  # Explicit blocking balance fetch for the /wallet page (show + sync). Sets
+  # @wallet_balances (so display_balance reuses it) + @sol_balance (devnet
+  # display). Best-effort: nil on flake, and the view's own x-init JS sync
+  # backfills the USDC display.
+  def load_wallet_balances
+    return unless current_user.solana_connected?
+
+    @wallet_balances = Solana::Vault.new.fetch_wallet_balances(current_user.solana_address)
+    if Solana::Config.devnet? && @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:sol)
+      @sol_balance = @wallet_balances[:sol]
+    end
+  rescue => e
+    Rails.logger.warn("[wallet] fetch_wallet_balances failed: #{e.message}")
+    @wallet_balances = nil
+  end
 
   def require_login
     return if logged_in?

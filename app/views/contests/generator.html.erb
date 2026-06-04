@@ -55,7 +55,7 @@
       csrfToken:            form_authenticity_token,
       generateBundlePath:   generate_bundle_contests_path,
       finalizeBundlePath:   finalize_bundle_contests_path,
-      usdcBalance:          display_balance.to_f
+      usdcBalance:          display_balance&.to_f # null when navbar cache cold
     }.to_json.html_safe %>
   </script>
   <script>

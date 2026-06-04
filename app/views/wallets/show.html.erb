@@ -21,8 +21,8 @@
     <div class="bg-inset rounded-lg p-6 text-center mb-4">
       <div class="text-sm text-secondary mb-2">Available to Play</div>
       <div class="text-3xl font-bold text-primary font-mono" x-data="{ balance: null }" x-init="
-        balance = '<%= sprintf('%.2f', display_balance) %>';
-        fetch('/admin/usdc_balance').then(r => r.json()).then(d => { balance = parseFloat(d.balance).toFixed(2); });
+        balance = '<%= sprintf('%.2f', display_balance || 0) %>';
+        fetch('/admin/usdc_balance').then(r => r.json()).then(d => { if (d.balance != null) balance = parseFloat(d.balance).toFixed(2); });
       ">
         $<span x-text="balance"></span>
       </div>

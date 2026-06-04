@@ -152,8 +152,23 @@ class ApplicationController < ActionController::Base
 
   def wallet_field_cents(key)
     return 0 unless current_user            # guest — definitively 0
-    return nil unless @wallet_balances.is_a?(Hash)  # logged-in but preload flaked
-    ((@wallet_balances[key] || 0).to_f * 100).round
+
+    if @wallet_balances.is_a?(Hash)
+      return ((@wallet_balances[key] || 0).to_f * 100).round
+    end
+
+    # No preloaded balances on this render (the navbar preload no longer
+    # blocks on the USDC/USDT RPC). Try the warm cache so a returning user
+    # still gets a live eligibility hint; nil when cold → emitted as null so
+    # eligibilityBlocker fails open (the server-side enter is authoritative).
+    cached =
+      case key
+      when :usdc then Rails.cache.read(usdc_cache_key) if current_user.solana_connected?
+      when :usdt then Rails.cache.read(usdt_cache_key) if current_user.solana_connected?
+      end
+    return nil if cached.nil?
+
+    (cached.to_f * 100).round
   end
 
   def detect_geo_state
@@ -187,28 +202,28 @@ class ApplicationController < ActionController::Base
   end
 
   # Navbar balance — always on-chain USDC for connected wallets.
-  # Memoized on the controller instance: the value can't change within a
-  # single request, and views call this helper multiple times across the
-  # navbar, layout, and action body. Without per-request memoization the
-  # 60s Rails.cache.fetch — which is :null_store in dev — re-issues a
-  # Solana RPC chain on every call site.
+  # NON-BLOCKING + cache-first: the render path NEVER issues a Solana RPC.
+  # Returns:
+  #   - the preloaded @wallet_balances[:usdc] when a specific page populated
+  #     it explicitly (e.g. /wallet)
+  #   - the cached USDC number (warm cache, written by the hydrate endpoint
+  #     or a prior request) — Rails.cache.read, no fetch-on-miss
+  #   - nil when the cache is cold ("loading" — the client-side refreshBalance
+  #     fills the [data-balance-display] pill once it lands)
+  #   - 0 for guests / non-wallet users (definitive)
   #
-  # Reuses @wallet_balances when preload_navbar_solana_data already
-  # populated it for this request. Avoids running fetch_wallet_balances
-  # twice in the same request.
+  # Memoized on the controller instance: views call this multiple times
+  # across the navbar, layout, and action body.
   def display_balance
     return @display_balance if defined?(@display_balance)
 
     @display_balance =
       if @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:usdc)
         @wallet_balances[:usdc] || 0
-      elsif current_user.solana_connected?
-        begin
-          Rails.cache.fetch(usdc_cache_key, expires_in: 60.seconds) { fetch_user_usdc }
-        rescue => e
-          Rails.logger.warn "Failed to fetch onchain balance: #{e.message}"
-          0
-        end
+      elsif current_user&.solana_connected?
+        # Cache-only read: warm → number, cold → nil ("loading"). Never a
+        # blocking RPC on the render path.
+        Rails.cache.read(usdc_cache_key)
       else
         0
       end
@@ -221,8 +236,59 @@ class ApplicationController < ActionController::Base
     balances[:usdc] || 0
   end
 
+  # Shared blocking fetch for the client-hydrate endpoints (AdminController
+  # #usdc_balance + AccountsController#session_refresh). Fans the two uncached
+  # Helius reads — wallet balances (USDC/USDT/SOL) and the seeds sync_balance —
+  # out in parallel, WRITES the navbar caches (usdc/usdt/seeds), and returns a
+  # hash of the values. Blocking is fine here: these run AFTER first paint, off
+  # the render path. Each field is independently nil-safe (an RPC flake yields
+  # nil for balances / 0 for seeds, never raises).
+  def fetch_navbar_hydrate(user)
+    address = user.solana_address
+
+    balances_thread = Thread.new do
+      Rails.application.executor.wrap do
+        Solana::Vault.new.fetch_wallet_balances(address)
+      rescue => e
+        Rails.logger.warn("[hydrate] fetch_wallet_balances failed: #{e.message}")
+        nil
+      end
+    end
+
+    seeds_thread = Thread.new do
+      Rails.application.executor.wrap do
+        Solana::Vault.new.sync_balance(address)&.dig(:seeds)
+      rescue => e
+        Rails.logger.warn("[hydrate] sync_balance failed: #{e.message}")
+        nil
+      end
+    end
+
+    balances = balances_thread.value
+    seeds    = seeds_thread.value
+
+    if balances.is_a?(Hash)
+      Rails.cache.write(usdc_cache_key(user), balances[:usdc] || 0, expires_in: 60.seconds)
+      Rails.cache.write(usdt_cache_key(user), balances[:usdt] || 0, expires_in: 60.seconds)
+    end
+    unless seeds.nil?
+      Rails.cache.write(seeds_cache_key(user), seeds_payload(seeds), expires_in: 60.seconds)
+    end
+
+    {
+      usdc:  balances.is_a?(Hash) ? (balances[:usdc] || 0) : nil,
+      usdt:  balances.is_a?(Hash) ? (balances[:usdt] || 0) : nil,
+      sol:   balances.is_a?(Hash) ? (balances[:sol]  || 0) : nil,
+      seeds: seeds
+    }
+  end
+
   def usdc_cache_key(user = current_user)
     "usdc_balance:#{user.id}"
+  end
+
+  def usdt_cache_key(user = current_user)
+    "usdt_balance:#{user.id}"
   end
 
   def invalidate_usdc_cache(user = current_user)
@@ -230,12 +296,14 @@ class ApplicationController < ActionController::Base
   end
 
   # Navbar seeds bar — on-chain seed count for the logged-in user.
-  # Per-request memoized for the same reason as display_balance: the
-  # navbar + seeds_bar partials both ask for this data, and the 60s
-  # Rails.cache.fetch is a no-op under dev's :null_store store.
+  # NON-BLOCKING + cache-first, same contract as display_balance:
+  #   - preloaded @user_seeds when a page populated it explicitly
+  #   - the cached seeds payload (warm cache) via Rails.cache.read
+  #   - nil when cold ("loading") — the seeds bar falls back to its
+  #     localStorage state and refreshBalance fills it
+  #   - seeds_payload(0) for guests / non-wallet users (definitive)
   #
-  # Reuses @user_seeds when preload_navbar_solana_data already loaded it
-  # for this request, avoiding a second sync_balance RPC.
+  # Per-request memoized: the navbar + seeds_bar partials both ask for this.
   def display_seeds_data
     return @display_seeds_data if defined?(@display_seeds_data)
 
@@ -243,15 +311,8 @@ class ApplicationController < ActionController::Base
       if defined?(@user_seeds) && !@user_seeds.nil?
         seeds_payload(@user_seeds)
       elsif current_user&.solana_connected?
-        begin
-          Rails.cache.fetch(seeds_cache_key, expires_in: 60.seconds) do
-            onchain = Solana::Vault.new.sync_balance(current_user.solana_address)
-            seeds_payload(onchain&.dig(:seeds) || 0)
-          end
-        rescue => e
-          Rails.logger.warn "Failed to fetch onchain seeds: #{e.message}"
-          seeds_payload(0)
-        end
+        # Cache-only read: warm → payload, cold → nil ("loading"). No RPC.
+        Rails.cache.read(seeds_cache_key)
       else
         seeds_payload(0)
       end
@@ -309,23 +370,16 @@ class ApplicationController < ActionController::Base
     wallet_address = current_user.solana_address
     is_admin       = current_user.admin?
 
-    balances_thread = Thread.new do
-      Rails.application.executor.wrap do
-        Solana::Vault.new.fetch_wallet_balances(wallet_address)
-      rescue => e
-        Rails.logger.warn("[preload] fetch_wallet_balances failed: #{e.message}")
-        nil
-      end
-    end
-
-    sync_thread = Thread.new do
-      Rails.application.executor.wrap do
-        Solana::Vault.new.sync_balance(wallet_address)
-      rescue => e
-        Rails.logger.warn("[preload] sync_balance failed: #{e.message}")
-        nil
-      end
-    end
+    # NOTE (async-navbar-balance): the wallet-balances (USDC/USDT) and the
+    # seeds sync_balance RPCs are NO LONGER preloaded here. They were the two
+    # uncached Helius calls that blocked every logged-in HTML render. The
+    # navbar now renders cache-first (display_balance / display_seeds_data
+    # read Rails.cache only) and the client hydrates them via refreshBalance()
+    # → /admin/usdc_balance on page load. @wallet_balances / @user_seeds are
+    # left unset (nil) so wallet_field_cents emits null cents (fail-open
+    # eligibility hint) and the seeds bar uses its localStorage state.
+    # KEPT below: the cached token count (60s) + the cached admin vault state
+    # (1min) — both fast.
 
     tokens_thread = Thread.new do
       Rails.application.executor.wrap do
@@ -352,8 +406,6 @@ class ApplicationController < ActionController::Base
       end
     end
 
-    @wallet_balances = balances_thread.value
-    @user_seeds      = sync_thread.value&.dig(:seeds)
     current_user.instance_variable_set(:@entry_token_balance, tokens_thread.value)
 
     if vault_state_thread

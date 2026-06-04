@@ -35,23 +35,26 @@ class AccountsController < ApplicationController
   # seeds bar can all converge to truth from one place — instead of each
   # success path having to know about three separate update mechanisms.
   #
-  # Uses perform_solana_preload so the four reads (wallet balances, user
-  # account, entry tokens, vault state) run in parallel. Returns the
-  # current values whether the user has a connected wallet or not.
+  # This is a CLIENT-HYDRATE endpoint (refreshSession() calls it after every
+  # on-chain success, and the navbar fires it on page load). Blocking RPCs are
+  # acceptable here — the page already painted. perform_solana_preload covers
+  # the cached token count + admin vault state; the wallet balances + seeds
+  # sync are no longer preloaded (see ApplicationController), so this endpoint
+  # fetches them explicitly and warms the navbar caches so subsequent renders
+  # are warm.
   def session_refresh
     perform_solana_preload if current_user&.solana_connected?
+    hydrate = current_user&.solana_connected? ? fetch_navbar_hydrate(current_user) : {}
 
-    seeds = @user_seeds.to_i
-    # When the preload's balances thread silently nil'd (RPC flake), emit
-    # null instead of 0 so the client can recognise "unknown" and preserve
-    # whatever value the store last held. The seeds + tokens fields default
-    # to 0 because the preload defaults them on failure, and a 0 there is
-    # an acceptable temporary mis-read (the navbar will just look conservative).
-    has_balances = @wallet_balances.is_a?(Hash)
+    seeds = hydrate[:seeds].to_i
+    # When the wallet-balances read flaked (nil), emit null instead of 0 so
+    # the client can recognise "unknown" and preserve whatever value the
+    # store last held. seeds + tokens default to 0 (acceptable temporary
+    # conservative mis-read).
     render json: {
-      usdc:        has_balances ? (@wallet_balances[:usdc] || 0) : nil,
-      usdt:        has_balances ? (@wallet_balances[:usdt] || 0) : nil,
-      sol:         has_balances ? (@wallet_balances[:sol]  || 0) : nil,
+      usdc:        hydrate[:usdc],
+      usdt:        hydrate[:usdt],
+      sol:         hydrate[:sol],
       tokens:      (current_user&.entry_token_balance rescue 0),
       seeds:       seeds,
       level:       User.level_for(seeds),

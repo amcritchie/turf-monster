@@ -221,17 +221,36 @@ class AdminController < ApplicationController
     @latest_contest = Contest.order(created_at: :desc).first
   end
 
+  # Read-only navbar-hydrate endpoint (NOT admin-gated — see the
+  # `except: [:usdc_balance]` on require_admin). The client calls this on page
+  # load and after on-chain successes to fill the navbar that now renders
+  # cache-first (display_balance / display_seeds_data read Rails.cache only).
+  #
+  # One round-trip hydrates everything: USDC + USDT balances + seeds payload.
+  # It fetches fresh (blocking is fine — runs after first paint), WARMS the
+  # navbar caches (usdc/usdt/seeds), and returns them. `{ balance: }` is kept
+  # for back-compat (refreshBalance reads data.balance). current_user only.
   def usdc_balance
     return render json: { error: "Not logged in" }, status: :unauthorized unless logged_in?
-    return render json: { balance: 0 } unless current_user.solana_connected?
+    return render json: { balance: 0, usdc: 0, usdt: 0, seeds: nil } unless current_user.solana_connected?
 
-    # Always fetch fresh, then cache for server-side renders
-    balance = fetch_user_usdc
-    Rails.cache.write(usdc_cache_key, balance, expires_in: 60.seconds)
+    hydrate = fetch_navbar_hydrate(current_user)
+    seeds   = hydrate[:seeds]
+    balance = hydrate[:usdc] || 0
 
-    render json: { balance: balance }
+    render json: {
+      balance:     balance,                 # back-compat (refreshBalance reads this)
+      usdc:        balance,
+      usdt:        hydrate[:usdt],
+      seeds:       seeds,
+      level:       (User.level_for(seeds) if seeds),
+      toward_next: (User.seeds_toward_next_level(seeds) if seeds),
+      progress:    (User.seeds_progress_percent(seeds) if seeds),
+      seeds_to_next: (User::SEEDS_PER_LEVEL - User.seeds_toward_next_level(seeds) if seeds)
+    }
   rescue => e
-    render json: { balance: 0 }
+    Rails.logger.warn("[usdc_balance] hydrate failed: #{e.message}")
+    render json: { balance: 0, usdc: 0, usdt: 0, seeds: nil }
   end
 
   def mint_usdc

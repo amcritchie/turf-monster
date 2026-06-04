@@ -1580,7 +1580,11 @@ window.selectionBoard = function() {
             <p class="text-sm text-secondary"><%= current_user.email %></p>
           </div>
           <div class="text-right">
-            <p class="font-mono text-lg text-primary"><%= dollars(display_balance) %></p>
+            <%# display_balance is nil while the navbar cache is cold; show a
+                neutral placeholder rather than crashing dollars(nil). This
+                card is informational (cents precision) — no data-balance-display
+                hook, since refreshBalance paints integer dollars into those. %>
+            <p class="font-mono text-lg text-primary"><%= display_balance ? dollars(display_balance) : "$—" %></p>
           </div>
         </div>
       </div>
