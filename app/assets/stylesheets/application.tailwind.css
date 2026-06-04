@@ -963,11 +963,15 @@ body.modal-open { overflow: hidden; }
 .chat-react-only { display: none; }
 .chat-can-react .chat-react-only { display: flex; }
 
-/* Neutral grey for pill fills/borders + hover washes — the brand colour is
-   green, which read as "selected/correct" on a chip, so reactions stay on a
+/* Neutral grey for pill borders + hover washes — the brand colour is green,
+   which read as "selected/correct" on a chip, so reactions stay on a
    theme-agnostic slate instead. (Only --color-primary-* rgb tokens are exposed
-   by the theme, so this neutral is a literal that works on light + dark.) */
-:root { --rx-neutral: 148 163 184; }
+   by the theme, so this neutral is a literal that works on light + dark.)
+   --rx-fill is the pill BACKGROUND wash: white in light mode (lightens the chip
+   vs the surface), black under html.dark (darkens it) — theme is a `.dark`
+   class on <html> (studio-engine head). */
+:root { --rx-neutral: 148 163 184; --rx-fill: 255 255 255; }
+html.dark { --rx-fill: 0 0 0; }
 
 .chat-react-quick,
 .chat-react-add { cursor: pointer; }
@@ -984,17 +988,17 @@ body.modal-open { overflow: hidden; }
    a brighter (still neutral) fill. transform-origin centers the pop/shrink. */
 .chat-reaction-pill {
   cursor: default;
-  background: rgb(var(--rx-neutral) / 0.08);
-  border: 1px solid rgb(var(--rx-neutral) / 0.20);
+  background: rgb(var(--rx-fill) / 0.18);
+  border: 1px solid rgb(var(--rx-neutral) / 0.22);
   transform-origin: center;
 }
 .chat-can-react .chat-reaction-pill { cursor: pointer; }
 .chat-can-react .chat-reaction-pill:hover {
-  background: rgb(var(--rx-neutral) / 0.16);
-  border-color: rgb(var(--rx-neutral) / 0.40);
+  background: rgb(var(--rx-fill) / 0.28);
+  border-color: rgb(var(--rx-neutral) / 0.42);
 }
 .chat-reaction-pill.reacted {
-  background: rgb(var(--rx-neutral) / 0.24);
+  background: rgb(var(--rx-fill) / 0.34);
   border-color: rgb(var(--rx-neutral) / 0.60);
 }
 .chat-reaction-pill.reacted .chat-reaction-count { color: rgb(var(--rx-neutral)); }
