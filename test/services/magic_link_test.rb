@@ -1,16 +1,8 @@
 require "test_helper"
 
-# Single-use enforcement can't be exercised against the test :null_store, so we
-# inject a real MemoryStore here (the production path uses the Redis cache).
+# MagicLink is DB-backed: single-use is a `consumed_at` column flip, so it's
+# enforced directly against the test DB (no cache seam needed).
 class MagicLinkTest < ActiveSupport::TestCase
-  setup do
-    MagicLink.cache = ActiveSupport::Cache::MemoryStore.new
-  end
-
-  teardown do
-    MagicLink.cache = nil
-  end
-
   test "generate then consume returns the normalized email and return_to" do
     token = MagicLink.generate(email: "  New@Example.com ", return_to: "/contests/abc")
     result = MagicLink.consume(token)

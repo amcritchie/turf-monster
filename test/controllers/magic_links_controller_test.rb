@@ -47,15 +47,11 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ── REGRESSION: a prefetch GET must NOT burn the single-use token ─────────
-  # The core of the fix. Single-use enforcement is disabled under the test
-  # cache (:null_store), so to actually prove "the GET doesn't burn the jti" we
-  # inject a real MemoryStore (the same seam MagicLink's unit test uses), where
-  # consume DOES delete the jti. We then simulate a scanner pre-fetch (GET) and
-  # assert the human's later POST still succeeds — which can only happen if the
-  # GET left the jti untouched.
+  # The core of the scanner-safe fix: only the human's POST consumes the link.
+  # Single-use is a DB column now, so it's enforced directly — we simulate a
+  # scanner pre-fetch (GET) and assert the human's later POST still signs in,
+  # which can only happen if the GET left the link unconsumed.
   test "a scanner prefetch GET does not burn the token; the human's POST still signs in" do
-    store = ActiveSupport::Cache::MemoryStore.new
-    MagicLink.cache = store
     token = MagicLink.generate(email: users(:alex).email)
 
     # 1. Scanner / Gmail-proxy pre-fetches the emailed URL.
@@ -66,14 +62,10 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     # 2. The human clicks the button → POST consumes the still-live token.
     post magic_link_consume_path(token: token)
     assert_equal users(:alex).id, session[Studio.session_key],
-                 "the human's POST must succeed — the GET must not have burned the jti"
-  ensure
-    MagicLink.cache = nil
+                 "the human's POST must succeed — the GET must not have consumed the link"
   end
 
   test "single-use still holds: a second POST with the same token is rejected" do
-    store = ActiveSupport::Cache::MemoryStore.new
-    MagicLink.cache = store
     token = MagicLink.generate(email: users(:alex).email)
 
     post magic_link_consume_path(token: token)
@@ -82,8 +74,6 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     # Replay the exact token (e.g. a double-submit / forwarded link) → rejected.
     post magic_link_consume_path(token: token)
     assert_redirected_to signin_path
-  ensure
-    MagicLink.cache = nil
   end
 
   # ── consume (POST /magic_link/:token) ────────────────────────────────────
