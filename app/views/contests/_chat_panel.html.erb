@@ -216,16 +216,85 @@
     });
   }
 
-  // Swap a message's reactions row with freshly-rendered pills (from the toggle
-  // response) so the actor sees their reaction instantly — no wait on the cable
-  // round-trip. The broadcast still updates other viewers with identical markup.
+  // Parse a reactions-row HTML string into its detached container element.
+  function parseReactionsContainer(html) {
+    var tpl = document.createElement('template');
+    tpl.innerHTML = (html || '').trim();
+    return tpl.content.querySelector('[id$="_reactions"]');
+  }
+
+  // Play one of the reaction transitions on a pill, cleaning up after itself.
+  // type: 'pop' (0→1), 'bump' (1→2+), 'shrink' (1→0, runs `done` on end).
+  function animatePill(pill, type, done) {
+    if (!pill) { if (done) done(); return; }
+    var cls = 'rx-' + type;
+    pill.classList.remove('rx-pop', 'rx-bump', 'rx-shrink');
+    void pill.offsetWidth; // restart the animation if the class was just present
+    pill.classList.add(cls);
+    pill.addEventListener('animationend', function h() {
+      pill.removeEventListener('animationend', h);
+      pill.classList.remove(cls);
+      if (done) done();
+    }, { once: true });
+  }
+
+  function pillCount(pill) {
+    var c = pill && pill.querySelector('.chat-reaction-count');
+    return c ? (parseInt(c.textContent, 10) || 0) : 0;
+  }
+
+  // Reconcile a message's existing reactions row against a freshly-rendered one,
+  // mutating pills in place so each change animates independently:
+  //   new emoji      → clone in + pop
+  //   higher count   → update number + bump
+  //   emoji removed   → shrink, then remove
+  // Used by BOTH the actor's click (applyReactionHtml) and the live broadcast
+  // (the "reactions" Turbo Stream action), so animations are identical on both.
+  function reconcileReactions(containerEl, newContainerEl) {
+    if (!containerEl || !newContainerEl) return;
+    var oldPills = {};
+    containerEl.querySelectorAll('.chat-reaction-pill').forEach(function(p) { oldPills[p.dataset.emoji] = p; });
+    var seen = {};
+
+    newContainerEl.querySelectorAll('.chat-reaction-pill').forEach(function(np) {
+      var emoji = np.dataset.emoji;
+      seen[emoji] = true;
+      var old = oldPills[emoji];
+      if (old) {
+        var was = pillCount(old);
+        var now = pillCount(np);
+        old.dataset.reactorIds = np.dataset.reactorIds || '';
+        old.setAttribute('title', np.getAttribute('title') || '');
+        var c = old.querySelector('.chat-reaction-count');
+        if (c) c.textContent = now;
+        if (now > was) animatePill(old, 'bump');
+      } else {
+        var clone = np.cloneNode(true);
+        clone.classList.remove('reacted');
+        containerEl.appendChild(clone); // newest emoji sort last — append matches server order
+        animatePill(clone, 'pop');
+      }
+    });
+
+    // Removed emoji: shrink the stale pill out, then drop it.
+    Object.keys(oldPills).forEach(function(emoji) {
+      if (!seen[emoji]) {
+        var p = oldPills[emoji];
+        animatePill(p, 'shrink', function() { if (p.parentNode) p.remove(); });
+      }
+    });
+
+    // Keep the row's spacing class (mt-1.5 only when non-empty) in sync.
+    containerEl.className = newContainerEl.className;
+    markMyReactions(containerEl);
+  }
+
+  // Apply the toggle response (actor's own click) with the same reconcile +
+  // animations the broadcast uses, so the actor sees instant, animated feedback.
   function applyReactionHtml(messageEl, html) {
     if (!messageEl || html == null) return;
     var container = messageEl.querySelector('[id$="_reactions"]');
-    if (!container) return;
-    container.outerHTML = html;
-    var fresh = messageEl.querySelector('[id$="_reactions"]');
-    if (fresh) markMyReactions(fresh);
+    reconcileReactions(container, parseReactionsContainer(html));
   }
 
   function sendReaction(messageEl, emoji) {
@@ -299,5 +368,20 @@
     }, true);
     window.addEventListener('scroll', function() { hideReactionPicker(); }, true);
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') hideReactionPicker(); });
+
+    // Register the custom "reactions" Turbo Stream action (used by
+    // Message#broadcast_reactions) so live updates reconcile + animate instead
+    // of swapping the whole row. Turbo loads as a deferred module, so poll
+    // until it's ready (broadcasts only arrive after a user interaction, so
+    // there's ample time before the first one).
+    (function registerReactionStreamAction() {
+      if (!window.Turbo || !window.Turbo.StreamActions) { return setTimeout(registerReactionStreamAction, 60); }
+      if (window.Turbo.StreamActions.reactions) return;
+      window.Turbo.StreamActions.reactions = function() {
+        var existing = this.targetElements && this.targetElements[0];
+        var incoming = this.templateContent && this.templateContent.querySelector('[id$="_reactions"]');
+        reconcileReactions(existing, incoming);
+      };
+    })();
   }
 </script>
