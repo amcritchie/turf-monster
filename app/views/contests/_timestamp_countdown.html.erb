@@ -86,18 +86,25 @@
           One config row per unit drives a single reel template below — the
           letter is just the unit key, and anim<Var> is the per-unit snap flag. %>
       <%
-        large   = "text-lg font-extrabold"
-        ms_size = "underHour ? '#{large}' : 'text-sm font-bold'" # Alpine expr (m/s)
+        large = "text-lg font-extrabold"
+        # m/s class binding (display + size): below an hour they're the large
+        # leading pair, shown everywhere. Above an hour they're small and, on
+        # mobile, hidden entirely — there's no room beside the big d+h, and the
+        # two large units already carry the meaningful precision. `hidden
+        # sm:inline-flex` keeps them on >= sm (desktop). Driven by class (not
+        # x-show) so the responsive `hidden` isn't overridden by an inline style.
+        ms_bind = "underHour ? 'inline-flex #{large}' : 'hidden sm:inline-flex text-sm font-bold'"
         units = [
           { v: "d", max: dmax, pad: false, w: "#{dmax.to_s.length}ch", show: "d > 0",      cls: large },
           { v: "h", max: 23,   pad: true,  w: "2ch",                   show: "!underHour",  cls: large },
-          { v: "m", max: 59,   pad: true,  w: "2ch",                   bind: ms_size },
-          { v: "s", max: 59,   pad: true,  w: "2ch",                   bind: ms_size, last: true },
+          { v: "m", max: 59,   pad: true,  w: "2ch",                   bind: ms_bind },
+          { v: "s", max: 59,   pad: true,  w: "2ch",                   bind: ms_bind, last: true },
         ]
       %>
       <span class="font-mono text-heading tabular-nums inline-flex items-baseline">
         <% units.each do |u| %>
-          <span class="inline-flex items-baseline<%= " #{u[:cls]}" if u[:cls] %><%= " mr-[0.5em]" unless u[:last] %>"
+          <%# Units that bind :class own their own display; the rest are inline-flex. %>
+          <span class="items-baseline<%= " inline-flex" unless u[:bind] %><%= " #{u[:cls]}" if u[:cls] %><%= " mr-[0.5em]" unless u[:last] %>"
                 <% if u[:show] %>x-show="<%= u[:show] %>"<% end %>
                 <% if u[:bind] %>:class="<%= u[:bind] %>"<% end %>>
             <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:<%= u[:w] %>;text-align:right;">
