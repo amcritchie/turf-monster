@@ -82,8 +82,8 @@ test("logged-in user can toggle selection and see cart update", async ({ page })
 
   // Click same card again to deselect
   await firstCard.click();
-  // Selection count should go back to 0 — the Unselect chip disappears at 0 picks
-  await expect(page.getByRole("button", { name: "Unselect all picks" })).not.toBeVisible();
+  // Selection count should go back to 0 — the Clear chip disappears at 0 picks
+  await expect(page.getByRole("button", { name: "Clear all picks" })).not.toBeVisible();
 });
 
 // ---------------------------------------------------------------------------

@@ -1602,14 +1602,14 @@ window.selectionBoard = function() {
       <!-- Cart header -->
       <div class="flex items-center justify-between p-4 border-b border-subtle">
         <h3 class="text-lg font-bold text-heading">Your Picks</h3>
-        <%# Unselect-all chip — doubles as the count display and the close
+        <%# Clear-all chip — doubles as the count display and the close
             action: clearing every pick drops selectionCount to 0, which
             closes the cart (see clearSelections). Replaces the old separate
             count badge + × button. Only renders once a pick exists. %>
         <button x-show="selectionCount > 0" @click="clearSelections()"
                 class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-surface-alt text-secondary hover:text-red-400 transition"
-                aria-label="Unselect all picks">
-          Unselect <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
+                aria-label="Clear all picks">
+          Clear <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
           <span class="text-sm leading-none">&times;</span>
         </button>
       </div>
@@ -1655,7 +1655,7 @@ window.selectionBoard = function() {
             early_action_at: 1500,
             early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
           </div>
-          <%# Clear-all lives in the header chip ("Unselect n / 6 ×") now —
+          <%# Clear-all lives in the header chip ("Clear n / 6 ×") now —
               no separate footer button needed. %>
         <% end %>
       </div>
@@ -1744,7 +1744,7 @@ window.selectionBoard = function() {
       </button>
     <% else %>
       <button @click="clearSelections()" class="w-full text-center text-xs font-semibold text-secondary hover:text-red-400 transition mt-2">
-        Unselect <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
+        Clear <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
       </button>
     <% end %>
   </div>
