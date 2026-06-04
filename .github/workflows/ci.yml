@@ -64,9 +64,15 @@ jobs:
     # RAILS_MASTER_KEY: repo secret so credentials.secret_key_base decrypts —
     #   the LEGACY keypair encryptor reads secret_key_base[0,32] directly and
     #   raised "nil[]" without it (3 KeypairTest errors).
+    # SOLANA_ADMIN_KEY: a THROWAWAY base58 keypair (NOT the prod Alex Bot
+    #   signer). Solana::Keypair.admin raises "SOLANA_ADMIN_KEY env var
+    #   required" when absent, erroring the 7 vault tests that build
+    #   admin-signed TXs. No test asserts the pubkey, so any valid keypair
+    #   clears them; secret-stored so the value never lands in the repo.
     env:
       MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
       RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      SOLANA_ADMIN_KEY: ${{ secrets.SOLANA_ADMIN_KEY }}
 
     services:
       postgres:
@@ -124,9 +130,12 @@ jobs:
         shard: [1, 2, 3]
     # See the test job. Managed-wallet flows (signup) need the encryption
     # key; RAILS_MASTER_KEY lets credentials decrypt for the test server.
+    # SOLANA_ADMIN_KEY (throwaway, see test job) — the test server boots the
+    # app, and admin-signed Solana paths call Solana::Keypair.admin.
     env:
       MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
       RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      SOLANA_ADMIN_KEY: ${{ secrets.SOLANA_ADMIN_KEY }}
     services:
       postgres:
         image: postgres
