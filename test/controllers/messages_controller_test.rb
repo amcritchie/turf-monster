@@ -100,25 +100,25 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     message = @contest.messages.create!(user: @entrant, body: "react to me")
     log_in_as(@entrant)
     assert_difference -> { message.reactions.count }, 1 do
-      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "❤️" }, as: :json
+      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "💯" }, as: :json
     end
     assert_response :success
     assert_equal true, response.parsed_body["reacted"]
     # Instant-feedback payload: the re-rendered pills for the actor's own page.
-    assert_includes response.parsed_body["html"].to_s, "❤️"
+    assert_includes response.parsed_body["html"].to_s, "💯"
   end
 
   test "reacting with the same emoji again toggles it off" do
     message = @contest.messages.create!(user: @entrant, body: "toggle me")
-    message.reactions.create!(user: @entrant, emoji: "❤️")
+    message.reactions.create!(user: @entrant, emoji: "💯")
     log_in_as(@entrant)
     assert_difference -> { message.reactions.count }, -1 do
-      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "❤️" }, as: :json
+      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "💯" }, as: :json
     end
     assert_response :success
     assert_equal false, response.parsed_body["reacted"]
-    # Pills HTML now reflects the removal (no heart pill left).
-    assert_not_includes response.parsed_body["html"].to_s, "❤️"
+    # Pills HTML now reflects the removal (no 💯 pill left).
+    assert_not_includes response.parsed_body["html"].to_s, "💯"
   end
 
   test "the contest sport emoji is an accepted reaction" do
@@ -142,7 +142,7 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     message = @contest.messages.create!(user: @entrant, body: "hands off")
     log_in_as(@outsider)
     assert_no_difference -> { message.reactions.count } do
-      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "❤️" }, as: :json
+      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "💯" }, as: :json
     end
     assert_response :forbidden
   end
@@ -150,7 +150,7 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
   test "a guest cannot react" do
     message = @contest.messages.create!(user: @entrant, body: "anon react")
     assert_no_difference -> { message.reactions.count } do
-      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "❤️" }, as: :json
+      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "💯" }, as: :json
     end
     assert_response :unauthorized
   end
@@ -160,7 +160,7 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     message = @contest.messages.create!(user: @entrant, body: "closed")
     log_in_as(@entrant)
     assert_no_difference -> { message.reactions.count } do
-      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "❤️" }, as: :json
+      post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "💯" }, as: :json
     end
     assert_response :forbidden
   end
@@ -169,7 +169,7 @@ class MessagesControllerTest < ActionDispatch::IntegrationTest
     message = @contest.messages.create!(user: @entrant, body: "hidden")
     message.hide!(@admin)
     log_in_as(@entrant)
-    post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "❤️" }, as: :json
+    post toggle_reaction_contest_message_url(@contest, message), params: { emoji: "💯" }, as: :json
     assert_response :not_found
   end
 end
