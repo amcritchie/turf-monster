@@ -98,13 +98,17 @@
           { v: "d", max: dmax, pad: false, w: "#{dmax.to_s.length}ch", show: "d > 0",      cls: large },
           { v: "h", max: 23,   pad: true,  w: "2ch",                   show: "!underHour",  cls: large },
           { v: "m", max: 59,   pad: true,  w: "2ch",                   bind: ms_bind },
-          { v: "s", max: 59,   pad: true,  w: "2ch",                   bind: ms_bind, last: true },
+          { v: "s", max: 59,   pad: true,  w: "2ch",                   bind: ms_bind },
         ]
       %>
-      <span class="font-mono text-heading tabular-nums inline-flex items-baseline">
+      <%# Inter-unit spacing is a flex `gap` on the container, not per-unit
+          margins — flex only spaces BETWEEN rendered items, so a hidden leading
+          (d==0) or trailing (m/s hidden on mobile) unit leaves no stray gap
+          before "Until Lock". %>
+      <span class="font-mono text-heading tabular-nums inline-flex items-baseline gap-[0.5em]">
         <% units.each do |u| %>
           <%# Units that bind :class own their own display; the rest are inline-flex. %>
-          <span class="items-baseline<%= " inline-flex" unless u[:bind] %><%= " #{u[:cls]}" if u[:cls] %><%= " mr-[0.5em]" unless u[:last] %>"
+          <span class="items-baseline<%= " inline-flex" unless u[:bind] %><%= " #{u[:cls]}" if u[:cls] %>"
                 <% if u[:show] %>x-show="<%= u[:show] %>"<% end %>
                 <% if u[:bind] %>:class="<%= u[:bind] %>"<% end %>>
             <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:<%= u[:w] %>;text-align:right;">
