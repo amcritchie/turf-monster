@@ -12,6 +12,11 @@
 class MagicLinksController < ApplicationController
   skip_before_action :require_authentication
 
+  # The confirm interstitial is a transient loading screen (just a spinner that
+  # auto-submits) — render it on the minimal bare layout, not the full app shell,
+  # so it paints instantly with no navbar/app-CSS/Solana-preload.
+  layout "loading", only: :confirm
+
   # Respond uniformly for any well-formed email. Under create-or-login every
   # address is "valid" (it logs in or signs up), so there is nothing to
   # enumerate — but staying uniform keeps it that way if invite-only is ever
