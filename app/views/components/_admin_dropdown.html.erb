@@ -29,7 +29,7 @@
         Refresh Wallet. Each leads with an emoji in a fixed-width gutter so the
         labels stay column-aligned. Admins get the admin section appended below
         (admin links stay text-only). %>
-    <%= link_to account_path, class: link_class do %><span class="inline-block w-6">👤</span>My Profile<% end %>
+    <%= link_to account_path, class: link_class do %><span class="inline-block w-6">🙂</span>My Profile<% end %>
     <%= link_to my_contests_path, class: link_class do %><span class="inline-block w-6">🏆</span>My Contests<% end %>
     <%= link_to help_how_to_play_path, class: link_class do %><span class="inline-block w-6">🎮</span>How to Play<% end %>
     <%= link_to proof_of_reserves_path, class: link_class do %><span class="inline-block w-6">🪎</span>Proof of Reserves<% end %>
@@ -38,7 +38,7 @@
         it's a <button>, not a link. Closes the menu on click. %>
     <button type="button"
             @click="open = false; if (window.showNavSpinner) window.showNavSpinner(); if (window.refreshSession) { window.refreshSession().finally(function() { if (window.hideNavSpinner) window.hideNavSpinner(); }); }"
-            class="<%= link_class %> w-full text-left"><span class="inline-block w-6">🔄</span>Refresh Wallet</button>
+            class="<%= link_class %> w-full text-left"><span class="inline-block w-6">👛</span>Refresh Wallet</button>
 
     <% if current_user.admin? %>
       <%# === Admin section — appended to the user menu for admins ===
