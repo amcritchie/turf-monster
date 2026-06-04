@@ -68,6 +68,38 @@
   --studio-toast-blur-z: 199;
 }
 
+/* Navbar gear-menu emoji hover slide (components/_admin_dropdown via the
+   emoji_swap helper). Both emoji are stacked in a fixed gutter; on row hover the
+   base slides off to the RIGHT + fades while the hover emoji slides in from the
+   LEFT. Keyed on the row's `group` class. Reduced-motion degrades to a fade. */
+.nav-emoji-swap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 1.5rem;
+  height: 1.25rem;
+  overflow: hidden;
+}
+.nav-emoji-swap > span {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 240ms cubic-bezier(0.34, 1.2, 0.5, 1), opacity 180ms ease;
+}
+.nav-emoji-base  { transform: translateX(0);     opacity: 1; }
+.nav-emoji-hover { transform: translateX(-110%); opacity: 0; }
+.group:hover .nav-emoji-base  { transform: translateX(110%); opacity: 0; }
+.group:hover .nav-emoji-hover { transform: translateX(0);    opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-emoji-swap > span { transition: opacity 120ms ease; }
+  .nav-emoji-base, .nav-emoji-hover,
+  .group:hover .nav-emoji-base, .group:hover .nav-emoji-hover { transform: none; }
+}
+
 /* Theme CSS custom properties are now engine-generated via studio_theme_css_tag */
 
 @layer components {

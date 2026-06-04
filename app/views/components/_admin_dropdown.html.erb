@@ -15,9 +15,9 @@
 
 <%# Fixed-width emoji gutter that swaps `base` → `hover` when its row is hovered. %>
 <% emoji_swap = ->(base, hover) {
-     content_tag(:span, class: "inline-block w-6") do
-       content_tag(:span, base, class: "group-hover:hidden") +
-         content_tag(:span, hover, class: "hidden group-hover:inline")
+     content_tag(:span, class: "nav-emoji-swap") do
+       content_tag(:span, base, class: "nav-emoji-base") +
+         content_tag(:span, hover, class: "nav-emoji-hover")
      end
    } %>
 
