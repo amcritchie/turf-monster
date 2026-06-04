@@ -46,7 +46,7 @@
     <div class="flex-1 px-4">
       <div class="flex items-center gap-6">
         <%= link_to root_path, class: "nav-logo-link inline-flex items-center gap-3 group" do %>
-          <img src="/logo.png" alt="Turf Monster" class="nav-logo rounded-full shadow-lg <%= is_preview ? 'w-12 h-12' : 'group-hover:scale-105 transition-all duration-300' %>"
+          <img src="/icon-192.png" alt="Turf Totals" width="48" height="48" class="nav-logo rounded-full shadow-lg <%= is_preview ? 'w-12 h-12' : 'group-hover:scale-105 transition-all duration-300' %>"
                <%= "x-bind:class=\"scrolled ? 'w-8 h-8' : 'w-12 h-12'\"".html_safe unless is_preview %>>
           <h1 class="nav-title font-extrabold text-heading tracking-tight <%= is_preview ? 'text-3xl' : 'transition-all duration-300' %>"
               <%= "x-bind:class=\"scrolled ? 'text-xl' : 'text-3xl'\"".html_safe unless is_preview %>><span class="dm-salmon">Turf</span><span class="dm-yellow text-primary">Totals</span></h1>
