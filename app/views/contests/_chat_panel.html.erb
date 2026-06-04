@@ -216,7 +216,21 @@
     });
   }
 
-  function sendReaction(url, emoji) {
+  // Swap a message's reactions row with freshly-rendered pills (from the toggle
+  // response) so the actor sees their reaction instantly — no wait on the cable
+  // round-trip. The broadcast still updates other viewers with identical markup.
+  function applyReactionHtml(messageEl, html) {
+    if (!messageEl || html == null) return;
+    var container = messageEl.querySelector('[id$="_reactions"]');
+    if (!container) return;
+    container.outerHTML = html;
+    var fresh = messageEl.querySelector('[id$="_reactions"]');
+    if (fresh) markMyReactions(fresh);
+  }
+
+  function sendReaction(messageEl, emoji) {
+    if (!messageEl) return;
+    var url = messageEl.dataset.reactUrl;
     if (!url) return;
     if (!window.__chatCanReact) {
       chatToast('Join to react', 'Enter the contest to react to messages.');
@@ -231,7 +245,10 @@
       },
       body: JSON.stringify({ emoji: emoji })
     }).then(function(r) { return r.json().catch(function() { return {}; }); })
-      .then(function(data) { if (data && data.error) chatToast('Reaction failed', data.error); })
+      .then(function(data) {
+        if (data && data.error) { chatToast('Reaction failed', data.error); return; }
+        if (data && typeof data.html === 'string') applyReactionHtml(messageEl, data.html);
+      })
       .catch(function() { chatToast('Reaction failed', 'Network error.'); });
   }
 
@@ -239,14 +256,14 @@
   function reactToMessage(el, emoji) {
     var root = el.closest('[data-react-url]');
     hideReactionPicker();
-    if (root) sendReaction(root.dataset.reactUrl, emoji);
+    if (root) sendReaction(root, emoji);
   }
 
   function openReactionPicker(btn) {
     var picker = document.getElementById('chat-reaction-picker');
     if (!picker) return;
-    var root = btn.closest('[data-react-url]');
-    picker.dataset.reactUrl = root ? root.dataset.reactUrl : '';
+    // Stash the message element so pickReaction can apply the instant update.
+    picker._targetMessageEl = btn.closest('[data-react-url]');
     picker.classList.add('is-open');
     // Prefer above-right of the "+"; clamp into the viewport, flip below if no room.
     var r = btn.getBoundingClientRect();
@@ -265,9 +282,9 @@
 
   function pickReaction(emoji) {
     var picker = document.getElementById('chat-reaction-picker');
-    var url = picker ? picker.dataset.reactUrl : '';
+    var messageEl = picker ? picker._targetMessageEl : null;
     hideReactionPicker();
-    sendReaction(url, emoji);
+    sendReaction(messageEl, emoji);
   }
 
   // Dismissal wiring once per page (chat may render on more than one view).
