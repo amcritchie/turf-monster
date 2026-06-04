@@ -413,7 +413,9 @@ window.selectionBoard = function() {
         this.selections = Object.assign({}, this.selections, { [matchupId]: true });
         this.selectionOrder = this.selectionOrder.concat([matchupId]);
         if (this.selectionCount === this.picksRequired) this.pickUrgent = false;
-        if (!this.cartOpen) this.cartOpen = true;
+        // Open the cart on every pick-add. Redundant once it's already open,
+        // but guarantees the sidebar reveals itself after each selection.
+        this.cartOpen = true;
         this.triggerShake(matchupId);
       } else {
         // Replace oldest
@@ -424,6 +426,7 @@ window.selectionBoard = function() {
         this.selections = newSel;
         this.selectionOrder = this.selectionOrder.slice(1).concat([matchupId]);
         this.blurDismissed = false;
+        this.cartOpen = true;
         this.triggerShake(matchupId);
       }
 
@@ -1581,13 +1584,9 @@ window.selectionBoard = function() {
 
   </div><!-- /blurrable -->
 
-  <!-- FAB: selection count badge to reopen cart (desktop only) -->
-  <button x-show="!cartOpen && selectionCount > 0"
-          x-transition
-          @click="cartOpen = true"
-          class="hidden md:flex fixed bottom-6 right-6 z-30 w-14 h-14 bg-primary hover:bg-primary-700 text-white rounded-full shadow-lg shadow-primary/30 items-center justify-center text-lg font-bold transition">
-    <span x-text="selectionCount"></span><span class="text-xs">/<%= @contest.picks_required %></span>
-  </button>
+<%# Reopen FAB removed: the cart now opens on every pick-add and can no
+    longer be dismissed while picks exist, so !cartOpen && selectionCount > 0
+    is unreachable. %>
 
   <%# Cart Sidebar: Desktop (right panel). Sits below the navbar via the
        --nav-h CSS variable (a ResizeObserver in _navbar.html.erb keeps it
@@ -1603,13 +1602,16 @@ window.selectionBoard = function() {
       <!-- Cart header -->
       <div class="flex items-center justify-between p-4 border-b border-subtle">
         <h3 class="text-lg font-bold text-heading">Your Picks</h3>
-        <div class="flex items-center gap-3">
-          <span class="px-2 py-0.5 rounded-full text-xs font-bold"
-                :class="selectionCount === <%= @contest.picks_required %> ? 'bg-primary text-white' : 'bg-surface-alt text-secondary'">
-            <span x-text="selectionCount"></span>/<%= @contest.picks_required %>
-          </span>
-          <button @click="cartOpen = false" class="text-secondary hover:text-heading transition text-xl leading-none">&times;</button>
-        </div>
+        <%# Clear-all chip — doubles as the count display and the close
+            action: clearing every pick drops selectionCount to 0, which
+            closes the cart (see clearSelections). Replaces the old separate
+            count badge + × button. Only renders once a pick exists. %>
+        <button x-show="selectionCount > 0" @click="clearSelections()"
+                class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-surface-alt text-secondary hover:text-red-400 transition"
+                aria-label="Clear all picks">
+          Clear <span x-text="selectionCount"></span> / <%= @contest.picks_required %>
+          <span class="text-sm leading-none">&times;</span>
+        </button>
       </div>
       <!-- Pick slots -->
       <%= render "contests/turf_totals_cart_slots" %>
@@ -1653,10 +1655,8 @@ window.selectionBoard = function() {
             early_action_at: 1500,
             early_action_guard: "d.contestOnchain && Alpine.store('session') && Alpine.store('session').isWeb3" %>
           </div>
-          <button x-show="selectionCount > 0" @click="clearSelections()"
-                  class="w-full py-2 text-sm font-semibold text-secondary hover:text-red-400 transition">
-            Clear All
-          </button>
+          <%# Clear-all lives in the header chip ("Clear n / 6 ×") now —
+              no separate footer button needed. %>
         <% end %>
       </div>
     </div>

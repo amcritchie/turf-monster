@@ -116,7 +116,7 @@ test("hold-to-confirm aborts at 1s with geo blocked modal", async ({ page }) => 
   // Navigate back to contest page (selections should still be there)
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  await expect(page.locator("body")).toContainText("6/6");
+  await expect(page.locator("body")).toContainText("6 / 6");
 
   // Run hold validations directly (avoids flaky dispatchEvent + setTimeout timing)
   const validationPassed = await page.evaluate(async () => {
