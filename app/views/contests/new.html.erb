@@ -227,7 +227,7 @@
         csrfToken:  form_authenticity_token,
         finalizePath: finalize_contests_path,
         rebuildPath: rebuild_create_tx_contests_path,
-        usdcBalance: display_balance.to_f,
+        usdcBalance: display_balance&.to_f, # null when the navbar cache is cold → click-time check fails open (server re-checks with a fresh RPC)
         tierPrizes:  Contest.selectable_formats.transform_values { |c| c[:payouts].values.sum / 100.0 },
         tierEntryFees: Contest.selectable_formats.transform_values { |c| c[:entry_fee_cents] / 100.0 }
       }.to_json.html_safe %>
@@ -301,8 +301,11 @@
           // cached 60s) so a stale balance can't sneak a doomed TX past.
           var selectedTier = (form.querySelector('input[name="contest[contest_type]"]') || {}).value;
           var prizeNeeded  = cfg.tierPrizes && cfg.tierPrizes[selectedTier] != null ? cfg.tierPrizes[selectedTier] : 0;
-          var balanceHave  = cfg.usdcBalance || 0;
-          if (prizeNeeded > balanceHave) {
+          // Fail OPEN when the balance is unknown (null = cold navbar cache);
+          // the server re-checks with a fresh RPC in #create, so an unknown
+          // value must not hard-block. Only block on a known-insufficient #.
+          var balanceHave  = cfg.usdcBalance;
+          if (balanceHave != null && prizeNeeded > balanceHave) {
             showInsufficientUsdcModal(prizeNeeded, balanceHave);
             return;
           }

@@ -105,7 +105,15 @@ export async function pollConfirmation(rpcUrl, sig, opts) {
 }
 window.pollConfirmation = pollConfirmation;
 
-// Balance display refresh
+// Navbar hydrate. The navbar now renders cache-first (the server no longer
+// blocks the HTML render on the USDC/USDT/seeds RPCs), so this single call
+// fills the live state once the page has painted:
+//   (a) the USDC balance pill ([data-balance-display])
+//   (b) the seeds bar — via the 'navbar-seeds-update' event _seeds_bar listens on
+//   (c) $store.session.usdcCents / usdtCents so eligibilityBlocker has live cents
+// /admin/usdc_balance returns { balance, usdc, usdt, seeds, level, toward_next,
+// progress } and warms the server-side caches as a side effect. Every field is
+// guarded — a flaked RPC yields null and we leave the prior value in place.
 export function refreshBalance() {
   return lockedFetch('balance', '/admin/usdc_balance', {
     headers: { 'Accept': 'application/json' }, cache: 'no-store'
@@ -113,18 +121,51 @@ export function refreshBalance() {
     .then(function(r) { return r && r.json(); })
     .then(function(data) {
       if (!data) return;
-      var formatted = '$' + Math.floor(parseFloat(data.balance));
-      var isZero = formatted === '$0';
-      var badge = document.querySelector('[data-free-entry-badge]');
-      var badgeVisible = badge && !badge.classList.contains('hidden');
-      document.querySelectorAll('[data-balance-display]').forEach(function(el) {
-        el.textContent = formatted;
-        // Same rule as server-side render: hide $0 when the user has
-        // at least one free-entry token. _user_nav's 🎟️ badge already
-        // signals their next-step affordance.
-        if (isZero && badgeVisible) el.classList.add('hidden');
-        else                        el.classList.remove('hidden');
-      });
+
+      // (a) USDC pill. data.balance may be null (cold/flaked) — only paint
+      // when we got a number, otherwise leave the placeholder for next poll.
+      if (data.balance != null) {
+        var formatted = '$' + Math.floor(parseFloat(data.balance));
+        var isZero = formatted === '$0';
+        var badge = document.querySelector('[data-free-entry-badge]');
+        var badgeVisible = badge && !badge.classList.contains('hidden');
+        document.querySelectorAll('[data-balance-display]').forEach(function(el) {
+          el.textContent = formatted;
+          // Same rule as server-side render: hide $0 when the user has
+          // at least one free-entry token. _user_nav's 🎟️ badge already
+          // signals their next-step affordance.
+          if (isZero && badgeVisible) el.classList.add('hidden');
+          else                        el.classList.remove('hidden');
+        });
+      }
+
+      // (b) Seeds bar — dispatch the same event the entry-confirm flow uses
+      // so the bar animates to the new value. Only when seeds are known.
+      if (data.seeds != null && data.level != null) {
+        try {
+          localStorage.setItem('seedsNavbar', JSON.stringify({
+            seeds_total: data.seeds,
+            level:       data.level,
+            toward_next: data.toward_next,
+            progress:    data.progress
+          }));
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent('navbar-seeds-update', {
+            detail: { levelUp: false, level: data.level, progress: data.progress }
+          }));
+        } catch (_) {}
+      }
+
+      // (c) $store.session cents — so the synchronous eligibilityBlocker sees
+      // live numbers. Dollars → cents at the boundary; null leaves prior value.
+      try {
+        var sess = window.Alpine && Alpine.store && Alpine.store('session');
+        if (sess) {
+          if (data.usdc != null) sess.usdcCents = Math.round(parseFloat(data.usdc) * 100);
+          if (data.usdt != null) sess.usdtCents = Math.round(parseFloat(data.usdt) * 100);
+        }
+      } catch (_) {}
     })
     .catch(function() {});
 }

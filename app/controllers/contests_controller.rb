@@ -1565,13 +1565,16 @@ class ContestsController < ApplicationController
   end
 
   # Pre-rendered seeds payload used by the contest show page's slate
-  # progress card. Reuses @user_seeds prefetched by
-  # ApplicationController#preload_navbar_solana_data instead of firing a
-  # duplicate sync_balance RPC. Returns nil for guests / non-wallet users
-  # so the view's `<% if @seeds_data %>` gate keeps the card hidden.
+  # progress card. Cache-first (the navbar preload no longer blocks on the
+  # seeds RPC — see ApplicationController): returns the warm cached payload
+  # when available, otherwise a zero payload so the card still renders and
+  # the seeds_bar self-heals from `seedsNavbar` localStorage + the
+  # 'navbar-seeds-update' event that refreshBalance() fires on load. Returns
+  # nil for guests / non-wallet users so the view's `<% if @seeds_data %>`
+  # gate keeps the card hidden.
   def load_seeds_data
     return unless logged_in? && current_user.solana_connected?
-    seeds_payload(@user_seeds.to_i)
+    display_seeds_data || seeds_payload(0)
   end
 
   def contest_params

@@ -8,6 +8,13 @@
   - title:   optional heading shown left of the level badge (card variant only)
   - shimmer_interval: seconds to wait before the one-shot shimmer sweep fires (nil = fire immediately on load)
 %>
+<%# seeds_data is nil while the navbar cache is cold ("loading") — the server
+    no longer blocks the render on the seeds RPC. Fall back to a zero payload:
+    the Alpine factory's normalStart() reconciles data-initial-* against the
+    `seedsNavbar` localStorage cache (max wins), so the bar shows the last-known
+    value, and refreshBalance's 'navbar-seeds-update' event fills the fresh
+    server number once /admin/usdc_balance lands. %>
+<% seeds_data ||= { seeds: 0, level: 1, toward_next: 0, progress: 0, seeds_to_next: User::SEEDS_PER_LEVEL } %>
 <% lvl = seeds_data[:level].to_i %>
 <% lvl = 1 if lvl < 1 %>
 <% toward_next = seeds_data[:toward_next].to_i %>
