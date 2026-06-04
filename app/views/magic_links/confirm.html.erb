@@ -1,38 +1,63 @@
-<%# "Confirm sign-in" interstitial for the magic link (GET /magic_link/:token).
+<%# "Signing you in…" interstitial for GET /magic_link/:token.
 
-    SCANNER-SAFE BY DESIGN: this page does NOT consume the single-use token.
-    Email link-scanners / Gmail-image-proxies / SafeLinks pre-fetch the emailed
-    URL with a GET; landing them here is a harmless no-op. Only the human's
-    button press POSTs to /magic_link/:token, and THAT burns the token and
-    signs them in. One extra click is the price of not letting a scanner burn
-    the link before the human ever clicks it.
+    SCANNER-SAFE BY DESIGN, no manual tap: the GET still does NOT consume the
+    token — it renders a form that AUTO-SUBMITS via JS on load. A real browser
+    POSTs instantly and signs the human in (no second click); email link-scanners
+    / the Gmail image proxy / SafeLinks / corporate AV issue a no-JS GET, never
+    run the script, and so can't burn the single-use token before the human
+    arrives. The visible button is the no-JS fallback.
 
-    button_to emits a real <form> with the CSRF authenticity token, so the
-    consume POST is doubly protected: a scanner can't forge it. %>
+    button_to emits a real <form> with the CSRF authenticity token; the consume
+    POST is same-origin and the confirm response sets Referrer-Policy:
+    strict-origin (see MagicLinksController#confirm) so the Origin header stays
+    intact and the POST passes origin-based CSRF. %>
 <div class="min-h-[70vh] flex items-center justify-center">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
-      <img src="/logo.png" alt="Turf Monster" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
+      <img src="/logo.png" alt="Turf Totals" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
       <h1 class="text-3xl font-extrabold text-heading tracking-tight">Turf <span class="text-primary">Totals</span></h1>
-      <p class="text-secondary mt-2">Confirm your sign-in</p>
+      <p class="text-secondary mt-2">Signing you in&hellip;</p>
     </div>
 
     <div class="card shadow p-8 text-center">
-      <p class="text-secondary mb-6">
-        You're one tap away. Press the button below to finish signing in
-        <span class="text-muted">(or to create your account — no password needed).</span>
-      </p>
+      <%# Spinner shown while the auto-submit fires (the page redirects in <1s). %>
+      <div class="flex justify-center mb-6" aria-hidden="true">
+        <svg class="animate-spin w-8 h-8 text-primary" style="animation: spin 1s linear infinite;"
+             xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+      </div>
 
-      <%= button_to magic_link_consume_path(token: @token), method: :post,
-            data: { turbo: false },
+      <%# No-JS fallback: a real CSRF-protected POST button. JS auto-submits this
+          same form on load so JS browsers never need to click it. %>
+      <%= button_to magic_link_consume_path(token: @token),
+            method: :post,
+            form: { id: "magic-consume-form", data: { turbo: "false" } },
             class: "btn btn-primary btn-lg w-full" do %>
-        Sign in to Turf Monster
+        Sign in to Turf Totals
       <% end %>
 
       <p class="text-xs text-muted text-center mt-4">
-        This link expires shortly and can only be used once. If you didn't request
-        it, you can safely close this page.
+        Almost there&hellip; if you're not redirected automatically, tap the button above.
+        This link expires shortly and can only be used once.
       </p>
     </div>
   </div>
 </div>
+
+<%# Inline keyframe so the spinner animates even if the `animate-spin` utility
+    isn't in the compiled CSS bundle. %>
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
+<script>
+  (function () {
+    var form = document.getElementById('magic-consume-form');
+    if (!form || form.dataset.autoSubmitted) return;
+    // Auto-submit so the human signs in on link-click with no extra tap. A no-JS
+    // scanner GET never reaches this, so the single-use token stays safe.
+    form.dataset.autoSubmitted = '1';
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+  })();
+</script>

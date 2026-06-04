@@ -8,9 +8,10 @@ const { setupOnchainMocks, computeMockTransaction } = require("./rpc-mock");
  * navigate to the emailed URL (same browser context, so the session cookie
  * sticks). The `password` arg is ignored (kept for call-site compatibility).
  *
- * The emailed link's GET is a scanner-safe "Confirm sign-in" interstitial that
- * does NOT consume the token — only the human's button press (a POST) burns it.
- * So we land on the interstitial, then click through.
+ * The emailed link's GET is a scanner-safe interstitial that does NOT consume
+ * the token on the server; it AUTO-SUBMITS the consume form via JS on load, so a
+ * real browser signs in with no manual tap. We just navigate and wait for the
+ * redirect off /magic_link (with a button-click fallback for safety).
  * Waits for the URL to leave /signin and /magic_link.
  */
 async function login(page, email, _password) {
@@ -20,10 +21,15 @@ async function login(page, email, _password) {
   }
   const { url } = await resp.json();
   await page.goto(url);
-  await page.locator('button:has-text("Sign in to Turf Monster")').click();
-  await page.waitForURL(
-    (u) => !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link")
-  );
+  const leftMagicLink = (u) =>
+    !u.pathname.startsWith("/signin") && !u.pathname.startsWith("/magic_link");
+  try {
+    await page.waitForURL(leftMagicLink, { timeout: 5000 });
+  } catch (_) {
+    // Auto-submit didn't fire (no-JS fallback) — click the consume button.
+    await page.locator('button:has-text("Sign in to Turf Totals")').click();
+    await page.waitForURL(leftMagicLink);
+  }
 }
 
 /**

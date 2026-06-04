@@ -5,9 +5,10 @@ const { reseed } = require("./helpers");
 // trip can't be clicked in a browser test, so we mint tokens through the
 // dev-only /test/magic_link_token endpoint and navigate to the consume URL.
 //
-// The emailed link's GET is a scanner-safe "Confirm sign-in" interstitial that
-// does NOT consume the token — only the human's button press (a POST) burns it
-// and signs in. So the browser flow is: goto(url) -> click "Sign in".
+// The emailed link's GET is a scanner-safe interstitial that does NOT consume
+// the token on the server; it AUTO-SUBMITS the consume form via JS on load, so a
+// real browser signs in with no manual tap. So the browser flow is just:
+// goto(url) -> the page auto-redirects off /magic_link, signed in.
 
 test.beforeEach(async ({ request }) => await reseed(request));
 
@@ -17,13 +18,9 @@ test("magic link creates a new account and logs the visitor in", async ({ page }
   expect(resp.ok()).toBeTruthy();
   const { url } = await resp.json();
 
-  // GET lands on the inert "Confirm sign-in" interstitial (still on /magic_link).
+  // GET lands on the interstitial, which auto-submits the consume POST on load,
+  // consumes the token, and lands off /magic_link — no manual click.
   await page.goto(url);
-  await expect(page).toHaveURL(/\/magic_link\//);
-  await expect(page.locator("body")).toContainText(/confirm|sign in/i);
-
-  // The human's click POSTs the token, consumes it, and lands off /magic_link.
-  await page.locator('button:has-text("Sign in to Turf Monster")').click();
   await page.waitForURL((u) => !u.pathname.startsWith("/magic_link"));
 
   // Logged in → an auth-gated page stays put instead of bouncing to /signin.
@@ -37,14 +34,13 @@ test("a scanner prefetch GET does not burn the token; the human can still sign i
   const { url } = await resp.json();
 
   // Simulate an email link-scanner / Gmail-image-proxy pre-fetch: a bare GET
-  // (no cookies carried into the human's context) against the emailed URL.
+  // (no JS executed, so the auto-submit never fires) against the emailed URL.
   const prefetch = await page.request.get(url);
   expect(prefetch.ok()).toBeTruthy();
 
-  // The human then opens the link for real and clicks through — the token must
-  // still be live (the prefetch GET must not have consumed it).
+  // The human then opens the link for real — the token must still be live (the
+  // prefetch GET must not have consumed it), so the auto-submit signs them in.
   await page.goto(url);
-  await page.locator('button:has-text("Sign in to Turf Monster")').click();
   await page.waitForURL((u) => !u.pathname.startsWith("/magic_link"));
   await page.goto("/account");
   await expect(page).toHaveURL(/\/account/);
@@ -52,9 +48,8 @@ test("a scanner prefetch GET does not burn the token; the human can still sign i
 
 test("an invalid magic-link token is rejected on confirm", async ({ page }) => {
   // The GET interstitial is inert and renders even for a garbage token; the
-  // rejection happens when the human submits (POST). Click through and assert.
+  // auto-submit then POSTs it, the consume rejects it, and we bounce to /signin.
   await page.goto("/magic_link/bogus.token.value");
-  await page.locator('button:has-text("Sign in to Turf Monster")').click();
   await expect(page).toHaveURL(/\/signin/);
   await expect(page.locator("body")).toContainText(/invalid|expired/i);
 });
