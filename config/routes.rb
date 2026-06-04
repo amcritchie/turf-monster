@@ -80,6 +80,11 @@ Rails.application.routes.draw do
   # operational playbook when current_user&.admin?.
   get "contract", to: "contract#show", as: :contract
 
+  # Public Transparency hub — one page that links to every trust / legitimacy /
+  # help page (on-chain program, proof of reserves, source code, legal, help).
+  # Handed to reviewers as a single URL; cited in the Phantom / Blowfish appeal.
+  get "transparency", to: "transparency#show", as: :transparency
+
   # Public faucet page
   get  "faucet", to: "faucet#show", as: :faucet
   post "faucet", to: "faucet#claim"
