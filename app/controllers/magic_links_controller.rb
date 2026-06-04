@@ -44,7 +44,14 @@ class MagicLinksController < ApplicationController
   # The token never leaves the URL here, so keep it out of Referer on this
   # page's subresource loads (logo, fonts, analytics).
   def confirm
-    response.set_header("Referrer-Policy", "no-referrer")
+    # strict-origin (NOT no-referrer): still strips the path so the single-use
+    # token never leaks in the Referer of subresource loads, but unlike
+    # no-referrer it leaves the Origin header intact on the consume form POST.
+    # no-referrer makes the browser send `Origin: null`, which Rails' origin-based
+    # CSRF check (forgery_protection_origin_check) rejects with 422 — the human's
+    # button press then silently fails to sign in. (Tests miss this: forgery
+    # protection is off in the test env.)
+    response.set_header("Referrer-Policy", "strict-origin")
     @token = params[:token]
     # We render WITHOUT verifying the signature: a verify here would have to
     # decode + check expiry, and surfacing "expired" vs "invalid" on a GET adds
@@ -57,7 +64,7 @@ class MagicLinksController < ApplicationController
   # the single-use token is burned, and it only runs on the human's button press
   # (a scanner won't POST a CSRF-protected form). Mirrors the prior GET behavior.
   def consume
-    response.set_header("Referrer-Policy", "no-referrer")
+    response.set_header("Referrer-Policy", "strict-origin")
     result = MagicLink.consume(params[:token])
     user = User.find_by(email: result.email)
     user ? sign_in_existing(user, result) : sign_up_new(result)
