@@ -78,12 +78,12 @@ test("logged-in user can toggle selection and see cart update", async ({ page })
   await firstCard.click();
 
   // Cart should show 1 selection
-  await expect(page.locator("body")).toContainText("1/6");
+  await expect(page.locator("body")).toContainText("1 / 6");
 
   // Click same card again to deselect
   await firstCard.click();
-  // Selection count should go back to 0
-  await expect(page.getByText("1/6")).not.toBeVisible();
+  // Selection count should go back to 0 — the Unselect chip disappears at 0 picks
+  await expect(page.getByRole("button", { name: "Unselect all picks" })).not.toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -111,13 +111,13 @@ test("selection persists after page reload", async ({ page }) => {
     page.waitForResponse(resp => resp.url().includes("toggle_selection")),
     firstCard.click(),
   ]);
-  await expect(page.locator("body")).toContainText("1/6");
+  await expect(page.locator("body")).toContainText("1 / 6");
 
   // Reload
   await page.reload();
 
   // The selection should still be there (Alpine reads from server-rendered data)
-  await expect(page.locator("body")).toContainText("1/6");
+  await expect(page.locator("body")).toContainText("1 / 6");
 });
 
 // ---------------------------------------------------------------------------
@@ -141,16 +141,16 @@ test("selecting 6 matchups shows Hold to Confirm button", async ({ page }) => {
   const cards = page.locator("button.bg-surface");
 
   await cards.nth(0).click();
-  await expect(page.locator("body")).toContainText("1/6");
+  await expect(page.locator("body")).toContainText("1 / 6");
 
   await cards.nth(1).click();
-  await expect(page.locator("body")).toContainText("2/6");
+  await expect(page.locator("body")).toContainText("2 / 6");
 
   await cards.nth(2).click();
-  await expect(page.locator("body")).toContainText("3/6");
+  await expect(page.locator("body")).toContainText("3 / 6");
 
   await cards.nth(3).click();
-  await expect(page.locator("body")).toContainText("4/6");
+  await expect(page.locator("body")).toContainText("4 / 6");
 
   // Dismiss blur overlay before clicking 5th
   const blurOverlay = page.locator("div.fixed.inset-0.z-20.cursor-pointer");
@@ -159,7 +159,7 @@ test("selecting 6 matchups shows Hold to Confirm button", async ({ page }) => {
   }
 
   await cards.nth(4).click();
-  await expect(page.locator("body")).toContainText("5/6");
+  await expect(page.locator("body")).toContainText("5 / 6");
 
   // Dismiss blur overlay before clicking 6th
   if (await blurOverlay.isVisible({ timeout: 500 }).catch(() => false)) {
@@ -167,7 +167,7 @@ test("selecting 6 matchups shows Hold to Confirm button", async ({ page }) => {
   }
 
   await cards.nth(5).click();
-  await expect(page.locator("body")).toContainText("6/6");
+  await expect(page.locator("body")).toContainText("6 / 6");
 
   // Hold to Confirm button should be visible (desktop + mobile = 2 elements, use first)
   await expect(page.getByText("Hold to Confirm").first()).toBeVisible();
@@ -204,7 +204,7 @@ test("user can start a second entry after confirming the first", async ({ page }
       await blurOverlay.click();
     }
     await cards.nth(i).click();
-    await expect(page.locator("body")).toContainText(`${i + 1}/6`);
+    await expect(page.locator("body")).toContainText(`${i + 1} / 6`);
   }
 
   // Confirm entry via POST
@@ -239,7 +239,7 @@ test("user can start a second entry after confirming the first", async ({ page }
   await cards.first().click();
 
   // Should see the selection registered in the cart (1/6)
-  await expect(page.locator("body")).toContainText("1/6");
+  await expect(page.locator("body")).toContainText("1 / 6");
 });
 
 // ---------------------------------------------------------------------------
