@@ -45,6 +45,7 @@
       animD: false, animH: false, animM: false, animS: false,
       _t: null,
       get done() { return this.target - this.now <= 0; },
+      get underHour() { return this.d === 0 && this.h === 0; },
       _set(animate) {
         var diff = Math.max(this.target - this.now, 0);
         var nd = Math.floor(diff / 86400000);
@@ -75,33 +76,45 @@
       <% unless label_after %>
         <span class="text-[10px] uppercase tracking-wider text-muted"><%= label %></span>
       <% end %>
-      <span class="font-mono text-sm font-bold text-heading tabular-nums inline-flex items-baseline">
-        <%# Days — hidden while zero; reel width scales to the day-count digits. %>
-        <span x-show="d > 0" class="inline-flex items-baseline">
+      <%# The two leading visible units take the large "N/M Entries" size
+          (text-lg font-extrabold); the trailing units stay small. Days + hours
+          are the leading pair while they're shown; once we drop below an hour
+          (d == 0 && h == 0, so neither "0d" nor "0h" renders) minutes + seconds
+          inherit the large size. Reel cells are sized in em/ch, so each unit's
+          digits scale with whichever font size its wrapper carries. %>
+      <span class="font-mono text-heading tabular-nums inline-flex items-baseline">
+        <%# Days — large, hidden while zero; reel width scales to the day digits. %>
+        <span x-show="d > 0" class="inline-flex items-baseline text-lg font-extrabold mr-[0.5em]">
           <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:<%= dmax.to_s.length %>ch;text-align:right;">
             <span class="block" :style="{ transform: 'translateY(-' + d + 'em)', transition: tr(animD) }">
               <% (0..dmax).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= v %></span><% end %>
             </span>
-          </span><span class="mr-[0.4em]">d</span>
+          </span><span>d</span>
         </span>
-        <%# Hours 00-23 %>
-        <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
-          <span class="block" :style="{ transform: 'translateY(-' + h + 'em)', transition: tr(animH) }">
-            <% (0..23).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
-          </span>
-        </span><span class="mr-[0.4em]">h</span>
-        <%# Minutes 00-59 %>
-        <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
-          <span class="block" :style="{ transform: 'translateY(-' + m + 'em)', transition: tr(animM) }">
-            <% (0..59).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
-          </span>
-        </span><span class="mr-[0.4em]">m</span>
-        <%# Seconds 00-59 %>
-        <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
-          <span class="block" :style="{ transform: 'translateY(-' + s + 'em)', transition: tr(animS) }">
-            <% (0..59).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
-          </span>
-        </span><span>s</span>
+        <%# Hours 00-23 — large; hidden once under an hour so no "0h" shows. %>
+        <span x-show="!underHour" class="inline-flex items-baseline text-lg font-extrabold mr-[0.5em]">
+          <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
+            <span class="block" :style="{ transform: 'translateY(-' + h + 'em)', transition: tr(animH) }">
+              <% (0..23).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
+            </span>
+          </span><span>h</span>
+        </span>
+        <%# Minutes 00-59 — large under an hour, else small. %>
+        <span class="inline-flex items-baseline mr-[0.5em]" :class="underHour ? 'text-lg font-extrabold' : 'text-sm font-bold'">
+          <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
+            <span class="block" :style="{ transform: 'translateY(-' + m + 'em)', transition: tr(animM) }">
+              <% (0..59).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
+            </span>
+          </span><span>m</span>
+        </span>
+        <%# Seconds 00-59 — large under an hour, else small. %>
+        <span class="inline-flex items-baseline" :class="underHour ? 'text-lg font-extrabold' : 'text-sm font-bold'">
+          <span style="display:inline-block;overflow:hidden;height:1em;line-height:1em;width:2ch;text-align:right;">
+            <span class="block" :style="{ transform: 'translateY(-' + s + 'em)', transition: tr(animS) }">
+              <% (0..59).each do |v| %><span class="block" style="height:1em;line-height:1em;"><%= format("%02d", v) %></span><% end %>
+            </span>
+          </span><span>s</span>
+        </span>
       </span>
       <% if label_after %>
         <span class="text-[10px] uppercase tracking-wider text-muted"><%= label %></span>
