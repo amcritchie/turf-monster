@@ -544,6 +544,14 @@ class Contest < ApplicationRecord
     entries.where(user_id: user.id, status: [:active, :complete]).exists?
   end
 
+  # The contest's sport as an emoji — drives the first chat quick-reaction
+  # (see messages/_message). Every contest today is World Cup soccer; this is
+  # the single place to branch when other sports ship a contest type (the
+  # emoji must also be in Reaction::SPORTS so the toggle endpoint accepts it).
+  def sport_emoji
+    "⚽"
+  end
+
   # Still referenced by Entry#name_slug (entry slugs embed the contest slug) and
   # by the contest generator/bundle paths as a suggested slug. NOT the source of
   # the persisted `slug` anymore.

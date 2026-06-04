@@ -14,7 +14,10 @@
             onclick="hideChatMessage(this)">Hide</button>
   </div>
 <% else %>
-<div id="message_<%= message.id %>" class="group flex items-start gap-2.5">
+<%# data-react-url is read by reactToMessage()/the picker (closest lookup) to
+    POST a toggle. `relative` anchors the hover quick-reaction bar. %>
+<div id="message_<%= message.id %>" class="group relative flex items-start gap-2.5"
+     data-react-url="<%= toggle_reaction_contest_message_path(message.contest, message) %>">
   <%= render "components/avatar", user: message.user, size: "nav" %>
   <div class="min-w-0 flex-1">
     <div class="flex items-baseline gap-2">
@@ -26,6 +29,24 @@
               onclick="hideChatMessage(this)">Hide</button>
     </div>
     <p class="text-sm text-secondary break-words whitespace-pre-wrap leading-snug mt-0.5"><%= message.body %></p>
+    <%= render "messages/reactions", message: message %>
+  </div>
+
+  <%# Hover quick-reaction bar (Slack/Discord style). Gated to chat
+      participants by the .chat-react-only / .chat-can-react CSS pair (mirrors
+      the admin Hide button), revealed on message hover via opacity. Quick set:
+      contest sport → ❤️ → 🐊 → 😭, then "+" opens the full picker. %>
+  <div class="chat-react-only absolute -top-3 right-1 items-center gap-0.5 p-0.5 rounded-full bg-surface border border-subtle shadow-lg z-10 opacity-0 group-hover:opacity-100 transition"
+       aria-label="Add reaction">
+    <% [message.contest.sport_emoji, "❤️", "🐊", "😭"].each do |e| %>
+      <button type="button"
+              class="chat-react-quick inline-flex items-center justify-center w-7 h-7 rounded-full text-base leading-none transition"
+              onclick="reactToMessage(this, '<%= e %>')"><%= e %></button>
+    <% end %>
+    <button type="button"
+            class="chat-react-add inline-flex items-center justify-center w-7 h-7 rounded-full leading-none text-muted transition"
+            title="Find another reaction"
+            onclick="openReactionPicker(this)" aria-label="Find another reaction">+</button>
   </div>
 </div>
 <% end %>

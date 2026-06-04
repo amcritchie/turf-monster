@@ -247,7 +247,11 @@ Rails.application.routes.draw do
     end
 
     # Contest chat — create (entrants/admins) + destroy (admin soft-delete).
-    resources :messages, only: [:create, :destroy]
+    resources :messages, only: [:create, :destroy] do
+      # Toggle an emoji reaction on a message (add if absent, remove if the
+      # viewer already reacted with it). Entrants + admins only.
+      member { post :toggle_reaction }
+    end
 
     # Edit picks on an existing entry (DB-only — chain has no opinion on
     # selections per turf-vault state.rs ContestEntry). The GET edit form

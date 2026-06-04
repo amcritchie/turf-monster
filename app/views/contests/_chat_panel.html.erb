@@ -9,10 +9,11 @@
 
 <%# .chat-admin*, .chat-message-in, .chat-kbd, .chat-live-ping, .chat-scroll-fade
     + their @keyframes live in application.tailwind.css (migrated 2026-05-24). %>
-<div class="flex flex-col <%= 'chat-admin' if current_user&.admin? %>"
+<div class="flex flex-col <%= 'chat-admin' if current_user&.admin? %> <%= 'chat-can-react' if can_post %>"
      style="height: 32rem;"
      x-data="contestChat(<%= messages.empty? %>)"
-     data-post-url="<%= contest_messages_path(contest) %>">
+     data-post-url="<%= contest_messages_path(contest) %>"
+     data-can-react="<%= can_post %>">
   <%= turbo_stream_from contest, :messages %>
 
   <%# Header %>
@@ -67,6 +68,15 @@
       <%= render partial: "messages/message", collection: messages %>
     </div>
   </div>
+
+  <%# Shared "Find another reaction" picker — one per panel, position:fixed so
+      the message-list overflow can't clip it. openReactionPicker() points its
+      data-react-url at the hovered message before showing it. %>
+  <div id="chat-reaction-picker" class="chat-reaction-picker bg-surface border border-strong rounded-xl shadow-2xl" data-react-url="" role="menu" aria-label="Pick a reaction">
+    <% Reaction::PICKER.each do |e| %>
+      <button type="button" onclick="pickReaction('<%= e %>')"><%= e %></button>
+    <% end %>
+  </div>
 </div>
 
 <script>
@@ -93,10 +103,17 @@
         // mobile the panel sits in a hidden tab, so focus() no-ops there.
         this.$nextTick(() => { this.$refs.input?.focus({ preventScroll: true }); });
 
+        // Who am I + can I react — read once for the client-side "reacted"
+        // highlight and the participant gate (the server is the real gate).
+        var session = window.Alpine && Alpine.store('session');
+        window.__chatMyUserId = (session && session.userId) || null;
+        window.__chatCanReact = this.$root.dataset.canReact === 'true';
+
         var listEl = this.$refs.messageList;
         if (listEl) {
           // New messages prepend at the top — clear the empty state and play a
-          // slide-in animation on each freshly added bubble.
+          // slide-in animation on each freshly added bubble. Direct children
+          // only, so a nested reactions-row replace doesn't re-trigger it.
           new MutationObserver((mutations) => {
             this.empty = false;
             mutations.forEach((m) => {
@@ -107,6 +124,20 @@
               });
             });
           }).observe(listEl, { childList: true });
+
+          // Separate subtree observer for reaction highlighting: fires for both
+          // freshly prepended messages AND the per-message reactions row being
+          // replaced by a broadcast. Re-marks which pills are "mine".
+          new MutationObserver((mutations) => {
+            mutations.forEach((m) => {
+              m.addedNodes.forEach((node) => {
+                if (node.nodeType === 1) markMyReactions(node);
+              });
+            });
+          }).observe(listEl, { childList: true, subtree: true });
+
+          // Highlight reactions already present on initial load.
+          this.$nextTick(() => markMyReactions(listEl));
         }
 
         // Desktop: keep the panel as tall as the leaderboard column so the two
@@ -163,5 +194,93 @@
       }
       // On success the bubble is removed for everyone via the Turbo Stream broadcast.
     }).catch(function() {});
+  }
+
+  // === Emoji reactions =================================================
+  // The updated pill row arrives for everyone (including the actor) via the
+  // Reaction broadcast, so these only fire the toggle + manage the picker —
+  // no optimistic DOM writes. markMyReactions() (above, via observer) re-applies
+  // the viewer's "reacted" highlight whenever a row renders.
+
+  // Toggle which of THIS viewer's pills are highlighted, by comparing the
+  // server-rendered reactor ids against my own id. Viewer-specific, so it lives
+  // here and never in the broadcast partial.
+  function markMyReactions(root) {
+    var myId = window.__chatMyUserId;
+    if (myId == null || !root.querySelectorAll) return;
+    var pills = (root.matches && root.matches('[data-reactor-ids]'))
+      ? [root] : root.querySelectorAll('[data-reactor-ids]');
+    pills.forEach(function(p) {
+      var ids = (p.dataset.reactorIds || '').split(',');
+      p.classList.toggle('reacted', ids.indexOf(String(myId)) !== -1);
+    });
+  }
+
+  function sendReaction(url, emoji) {
+    if (!url) return;
+    if (!window.__chatCanReact) {
+      chatToast('Join to react', 'Enter the contest to react to messages.');
+      return;
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+      },
+      body: JSON.stringify({ emoji: emoji })
+    }).then(function(r) { return r.json().catch(function() { return {}; }); })
+      .then(function(data) { if (data && data.error) chatToast('Reaction failed', data.error); })
+      .catch(function() { chatToast('Reaction failed', 'Network error.'); });
+  }
+
+  // Click handler for the hover quick-bar buttons AND the existing pills.
+  function reactToMessage(el, emoji) {
+    var root = el.closest('[data-react-url]');
+    hideReactionPicker();
+    if (root) sendReaction(root.dataset.reactUrl, emoji);
+  }
+
+  function openReactionPicker(btn) {
+    var picker = document.getElementById('chat-reaction-picker');
+    if (!picker) return;
+    var root = btn.closest('[data-react-url]');
+    picker.dataset.reactUrl = root ? root.dataset.reactUrl : '';
+    picker.classList.add('is-open');
+    // Prefer above-right of the "+"; clamp into the viewport, flip below if no room.
+    var r = btn.getBoundingClientRect();
+    var pw = picker.offsetWidth, ph = picker.offsetHeight;
+    var left = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 8);
+    var top = r.top - ph - 6;
+    if (top < 8) top = r.bottom + 6;
+    picker.style.left = left + 'px';
+    picker.style.top = top + 'px';
+  }
+
+  function hideReactionPicker() {
+    var picker = document.getElementById('chat-reaction-picker');
+    if (picker) picker.classList.remove('is-open');
+  }
+
+  function pickReaction(emoji) {
+    var picker = document.getElementById('chat-reaction-picker');
+    var url = picker ? picker.dataset.reactUrl : '';
+    hideReactionPicker();
+    sendReaction(url, emoji);
+  }
+
+  // Dismissal wiring once per page (chat may render on more than one view).
+  if (!window.__chatReactionsWired) {
+    window.__chatReactionsWired = true;
+    document.addEventListener('click', function(e) {
+      var picker = document.getElementById('chat-reaction-picker');
+      if (!picker || !picker.classList.contains('is-open')) return;
+      if (picker.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('.chat-react-add')) return; // opener manages itself
+      hideReactionPicker();
+    }, true);
+    window.addEventListener('scroll', function() { hideReactionPicker(); }, true);
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') hideReactionPicker(); });
   }
 </script>
