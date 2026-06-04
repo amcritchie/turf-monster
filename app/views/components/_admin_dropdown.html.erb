@@ -7,9 +7,19 @@
     Log out is last for all. %>
 <% return unless current_user %>
 
-<% link_class   = "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition font-medium" %>
-<% muted_class  = "block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
+<%# `group` on each row scopes group-hover to that row so the leading emoji can
+    swap on hover (see emoji_swap). %>
+<% link_class   = "group block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition font-medium" %>
+<% muted_class  = "group block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
 <% header_class = "label-upper font-bold px-4 py-1" %>
+
+<%# Fixed-width emoji gutter that swaps `base` → `hover` when its row is hovered. %>
+<% emoji_swap = ->(base, hover) {
+     content_tag(:span, class: "inline-block w-6") do
+       content_tag(:span, base, class: "group-hover:hidden") +
+         content_tag(:span, hover, class: "hidden group-hover:inline")
+     end
+   } %>
 
 <div x-data="{ open: false }" class="relative leading-none">
   <button @click="open = !open" class="flex text-secondary hover:text-heading transition" title="<%= current_user.admin? ? 'Admin' : 'Settings' %>">
@@ -29,16 +39,16 @@
         Refresh Wallet. Each leads with an emoji in a fixed-width gutter so the
         labels stay column-aligned. Admins get the admin section appended below
         (admin links stay text-only). %>
-    <%= link_to account_path, class: link_class do %><span class="inline-block w-6">🙂</span>My Profile<% end %>
-    <%= link_to my_contests_path, class: link_class do %><span class="inline-block w-6">🏆</span>My Contests<% end %>
-    <%= link_to help_how_to_play_path, class: link_class do %><span class="inline-block w-6">🎮</span>How to Play<% end %>
-    <%= link_to proof_of_reserves_path, class: link_class do %><span class="inline-block w-6">🪎</span>Proof of Reserves<% end %>
+    <%= link_to account_path, class: link_class do %><%= emoji_swap.("🙂", "✏️") %>My Profile<% end %>
+    <%= link_to my_contests_path, class: link_class do %><%= emoji_swap.("🏆", "⚔️") %>My Contests<% end %>
+    <%= link_to help_how_to_play_path, class: link_class do %><%= emoji_swap.("🎮", "🤔") %>How to Play<% end %>
+    <%= link_to proof_of_reserves_path, class: link_class do %><%= emoji_swap.("🪎", "🏦") %>Proof of Reserves<% end %>
     <%# Refresh Wallet — runs the standard wallet data resync (USDC + tokens +
         seeds) and shows the navbar spinner while it's in flight. An action, so
         it's a <button>, not a link. Closes the menu on click. %>
     <button type="button"
             @click="open = false; if (window.showNavSpinner) window.showNavSpinner(); if (window.refreshSession) { window.refreshSession().finally(function() { if (window.hideNavSpinner) window.hideNavSpinner(); }); }"
-            class="<%= link_class %> w-full text-left"><span class="inline-block w-6">👛</span>Refresh Wallet</button>
+            class="<%= link_class %> w-full text-left"><%= emoji_swap.("👛", "♻️") %>Refresh Wallet</button>
 
     <% if current_user.admin? %>
       <%# === Admin section — appended to the user menu for admins ===
@@ -86,6 +96,6 @@
     <%# Log out — everyone, last item. Studio-engine ships /logout as
         a GET (sessions#destroy) so a plain link is correct here. %>
     <div class="border-t border-subtle my-1"></div>
-    <%= link_to logout_path, class: muted_class, data: { turbo: false } do %><span class="inline-block w-6">👋🏻</span>Log out<% end %>
+    <%= link_to logout_path, class: muted_class, data: { turbo: false } do %><%= emoji_swap.("👋🏻", "⏏️") %>Log out<% end %>
   </div>
 </div>
