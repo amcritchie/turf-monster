@@ -963,35 +963,41 @@ body.modal-open { overflow: hidden; }
 .chat-react-only { display: none; }
 .chat-can-react .chat-react-only { display: flex; }
 
+/* Neutral grey for pill fills/borders + hover washes — the brand colour is
+   green, which read as "selected/correct" on a chip, so reactions stay on a
+   theme-agnostic slate instead. (Only --color-primary-* rgb tokens are exposed
+   by the theme, so this neutral is a literal that works on light + dark.) */
+:root { --rx-neutral: 148 163 184; }
+
 .chat-react-quick,
 .chat-react-add { cursor: pointer; }
 .chat-react-add { font-size: 1.15rem; }
 .chat-react-quick:hover,
 .chat-react-add:hover {
-  background: rgb(var(--color-primary-rgb) / 0.18);
+  background: rgb(var(--rx-neutral) / 0.20);
   transform: scale(1.15);
 }
 
 /* Pills are read-only for non-participants (counts visible, not clickable).
    Background is a faint translucent fill + hairline border (Discord-style) so
    the pills read as quiet chips, not solid panels. The "reacted" state lifts to
-   a primary tint. transform-origin centers the pop/shrink animations. */
+   a brighter (still neutral) fill. transform-origin centers the pop/shrink. */
 .chat-reaction-pill {
   cursor: default;
-  background: rgb(var(--color-primary-rgb) / 0.05);
-  border: 1px solid rgb(var(--color-primary-rgb) / 0.12);
+  background: rgb(var(--rx-neutral) / 0.08);
+  border: 1px solid rgb(var(--rx-neutral) / 0.20);
   transform-origin: center;
 }
 .chat-can-react .chat-reaction-pill { cursor: pointer; }
 .chat-can-react .chat-reaction-pill:hover {
-  background: rgb(var(--color-primary-rgb) / 0.10);
-  border-color: rgb(var(--color-primary-rgb) / 0.35);
+  background: rgb(var(--rx-neutral) / 0.16);
+  border-color: rgb(var(--rx-neutral) / 0.40);
 }
 .chat-reaction-pill.reacted {
-  background: rgb(var(--color-primary-rgb) / 0.16);
-  border-color: rgb(var(--color-primary-rgb) / 0.55);
+  background: rgb(var(--rx-neutral) / 0.24);
+  border-color: rgb(var(--rx-neutral) / 0.60);
 }
-.chat-reaction-pill.reacted .chat-reaction-count { color: rgb(var(--color-primary-rgb)); }
+.chat-reaction-pill.reacted .chat-reaction-count { color: rgb(var(--rx-neutral)); }
 
 /* Reaction transitions (driven by reconcileReactions in contests/_chat_panel):
    rx-pop = exciting first appearance (0 → 1), rx-bump = light pulse on an
@@ -1040,6 +1046,6 @@ body.modal-open { overflow: hidden; }
   transition: transform 0.1s ease, background 0.15s ease;
 }
 .chat-reaction-picker button:hover {
-  background: rgb(var(--color-primary-rgb) / 0.18);
+  background: rgb(var(--rx-neutral) / 0.20);
   transform: scale(1.12);
 }
