@@ -15,6 +15,16 @@ module ApplicationHelper
     "$#{sprintf('%.2f', amount)}"
   end
 
+  # The brand mark. Uses the lightweight 45KB icon (not the 1.3MB /logo.png) and
+  # always sets explicit width/height so the box is reserved even before CSS
+  # applies (no full-screen balloon on a cold load). `px` is that reserved size;
+  # `classes` carry the Tailwind sizing + styling. The navbar logo stays inline
+  # — it needs a scroll-responsive x-bind:class the helper can't express.
+  def brand_logo(px:, classes: "")
+    tag.img(src: "/icon-192.png", alt: "Turf Totals", width: px, height: px,
+            class: ["rounded-full", classes].join(" ").strip)
+  end
+
   def format_turf_score(value)
     return "—" unless value
     value == value.to_i ? value.to_i.to_s : sprintf('%.1f', value)

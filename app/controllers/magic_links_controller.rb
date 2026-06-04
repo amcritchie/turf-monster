@@ -12,6 +12,11 @@
 class MagicLinksController < ApplicationController
   skip_before_action :require_authentication
 
+  # The confirm interstitial is a transient loading screen (just a spinner that
+  # auto-submits) — render it on the minimal bare layout, not the full app shell,
+  # so it paints instantly with no navbar/app-CSS/Solana-preload.
+  layout "loading", only: :confirm
+
   # Respond uniformly for any well-formed email. Under create-or-login every
   # address is "valid" (it logs in or signs up), so there is nothing to
   # enumerate — but staying uniform keeps it that way if invite-only is ever
@@ -44,7 +49,14 @@ class MagicLinksController < ApplicationController
   # The token never leaves the URL here, so keep it out of Referer on this
   # page's subresource loads (logo, fonts, analytics).
   def confirm
-    response.set_header("Referrer-Policy", "no-referrer")
+    # strict-origin (NOT no-referrer): still strips the path so the single-use
+    # token never leaks in the Referer of subresource loads, but unlike
+    # no-referrer it leaves the Origin header intact on the consume form POST.
+    # no-referrer makes the browser send `Origin: null`, which Rails' origin-based
+    # CSRF check (forgery_protection_origin_check) rejects with 422 — the human's
+    # button press then silently fails to sign in. (Tests miss this: forgery
+    # protection is off in the test env.)
+    response.set_header("Referrer-Policy", "strict-origin")
     @token = params[:token]
     # We render WITHOUT verifying the signature: a verify here would have to
     # decode + check expiry, and surfacing "expired" vs "invalid" on a GET adds
@@ -57,7 +69,7 @@ class MagicLinksController < ApplicationController
   # the single-use token is burned, and it only runs on the human's button press
   # (a scanner won't POST a CSRF-protected form). Mirrors the prior GET behavior.
   def consume
-    response.set_header("Referrer-Policy", "no-referrer")
+    response.set_header("Referrer-Policy", "strict-origin")
     result = MagicLink.consume(params[:token])
     user = User.find_by(email: result.email)
     user ? sign_in_existing(user, result) : sign_up_new(result)
@@ -89,12 +101,11 @@ class MagicLinksController < ApplicationController
     reset_prior_session!
     set_app_session(user)
     user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
-    redirect_to magic_link_landing_path(result),
-                flash: { magic_link_welcome: {
-                  message:  "Signed in — your 6 picks are saved.",
-                  username: user.username,
-                  next:     tokens_buy_path
-                } }
+    # Returning login: a quiet "welcome back" toast — no celebratory modal and no
+    # token upsell (they already have an account). Land on the contest they came
+    # from, else the featured contest.
+    redirect_to landing_path_for(result),
+                flash: { auth_toast: { title: "Welcome back", message: "Signed in as #{user.username}." } }
   end
 
   # Mirrors RegistrationsController#create: build → configure_new_user → save!
@@ -110,16 +121,27 @@ class MagicLinksController < ApplicationController
       cookies.delete(:reference)
       user.update!(email_verified_at: Time.current)
       set_app_session(user)
-      # Land on the contest (return_to) and show the welcome SUCCESS MODAL,
-      # which auto-advances to the entry-tokens upsell after ~2.5s. The old
-      # straight redirect to tokens_buy_path with a :notice toast skipped the
-      # celebratory beat and dropped the user past the contest they came from.
-      redirect_to magic_link_landing_path(result),
-                  flash: { magic_link_welcome: {
-                    message:  "You're in! Your 6 picks are saved.",
-                    username: user.username,
-                    next:     tokens_buy_path
-                  } }
+      if contest_return_to?(result)
+        # New user landing on a SPECIFIC contest: confirm auth with a toast and
+        # let the board's existing post-login flow open the get-entry-tokens
+        # picker (a web2 magic-link user needs a token to play). No celebratory
+        # modal here — the toast + tokens picker carry the moment.
+        redirect_to result.return_to,
+                    flash: { auth_toast: {
+                      title:   "You're signed in",
+                      message: "Grab an entry token to lock in your picks."
+                    } }
+      else
+        # New user via a GENERIC /signin: celebratory welcome modal on the
+        # featured contest (resolved live below), with a CTA that drops them onto
+        # the contest. No token upsell — they haven't picked anything yet.
+        redirect_to landing_path_for(result),
+                    flash: { magic_link_welcome: {
+                      username: user.username,
+                      message:  featured_contest ? "You're all set — dive into #{featured_contest.name}." : "You're all set — let's play.",
+                      next:     nil
+                    } }
+      end
     end
   rescue ActiveRecord::RecordNotUnique
     # Two valid tokens for the same brand-new email consumed near-simultaneously
@@ -164,12 +186,25 @@ class MagicLinksController < ApplicationController
     p.start_with?("/") && !p.start_with?("//") ? p : nil
   end
 
-  # Where the welcome modal opens. The signed return_to is normally the
-  # contest the link came from (resolved_return_to bakes the contest slug +
-  # picks in at request time); fall back to root, which redirects to the
-  # current contest's show page. The modal itself then transfers the user to
-  # the entry-tokens upsell after its countdown.
-  def magic_link_landing_path(result)
-    safe_path(result.return_to) || root_path
+  # True when the link carried a specific contest (resolved_return_to bakes the
+  # contest path — and any validated picks — in at request time).
+  def contest_return_to?(result)
+    result.return_to.to_s.start_with?("/contests/")
+  end
+
+  # The featured contest, resolved at CLICK time (not baked into the token) so
+  # it's always current. Single source of truth shared with the root redirect.
+  def featured_contest
+    @featured_contest ||= Contest.featured
+  end
+
+  # Where a login lands: honor any explicit (already-sanitized) return_to — a
+  # contest, or e.g. /account — and otherwise (no destination, or a bare "/")
+  # drop them on the live featured contest, else the contests index.
+  def landing_path_for(result)
+    rt = result.return_to
+    return rt if rt.present? && rt != "/"
+
+    featured_contest ? contest_path(featured_contest) : contests_path
   end
 end

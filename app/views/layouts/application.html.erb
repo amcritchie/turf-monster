@@ -609,6 +609,16 @@
           modal has had its ~3s success beat. %>
       <script>window.__magicLinkWelcome = true;</script>
     <% end %>
+    <%# Returning logins + new-user-on-a-contest get a quiet toast instead of the
+        celebratory modal (MagicLinksController sets flash[:auth_toast]). Dispatched
+        as a 'toast' window event so we can give it a real title (the flash→toast
+        path only carries a message). %>
+    <% if flash[:auth_toast].present? %>
+      <% auth_toast = flash[:auth_toast].with_indifferent_access %>
+      <script type="application/json" id="auth-toast-data">
+        <%= raw({ title: auth_toast[:title], message: auth_toast[:message] }.to_json) %>
+      </script>
+    <% end %>
     <script>
       (function() {
         var fired = false;
@@ -635,6 +645,33 @@
         document.addEventListener('turbo:load', openMagicLinkWelcome);
         if (document.readyState !== 'loading') openMagicLinkWelcome();
         else document.addEventListener('DOMContentLoaded', openMagicLinkWelcome);
+      })();
+
+      // Auth toast (welcome back / signed-in). The toast manager's
+      // @toast.window listener is wired during Alpine's DOM walk (NOT at
+      // alpine:init, when the stores register) — so we dispatch on
+      // alpine:initialized, which fires AFTER that walk, to avoid racing the
+      // listener and dropping the event. Drop the one-shot payload so a later
+      // turbo:load can't replay it.
+      (function() {
+        var fired = false;
+        function fireAuthToast() {
+          if (fired) return;
+          var el = document.getElementById('auth-toast-data');
+          if (!el) return;
+          var data;
+          try { data = JSON.parse(el.textContent); } catch (e) { return; }
+          fired = true;
+          el.remove();
+          window.dispatchEvent(new CustomEvent('toast', { detail: {
+            type: 'notice', title: data.title, message: data.message, duration: 5000
+          } }));
+        }
+        // Alpine already started (its components — incl. the toast manager — are
+        // initialized) → fire now; otherwise wait for it to finish starting.
+        if (window.Alpine && window.Alpine.version) fireAuthToast();
+        else document.addEventListener('alpine:initialized', fireAuthToast, { once: true });
+        document.addEventListener('turbo:load', fireAuthToast);
       })();
     </script>
     <%= render "layouts/studio/flash" %>

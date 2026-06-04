@@ -78,6 +78,17 @@ class Contest < ApplicationRecord
     ranked.find_by(status: :open)
   end
 
+  # The contest the app spotlights — the admin-set main contest, else its
+  # open-only fallback, else the newest open/settled (a freshly-graded contest
+  # still serves as a leaderboard landing until a newer one opens). Single source
+  # of truth for the root redirect (ContestsController#world_cup) and the
+  # magic-link sign-in landing (MagicLinksController).
+  def self.featured
+    SeasonConfig.main_contest_explicit ||
+      SeasonConfig.main_contest ||
+      where(status: [:open, :settled]).order(created_at: :desc).first
+  end
+
   def matchups
     slate.slate_matchups
   end

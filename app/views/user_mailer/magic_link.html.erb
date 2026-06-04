@@ -1,22 +1,65 @@
-<h1>Your sign-in link</h1>
+<%#
+  Magic-link sign-in email. Email-safe HTML (tables + inline styles only).
+  The banner (inline CID attachment, set in UserMailer#magic_link) sits flush
+  at the top and sets the 600px container width. The banner already says
+  "Your Magic Link / Click the link below to log in", so the body is deliberately
+  minimal: a button, an expiry note, and a de-emphasized fallback URL.
+%>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:24px 0;">
+  <tr>
+    <td align="center" style="padding:0 12px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;border-radius:14px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
-<% if @contest %>
-  <p>You're almost in <strong><%= @contest.name %></strong>! Tap the button below to
-     sign in (or create your account) — you'll land right back on the contest to
-     finish your entry:</p>
+        <%# Banner — full-bleed, sets the container width %>
+        <tr>
+          <td style="padding:0;line-height:0;">
+            <img src="<%= attachments["magic-link-banner.jpg"].url %>"
+                 width="600" alt="Turf Totals — Your Magic Link"
+                 style="display:block;width:100%;max-width:600px;height:auto;border:0;" />
+          </td>
+        </tr>
 
-  <p><%= link_to "Sign in & finish my entry", @magic_url %></p>
-<% else %>
-  <p>Tap the button below to sign in to Turf Monster. If you don't have an account
-     yet, we'll create one for you — no password needed:</p>
+        <%# Body %>
+        <tr>
+          <td style="padding:32px 36px 36px;color:#2f3a2c;">
 
-  <p><%= link_to "Sign in to Turf Monster", @magic_url %></p>
-<% end %>
+            <% if @contest %>
+              <p style="margin:0 0 24px;font-size:16px;line-height:1.5;color:#3f4a3c;">
+                You're almost in <strong style="color:#1f2a1c;"><%= @contest.name %></strong> — sign in below and you'll land right back on the contest to finish your entry.
+              </p>
+            <% end %>
 
-<p>If the button doesn't work, copy and paste this URL into your browser:</p>
-<p><%= @magic_url %></p>
+            <%# Bulletproof button %>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+              <tr>
+                <td align="center" bgcolor="#4BAF50" style="border-radius:10px;">
+                  <a href="<%= @magic_url %>"
+                     style="display:inline-block;padding:16px 40px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                    Magic Link 🪄
+                  </a>
+                </td>
+              </tr>
+            </table>
 
-<p>Open this link on this device to finish. It expires in 15 minutes and can only
-   be used once. If you didn't request it, you can safely ignore this message.</p>
+            <p style="margin:28px 0 0;font-size:13px;line-height:1.5;color:#6b756a;text-align:center;">
+              This link is for <strong style="color:#2f3a2c;"><%= @email %></strong> and expires in 15 minutes — it can only be used once.
+            </p>
 
-<p>— Turf Monster</p>
+            <%# De-emphasized fallback for clients that strip the button %>
+            <p style="margin:24px 0 0;font-size:12px;line-height:1.4;color:#8a948a;text-align:center;">
+              Button not working? Copy and paste this link:<br>
+              <a href="<%= @magic_url %>" style="font-size:9px;line-height:1.3;color:#3d8b40;word-break:break-all;"><%= @magic_url %></a>
+            </p>
+
+            <p style="margin:28px 0 0;font-size:12px;line-height:1.5;color:#8a948a;text-align:center;">
+              Didn't request this? You can safely ignore this email.
+            </p>
+
+            <p style="margin:20px 0 0;font-size:13px;color:#6b756a;text-align:center;">— Turf Monster</p>
+
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>

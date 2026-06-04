@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_03_130000) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_04_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -194,6 +194,18 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_03_130000) do
     t.string "badge"
     t.index ["contest_id"], name: "index_landing_pages_on_contest_id"
     t.index ["slug"], name: "index_landing_pages_on_slug", unique: true
+  end
+
+  create_table "magic_links", force: :cascade do |t|
+    t.string "token", null: false
+    t.string "email", null: false
+    t.string "return_to"
+    t.datetime "expires_at", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_magic_links_on_expires_at"
+    t.index ["token"], name: "index_magic_links_on_token", unique: true
   end
 
   create_table "messages", force: :cascade do |t|

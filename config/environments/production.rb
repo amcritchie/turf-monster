@@ -76,18 +76,13 @@ Rails.application.configure do
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
 
   # Shared Redis cache (Lazarus audit #11). Was :memory_store — per-dyno and
-  # wiped on restart, which silently broke two security mechanisms that both
-  # ride Rails.cache:
-  #   - rack-attack throttles (login / faucet / Stripe / etc.) — per-dyno
-  #     counters that never aggregate and reset on every deploy, so the limits
-  #     were effectively off in prod.
-  #   - MagicLink single-use — the jti is written on generate and deleted on
-  #     consume; with a per-dyno store a link generated on web dyno A can't be
-  #     consumed on dyno B (jti absent → legit login rejected) and replay
-  #     protection resets on every restart.
-  # Redis is shared + cross-process, so both work correctly. Shares the Sidekiq
-  # Redis (REDIS_URL), namespaced to avoid key collisions; the error_handler
-  # degrades gracefully (a Redis blip logs instead of 500ing the request).
+  # wiped on restart, which silently broke rack-attack throttles (login / faucet
+  # / Stripe / etc.): per-dyno counters that never aggregate and reset on every
+  # deploy, so the limits were effectively off in prod. Redis is shared +
+  # cross-process, so they work correctly. (MagicLink single-use no longer rides
+  # Rails.cache — it's a DB `consumed_at` column now; see app/models/magic_link.rb.)
+  # Shares the Sidekiq Redis (REDIS_URL), namespaced to avoid key collisions; the
+  # error_handler degrades gracefully (a Redis blip logs instead of 500ing).
   cache_redis_url = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
   cache_store_options = {
     url: cache_redis_url,
@@ -101,10 +96,8 @@ Rails.application.configure do
   # Heroku Redis serves rediss:// (TLS) with a self-signed cert; redis-client
   # verifies peer certs by default and would REJECT it. Because the error_handler
   # above swallows the connection error, that failure would be SILENT — every
-  # Rails.cache op returns nil/false, which (a) breaks MagicLink single-use
-  # (consume's `cache.delete` returns false → "link already used" on first click,
-  # and magic-link is the only email-auth path) and (b) no-ops every rack-attack
-  # throttle (counters never increment). Mirror config/initializers/sidekiq.rb:
+  # Rails.cache op returns nil/false, which no-ops every rack-attack throttle
+  # (counters never increment, so the limits are off). Mirror config/initializers/sidekiq.rb:
   # keep the connection encrypted, skip chain verification (Heroku's documented
   # guidance for their Redis add-on).
   if cache_redis_url.start_with?("rediss://")

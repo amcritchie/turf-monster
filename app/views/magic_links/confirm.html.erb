@@ -1,38 +1,48 @@
-<%# "Confirm sign-in" interstitial for the magic link (GET /magic_link/:token).
+<%# "Signing you in…" interstitial for GET /magic_link/:token — just a spinner.
 
-    SCANNER-SAFE BY DESIGN: this page does NOT consume the single-use token.
-    Email link-scanners / Gmail-image-proxies / SafeLinks pre-fetch the emailed
-    URL with a GET; landing them here is a harmless no-op. Only the human's
-    button press POSTs to /magic_link/:token, and THAT burns the token and
-    signs them in. One extra click is the price of not letting a scanner burn
-    the link before the human ever clicks it.
+    SCANNER-SAFE, no manual tap: the GET does NOT consume the token server-side —
+    it renders a form that AUTO-SUBMITS via JS on load, so a real browser POSTs
+    instantly and signs in. No-JS scanners issue a GET, never run the script, and
+    so can't burn the single-use token.
 
-    button_to emits a real <form> with the CSRF authenticity token, so the
-    consume POST is doubly protected: a scanner can't forge it. %>
-<div class="min-h-[70vh] flex items-center justify-center">
-  <div class="w-full max-w-md">
-    <div class="text-center mb-8">
-      <img src="/logo.png" alt="Turf Monster" class="w-20 h-20 rounded-full shadow-lg mx-auto mb-4">
-      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Turf <span class="text-primary">Totals</span></h1>
-      <p class="text-secondary mt-2">Confirm your sign-in</p>
-    </div>
+    Rendered on the minimal `loading` layout (no navbar/app-CSS), and fully
+    self-contained (inline styles) so it paints instantly with just a spinner.
+    The consume button is a hidden fallback, revealed only for no-JS or if the
+    auto-submit hasn't redirected after a few seconds. %>
+<div style="text-align:center;">
+  <div role="status" aria-label="Signing you in"
+       style="width:88px;height:88px;margin:0 auto;border-radius:9999px;
+              border:8px solid rgba(255,255,255,0.14);border-top-color:#4BAF50;
+              animation:magic-spin 0.8s linear infinite;"></div>
 
-    <div class="card shadow p-8 text-center">
-      <p class="text-secondary mb-6">
-        You're one tap away. Press the button below to finish signing in
-        <span class="text-muted">(or to create your account — no password needed).</span>
-      </p>
-
-      <%= button_to magic_link_consume_path(token: @token), method: :post,
-            data: { turbo: false },
-            class: "btn btn-primary btn-lg w-full" do %>
-        Sign in to Turf Monster
-      <% end %>
-
-      <p class="text-xs text-muted text-center mt-4">
-        This link expires shortly and can only be used once. If you didn't request
-        it, you can safely close this page.
-      </p>
-    </div>
+  <div id="magic-fallback" style="display:none;margin-top:2rem;color:#cdd9c9;">
+    <p style="margin:0 0 1rem;font-size:15px;">Taking longer than expected?</p>
+    <%= button_to magic_link_consume_path(token: @token),
+          method: :post,
+          form: { id: "magic-consume-form", data: { turbo: "false" } },
+          style: "display:inline-block;padding:14px 34px;font-size:16px;font-weight:700;color:#ffffff;background:#4BAF50;border:none;border-radius:10px;cursor:pointer;" do %>
+      Sign in to Turf Totals
+    <% end %>
   </div>
 </div>
+
+<style>@keyframes magic-spin { to { transform: rotate(360deg); } }</style>
+<noscript><style>#magic-fallback { display: block !important; } div[role="status"] { display: none; }</style></noscript>
+
+<script>
+  (function () {
+    var form = document.getElementById('magic-consume-form');
+    if (form && !form.dataset.autoSubmitted) {
+      form.dataset.autoSubmitted = '1';
+      // Auto-submit so the human signs in on link-click with no extra tap. A
+      // no-JS scanner GET never reaches this, so the single-use token stays safe.
+      if (typeof form.requestSubmit === 'function') form.requestSubmit();
+      else form.submit();
+    }
+    // If we're somehow still here after a few seconds, surface the manual button.
+    setTimeout(function () {
+      var fb = document.getElementById('magic-fallback');
+      if (fb) fb.style.display = 'block';
+    }, 4000);
+  })();
+</script>

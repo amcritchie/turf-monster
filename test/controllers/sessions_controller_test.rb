@@ -42,12 +42,11 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to "/signin?reference=spring"
   end
 
-  # Passwordless: log_in_as goes through the magic-link consume, which lands
-  # an existing email user on root_path.
+  # Passwordless: log_in_as goes through the magic-link consume. A returning
+  # login with no return_to now lands directly on the live featured contest.
   test "login via magic link establishes a session" do
     log_in_as users(:alex)
-    assert_redirected_to root_path
-    follow_redirect!
+    assert_redirected_to contest_path(contests(:one))
     follow_redirect!
     assert_response :success
     assert_equal users(:alex).id, session[Studio.session_key]

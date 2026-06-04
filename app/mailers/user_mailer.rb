@@ -18,8 +18,14 @@ class UserMailer < ApplicationMailer
   # their account. Contest-aware copy when the link came from an entry flow.
   def magic_link(email, token, contest: nil)
     @contest = contest
+    @email = email
     @magic_url = magic_link_url(token: token)
-    mail(to: email, subject: "Your Turf Monster sign-in link")
+    # Inline the branded header banner (CID attachment — the resend gem forwards
+    # `content_id` for inline parts). Kept JPEG-small (~145KB) since it ships on
+    # every send. Referenced in the view via attachments[...].url.
+    attachments.inline["magic-link-banner.jpg"] =
+      Rails.root.join("app/assets/images/emails/magic-link-banner.jpg").read
+    mail(to: email, subject: "🐊🪄 Turf Totals Sign-in Link")
   end
 
   # Self-custody wallet export (task #11). Token is a signed payload from

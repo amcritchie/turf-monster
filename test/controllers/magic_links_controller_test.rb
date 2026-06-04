@@ -47,15 +47,11 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ── REGRESSION: a prefetch GET must NOT burn the single-use token ─────────
-  # The core of the fix. Single-use enforcement is disabled under the test
-  # cache (:null_store), so to actually prove "the GET doesn't burn the jti" we
-  # inject a real MemoryStore (the same seam MagicLink's unit test uses), where
-  # consume DOES delete the jti. We then simulate a scanner pre-fetch (GET) and
-  # assert the human's later POST still succeeds — which can only happen if the
-  # GET left the jti untouched.
+  # The core of the scanner-safe fix: only the human's POST consumes the link.
+  # Single-use is a DB column now, so it's enforced directly — we simulate a
+  # scanner pre-fetch (GET) and assert the human's later POST still signs in,
+  # which can only happen if the GET left the link unconsumed.
   test "a scanner prefetch GET does not burn the token; the human's POST still signs in" do
-    store = ActiveSupport::Cache::MemoryStore.new
-    MagicLink.cache = store
     token = MagicLink.generate(email: users(:alex).email)
 
     # 1. Scanner / Gmail-proxy pre-fetches the emailed URL.
@@ -66,14 +62,10 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     # 2. The human clicks the button → POST consumes the still-live token.
     post magic_link_consume_path(token: token)
     assert_equal users(:alex).id, session[Studio.session_key],
-                 "the human's POST must succeed — the GET must not have burned the jti"
-  ensure
-    MagicLink.cache = nil
+                 "the human's POST must succeed — the GET must not have consumed the link"
   end
 
   test "single-use still holds: a second POST with the same token is rejected" do
-    store = ActiveSupport::Cache::MemoryStore.new
-    MagicLink.cache = store
     token = MagicLink.generate(email: users(:alex).email)
 
     post magic_link_consume_path(token: token)
@@ -82,8 +74,6 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     # Replay the exact token (e.g. a double-submit / forwarded link) → rejected.
     post magic_link_consume_path(token: token)
     assert_redirected_to signin_path
-  ensure
-    MagicLink.cache = nil
   end
 
   # ── consume (POST /magic_link/:token) ────────────────────────────────────
@@ -98,41 +88,48 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     end
     user = User.find_by(email: "brand-new@example.com")
     assert user.email_verified_at.present?, "new user should be email-verified by clicking the link"
-    # No contest return_to → lands on root, not straight on the tokens page.
-    assert_redirected_to root_path
+    # No contest return_to → a NEW generic signup lands on the live featured
+    # contest (resolved at click) and gets the celebratory welcome modal.
+    assert_redirected_to contest_path(contests(:one))
     assert_nil flash[:notice], "the welcome should be a modal, not a toast"
+    assert_nil flash[:auth_toast], "a generic new signup gets the modal, not the toast"
     welcome = flash[:magic_link_welcome]
     assert welcome.present?, "consume should set the welcome modal flash signal"
-    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
+    # No token upsell on a generic welcome (the user hasn't picked anything) —
+    # the CTA just closes onto the contest, so next is nil.
+    assert_nil welcome[:next] || welcome["next"]
     assert (welcome[:message] || welcome["message"]).present?
     # The welcome modal renders the new user's auto-generated username under
     # the title; it must be carried in the flash (layout JSON → modal props).
     assert_equal user.username, welcome[:username] || welcome["username"]
   end
 
-  test "consume lands a new signup on the contest return_to with the welcome modal" do
+  test "consume lands a new signup on the contest return_to with an auth toast + tokens picker" do
     token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3")
     post magic_link_consume_path(token: token)
     assert_redirected_to "/contests/the-cup?picks=1,2,3"
-    welcome = flash[:magic_link_welcome]
-    assert welcome.present?
-    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
-    assert (welcome[:username] || welcome["username"]).present?, "welcome carries the username"
+    # New user on a SPECIFIC contest: a toast confirms auth; the board opens the
+    # get-entry-tokens picker. No celebratory modal here.
+    assert_nil flash[:magic_link_welcome]
+    toast = flash[:auth_toast]
+    assert toast.present?, "a new user on a contest gets the auth toast"
+    assert (toast[:title] || toast["title"]).present?
   end
 
-  test "consume logs in an existing user on a safe return_to with the welcome modal" do
+  test "consume logs in an existing user on a safe return_to with a welcome-back toast" do
     existing = users(:alex)
     token = MagicLink.generate(email: existing.email, return_to: "/account")
     assert_no_difference "User.count" do
       post magic_link_consume_path(token: token)
     end
+    # An explicit non-contest return_to (e.g. /account) is still honored.
     assert_redirected_to "/account"
     assert_equal existing.id, session[Studio.session_key]
-    assert_nil flash[:notice], "the welcome should be a modal, not a toast"
-    welcome = flash[:magic_link_welcome]
-    assert welcome.present?, "existing sign-in should also show the welcome modal"
-    assert_equal tokens_buy_path, welcome[:next] || welcome["next"]
-    assert_equal existing.username, welcome[:username] || welcome["username"]
+    # Returning login: a quiet welcome-back toast, no celebratory modal.
+    assert_nil flash[:magic_link_welcome], "returning login should not show the welcome modal"
+    toast = flash[:auth_toast]
+    assert toast.present?, "returning login gets the welcome-back toast"
+    assert_equal "Welcome back", toast[:title] || toast["title"]
   end
 
   test "consume verifies an existing but never-verified email" do
@@ -218,6 +215,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   test "consume sanitizes a protocol-relative return_to (open-redirect guard)" do
     token = MagicLink.generate(email: users(:alex).email, return_to: "//evil.com/x")
     post magic_link_consume_path(token: token)
-    assert_redirected_to root_path
+    # The evil path is dropped to nil → falls back to the safe featured contest.
+    assert_redirected_to contest_path(contests(:one))
   end
 end
