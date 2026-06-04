@@ -5,10 +5,10 @@
   "Your Magic Link / Click the link below to log in", so the body is deliberately
   minimal: a button, an expiry note, and a de-emphasized fallback URL.
 %>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0a140a;margin:0;padding:24px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:24px 0;">
   <tr>
     <td align="center" style="padding:0 12px;">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#0a140a;border-radius:14px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;border-radius:14px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
         <%# Banner — full-bleed, sets the container width %>
         <tr>
@@ -21,11 +21,11 @@
 
         <%# Body %>
         <tr>
-          <td style="padding:32px 36px 36px;color:#e8f0e6;">
+          <td style="padding:32px 36px 36px;color:#2f3a2c;">
 
             <% if @contest %>
-              <p style="margin:0 0 24px;font-size:16px;line-height:1.5;color:#cdd9c9;">
-                You're almost in <strong style="color:#ffffff;"><%= @contest.name %></strong> — sign in below and you'll land right back on the contest to finish your entry.
+              <p style="margin:0 0 24px;font-size:16px;line-height:1.5;color:#3f4a3c;">
+                You're almost in <strong style="color:#1f2a1c;"><%= @contest.name %></strong> — sign in below and you'll land right back on the contest to finish your entry.
               </p>
             <% end %>
 
@@ -34,28 +34,28 @@
               <tr>
                 <td align="center" bgcolor="#4BAF50" style="border-radius:10px;">
                   <a href="<%= @magic_url %>"
-                     style="display:inline-block;padding:16px 40px;font-size:17px;font-weight:700;color:#0a140a;text-decoration:none;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-                    Sign In 🪄
+                     style="display:inline-block;padding:16px 40px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                    Magic Link 🪄
                   </a>
                 </td>
               </tr>
             </table>
 
-            <p style="margin:28px 0 0;font-size:13px;line-height:1.5;color:#8aa085;text-align:center;">
-              This link is for <strong style="color:#cdd9c9;"><%= @email %></strong> and expires in 15 minutes — it can only be used once.
+            <p style="margin:28px 0 0;font-size:13px;line-height:1.5;color:#6b756a;text-align:center;">
+              This link is for <strong style="color:#2f3a2c;"><%= @email %></strong> and expires in 15 minutes — it can only be used once.
             </p>
 
             <%# De-emphasized fallback for clients that strip the button %>
-            <p style="margin:24px 0 0;font-size:12px;line-height:1.4;color:#6f846b;text-align:center;">
+            <p style="margin:24px 0 0;font-size:12px;line-height:1.4;color:#8a948a;text-align:center;">
               Button not working? Copy and paste this link:<br>
-              <a href="<%= @magic_url %>" style="font-size:10px;color:#5fae57;word-break:break-all;"><%= @magic_url %></a>
+              <a href="<%= @magic_url %>" style="font-size:10px;color:#3d8b40;word-break:break-all;"><%= @magic_url %></a>
             </p>
 
-            <p style="margin:28px 0 0;font-size:12px;line-height:1.5;color:#6f846b;text-align:center;">
+            <p style="margin:28px 0 0;font-size:12px;line-height:1.5;color:#8a948a;text-align:center;">
               Didn't request this? You can safely ignore this email.
             </p>
 
-            <p style="margin:20px 0 0;font-size:13px;color:#8aa085;text-align:center;">— Turf Monster</p>
+            <p style="margin:20px 0 0;font-size:13px;color:#6b756a;text-align:center;">— Turf Monster</p>
 
           </td>
         </tr>
