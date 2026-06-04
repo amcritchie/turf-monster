@@ -103,13 +103,16 @@ class Message < ApplicationRecord
 
   public
 
-  # Re-render this message's reactions row for everyone in the room. Called
-  # from Reaction's after-commit hooks. Replaces the per-message reactions
-  # container (id "message_<id>_reactions") so counts + the viewer's "reacted"
-  # highlight (applied client-side) stay live. Best-effort — see above.
+  # Push this message's reactions row to everyone in the room. Called from
+  # Reaction's after-commit hooks. Uses the custom "reactions" Turbo Stream
+  # action (registered in contests/_chat_panel) — instead of a plain `replace`
+  # — so the client RECONCILES the new pills against the existing row and can
+  # animate each pill (pop on add, bump on increment, shrink on removal) rather
+  # than swapping the whole row with no transition. Best-effort — see above.
   def broadcast_reactions
-    broadcast_replace_to(
+    broadcast_action_to(
       [contest, :messages],
+      action: "reactions",
       target: "message_#{id}_reactions",
       partial: "messages/reactions",
       locals: { message: self }

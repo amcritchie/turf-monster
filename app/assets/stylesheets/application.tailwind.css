@@ -972,15 +972,53 @@ body.modal-open { overflow: hidden; }
   transform: scale(1.15);
 }
 
-/* Pills are read-only for non-participants (counts visible, not clickable). */
-.chat-reaction-pill { cursor: default; }
+/* Pills are read-only for non-participants (counts visible, not clickable).
+   Background is a faint translucent fill + hairline border (Discord-style) so
+   the pills read as quiet chips, not solid panels. The "reacted" state lifts to
+   a primary tint. transform-origin centers the pop/shrink animations. */
+.chat-reaction-pill {
+  cursor: default;
+  background: rgb(var(--color-primary-rgb) / 0.05);
+  border: 1px solid rgb(var(--color-primary-rgb) / 0.12);
+  transform-origin: center;
+}
 .chat-can-react .chat-reaction-pill { cursor: pointer; }
-.chat-can-react .chat-reaction-pill:hover { border-color: rgb(var(--color-primary-rgb) / 0.6); }
+.chat-can-react .chat-reaction-pill:hover {
+  background: rgb(var(--color-primary-rgb) / 0.10);
+  border-color: rgb(var(--color-primary-rgb) / 0.35);
+}
 .chat-reaction-pill.reacted {
-  background: rgb(var(--color-primary-rgb) / 0.18);
-  border-color: rgb(var(--color-primary-rgb) / 0.65);
+  background: rgb(var(--color-primary-rgb) / 0.16);
+  border-color: rgb(var(--color-primary-rgb) / 0.55);
 }
 .chat-reaction-pill.reacted .chat-reaction-count { color: rgb(var(--color-primary-rgb)); }
+
+/* Reaction transitions (driven by reconcileReactions in contests/_chat_panel):
+   rx-pop = exciting first appearance (0 → 1), rx-bump = light pulse on an
+   increment (1 → 2+), rx-shrink = collapse out on removal (1 → 0). */
+@keyframes rx-pop {
+  0%   { transform: scale(0)    rotate(-12deg); opacity: 0; }
+  55%  { transform: scale(1.35) rotate(6deg);   opacity: 1; }
+  75%  { transform: scale(0.92) rotate(-2deg);              }
+  100% { transform: scale(1)    rotate(0);       opacity: 1; }
+}
+@keyframes rx-bump {
+  0%   { transform: scale(1);   }
+  40%  { transform: scale(1.28); }
+  100% { transform: scale(1);   }
+}
+@keyframes rx-shrink {
+  0%   { transform: scale(1);    opacity: 1; }
+  100% { transform: scale(0);    opacity: 0; }
+}
+.chat-reaction-pill.rx-pop    { animation: rx-pop    420ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.chat-reaction-pill.rx-bump   { animation: rx-bump   260ms ease-out both; }
+.chat-reaction-pill.rx-shrink { animation: rx-shrink 220ms cubic-bezier(0.4, 0, 1, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-reaction-pill.rx-pop,
+  .chat-reaction-pill.rx-bump { animation: none; }
+  .chat-reaction-pill.rx-shrink { animation: rx-shrink 80ms linear both; }
+}
 
 /* Picker — position:fixed (set by openReactionPicker) so the message-list
    overflow can't clip it; hidden until .is-open. */
