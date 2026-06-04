@@ -7,9 +7,10 @@
 
     data-reactor-ids carries the user ids who used each emoji (numeric, already
     public via the chat author list); title shows their names on hover. %>
+<% groups = message.reactions.group_by(&:emoji) %>
 <div id="message_<%= message.id %>_reactions"
-     class="flex flex-wrap items-center gap-1 <%= 'mt-1.5' if message.reactions.any? %>">
-  <% message.reactions.group_by(&:emoji).each do |emoji, rs| %>
+     class="flex flex-wrap items-center gap-1 <%= 'mt-1.5' if groups.any? %>">
+  <% groups.each do |emoji, rs| %>
     <button type="button"
             class="chat-reaction-pill inline-flex items-center gap-1 pl-1.5 pr-2 h-6 rounded-full text-xs transition"
             data-emoji="<%= emoji %>"
