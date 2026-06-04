@@ -8,7 +8,7 @@ CORE_USERS = [
   { email: "alexbot@mcritchie.studio", name: "Alex",            username: "alex",      role: "admin", wallet: "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" },
   { email: "mason@mcritchie.studio",   name: "Mason McRitchie", username: "mason",    wallet: "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR" },
   { email: "mack@mcritchie.studio",    name: "Mack McRitchie",  username: "mack",     wallet: "foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds" },
-  { email: "turf@mcritchie.studio",    name: "Turf Monster",    username: "turf",     wallet: "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" },
+  { email: "turf@mcritchie.studio",    name: "Turf Monster",    username: "turf",     role: "admin", wallet: "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" },
 ].freeze
 
 def seed_core_users!

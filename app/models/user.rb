@@ -88,6 +88,17 @@ class User < ApplicationRecord
     find_by(web3_solana_address: address)
   end
 
+  # The "Turf Monster" house account (seeded admin, tied to the agent.turf.solana
+  # wallet). It's the display author for system chat announcements — e.g. the
+  # "<name> joined the contest" line, which is posted as a reactable bubble FROM
+  # Turf Monster. Returns nil only in an unseeded DB (callers fall back). Not
+  # memoized: the test suite recreates users, so a process-level cache would go
+  # stale; the lookup is on the unique `username` index and only fires for the
+  # handful of system messages in a chat render.
+  def self.turf
+    find_by(username: "turf")
+  end
+
   def admin?
     role == "admin"
   end

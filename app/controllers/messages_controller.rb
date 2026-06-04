@@ -46,7 +46,7 @@ class MessagesController < ApplicationController
   end
 
   # POST /contests/:contest_id/messages/:id/toggle_reaction
-  # Body: { emoji: "❤️" }. Adds the reaction if the viewer hasn't used it on
+  # Body: { emoji: "💯" }. Adds the reaction if the viewer hasn't used it on
   # this message, removes it if they have (Slack/Discord toggle). The updated
   # reactions row broadcasts to everyone via Reaction's after-commit hooks.
   def toggle_reaction
