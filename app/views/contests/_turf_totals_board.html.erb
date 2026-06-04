@@ -732,7 +732,12 @@ window.selectionBoard = function() {
         mintedBalance: 0,
         errorText:     '',
         redirectUrl:   '',
-        txSignature:   ''
+        txSignature:   '',
+        // Shake the card in on a fresh open — "not quite yet, grab a token
+        // first." Only the fresh-mount path (no modal currently open) plays
+        // the enter animation; the advance()/swap() paths below run their
+        // directional in-flow slide instead (see ModalAnimations registry).
+        enterAnim:     'shake'
       };
       if (cur && cur.id === 'auth') {
         s.advance(props);

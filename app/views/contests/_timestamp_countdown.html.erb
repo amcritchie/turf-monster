@@ -22,15 +22,17 @@
     x-data="{
       target: <%= target.to_i * 1000 %>,
       now: Date.now(),
+      _t: null,
       get diff() { return Math.max(this.target - this.now, 0); },
       get done() { return this.target - this.now <= 0; },
       get d() { return Math.floor(this.diff / 86400000); },
       get h() { return Math.floor((this.diff % 86400000) / 3600000); },
       get m() { return Math.floor((this.diff % 3600000) / 60000); },
       get s() { return Math.floor((this.diff % 60000) / 1000); },
-      p(n) { return String(n).padStart(2, '0'); }
+      p(n) { return String(n).padStart(2, '0'); },
+      destroy() { if (this._t) { clearInterval(this._t); this._t = null; } }
     }"
-    x-init="if (target - now > 0) { const t = setInterval(() => { now = Date.now(); if (target - now <= 0) { clearInterval(t); <% if on_done_modal.present? %>if (window.Alpine && Alpine.store('modals')) { Alpine.store('modals').open('<%= j on_done_modal %>', { lobbyUrl: '<%= j on_done_url.to_s %>' }); }<% end %> } }, 1000); }"
+    x-init="if (target - now > 0) { _t = setInterval(() => { now = Date.now(); if (target - now <= 0) { clearInterval(_t); _t = null; <% if on_done_modal.present? %>if (window.Alpine && Alpine.store('modals')) { Alpine.store('modals').open('<%= j on_done_modal %>', { lobbyUrl: '<%= j on_done_url.to_s %>' }); }<% end %> } }, 1000); }"
   >
     <div x-show="!done" x-cloak
          class="inline-flex items-center gap-2 rounded-lg border border-subtle bg-surface-alt px-3 py-1.5">

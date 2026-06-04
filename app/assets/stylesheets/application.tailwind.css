@@ -828,6 +828,23 @@ body.modal-open { overflow: hidden; }
 .modal-backdrop-mount { animation: modal-backdrop-in 180ms ease-out both; }
 .modal-backdrop-unmount { animation: modal-backdrop-out 200ms ease-in forwards; }
 
+/* Named entrance animation: "shake" — Discord-style "not quite yet" nope.
+   The card scales/fades in fast (first ~22%) then does a damped horizontal
+   wobble that settles to center, reading as "you can't do that just yet."
+   Wired via the ModalAnimations registry in studio/modals/_host.html.erb:
+   open a modal with { enterAnim: 'shake' } to use it. Duration here MUST
+   match ModalAnimations.enter.shake.ms (600). */
+@keyframes modal-card-shake-in {
+  0%   { opacity: 0; transform: scale(0.92) translateX(0);   }
+  22%  { opacity: 1; transform: scale(1)    translateX(-11px); }
+  37%  {             transform: scale(1)    translateX(9px);   }
+  52%  {             transform: scale(1)    translateX(-7px);  }
+  67%  {             transform: scale(1)    translateX(5px);   }
+  82%  {             transform: scale(1)    translateX(-3px);  }
+  100% { opacity: 1; transform: scale(1)    translateX(0);    }
+}
+.modal-card-shake-in { animation: modal-card-shake-in 600ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+
 /* Inter-modal swap animations — directional slide for forward-flow feel.
    The leaving modal slides off to the right + fades; the new one enters
    from the left. Pairs with $store.modals.swap() (or open(_, _, { replace
@@ -867,6 +884,7 @@ body.modal-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .modal-card-mount,
   .modal-card-unmount,
+  .modal-card-shake-in,
   .modal-card-swap-out,
   .modal-card-swap-in,
   .modal-card-swap-out-back,
@@ -876,6 +894,7 @@ body.modal-open { overflow: hidden; }
     animation-duration: 80ms;
     animation-timing-function: linear;
   }
+  @keyframes modal-card-shake-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes modal-card-in  { from { opacity: 0; } to { opacity: 1; } }
   @keyframes modal-card-out { from { opacity: 1; } to { opacity: 0; } }
   @keyframes modal-card-slide-out-right { from { opacity: 1; } to { opacity: 0; } }

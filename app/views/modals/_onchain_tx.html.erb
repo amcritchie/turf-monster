@@ -71,7 +71,8 @@
         tx_signature_key: "$store.solanaModal.txSignature",
         lobby_url_key:    "$store.solanaModal.lobbyUrl",
         seeds_earned_key: "$store.solanaModal.seedsEarned",
-        seeds_total_key:  "$store.solanaModal.seedsTotal" %>
+        seeds_total_key:  "$store.solanaModal.seedsTotal",
+        kickoff_at:       @contest&.starts_at %>
   </template>
 
   <%# === SUCCESS (generic) =================================================
