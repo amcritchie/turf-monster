@@ -1,13 +1,11 @@
+Your Magic Link
 <% if @contest %>
-You're almost in <%= @contest.name %>! Open this link to sign in (or create your
-account) — you'll land right back on the contest to finish your entry:
-<% else %>
-Open this link to sign in to Turf Monster. If you don't have an account yet,
-we'll create one for you — no password needed:
+You're almost in <%= @contest.name %> — sign in below and you'll land right back on the contest to finish your entry.
 <% end %>
+Sign in to Turf Totals:
 <%= @magic_url %>
 
-Open this link on this device to finish. It expires in 15 minutes and can only be
-used once. If you didn't request it, you can safely ignore this message.
+This link expires in 15 minutes and can only be used once.
+Didn't request this? You can safely ignore this email.
 
-— Turf Monster
+— Turf Totals
