@@ -67,20 +67,20 @@
           equivalent rule re-applies live via updateNavTokens /
           refreshBalance after mints + consumes. %>
       <%# display_balance is nil while the navbar cache is cold ("loading") —
-          the server no longer blocks the render on the balance RPC, the
-          client-side refreshBalance() fills [data-balance-display] on load.
-          Render a subtle "$·" placeholder (NOT a misleading hard "$0") and
-          never apply the hide-on-$0-with-token rule until we have a real
-          number; refreshBalance re-applies it once the value lands. %>
+          the server no longer blocks the render on the balance RPC. HIDE the
+          whole balance link (incl. the "$") while loading so there's no lone
+          "$" placeholder; client-side refreshBalance() then sets
+          [data-balance-display] AND removes .hidden (its else-branch), so the
+          full "$112" appears all at once. The $0-with-token rule also hides it. %>
       <% balance_loading = display_balance.nil? %>
       <% usdc            = display_balance.to_f %>
       <% balance_zero    = !balance_loading && usdc.zero? %>
       <% has_tokens      = (current_user.entry_token_balance rescue 0).positive? %>
-      <% hide_balance    = balance_zero && has_tokens %>
+      <% hide_balance    = balance_loading || (balance_zero && has_tokens) %>
       <%# USDC balance link. Free-entry tokens are surfaced by the 🎟️
           badge in _user_nav (next to the balance), not by a second
           balance-style link here. %>
-      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %><% if balance_loading %><span class="opacity-40">$·</span><% else %>$<%= usdc.to_i %><% end %><% end %>
+      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %><% unless balance_loading %>$<%= usdc.to_i %><% end %><% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
       <% if show_user %>
@@ -89,8 +89,11 @@
         <div class="flex items-center justify-end gap-3">
           <span class="hidden md:flex"><%= render "components/theme_toggle_morph" %></span>
           <%# Single unified CTA — login + signup are one create-or-login flow
-              at /signin (magic link / Google / wallet all find-or-create). %>
-          <%= link_to "Sign in", signin_path, class: "btn btn-primary" %>
+              (magic link / Google / wallet all find-or-create). Opens the in-page
+              auth modal at the credentials step; href=/signin is the no-JS
+              fallback (the page still exists, just unrouted from here for now). %>
+          <%= link_to "Sign in", signin_path, class: "btn btn-primary",
+                "@click.prevent": "$store.modals.open('auth', { step: 'credentials', mode: 'signup', submitting: null, formError: '', phantomError: '', googleError: '' })" %>
         </div>
       <% end %>
     </div>
