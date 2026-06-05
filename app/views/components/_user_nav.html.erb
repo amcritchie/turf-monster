@@ -52,7 +52,11 @@
     <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>
     <span class="hidden md:flex"><%= render "components/theme_toggle" %></span>
     <div class="flex items-center gap-3 ml-auto">
-      <%= link_to "Sign in", signin_path, class: "btn btn-primary btn-sm" %>
+      <%# Opens the in-page auth modal (credentials step: Google + wallet + email
+          magic-link). href=/signin is the no-JS fallback — the page still exists,
+          we just don't route to it from here for now. %>
+      <%= link_to "Sign in", signin_path, class: "btn btn-primary btn-sm",
+            "@click.prevent": "$store.modals.open('auth', { step: 'credentials', mode: 'signup', submitting: null, formError: '', phantomError: '', googleError: '' })" %>
     </div>
   <% end %>
 </div>
