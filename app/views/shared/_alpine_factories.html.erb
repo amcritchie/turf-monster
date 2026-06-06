@@ -25,11 +25,12 @@
     return {
       saving: false,
       error: null,
+      consent: true,
       needsEmail: !!opts.needsEmail,
       url: opts.url,
       // web3 (no email on file): open the capture modal first; web2: join now.
       start() {
-        if (this.saving) return;
+        if (this.saving || !this.consent) return;
         if (this.needsEmail) {
           var self = this;
           window.Alpine.store("modals").open("newsletter-email", {

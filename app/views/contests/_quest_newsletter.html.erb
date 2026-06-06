@@ -28,18 +28,19 @@
   <div class="grid grid-cols-2 gap-4">
     <div class="min-w-0">
       <p class="text-secondary text-xs leading-relaxed">
-        Occasional contest news, no spam. One click mints <strong class="text-heading">40 seeds</strong> on-chain.
+        Sports news, &amp; contests updates.
       </p>
-      <label class="flex items-center gap-2 text-xs text-secondary mt-2 select-none cursor-default">
-        <input type="checkbox" checked disabled class="rounded border-subtle text-primary opacity-70">
+      <label class="flex items-center gap-2 text-xs text-secondary mt-2 select-none cursor-pointer">
+        <input type="checkbox" x-model="consent" class="rounded border-subtle text-primary cursor-pointer">
         Subscribe to the Turf Monster newsletter
       </label>
       <p x-show="error" x-cloak x-text="error" class="text-xs mt-2" style="color:#f87171"></p>
     </div>
-    <button type="button" @click="start()" :disabled="saving"
-            class="btn btn-primary quest-pulse w-full h-full">
-      <span x-show="!saving">Join &amp; Claim 40 Seeds</span>
-      <span x-show="saving" x-cloak>Joining…</span>
+    <button type="button" @click="start()" :disabled="saving || !consent"
+            class="btn btn-primary w-full h-full disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="{ 'quest-pulse': consent && !saving }">
+      <span x-show="!saving">Subscribe</span>
+      <span x-show="saving" x-cloak>Subscribing…</span>
     </button>
   </div>
 </div>
