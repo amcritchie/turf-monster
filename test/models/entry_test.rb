@@ -39,6 +39,38 @@ class EntryTest < ActiveSupport::TestCase
     assert entry.active?
   end
 
+  test "confirm! scores the entry immediately against already-decided games" do
+    # Regression: an entry confirmed onto a slate whose games are ALREADY
+    # completed/scored must be scored at confirm time. Entry scoring is otherwise
+    # purely reactive (Goal events / grade!), so without this the entry sits at 0
+    # forever — the prod bug where live-contest leaderboards showed all 0.0.
+    matchups = [@m1, @m2, @m3, @m4, @m5, @m6]
+    matchups.each_with_index { |m, i| m.update!(goals: i + 1) } # goals 1..6
+    expected = matchups.sum { |m| m.goals * m.turf_score }
+    assert expected > 0, "fixture sanity: expected a positive projected score"
+
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    matchups.each { |m| entry.selections.create!(slate_matchup: m) }
+
+    entry.confirm!(comped: true)
+
+    assert entry.active?
+    assert_in_delta expected, entry.reload.score, 0.001
+  end
+
+  test "confirm! leaves score at 0 when no games are decided yet" do
+    matchups = [@m1, @m2, @m3, @m4, @m5, @m6]
+    matchups.each { |m| m.update!(goals: nil) }
+
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    matchups.each { |m| entry.selections.create!(slate_matchup: m) }
+
+    entry.confirm!(comped: true)
+
+    assert entry.active?
+    assert_equal 0, entry.reload.score
+  end
+
   test "confirm! rejects with less than 6 selections" do
     entry = @contest.entries.create!(user: @user, status: :cart)
     [@m1, @m2].each { |m| entry.selections.create!(slate_matchup: m) }
