@@ -86,31 +86,26 @@ test.describe("Audit consolidation (2026-05-23)", () => {
     expect(setInviterRequests[0].postData).toContain("alex");
   });
 
-  // Phase B2
-  test("window.handleSolanaVerifySuccess sets show_profile_modal only for new users", async ({ page }) => {
+  // Phase B2 — the new-Phantom-signup avatar prompt (the 'profile' modal) was
+  // RETIRED (2026-06-06): usernames auto-generate, so there's nothing to
+  // complete. handleSolanaVerifySuccess remains as a safe no-op post-verify
+  // hook and must NEVER set show_profile_modal.
+  test("window.handleSolanaVerifySuccess is a safe no-op (profile prompt retired)", async ({ page }) => {
     await page.goto("/");
     const helperExists = await page.evaluate(
       () => typeof window.handleSolanaVerifySuccess === "function"
     );
     expect(helperExists).toBe(true);
 
-    // new_user: true -> flag set
+    // new_user: true -> flag still NOT set (prompt retired)
     await page.evaluate(() => {
       localStorage.removeItem("show_profile_modal");
       window.handleSolanaVerifySuccess({ success: true, new_user: true });
     });
     let flag = await page.evaluate(() => localStorage.getItem("show_profile_modal"));
-    expect(flag).toBe("true");
-
-    // new_user falsy -> flag NOT set
-    await page.evaluate(() => {
-      localStorage.removeItem("show_profile_modal");
-      window.handleSolanaVerifySuccess({ success: true });
-    });
-    flag = await page.evaluate(() => localStorage.getItem("show_profile_modal"));
     expect(flag).toBeNull();
 
-    // null/undefined input is safe
+    // null/undefined input is safe (no throw)
     await page.evaluate(() => window.handleSolanaVerifySuccess(null));
     flag = await page.evaluate(() => localStorage.getItem("show_profile_modal"));
     expect(flag).toBeNull();
