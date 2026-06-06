@@ -174,9 +174,12 @@
           </div>
         </div>
       </template>
+      <%# Level-up reward — a plain text line (no button chrome), sized to the
+          same 22px height as the seeds bar it replaces so the card doesn't
+          shift when the bar swaps to this. %>
       <template x-if="showFreeEntryBadge">
-        <div class="level-up-pop inline-flex items-center justify-center w-full px-4 py-2.5 rounded-lg font-bold text-sm"
-             style="background: transparent; color: var(--color-cta); border: 2px solid var(--color-cta);">
+        <div class="level-up-pop flex items-center justify-center w-full font-bold text-sm"
+             style="height: 22px; color: var(--color-cta);">
           <span>Free Entry Earned 🎟️</span>
         </div>
       </template>
