@@ -1,25 +1,45 @@
-<%# Quest mission 2 — join the newsletter for 40 seeds. web2 users one-click;
-    web3 users (no email on file) get the email-capture modal first. The
-    questNewsletter factory (shared/_alpine_factories) owns the fetch + success;
-    all logic lives there so nothing risky sits inside the x-data attribute.
-    No mb-* — direct grid child. %>
+<%# Quest mission 2 — join the newsletter for 40 seeds. Matches the username
+    card: Row 1 = header + badge; Row 2 = description + consent (50%) | tall
+    pulsing CTA (50%). web2 users one-click; web3 (no email) get the email-capture
+    modal first. The questNewsletter factory (shared/_alpine_factories) owns the
+    fetch + success — no risky logic in the x-data attribute. No mb-* — grid child. %>
 <% needs_email = current_user.email.blank? %>
 <div x-data="questNewsletter({ url: '<%= newsletter_subscribe_path %>', needsEmail: <%= needs_email %> })"
      class="card shadow p-5 relative">
-  <div class="flex items-center justify-between mb-3">
-    <h3 class="text-heading font-semibold text-sm">Join the Newsletter, Get 40 Seeds</h3>
-    <span class="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">Quest 2 of 3</span>
+  <style>
+    /* Pulse beat once every 3s (ring expands + fades, tiny pop), then rests. */
+    @keyframes questPulse {
+      0%        { transform: scale(1);    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+      10%       { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.25); }
+      22%       { transform: scale(1);    box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+      100%      { transform: scale(1);    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+    }
+    .quest-pulse { animation: questPulse 3s ease-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .quest-pulse { animation: none; } }
+  </style>
+
+  <%# Row 1 — header + quest badge %>
+  <div class="flex items-center justify-between gap-3 mb-3">
+    <h3 class="text-heading font-semibold text-sm">Join the Newsletter</h3>
+    <span class="inline-block text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">Quest 2 of 3</span>
   </div>
-  <p class="text-secondary text-xs leading-relaxed mb-4">
-    Occasional contest news, no spam. One click mints <strong class="text-heading">40 seeds</strong> on-chain.
-  </p>
-  <label class="flex items-center gap-2 text-xs text-secondary mb-4 select-none cursor-default">
-    <input type="checkbox" checked disabled class="rounded border-subtle text-primary opacity-70">
-    Subscribe to the Turf Monster newsletter
-  </label>
-  <p x-show="error" x-cloak x-text="error" class="text-xs mb-2" style="color:#f87171"></p>
-  <button type="button" @click="start()" :disabled="saving" class="btn btn-sm btn-primary w-full">
-    <span x-show="!saving">Join &amp; Claim 40 Seeds</span>
-    <span x-show="saving" x-cloak>Joining…</span>
-  </button>
+
+  <%# Row 2 — description + consent (50%) | CTA (50%) %>
+  <div class="grid grid-cols-2 gap-4">
+    <div class="min-w-0">
+      <p class="text-secondary text-xs leading-relaxed">
+        Occasional contest news, no spam. One click mints <strong class="text-heading">40 seeds</strong> on-chain.
+      </p>
+      <label class="flex items-center gap-2 text-xs text-secondary mt-2 select-none cursor-default">
+        <input type="checkbox" checked disabled class="rounded border-subtle text-primary opacity-70">
+        Subscribe to the Turf Monster newsletter
+      </label>
+      <p x-show="error" x-cloak x-text="error" class="text-xs mt-2" style="color:#f87171"></p>
+    </div>
+    <button type="button" @click="start()" :disabled="saving"
+            class="btn btn-primary quest-pulse w-full h-full">
+      <span x-show="!saving">Join &amp; Claim 40 Seeds</span>
+      <span x-show="saving" x-cloak>Joining…</span>
+    </button>
+  </div>
 </div>

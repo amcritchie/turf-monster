@@ -24,12 +24,12 @@
   </div>
 
   <%# Row 2 — description (50%) | CTA (50%) %>
-  <div class="grid grid-cols-2 gap-4 items-center">
+  <div class="grid grid-cols-2 gap-4">
     <p class="text-secondary text-xs leading-relaxed">
       Your username is <span class="font-mono text-heading">@<%= current_user.username %></span> now. Pick a name that's right for you <span class="text-primary font-semibold">&rarr;</span>
     </p>
     <button type="button" @click="$store.modals.open('username')"
-            class="btn btn-sm btn-primary quest-pulse w-full">
+            class="btn btn-primary quest-pulse w-full h-full">
       Change Username
     </button>
   </div>
