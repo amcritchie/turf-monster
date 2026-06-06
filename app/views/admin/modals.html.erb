@@ -39,10 +39,20 @@
                 </div>
               </div>
               <% if variant[:modal_id] %>
-                <button type="button" class="text-primary hover:underline text-xs font-medium flex-shrink-0"
-                        onclick='Alpine.store("modals").open(<%= variant[:modal_id].to_json.html_safe %>, <%= variant[:props].to_json.html_safe %>)'>
-                  Open &nearr;
-                </button>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                  <%# Load — opens the modal in its pending state (previewLoading:true)
+                      so the CTA spinner shows. Only on variants flagged loadable. %>
+                  <% if variant[:loadable] %>
+                    <button type="button" class="text-secondary hover:text-primary hover:underline text-xs font-medium"
+                            onclick='Alpine.store("modals").open(<%= variant[:modal_id].to_json.html_safe %>, <%= variant[:props].merge(previewLoading: true).to_json.html_safe %>)'>
+                      Load &#8635;
+                    </button>
+                  <% end %>
+                  <button type="button" class="text-primary hover:underline text-xs font-medium"
+                          onclick='Alpine.store("modals").open(<%= variant[:modal_id].to_json.html_safe %>, <%= variant[:props].to_json.html_safe %>)'>
+                    Open &nearr;
+                  </button>
+                </div>
               <% else %>
                 <a href="<%= variant[:url] %>" target="_blank" rel="noopener" class="text-primary hover:underline text-xs font-medium flex-shrink-0">
                   Open &nearr;
