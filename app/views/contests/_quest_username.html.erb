@@ -26,7 +26,7 @@
   <%# Row 2 — description (50%) | CTA (50%) %>
   <div class="grid grid-cols-2 gap-4 items-center">
     <p class="text-secondary text-xs leading-relaxed">
-      You're <span class="font-mono text-heading">@<%= current_user.username %></span> for now. Pick a name that's yours — your first change mints <strong class="text-heading">35 seeds</strong> on-chain.
+      Your username is <span class="font-mono text-heading">@<%= current_user.username %></span> now. Pick a name that's right for you <span class="text-primary font-semibold">&rarr;</span>
     </p>
     <button type="button" @click="$store.modals.open('username')"
             class="btn btn-sm btn-primary quest-pulse w-full">
