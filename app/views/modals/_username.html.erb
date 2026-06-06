@@ -44,7 +44,7 @@
           <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
           <span x-show="saving" class="inline-flex items-center justify-center gap-2">
             <span class="cta-spinner" aria-hidden="true"></span>
-            Saving…
+            <span x-text="savingLabel">Saving…</span>
           </span>
         </button>
       </form>
