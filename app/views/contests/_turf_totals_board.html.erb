@@ -799,8 +799,8 @@ window.selectionBoard = function() {
                 // the mint. The badge punches (scale+wobble) so the
                 // user catches the new 🎟️ in their peripheral vision,
                 // and the confetti burst is positioned to shoot out
-                // of it. A second burst fires later when the entry
-                // actually confirms ('tokens-submitted').
+                // of it. A second burst fires later from the shared Entry
+                // Confirmed card when the entry actually confirms.
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
                 // Also mirror the new count into $store.session so the
                 // next confirmEntry()'s eligibilityBlocker reads fresh
@@ -815,8 +815,9 @@ window.selectionBoard = function() {
                 try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 180); } catch (_) {}
               });
               // The modal STAYS OPEN in 'tokens-minted' — it renders the
-              // in-modal Hold to Confirm Entry button. On success → step
-              // 'tokens-submitted' (set in confirmEntry).
+              // in-modal Hold to Confirm Entry button. On success,
+              // confirmEntry() calls resolveEntry() — swapping to the
+              // shared onchain-tx "Entry Confirmed" card.
               return;
             }
           } else {
@@ -1086,10 +1087,11 @@ window.selectionBoard = function() {
 
         } else {
           // Suppress the solanaModal "Submitting Entry" overlay when
-          // we're already inside the auth wizard at tokens-minted — that
-          // wizard handles its own in-place feedback (hold button
-          // "Submitting…" → 'tokens-submitted' celebration card) so we
-          // don't want two stacked modals.
+          // we're already inside the auth wizard at tokens-minted — the
+          // hold button shows its own in-place "Submitting…" feedback, and
+          // on success resolveEntry() swaps this wizard for the shared
+          // Entry Confirmed card. Stacking a "Submitting Entry" onchain-tx
+          // modal on the auth modal would be two stacked modals.
           var authProps      = this._authProps();
           var insideTokensModal = !!(authProps && authProps.step === 'tokens-minted');
           if (!insideTokensModal) {
@@ -1135,29 +1137,22 @@ window.selectionBoard = function() {
 
             if (data.tx_signature) {
               if (inTokensMinted) {
-                // Stay in the wizard — show the on-chain receipt + CTA
-                // in the 'tokens-submitted' card instead of stacking the
-                // solanaModal on top. mintedBalance + navTokens fire
-                // synchronously so the navbar count is accurate at the
-                // moment the slide begins; the celebratory props (tx,
-                // seeds, redirect) land via advance() alongside the
-                // step change so the success card renders ready-to-go
-                // when the slide-in starts.
+                // In-wizard token entry resolves to the SAME shared "Entry
+                // Confirmed" card as the web3 path. resolveEntry() swaps the
+                // auth wizard for the onchain-tx success modal (replace, not
+                // stack — no two stacked modals). updateNavTokens fires
+                // synchronously so the navbar count is right as the slide
+                // begins; the success card fires its own confetti on mount.
                 var nextBalance = Math.max(0, (p.mintedBalance || 0) - 1);
                 try { if (window.updateNavTokens) window.updateNavTokens(nextBalance); } catch (_) {}
-                Alpine.store('modals').advance({
-                  mintedBalance: nextBalance,
-                  txSignature:   data.tx_signature,
-                  redirectUrl:   data.redirect || '/',
-                  seedsEarned:   data.seeds_earned || 0,
-                  seedsTotal:    data.seeds_total  || 0,
-                  step:          'tokens-submitted'
+                Alpine.store('solanaModal').resolveEntry({
+                  txSignature: data.tx_signature,
+                  lobbyUrl:    data.redirect || '/',
+                  seedsEarned: data.seeds_earned || 0,
+                  seedsTotal:  data.seeds_total  || 0,
+                  seedsLevel:  data.seeds_level  || 0
                 });
                 refreshBalanceDelayed();
-                // Modal-card confetti — delayed past the slide-in start
-                // so the burst originates from the success card after it
-                // settles in place (not the confirming card sliding off).
-                try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 320); } catch (_) {}
               } else {
                 var sm = Alpine.store('solanaModal');
                 sm.seedsEarned = data.seeds_earned || 0;
@@ -1170,20 +1165,19 @@ window.selectionBoard = function() {
               if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
 
               if (inTokensMinted) {
-                // The entry just consumed one token — keep the navbar in
-                // sync (server-side decrement already happened).
+                // Token entry with no on-chain tx — still resolve to the
+                // shared Entry Confirmed card (the tx-link simply doesn't
+                // render when the signature is null). Swaps the auth wizard
+                // for the onchain-tx success modal (replace, not stack).
                 var nextBalance2 = Math.max(0, (p.mintedBalance || 0) - 1);
                 try { if (window.updateNavTokens) window.updateNavTokens(nextBalance2); } catch (_) {}
-                Alpine.store('modals').advance({
-                  mintedBalance: nextBalance2,
-                  redirectUrl:   data.redirect || '/',
-                  seedsEarned:   data.seeds_earned || 0,
-                  seedsTotal:    data.seeds_total  || 0,
-                  step:          'tokens-submitted'
+                Alpine.store('solanaModal').resolveEntry({
+                  txSignature: null,
+                  lobbyUrl:    data.redirect || '/',
+                  seedsEarned: data.seeds_earned || 0,
+                  seedsTotal:  data.seeds_total  || 0,
+                  seedsLevel:  data.seeds_level  || 0
                 });
-                // Modal-card confetti — delayed past the slide-in start
-                // so the burst originates from the settled success card.
-                try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 320); } catch (_) {}
                 refreshBalanceDelayed();
               } else {
                 window.location.href = data.redirect || '/';

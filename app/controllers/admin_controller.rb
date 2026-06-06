@@ -81,15 +81,6 @@ class AdminController < ApplicationController
       label: "Minted (3 tokens, plural)", key: "auth-tokens-minted-3",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
       props: { step: "tokens-minted", mintedCount: 3, mintedBalance: 3 } },
-    { group: "Web3",
-      label: "Submitted (entry confirmed)", key: "auth-tokens-submitted",
-      modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
-      # redirectUrl: nil — the cta_redirect partial sees null and skips
-      # the timer-end window.location, so the gallery preview keeps the
-      # drain animation but never navigates the iframe.
-      props: { step: "tokens-submitted",
-               txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
-               redirectUrl: nil, seedsEarned: 13, seedsTotal: 13 } },
     { group: "Auth — token purchase sub-flow",
       label: "Error (poll timed out)", key: "auth-tokens-error",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",

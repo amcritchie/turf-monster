@@ -395,6 +395,50 @@
               if (this._recoveryHandler) this._recoveryHandler();
             },
 
+            // resolveEntry(opts) — land on the shared "Entry Confirmed"
+            // resolution card no matter which modal is currently open. The
+            // web3 path already runs show()+success() (onchain-tx is current).
+            // The in-wizard token path is mid-auth-wizard, so we SWAP the auth
+            // modal for the onchain-tx success modal (replace, not stack —
+            // avoids two stacked modals). Both flows therefore resolve to ONE
+            // card. The entry_confirmed block fires its own confetti on mount,
+            // so callers don't need to.
+            //   opts: { txSignature, lobbyUrl, seedsEarned, seedsTotal, seedsLevel }
+            resolveEntry: function(opts) {
+              opts = opts || {};
+              this._recoveryHandler = null;
+              this._onCloseHandler = null;
+              var successProps = {
+                dismissible:     true,
+                state:           'success',
+                title:           'Good Luck',
+                message:         null,
+                txSignature:     opts.txSignature || null,
+                errorMessage:    null,
+                seedsEarned:     opts.seedsEarned || 0,
+                seedsTotal:      opts.seedsTotal  || 0,
+                seedsLevel:      opts.seedsLevel  || 0,
+                lobbyUrl:        opts.lobbyUrl || null,
+                recoveryLabel:   null,
+                recoveryPhantom: false,
+                successVariant:  'entry',
+                successTitle:    null,
+                successSubtitle: null,
+                ctaLabel:        null,
+                ctaHref:         null,
+                confetti:        true
+              };
+              var modals = Alpine.store('modals');
+              var cur = modals.current();
+              if (cur && cur.id === 'onchain-tx') {
+                Object.assign(cur.props, successProps);   // already on the tx modal
+              } else if (cur) {
+                modals.swap('onchain-tx', successProps);  // mid-wizard → replace (no stack)
+              } else {
+                modals.open('onchain-tx', successProps);  // nothing open → fresh
+              }
+            },
+
             // === Field accessors — read/write 'onchain-tx' props ===
             get visible()         { return !!_onCurrent(); },
             get state()           { return _propRead('state', null); },

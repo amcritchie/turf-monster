@@ -10,8 +10,9 @@
     tokens-waiting    — Stripe checkout open in new tab; awaiting return
     tokens-confirming — Stripe returned; polling /tokens/status for the mint
     tokens-minted     — tokens credited; in-modal Hold to Confirm Entry
-    tokens-submitted  — entry confirmed; explorer link + leaderboard CTA
     tokens-error      — poll timed out / submission failed
+                        (entry success has no step — board's resolveEntry()
+                        swaps to the shared onchain-tx Entry Confirmed card)
     redirect          — countdown auto-redirect (entry blocked, geo, etc.)
 
   State split:

@@ -9,8 +9,12 @@
     tokens-waiting    — status template (loading)  — Stripe checkout open
     tokens-confirming — status template (loading)  — polling /tokens/status
     tokens-minted     — status template (success)  — hold to confirm entry
-    tokens-submitted  — entry confirmed (entry_confirmed card)
     tokens-error      — poll timed out / submission failed (error_card)
+
+  On a successful entry there is NO 'tokens-submitted' step — the board's
+  confirmEntry calls $store.solanaModal.resolveEntry(), which swaps this
+  wizard for the shared onchain-tx "Entry Confirmed" resolution card (the
+  same one the web3 on-chain path resolves to).
 
   Display state lives on the modal entry's props (mintedCount, mintedBalance,
   txSignature, redirectUrl, errorText, seedsEarned, seedsTotal), mutated
@@ -106,7 +110,7 @@
         the tokens are minted but the entry isn't confirmed yet, so the
         smaller-footprint Status template framing reads better than the
         large-title Success celebration (Success is reserved for the
-        completed-entry state, tokens-submitted). Hold-to-confirm button
+        completed-entry state — the shared Entry Confirmed card). Hold-to-confirm button
         replaces the template's standard primary CTA — the hold gesture
         IS the on-chain commit signal. %>
     <template x-if="props.step === 'tokens-minted'">
@@ -119,8 +123,9 @@
         <%# In-modal Hold to Confirm. Dispatches the same hold-confirm-entry
             window event as the board's hold buttons; selectionBoard's
             listener calls confirmEntry(), which detects the
-            auth-modal/tokens-minted context via $store.modals and stays
-            in the modal on success → step 'tokens-submitted'. %>
+            auth-modal/tokens-minted context via $store.modals and, on
+            success, calls resolveEntry() — swapping this wizard for the
+            shared onchain-tx "Entry Confirmed" resolution card. %>
         <%= render 'shared/hold_button',
             default_text: "Hold to Confirm Entry",
             hold_text: "Almost there...",
@@ -135,23 +140,11 @@
       </div>
     </template>
 
-    <%# ==================================================================
-        Submitted — entry confirmed. Renders the shared semantic
-        entry_confirmed card so web2 and web3 success match exactly,
-        including the seeds bar + level-up celebration. %>
-    <template x-if="props.step === 'tokens-submitted'">
-      <%# lobby_url_key passed straight (no || fallback) so the
-          cta_redirect partial can detect a null props.redirectUrl
-          and bypass the timer-end window.location. Real callers
-          always set redirectUrl alongside txSignature; null shows
-          up only on the gallery preview. %>
-      <%= render 'modals/blocks/entry_confirmed',
-          tx_signature_key: "props.txSignature",
-          lobby_url_key:    "props.redirectUrl",
-          seeds_earned_key: "props.seedsEarned",
-          seeds_total_key:  "props.seedsTotal",
-          kickoff_at:       @contest&.starts_at %>
-    </template>
+    <%# Entry confirmed has NO step here anymore. On a successful entry the
+        board calls $store.solanaModal.resolveEntry(), which SWAPS this auth
+        wizard for the shared onchain-tx "Entry Confirmed" resolution card —
+        the same terminal modal the web3 on-chain path resolves to. One
+        Confirmed card for token + USDC entries; no duplicate. %>
 
     <%# ==================================================================
         Error — Status template shape (default :md card_header with the
