@@ -156,8 +156,24 @@ class Entry < ApplicationRecord
       end
     end
 
+    # Score immediately against any already-decided games. Entry scoring is
+    # otherwise purely reactive (Goal create/destroy → Game#score_affected_contests!,
+    # plus grade!/jump!), so an entry confirmed onto a slate whose games are
+    # ALREADY completed never gets scored — it sits at 0 with no event to wake it.
+    # This is routine in practice: one World Cup slate is shared across many
+    # contests, and a game can be `completed` (simulated/final result) while its
+    # kickoff_at is still in the future, so SlateMatchup#locked? is false and the
+    # confirm lock-check lets the entry through. See Contest#score_entries!.
+    score!
+
     # Attempt onchain entry (non-blocking) — skip if already transferred on-chain
     enter_onchain! unless tx_signature
+  end
+
+  # Recompute this entry's score from its selections' current points.
+  def score!
+    selections.each(&:compute_points!)
+    update!(score: selections.reload.sum { |s| s.points || 0 })
   end
 
   def selection_data

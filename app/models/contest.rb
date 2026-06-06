@@ -389,15 +389,17 @@ class Contest < ApplicationRecord
 
     # Recompute points for all entries with selections on these matchups
     score_entries!
+
+    # simulate bypasses the Goal callbacks (which normally fire
+    # LiveBroadcast.goal_scored), so trigger the live broadcast here —
+    # FINAL toast + leaderboard/games refresh. Without this the /live page
+    # keeps showing stale scores until a manual page refresh.
+    Contest::LiveBroadcast.score_changed(game, event: :game_completed)
     game
   end
 
   def score_entries!
-    entries.where(status: [:active, :complete]).includes(selections: :slate_matchup).find_each do |entry|
-      entry.selections.each(&:compute_points!)
-      total = entry.selections.reload.sum { |s| s.points || 0 }
-      entry.update!(score: total)
-    end
+    entries.where(status: [:active, :complete]).includes(selections: :slate_matchup).find_each(&:score!)
     touch # Bust show page cache after scoring
   end
 
