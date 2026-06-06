@@ -30,8 +30,13 @@
 # `key:` back to "_studio_session" and re-add `domain: ".mcritchie.studio"` in
 # prod. Then revert the SessionsController override and re-add the
 # `render "sessions/sso_continue"` call in sessions/new.html.erb.
+# key is env-overridable (TM_SESSION_KEY) so a parallel worktree dev stack on
+# localhost doesn't share the "_turf_session" cookie with the primary :3001 stack
+# — same key + same SECRET_KEY_BASE there means each stack overwrites the other's
+# session_token, tripping the OPSEC-045 verify_session_token check (spurious 401 +
+# auth modal on authed POSTs). Defaults to "_turf_session" so prod is unchanged.
 Rails.application.config.session_store :cookie_store,
-  key: "_turf_session",
+  key: ENV.fetch("TM_SESSION_KEY") { "_turf_session" },
   secure: Rails.env.production?,
   httponly: true,
   same_site: :lax
