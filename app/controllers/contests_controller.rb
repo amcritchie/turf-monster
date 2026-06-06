@@ -738,13 +738,14 @@ class ContestsController < ApplicationController
 
     # No server-stamped signature scenario. In the Phantom-FIRST flow
     # (2026-06-05) broadcast is server-side INSIDE confirm_onchain_entry, and the
-    # signature is stamped there only after a successful broadcast+confirm. So a
-    # blank tx_signature here means confirm_onchain_entry never reached broadcast
+    # signature is stamped there IMMEDIATELY after broadcast, BEFORE verification
+    # (A1). So a blank tx_signature here genuinely means broadcast never happened
     # — nothing landed on-chain — and it is SAFE to release the user to retry
     # (assign_onchain_entry_number! probes the chain for a free slot, so a retry
-    # won't collide with a half-built entry). (Pre-2026-06-05 the client stamped
-    # post-broadcast; the same blank-signature branch covered a signed-but-never-
-    # broadcast tx that couldn't be recovered.)
+    # won't collide). A broadcast that SUCCEEDED but then failed verification
+    # leaves a STAMPED PT (status "submitted", signature present), which skips this
+    # branch and falls through to the RPC poll + verify_and_confirm below —
+    # crediting the already-paid entry instead of re-charging the user.
     if ptx.tx_signature.blank?
       ptx.update!(status: "failed")
       return render json: { status: "failed", error: "Your last entry did not go through — try again." }
@@ -827,6 +828,20 @@ class ContestsController < ApplicationController
       # and raises on a failed simulation before any broadcast.
       tx_signature = vault.cosign_and_broadcast_entry(params[:signed_tx])
 
+      # A1 (double-charge guard): stamp the signature on the PendingTransaction
+      # IMMEDIATELY after broadcast, BEFORE verification. The money has moved
+      # on-chain at this point — if verify_and_confirm_onchain_entry! below raises
+      # (e.g. a transient RPC error on getTransaction), the rescue must leave a PT
+      # that CARRIES the signature so recover_pending_entry credits the already-
+      # paid entry. A blank PT here would read as "never broadcast" and let the
+      # user re-enter and pay twice (assign_onchain_entry_number! probes the chain
+      # and would skip the already-paid PDA). Look up by target+initiator
+      # (prepare_entry created the row pre-broadcast, before any signature).
+      ptx = PendingTransaction.where(target: entry, status: %w[pending submitted],
+                                     initiator_address: current_user.web3_solana_address)
+                              .order(:created_at).last
+      ptx&.update!(tx_signature: tx_signature, status: "submitted")
+
       # OPSEC-010 / Lazarus audit #1: server-derive the entry PDA, cross-check
       # the client-supplied one, assert the broadcast TX is the v0.16
       # enter_contest IX signed by the user's wallet writing to that PDA, then
@@ -835,14 +850,7 @@ class ContestsController < ApplicationController
                                         expected_entry_pda: params[:entry_pda],
                                         vault: vault)
 
-      # Stamp the PendingTransaction confirmed. Broadcast is now server-side, so
-      # the server owns the signature — stamp it here (no client stamp step).
-      # Look up by target+initiator (prepare_entry created the row pre-broadcast,
-      # before any signature existed).
-      ptx = PendingTransaction.where(target: entry, status: %w[pending submitted],
-                                     initiator_address: current_user.web3_solana_address)
-                              .order(:created_at).last
-      ptx&.update!(tx_signature: tx_signature, status: "confirmed")
+      ptx&.update!(status: "confirmed")
 
       # Confirmed (Phantom direct-USDC path) — announce the join in chat once.
       announce_contest_join(entry)

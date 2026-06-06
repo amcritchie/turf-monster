@@ -1830,15 +1830,6 @@ module Solana
       tx
     end
 
-    # Cosign a Phantom-signed enter_contest wire tx with the admin keypair, run a
-    # server-side simulateTransaction pre-flight, then broadcast. Returns the tx
-    # signature. This is the server half of the Phantom-FIRST flow: the wire bytes
-    # arrive with Phantom's slot filled and the admin slot empty; cosign_wire
-    # drops the admin signature into its slot (re-asserting OPSEC-017 — fully
-    # signed afterwards), simulate catches a program error before broadcast, and
-    # send_and_confirm submits + waits for confirmation.
-    #
-    # signed_wire_base64 : base64 wire tx from Phantom (requireAllSignatures:false)
     # Opt-in durable-nonce config — set SOLANA_DURABLE_NONCE_PUBKEY to make
     # operator flows anchor on it; authority is the admin managed wallet (already
     # cosigns server-side). Returns nil (= default recent-blockhash) when unset.

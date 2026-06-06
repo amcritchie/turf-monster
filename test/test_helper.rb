@@ -31,6 +31,11 @@ end
 
 require_relative "../config/environment"
 require "rails/test_help"
+# Object#stub (used across controller/model tests) ships in minitest/mock but is
+# only pulled in transitively by some files' load order — so a single-file or
+# unlucky-ordered parallel run could hit "undefined method `stub`". Require it
+# explicitly so stubbing is deterministically available everywhere.
+require "minitest/mock"
 
 # Shared test doubles. test/support/* is auto-loaded so individual test
 # files don't need to require_relative them.

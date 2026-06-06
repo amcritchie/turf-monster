@@ -154,7 +154,7 @@ window.survivorBoard = function() {
           // strengthening on-chain integrity.
 
           // prepare_entry is just-in-time: the server rebuilds the
-          // partial-signed entry TX (build_enter_contest → build_partial_signed)
+          // unsigned entry TX (build_enter_contest → build_partial_unsigned)
           // which RE-FETCHES get_latest_blockhash AND prepends the ComputeBudget
           // priority-fee + CU-limit ixs. We call it immediately before signing
           // so the blockhash is maximally fresh (mirrors create's rebuild_create_tx).

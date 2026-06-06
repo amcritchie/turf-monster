@@ -558,6 +558,73 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert entry.reload.cart?
   end
 
+  test "confirm_onchain_entry surfaces a cosign/broadcast failure, leaves entry in cart with a BLANK PT (safe retry)" do
+    @user.update!(web3_solana_address: "Web3CosignFail#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_cf", season_id: 1)
+    SeasonConfig.set_current!(1)
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+    expected_pda = "epda-#{@contest.slug}-#{@user.web3_solana_address[0, 4]}-0"
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest", serialized_tx: "stx", status: "pending",
+      target: entry, initiator_address: @user.web3_solana_address,
+      metadata: { entry_pda: expected_pda }.to_json
+    )
+
+    vault = FakeVault.new
+    vault.cosign_broadcast_raises = "Entry pre-flight simulation failed"
+    Solana::Vault.stub :new, vault do
+      post confirm_onchain_entry_contest_path(@contest),
+        params: { signed_tx: "PHANTOM_SIGNED_WIRE_B64", entry_id: entry.id, entry_pda: expected_pda },
+        as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert entry.reload.cart?, "entry must stay in cart when broadcast fails"
+    ptx.reload
+    # Broadcast never succeeded → no signature stamped → recover_pending_entry reads
+    # this as 'never broadcast' and safely lets the user retry (no double charge).
+    assert ptx.tx_signature.blank?, "no signature should be stamped when cosign/broadcast raises"
+    assert_equal "pending", ptx.status
+  end
+
+  test "confirm_onchain_entry stamps the PT signature BEFORE verify, so a post-broadcast verify failure stays recoverable (A1)" do
+    @user.update!(web3_solana_address: "Web3A1#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_a1", season_id: 1)
+    SeasonConfig.set_current!(1)
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+    expected_pda = "epda-#{@contest.slug}-#{@user.web3_solana_address[0, 4]}-0"
+    ptx = PendingTransaction.create!(
+      tx_type: "enter_contest", serialized_tx: "stx", status: "pending",
+      target: entry, initiator_address: @user.web3_solana_address,
+      metadata: { entry_pda: expected_pda }.to_json
+    )
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        # Broadcast SUCCEEDS (FakeVault returns the fake sig), but verification raises
+        # — simulating a transient RPC failure on getTransaction AFTER money moved.
+        Solana::TxVerifier.stub :verify!, ->(*) { raise StandardError, "transient RPC on getTransaction" } do
+          post confirm_onchain_entry_contest_path(@contest),
+            params: { signed_tx: "PHANTOM_SIGNED_WIRE_B64", entry_id: entry.id, entry_pda: expected_pda },
+            as: :json
+        end
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert entry.reload.cart?, "entry stays cart until verify succeeds"
+    ptx.reload
+    # A1: the signature MUST persist despite the verify failure, so recovery credits
+    # the already-paid entry instead of letting the user re-enter and pay twice.
+    assert_equal "fake-cosign-broadcast-sig", ptx.tx_signature, "PT must carry the broadcast signature after a post-broadcast verify failure"
+    assert_equal "submitted", ptx.status
+  end
+
   # --- stamp_entry_signature tests ---
 
   test "stamp_entry_signature flips a pending PT to submitted with the signature" do
