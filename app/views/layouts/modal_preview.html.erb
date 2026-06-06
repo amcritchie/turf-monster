@@ -19,9 +19,14 @@
   <head>
     <title><%= content_for(:title) || "Modal Preview" %></title>
     <link rel="apple-touch-icon" href="/favicon.png">
-    <%# Solana web3 + nacl — needed by the username modal's signing path. %>
-    <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <%# Solana web3 + nacl — ONLY the username modal's signing path needs
+        them. Loading ~1.5MB from unpkg in every preview iframe stalled the
+        gallery's page load (15+ iframes × unpkg), so scope it to the one
+        modal that uses it. @modal_id is nil for modal_preview_crop → skipped. %>
+    <% if @modal_id == "username" %>
+      <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <% end %>
     <%# Cropper.js + image-upload factories (cropPhotoModal) — the crop-photo
         modal preview needs them; ships from studio-engine (v0.4.12). %>
     <%= render "studio/cropper_assets" %>
@@ -119,9 +124,6 @@
   <body x-data class="bg-page text-body" data-logged-in="<%= logged_in? %>" data-user-id="<%= current_user&.id %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>" data-solana-rpc-url="<%= Solana::Config::RPC_URL %>">
     <%= yield %>
     <%= render "studio/modals/host" do %>
-      <template x-if="$store.modals.current().id === 'check-email'">
-        <%= render "modals/check_email" %>
-      </template>
       <template x-if="$store.modals.current().id === 'auth'">
         <%= render "modals/auth" %>
       </template>
@@ -133,6 +135,9 @@
       </template>
       <template x-if="$store.modals.current().id === 'wallet-deposit'">
         <%= render "modals/wallet_deposit" %>
+      </template>
+      <template x-if="$store.modals.current().id === 'wallet-connect'">
+        <%= render "modals/wallet_connect" %>
       </template>
       <% if logged_in? %>
         <template x-if="$store.modals.current().id === 'profile'">

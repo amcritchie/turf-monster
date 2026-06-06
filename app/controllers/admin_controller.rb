@@ -51,6 +51,10 @@ class AdminController < ApplicationController
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
       props: { step: "magic-link-sent", sentEmail: "you@example.com" } },
     { group: "Auth — credentials",
+      label: "Magic link resent", key: "auth-magic-link-resent",
+      modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      props: { step: "magic-link-resent", sentEmail: "you@example.com" } },
+    { group: "Auth — credentials",
       label: "Connect Wallet (picker)", key: "wallet-connect",
       modal_id: "wallet-connect", file: "app/views/modals/_wallet_connect.html.erb",
       props: {} },
@@ -98,31 +102,16 @@ class AdminController < ApplicationController
       props: { neededCents: 1900, usdcCents: 300, usdtCents: 0 } },
 
     { group: "Auth — redirect",
-      label: "Redirect countdown", key: "auth-redirect",
+      label: "Geo restricted (redirect countdown)", key: "auth-redirect",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      # The auth modal's generic countdown-redirect step. Its ONLY production
+      # caller is the geo-restriction path (showRedirectModal in
+      # contests/_turf_totals_board.html.erb) — so the sample mirrors that.
       # url: nil — cta_redirect drains the bar but skips the actual
       # window.location at timer-end, so the gallery preview stays put.
-      props: { step: "redirect", icon: "⏱️", title: "Heading to the lobby",
-               message: "We're sending you to the contest lobby.",
-               url: nil, cta: "Go now" } },
-
-    { group: "Check email",
-      label: "Default", key: "check-email",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com" } },
-    { group: "Check email",
-      label: "With resend error", key: "check-email-error",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com",
-               sendError: "Failed to resend — please try again in a moment." } },
-    { group: "Check email",
-      label: "Resending (loader)", key: "check-email-resending",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com", state: "resending" } },
-    { group: "Check email",
-      label: "Confirmation Resent", key: "check-email-resent",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com", state: "resent" } },
+      props: { step: "redirect", icon: "📍", title: "Location Restricted",
+               message: "Contest entries are not available in your state.",
+               url: nil, cta: "OK" } },
 
     { group: "On-chain TX (Solana)",
       label: "Processing", key: "onchain-processing",
@@ -171,7 +160,7 @@ class AdminController < ApplicationController
     # directly — usually with a preview-state query param that pins one
     # branch of the page's internal state machine without live behavior.
     { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Loading (waiting on mint)", key: "tokens-processing-loading",
+      label: "Confirming (polling mint)", key: "tokens-processing-loading",
       file: "app/views/tokens/processing.html.erb",
       url:  "/tokens/processing?preview_state=loading" },
     { group: "Standalone — Stripe return (/tokens/processing)",

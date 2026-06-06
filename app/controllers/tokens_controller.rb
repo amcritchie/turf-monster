@@ -84,7 +84,13 @@ class TokensController < ApplicationController
 
   def processing
     @session_id = params[:session_id].to_s
-    redirect_to tokens_buy_path and return if @session_id.blank?
+    # Gallery preview (/admin/modals) renders this page in a forced state via
+    # ?preview_state=loading|ready|errored — no real session, so it must NOT
+    # redirect to /tokens/buy (which loaded a full app page in every preview
+    # iframe and stalled the gallery). Non-production only. The view's Alpine
+    # component short-circuits polling/window.close when previewState is set.
+    @preview_state = params[:preview_state].to_s.presence unless Rails.env.production?
+    redirect_to tokens_buy_path and return if @preview_state.blank? && @session_id.blank?
     # When checkout carried a contest, return the buyer there once tokens mint.
     @contest = Contest.find_by(slug: params[:contest].presence)
     # Fallback CTA for the standalone success card: send the buyer to

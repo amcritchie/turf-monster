@@ -21,7 +21,7 @@
   <% @variants.group_by { |v| v[:group] }.each do |group, items| %>
     <section class="space-y-4">
       <h2 class="text-heading text-lg font-semibold border-b border-subtle pb-2"><%= group %></h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <% items.each do |variant| %>
           <% file_short = variant[:file].to_s.sub(%r{\Aapp/views/}, "") %>
           <% iframe_src = variant[:url].presence || (variant[:modal_id] && admin_modal_preview_path(modal_id: variant[:modal_id], props: variant[:props].to_json)) %>
@@ -82,6 +82,60 @@
       </div>
     </section>
   <% end %>
+
+  <%# ── Enter / Leave animation simulator ───────────────────────────
+      Drives the per-modal entrance/exit registry (window.ModalAnimations
+      in studio/modals/_host). Buttons + dropdowns are built from the live
+      registry at DOMContentLoaded, so adding a new animation key surfaces
+      here automatically — no edits to this page. The demo vehicle is the
+      always-registered email-change-pending modal; only its enter/exit anim varies. %>
+  <section class="space-y-4 pt-6 border-t border-subtle">
+    <div>
+      <h2 class="text-heading text-lg font-semibold">Enter / Leave Animations</h2>
+      <p class="text-muted text-sm">
+        The per-modal entrance/exit registry —
+        <code class="text-xs bg-inset px-1 rounded">window.ModalAnimations</code> in
+        <code class="text-xs bg-inset px-1 rounded">studio/modals/_host</code>. Any modal opens with
+        <code class="text-xs bg-inset px-1 rounded">$store.modals.open(id, { enterAnim, exitAnim })</code>;
+        omit either → <code class="text-xs bg-inset px-1 rounded">pop</code>. Controls below are generated
+        from the live registry. Demo card: <code class="text-xs bg-inset px-1 rounded">email-change-pending</code>.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <%# One-click per registered ENTER animation — watch the card appear. %>
+      <div class="card p-6 space-y-3">
+        <h3 class="text-heading font-semibold">Enter <span class="text-muted text-xs font-normal">— watch it appear</span></h3>
+        <p class="text-secondary text-xs">Opens the demo modal with that entrance. Dismiss with Esc / click-outside / Close.</p>
+        <div id="modal-anim-enter-buttons" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <%# One-click per registered EXIT animation — opens with a plain
+          entrance, then auto-closes after a beat so the exit plays. %>
+      <div class="card p-6 space-y-3">
+        <h3 class="text-heading font-semibold">Leave <span class="text-muted text-xs font-normal">— watch it dismiss</span></h3>
+        <p class="text-secondary text-xs">Opens with a plain entrance, then auto-closes so the exit keyframe is what you watch.</p>
+        <div id="modal-anim-exit-buttons" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <%# Full matrix — pick any entrance x exit and round-trip it. %>
+      <div class="card p-6 space-y-3 md:col-span-2">
+        <h3 class="text-heading font-semibold">Combine</h3>
+        <p class="text-secondary text-xs">Pick any entrance + exit and run the round-trip.</p>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-xs text-secondary">Enter
+            <select id="modal-anim-enter-select" class="block mt-1 text-sm bg-inset border border-subtle rounded px-2 py-1 text-heading"></select>
+          </label>
+          <label class="text-xs text-secondary">Leave
+            <select id="modal-anim-exit-select" class="block mt-1 text-sm bg-inset border border-subtle rounded px-2 py-1 text-heading"></select>
+          </label>
+          <button class="btn btn-primary btn-sm" onclick="modalAnimOpenSelected()">Open</button>
+          <button class="btn btn-outline btn-sm" onclick="modalAnimRoundTripSelected()">Open &rarr; auto-close</button>
+          <button class="btn btn-outline btn-sm" onclick="Alpine.store('modals').close()">Close</button>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <%# ── Stack behavior tests (carried over from the previous version
       of this page — useful for poking at the engine modal-stack
@@ -215,11 +269,84 @@
   function modalStackTwo() {
     Alpine.store('solanaModal').show('First Modal', 'This is the bottom of the stack.');
     setTimeout(function() {
-      Alpine.store('modals').open('check-email', { email: 'demo@turfmonster.media' });
+      Alpine.store('modals').open('email-change-pending', { currentEmail: 'demo@turfmonster.media', newEmail: 'new@turfmonster.media' });
     }, 600);
   }
 
   function toast(detail) {
     window.dispatchEvent(new CustomEvent('toast', { detail: detail }));
   }
+
+  // === Enter / Leave animation simulator ==============================
+  // Opens the always-registered email-change-pending modal varying only its
+  // enter/exit animation keys, so the card motion is the star.
+  var ANIM_DEMO_ID    = 'email-change-pending';
+  var ANIM_DEMO_PROPS = { currentEmail: 'you@example.com', newEmail: 'new@example.com' };
+
+  function modalAnimOpen(enterAnim, exitAnim) {
+    Alpine.store('modals').open(ANIM_DEMO_ID, Object.assign({}, ANIM_DEMO_PROPS, {
+      enterAnim: enterAnim, exitAnim: exitAnim
+    }));
+  }
+
+  // Open, let the entrance settle, then close so the chosen exit keyframe
+  // is what you watch. Hold = the entrance's registry duration + a beat.
+  function modalAnimRoundTrip(enterAnim, exitAnim) {
+    modalAnimOpen(enterAnim, exitAnim);
+    var enterMs = ((window.ModalAnimations.enter[enterAnim] || {}).ms) || 320;
+    setTimeout(function() { Alpine.store('modals').close(); }, enterMs + 700);
+  }
+
+  function modalAnimOpenSelected() {
+    modalAnimOpen(
+      document.getElementById('modal-anim-enter-select').value,
+      document.getElementById('modal-anim-exit-select').value
+    );
+  }
+  function modalAnimRoundTripSelected() {
+    modalAnimRoundTrip(
+      document.getElementById('modal-anim-enter-select').value,
+      document.getElementById('modal-anim-exit-select').value
+    );
+  }
+
+  // Build the quick buttons + dropdown options from the live registry.
+  // Deferred to DOMContentLoaded because window.ModalAnimations is defined
+  // by the modal-host inline script, which may render after this one.
+  document.addEventListener('DOMContentLoaded', function buildModalAnimControls() {
+    var reg = window.ModalAnimations || { enter: {}, exit: {} };
+    var label = function(key) {
+      return key.charAt(0).toUpperCase() + key.slice(1) + (key === 'pop' ? ' (default)' : '');
+    };
+    var addOption = function(sel, key) {
+      if (!sel) return;
+      var o = document.createElement('option');
+      o.value = key; o.textContent = label(key);
+      if (key === 'pop') o.selected = true;
+      sel.appendChild(o);
+    };
+    var addButton = function(container, key, onClick, suffix) {
+      if (!container) return;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-outline btn-sm';
+      b.textContent = label(key) + (suffix || '');
+      b.onclick = onClick;
+      container.appendChild(b);
+    };
+
+    var enterBtns = document.getElementById('modal-anim-enter-buttons');
+    var exitBtns  = document.getElementById('modal-anim-exit-buttons');
+    var enterSel  = document.getElementById('modal-anim-enter-select');
+    var exitSel   = document.getElementById('modal-anim-exit-select');
+
+    Object.keys(reg.enter).forEach(function(key) {
+      addButton(enterBtns, key, function() { modalAnimOpen(key, 'pop'); }, ' ↗');
+      addOption(enterSel, key);
+    });
+    Object.keys(reg.exit).forEach(function(key) {
+      addButton(exitBtns, key, function() { modalAnimRoundTrip('pop', key); });
+      addOption(exitSel, key);
+    });
+  });
 </script>

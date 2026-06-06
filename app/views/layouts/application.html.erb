@@ -711,9 +711,6 @@
         escape / click-outside / ARIA / transitions, and renders this app's
         content partials by id (registered in the block below). %>
     <%= render "studio/modals/host" do %>
-      <template x-if="$store.modals.current().id === 'check-email'">
-        <%= render "modals/check_email" %>
-      </template>
       <%# Email-change-pending — opened on the /account page after a held
           email change (AccountsController#update). Informational handoff:
           "go click the confirm link in your inbox." Auto-opened from the
