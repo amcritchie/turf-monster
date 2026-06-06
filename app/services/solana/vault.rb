@@ -1633,6 +1633,22 @@ module Solana
       }
     end
 
+    # Cosign (admin) the Phantom-signed entry wire, pre-flight simulate, then
+    # broadcast. Public API called by ContestsController#confirm_onchain_entry.
+    def cosign_and_broadcast_entry(signed_wire_base64)
+      patched_b64 = Transaction.cosign_wire_base64(signed_wire_base64, signer: Keypair.admin)
+
+      # Server-side pre-flight. sig_verify:false — both sigs are present now but we
+      # don't need the RPC to re-verify; we want program-error + log surfacing.
+      sim = client.simulate_transaction(patched_b64, sig_verify: false)
+      if sim && sim["err"]
+        logs = Array(sim["logs"]).last(6).join("\n")
+        raise "Entry pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
+      end
+
+      client.send_and_confirm(patched_b64)
+    end
+
     private
 
     # Pad/truncate a fee array to 16 elements (MAX_CURRENCIES). Accepts:
@@ -1823,20 +1839,6 @@ module Solana
     # send_and_confirm submits + waits for confirmation.
     #
     # signed_wire_base64 : base64 wire tx from Phantom (requireAllSignatures:false)
-    def cosign_and_broadcast_entry(signed_wire_base64)
-      patched_b64 = Transaction.cosign_wire_base64(signed_wire_base64, signer: Keypair.admin)
-
-      # Server-side pre-flight. sig_verify:false — both sigs are present now but we
-      # don't need the RPC to re-verify; we want program-error + log surfacing.
-      sim = client.simulate_transaction(patched_b64, sig_verify: false)
-      if sim && sim["err"]
-        logs = Array(sim["logs"]).last(6).join("\n")
-        raise "Entry pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
-      end
-
-      client.send_and_confirm(patched_b64)
-    end
-
     # Opt-in durable-nonce config — set SOLANA_DURABLE_NONCE_PUBKEY to make
     # operator flows anchor on it; authority is the admin managed wallet (already
     # cosigns server-side). Returns nil (= default recent-blockhash) when unset.
