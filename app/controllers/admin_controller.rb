@@ -54,7 +54,7 @@ class AdminController < ApplicationController
       label: "Magic link resent", key: "auth-magic-link-resent",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
       props: { step: "magic-link-resent", sentEmail: "you@example.com" } },
-    { group: "Auth — credentials",
+    { group: "Web3",
       label: "Connect Wallet (picker)", key: "wallet-connect",
       modal_id: "wallet-connect", file: "app/views/modals/_wallet_connect.html.erb",
       props: {} },
@@ -81,7 +81,7 @@ class AdminController < ApplicationController
       label: "Minted (3 tokens, plural)", key: "auth-tokens-minted-3",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
       props: { step: "tokens-minted", mintedCount: 3, mintedBalance: 3 } },
-    { group: "Auth — token purchase sub-flow",
+    { group: "Web3",
       label: "Submitted (entry confirmed)", key: "auth-tokens-submitted",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
       # redirectUrl: nil — the cta_redirect partial sees null and skips
