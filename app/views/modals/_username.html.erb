@@ -22,7 +22,8 @@
   <div x-data="usernameRenameForm({
          initialUsername: '<%= j current_user.username %>',
          updateUrl: '<%= update_username_account_path %>',
-         confirmUrl: '<%= confirm_username_account_path %>'
+         confirmUrl: '<%= confirm_username_account_path %>',
+         initialSaving: (($store.modals.current() || {}).props || {}).previewSaving || false
        })">
     <%= render layout: "modals/blocks/shell", locals: { title: "Change Username" } do %>
       <p class="text-sm text-muted mb-4">

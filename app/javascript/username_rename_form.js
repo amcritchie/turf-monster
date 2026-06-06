@@ -17,13 +17,15 @@
 //                    serialized_tx, token } (Phantom flow)
 //   confirmUrl:      POST endpoint to call after Phantom sign + broadcast
 //                    with { token, tx_signature }
+//   initialSaving:   gallery-only — start in the "Saving…" state for the
+//                    modals-index preview (no real request runs)
 
 function usernameRenameForm(opts) {
   opts = opts || {};
   return {
     initial: opts.initialUsername || "",
     username: opts.initialUsername || "",
-    saving: false,
+    saving: !!opts.initialSaving,
     error: null,
 
     get changed() {

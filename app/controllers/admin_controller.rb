@@ -145,6 +145,12 @@ class AdminController < ApplicationController
       modal_id: "username", file: "app/views/modals/_username.html.erb",
       props: {} },
     { group: "Profile",
+      label: "Change username (saving…)", key: "username-saving",
+      # previewSaving forces the form's "Saving…" state for the gallery
+      # (usernameRenameForm reads it via the modal props); no request runs.
+      modal_id: "username", file: "app/views/modals/_username.html.erb",
+      props: { previewSaving: true } },
+    { group: "Profile",
       label: "Crop Photo (upload — empty state)", key: "crop-photo-upload",
       # No imageUrl → the modal IS the picker: drop / click to upload. This is
       # the first state of the avatar + contest-banner upload, before a file
