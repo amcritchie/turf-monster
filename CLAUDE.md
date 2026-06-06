@@ -335,7 +335,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 
 ### Contest Actions (POST)
 - `toggle_selection`, `enter`, `clear_picks` — player actions
-- `prepare_entry`, `confirm_onchain_entry` — Phantom onchain entry flow
+- `prepare_entry`, `confirm_onchain_entry` — Phantom onchain entry flow. **Phantom-FIRST (2026-06-06):** `prepare_entry` returns a fully-UNSIGNED tx (admin reserved as fee-payer + nonce-authority but NOT signed); Phantom (the user wallet) signs FIRST; the client POSTs the signed wire bytes to `confirm_onchain_entry`, which admin-cosigns (`Solana::Transaction.cosign_wire` via `Vault#cosign_and_broadcast_entry`), runs a `simulateTransaction` pre-flight, broadcasts **server-side**, then verifies. This clears Phantom's multi-signer "could be malicious" Lighthouse warning (it flags server-pre-signed multi-signer txs) and moves broadcast off the client (no more 0xbc4 re-broadcast bursts). The PT signature is stamped immediately after broadcast — BEFORE verify — so a post-broadcast verify failure stays recoverable via `recover_pending_entry` (no double-charge). Requires solana-studio ≥ 0.4.7 (`cosign_wire`).
 - `prepare_lock_time`, `confirm_lock_time`, `prepare_conclusion_time`, `confirm_conclusion_time` — Phantom-signed (1-of-3) set of the on-chain `lock_timestamp` / `conclusion_timestamp`. Replaces the old `lock_contest`/`unlock_contest`. See `app/javascript/lock_contest.js`.
 - `finalize` — Phantom-driven contest creation step 2 (collection route, no `:id`). See `ContestsController#create` + `#finalize`.
 - `prepare_onchain_contest`, `confirm_onchain_contest` — legacy Phantom-fund-existing-contest flow; still referenced by `e2e/onchain.spec.js`. Not used by the UI anymore.

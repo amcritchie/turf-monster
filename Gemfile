@@ -81,7 +81,9 @@ gem "sentry-rails"
 gem "studio-engine", "~> 0.5"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
-gem "solana-studio", "~> 0.4.6"
+# 0.4.7 adds Solana::Transaction.cosign_wire + Client#simulate_transaction for the
+# Phantom-first signing-order flow (published to RubyGems).
+gem "solana-studio", "~> 0.4.7"
 
 # IP geolocation for state-level geo-blocking
 gem "geocoder"

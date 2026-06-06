@@ -1052,12 +1052,11 @@ window.selectionBoard = function() {
           // integrity (current_user comes from the session cookie set at
           // login via the same SIWS flow). Removed 2026-05-24.
 
-          // prepare_entry is just-in-time: the server rebuilds the
-          // partial-signed entry TX (build_enter_contest → build_partial_signed)
-          // which RE-FETCHES get_latest_blockhash AND prepends the ComputeBudget
-          // priority-fee + CU-limit ixs. We call it immediately before signing
-          // so the blockhash is maximally fresh (mirrors create's rebuild_create_tx).
-          var rpcUrl = document.body.dataset.solanaRpcUrl;
+          // prepare_entry is just-in-time: the server rebuilds the UNSIGNED entry
+          // TX (build_enter_contest → build_partial_unsigned) which RE-FETCHES
+          // get_latest_blockhash AND prepends the ComputeBudget priority-fee +
+          // CU-limit ixs. We call it immediately before signing so the blockhash
+          // is maximally fresh (mirrors create's rebuild_create_tx).
           console.log('[contest-entry] POST prepare_entry (fresh blockhash + priority fee)…');
           var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
@@ -1086,100 +1085,35 @@ window.selectionBoard = function() {
             });
           } catch (logErr) { console.warn('[contest-entry] TX inspection failed (non-fatal):', logErr); }
 
+          // Phantom-FIRST signing order (2026-06-05): Phantom signs the
+          // FULLY-UNSIGNED tx FIRST (both admin + user slots empty). This clears
+          // Phantom's multi-signer-order "could be malicious" Lighthouse banner
+          // that fired when the server pre-signed and Phantom signed second.
+          //
+          // We DO NOT broadcast/simulate/poll client-side anymore. We hand the
+          // Phantom-signed wire bytes (requireAllSignatures:false → admin slot
+          // still empty) to the server, which cosigns with the admin keypair
+          // (Transaction.cosign_wire), runs a simulateTransaction pre-flight,
+          // broadcasts, waits for confirmation, then verifies + activates.
           var signedTx = await provider.signTransaction(tx);
-          var signedBytes = signedTx.serialize();
-          console.log('[contest-entry] signed by Phantom; raw byte length:', signedBytes.length);
+          // requireAllSignatures:false — the admin slot is intentionally still
+          // empty; the server fills it. verifySignatures:false — the tx isn't
+          // fully signed yet, so don't let web3.js reject it on serialize.
+          var signedBytes = signedTx.serialize({ requireAllSignatures: false, verifySignatures: false });
+          console.log('[contest-entry] signed by Phantom (admin slot empty); raw byte length:', signedBytes.length);
 
-          var connection = new solanaWeb3.Connection(rpcUrl, 'confirmed');
-
-          // Pre-broadcast simulation via RAW JSON-RPC on the serialized bytes —
-          // surfaces program errors as a real message + logs instead of a silent
-          // mainnet drop. Do NOT pass the signedTx OBJECT to
-          // connection.simulateTransaction: Phantom's signTransaction returns a tx
-          // from Phantom's OWN web3.js bundle, so the page's
-          // `instanceof VersionedTransaction` check fails → mis-dispatch to the
-          // legacy overload → "Cannot read properties of undefined
-          // (reading 'numRequiredSignatures')". Bytes are class-agnostic.
-          Alpine.store('solanaModal').show('Checking', 'Simulating the transaction...');
-          var simBinary = '';
-          var simChunk = 0x8000;
-          for (var si = 0; si < signedBytes.length; si += simChunk) {
-            simBinary += String.fromCharCode.apply(null, signedBytes.subarray(si, si + simChunk));
+          var sb = '';
+          var sChunk = 0x8000;
+          for (var bi = 0; bi < signedBytes.length; bi += sChunk) {
+            sb += String.fromCharCode.apply(null, signedBytes.subarray(bi, bi + sChunk));
           }
-          var rawB64 = btoa(simBinary);
-          console.log('[contest-entry] simulating (sigVerify:false) before broadcast…');
-          var simRpc = await fetch(rpcUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0', id: 1, method: 'simulateTransaction',
-              params: [ rawB64, { sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed', encoding: 'base64' } ]
-            })
-          });
-          var simJson = await simRpc.json();
-          console.log('[contest-entry] raw simulateTransaction JSON-RPC response:', simJson);
-          var simVal = (simJson.result && simJson.result.value) || null;
-          console.log('[contest-entry] simulation result:', {
-            rpcError: simJson.error || null,
-            err: simVal ? simVal.err : undefined,
-            unitsConsumed: simVal ? simVal.unitsConsumed : undefined,
-            logsCount: simVal && simVal.logs ? simVal.logs.length : 0
-          });
-          if (simVal && simVal.logs && simVal.logs.length) {
-            console.log('[contest-entry] simulation program logs:');
-            simVal.logs.forEach(function(l) { console.log('[contest-entry]   ' + l); });
-          }
-          if (simJson.error || (simVal && simVal.err !== null && simVal.err !== undefined)) {
-            var simErrStr = JSON.stringify(simJson.error || simVal.err);
-            var simLogs = (simVal && simVal.logs) || [];
-            console.error('[contest-entry] simulation FAILED — aborting broadcast:', simErrStr, simLogs);
-            var tailLogs = simLogs.slice(-4).join('\n');
-            throw new Error('Pre-flight simulation failed: ' + simErrStr + (tailLogs ? ('\n\n' + tailLogs) : ''));
-          }
+          var signedB64 = btoa(sb);
 
-          Alpine.store('solanaModal').show('Confirming Onchain', 'Submitting transaction to Solana...');
-          // skipPreflight:false → the RPC runs preflight and returns a real error
-          // on send instead of silently swallowing a mainnet drop.
-          var broadcastOpts = { skipPreflight: false, maxRetries: 3, preflightCommitment: 'confirmed' };
-          console.log('[contest-entry] sendRawTransaction options:', broadcastOpts);
-          var txSig = await connection.sendRawTransaction(signedBytes, broadcastOpts);
-          console.log('[contest-entry] broadcast returned signature:', txSig);
-
-          // Stamp the signature on the server-side PendingTransaction
-          // before waiting for confirmation — if the user refreshes during
-          // the confirmation wait, the server still knows which signature
-          // belongs to this entry. Fire-and-forget; a stamp failure must
-          // not block the entry flow (the confirm_onchain_entry below also
-          // resolves the PT as a fallback).
-          if (ptxSlug) {
-            try {
-              await window.authedFetch('/contests/' + this.contestId + '/stamp_entry_signature', {
-                method: 'POST',
-                headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ ptx_slug: ptxSlug, tx_signature: txSig })
-              });
-            } catch (_) { /* non-fatal */ }
-          }
-
-          // HTTP poll getSignatureStatuses instead of connection.confirmTransaction
-          // (no WebSocket subscription, no misleading ws://port+1 timeout).
-          Alpine.store('solanaModal').show('Confirming Onchain', 'Waiting for Solana confirmation...');
-          await window.pollConfirmation(rpcUrl, txSig, {
-            onPoll: function(attempt, st) {
-              console.log('[contest-entry] poll #' + attempt + ' getSignatureStatuses:', st ? {
-                confirmationStatus: st.confirmationStatus,
-                confirmations: st.confirmations,
-                err: st.err
-              } : 'null (not yet visible)');
-            }
-          });
-          console.log('[contest-entry] confirmed on-chain:', txSig);
-
-          Alpine.store('solanaModal').show('Confirming Entry', 'Saving entry...');
+          Alpine.store('solanaModal').show('Confirming Onchain', 'Cosigning and submitting to Solana...');
           var confirmResp = await window.authedFetch('/contests/' + this.contestId + '/confirm_onchain_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ tx_signature: txSig, entry_id: prepareData.entry_id, entry_pda: prepareData.entry_pda })
+            body: JSON.stringify({ signed_tx: signedB64, entry_id: prepareData.entry_id, entry_pda: prepareData.entry_pda, ptx_slug: ptxSlug })
           });
           if (!confirmResp) return; // 401 — authedFetch surfaced the login modal
           var confirmData = await confirmResp.json();
@@ -1187,6 +1121,8 @@ window.selectionBoard = function() {
             if (this._handleBlockerResponse(confirmData)) return;
             throw new Error(confirmData.error || 'Failed to confirm entry');
           }
+          var txSig = confirmData.tx_signature;
+          console.log('[contest-entry] server cosigned + confirmed on-chain:', txSig);
           this.setHoldSuccess();
 
           if (confirmData.seeds_earned) {
