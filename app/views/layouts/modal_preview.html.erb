@@ -140,9 +140,6 @@
         <%= render "modals/wallet_connect" %>
       </template>
       <% if logged_in? %>
-        <template x-if="$store.modals.current().id === 'profile'">
-          <%= render "modals/profile" %>
-        </template>
         <template x-if="$store.modals.current().id === 'username'">
           <%= render "modals/username" %>
         </template>

@@ -136,11 +136,6 @@ class AdminController < ApplicationController
                recoveryLabel: "Mint $500 Test USDC", recoveryPhantom: false } },
 
     { group: "Profile",
-      label: "Edit profile", key: "profile",
-      modal_id: "profile", file: "app/views/modals/_profile.html.erb",
-      props: {} },
-
-    { group: "Profile",
       label: "Change username", key: "username",
       modal_id: "username", file: "app/views/modals/_username.html.erb",
       props: {} },
