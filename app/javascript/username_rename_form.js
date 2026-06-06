@@ -52,7 +52,7 @@ function usernameRenameForm(opts) {
         if (!resp) return; // 401 short-circuit
         var data = await resp.json();
         if (data.error) throw new Error(data.error);
-        if (data.success) { window.location.reload(); return; }
+        if (data.success) { this._afterSuccess(data); return; }
         if (data.needs_signature) {
           var sig = await this._signAndBroadcast(data.serialized_tx);
           var confirmResp = await fetcher(opts.confirmUrl, {
@@ -63,11 +63,26 @@ function usernameRenameForm(opts) {
           if (!confirmResp) return;
           var cdata = await confirmResp.json();
           if (cdata.error) throw new Error(cdata.error);
-          window.location.reload();
+          this._afterSuccess(cdata);
         }
       } catch (e) {
         this.error = this._friendlyError(e);
         this.saving = false;
+      }
+    },
+
+    // On a successful rename, fire the seeds tick-up (+ maybe level-up) when the
+    // first-username-change bonus comes back, then reload so the page + quest
+    // card reflect the new state. No bonus (not the first change) -> straight
+    // reload, the prior behavior.
+    _afterSuccess(data) {
+      if (data && data.seeds_earned && window.StateFanout) {
+        try {
+          window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 300 });
+        } catch (e) { /* never block the reload on an animation hiccup */ }
+        setTimeout(function () { window.location.reload(); }, 2800);
+      } else {
+        window.location.reload();
       }
     },
 

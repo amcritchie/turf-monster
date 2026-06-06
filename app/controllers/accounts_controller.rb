@@ -318,7 +318,8 @@ class AccountsController < ApplicationController
       rescue_and_log(target: @user) do
         Solana::Vault.new.set_username(@user.solana_address, new_username, user_keypair: @user.solana_keypair)
         @user.save!
-        render json: { success: true, username: @user.username }
+        seeds = grant_first_username_seeds(@user)
+        render json: { success: true, username: @user.username }.merge(seeds || {})
       end
     end
   rescue StandardError => e
@@ -345,7 +346,8 @@ class AccountsController < ApplicationController
 
     rescue_and_log(target: @user) do
       @user.update!(username: new_username)
-      render json: { success: true, username: @user.username }
+      seeds = grant_first_username_seeds(@user)
+      render json: { success: true, username: @user.username }.merge(seeds || {})
     end
   rescue ActiveSupport::MessageVerifier::InvalidSignature
     render json: { success: false, error: "Rename expired — please try again." }, status: :unprocessable_entity
@@ -441,6 +443,30 @@ class AccountsController < ApplicationController
 
   # Signed round-trip token so the username can't be swapped between the
   # prepare (#update_username) and confirm (#confirm_username) steps.
+  # First MANUAL username change -> one-time 35-seed bonus. Sets
+  # username_changed_at (the once-ever marker) and grants 35 seeds on-chain;
+  # returns the seeds StateFanout payload, or nil if not the first change /
+  # deferred. The on-chain SeedGrant[username] init-guard is the hard lock, so
+  # a deferred grant (pre-deploy) is backfillable without risk of double-pay.
+  def grant_first_username_seeds(user)
+    return nil unless user.username_changed_at.nil?
+    user.update_column(:username_changed_at, Time.current)
+    return nil unless user.solana_connected?
+
+    result = Solana::Vault.new.grant_seeds(
+      wallet_address: user.solana_address, amount: 35, kind: :username
+    )
+    {
+      seeds_earned: result[:seeds_earned],
+      seeds_total:  result[:seeds_total],
+      seeds_level:  result[:seeds_level]
+    }
+  rescue => e
+    Rails.logger.warn "[quest][username] seed grant deferred for user=#{user.id} " \
+                      "(#{e.class}: #{e.message.to_s[0, 140]})"
+    nil
+  end
+
   def sign_username_payload(username)
     Rails.application.message_verifier(:account_username_change)
          .generate({ user_id: current_user.id, username: username }, expires_in: 10.minutes)
