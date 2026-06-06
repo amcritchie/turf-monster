@@ -145,9 +145,16 @@ class AdminController < ApplicationController
       modal_id: "username", file: "app/views/modals/_username.html.erb",
       props: {} },
     { group: "Profile",
-      label: "Crop Photo (placeholder image)", key: "crop-photo",
-      # Avatar cropper — ships from studio-engine (studio/modals/_crop_photo,
-      # v0.4.12; components/_avatar_cropper v0.4.13, no longer a local override).
+      label: "Crop Photo (upload — empty state)", key: "crop-photo-upload",
+      # No imageUrl → the modal IS the picker: drop / click to upload. This is
+      # the first state of the avatar + contest-banner upload, before a file
+      # is chosen. See studio-engine _crop_photo's `x-if="!imageUrl"` branch.
+      modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
+      props: {} },
+    { group: "Profile",
+      label: "Crop Photo (with image — crop state)", key: "crop-photo",
+      # imageUrl set → crop view. Avatar cropper ships from studio-engine
+      # (studio/modals/_crop_photo, v0.4.12; components/_avatar_cropper v0.4.13).
       modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
       props: { imageUrl: "/logo.png" } },
 
