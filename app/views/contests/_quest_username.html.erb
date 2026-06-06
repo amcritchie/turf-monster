@@ -1,9 +1,9 @@
 <%# Quest mission 1 — change username for a one-time 35-seed bonus. Header copy
-    "Change Your Username"; the "Change Username" button floats to the right of
-    the title and pulses every 3s to draw the click. Opens the existing username
-    modal; on first confirmed change the server grants 35 seeds and
-    username_rename_form.js fires the tick-up, then reloads (advancing to mission
-    2). No mb-* — direct grid child. %>
+    "Change Your Username" (its own row); the pulsing "Change Username" button
+    floats to the right OF THE DESCRIPTION TEXT (not the header). Opens the
+    existing username modal; on first confirmed change the server grants 35 seeds
+    and username_rename_form.js fires the tick-up, then reloads (advancing to
+    mission 2). No mb-* — direct grid child. %>
 <div x-data="{}" class="card shadow p-5 relative">
   <style>
     /* Pulse beat once every 3s (ring expands + fades, tiny pop), then rests. */
@@ -19,15 +19,15 @@
 
   <span class="inline-block text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap mb-3">Quest 1 of 3</span>
 
-  <div class="flex items-center justify-between gap-3">
-    <h3 class="text-heading font-semibold text-sm">Change Your Username</h3>
+  <h3 class="text-heading font-semibold text-sm">Change Your Username</h3>
+
+  <div class="flex items-center justify-between gap-4 mt-3">
+    <p class="text-secondary text-xs leading-relaxed flex-1 min-w-0">
+      You're <span class="font-mono text-heading">@<%= current_user.username %></span> for now. Pick a name that's yours — your first change mints <strong class="text-heading">35 seeds</strong> on-chain.
+    </p>
     <button type="button" @click="$store.modals.open('username')"
             class="btn btn-sm btn-primary quest-pulse whitespace-nowrap flex-shrink-0">
       Change Username
     </button>
   </div>
-
-  <p class="text-secondary text-xs leading-relaxed mt-3">
-    You're <span class="font-mono text-heading">@<%= current_user.username %></span> for now. Pick a name that's yours — your first change mints <strong class="text-heading">35 seeds</strong> on-chain.
-  </p>
 </div>
