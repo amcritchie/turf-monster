@@ -1,18 +1,39 @@
-<%# Quest card — client-side step machine so missions advance with NO page
-    reload (username -> newsletter -> invite). @quest_step seeds the initial
-    step; username_rename_form.js + questNewsletterSuccess dispatch a
-    'quest-advance' window event to move forward. All reachable steps render
-    (hidden via x-cloak/x-show) so the advance is instant + fades smoothly.
-    h-full keeps grid height parity with the "Earn a Free Entry" card.
-    No mb-* — direct grid child. %>
-<div x-data="questCard({ step: '<%= @quest_step || :invite %>' })" class="h-full">
-  <div x-show="step === 'username'" x-cloak x-transition.opacity.duration.400ms class="h-full">
+<%# Quest card — client-side step machine; missions advance with NO reload.
+    The steps are STACKED in one CSS-grid cell (grid-area 1/1) so swapping
+    crossfades cleanly in place instead of reflowing/jumping. @quest_step seeds
+    the initial step; username_rename_form.js + questNewsletterSuccess dispatch
+    a 'quest-advance' window event. h-full gives all three the same height
+    (grid parity with "Earn a Free Entry") so the crossfade has zero height
+    jump. No mb-* — direct grid child. %>
+<div x-data="questCard({ step: '<%= @quest_step || :invite %>' })" class="quest-stack h-full">
+  <style>
+    .quest-stack { display: grid; }
+    /* All steps share one cell so they overlap (crossfade) instead of stacking
+       vertically; min-w-0 keeps long content from blowing out the column. */
+    .quest-stack > [data-quest-step] { grid-area: 1 / 1; min-width: 0; }
+  </style>
+  <div data-quest-step x-show="step === 'username'" x-cloak
+       x-transition:enter="transition-opacity ease-out duration-300"
+       x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+       x-transition:leave="transition-opacity ease-in duration-300"
+       x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+       class="h-full">
     <%= render "contests/quest_username" %>
   </div>
-  <div x-show="step === 'newsletter'" x-cloak x-transition.opacity.duration.400ms class="h-full">
+  <div data-quest-step x-show="step === 'newsletter'" x-cloak
+       x-transition:enter="transition-opacity ease-out duration-300"
+       x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+       x-transition:leave="transition-opacity ease-in duration-300"
+       x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+       class="h-full">
     <%= render "contests/quest_newsletter" %>
   </div>
-  <div x-show="step === 'invite'" x-cloak x-transition.opacity.duration.400ms class="h-full">
+  <div data-quest-step x-show="step === 'invite'" x-cloak
+       x-transition:enter="transition-opacity ease-out duration-300"
+       x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+       x-transition:leave="transition-opacity ease-in duration-300"
+       x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+       class="h-full">
     <%= render "contests/share_invite" %>
   </div>
 </div>
