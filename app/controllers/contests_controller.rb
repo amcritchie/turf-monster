@@ -353,6 +353,9 @@ class ContestsController < ApplicationController
     @creator = @contest.user
     @has_entry = logged_in? && @contest.entries.where(user: current_user, status: [:active, :complete]).exists?
     @seeds_data = load_seeds_data
+    # Quest card mission (username -> newsletter -> invite). Only for entered
+    # users — the card is gated on @has_entry, so current_user is present.
+    @quest_step = current_user.quest_step if @has_entry
 
     # Current user's entries on this contest — preloaded once so the contest
     # header (dropdown) and the "Your Entries" navigation card on the show

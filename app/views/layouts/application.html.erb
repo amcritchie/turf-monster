@@ -763,6 +763,12 @@
         <template x-if="$store.modals.current().id === 'username'">
           <%= render "modals/username" %>
         </template>
+        <template x-if="$store.modals.current().id === 'newsletter-email'">
+          <%= render "modals/newsletter_email" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'newsletter-welcome'">
+          <%= render "modals/newsletter_welcome" %>
+        </template>
       <% end %>
       <%# crop-photo gets pushed on top of whatever modal owns the avatar
           cropper (profile modal, complete_profile, /account). Not gated by

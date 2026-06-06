@@ -1,0 +1,13 @@
+<%# Quest card — the rotating right-hand mission on the entered-user card row.
+    Server-renders the current step (User#quest_step); a username/newsletter
+    success reloads, which advances the step. username -> newsletter -> invite
+    (terminal = the existing share/invite card). @quest_step is set in
+    ContestsController#show (only when @has_entry, so current_user is present). %>
+<% case @quest_step %>
+<% when :username %>
+  <%= render "contests/quest_username" %>
+<% when :newsletter %>
+  <%= render "contests/quest_newsletter" %>
+<% else %>
+  <%= render "contests/share_invite" %>
+<% end %>
