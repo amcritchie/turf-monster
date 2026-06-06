@@ -73,7 +73,22 @@
     try {
       window.Alpine.store("modals").open("newsletter-welcome", { seeds: (data && data.seeds_earned) || 0 });
     } catch (e) {}
-    setTimeout(function () { window.location.reload(); }, 4200);
+    // No reload — advance the quest card to the invite step in place.
+    try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "invite" } })); } catch (e) {}
+  };
+
+  // === questCard — contest quest step machine (client-side advance) =====
+  window.questCard = function (opts) {
+    opts = opts || {};
+    return {
+      step: opts.step || "username",
+      init() {
+        var self = this;
+        window.addEventListener("quest-advance", function (e) {
+          if (e && e.detail && e.detail.to) self.step = e.detail.to;
+        });
+      }
+    };
   };
 
   // === entryTokenBadge — navbar 🎟️ pill + popover ==================

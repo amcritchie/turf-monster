@@ -1,13 +1,18 @@
-<%# Quest card — the rotating right-hand mission on the entered-user card row.
-    Server-renders the current step (User#quest_step); a username/newsletter
-    success reloads, which advances the step. username -> newsletter -> invite
-    (terminal = the existing share/invite card). @quest_step is set in
-    ContestsController#show (only when @has_entry, so current_user is present). %>
-<% case @quest_step %>
-<% when :username %>
-  <%= render "contests/quest_username" %>
-<% when :newsletter %>
-  <%= render "contests/quest_newsletter" %>
-<% else %>
-  <%= render "contests/share_invite" %>
-<% end %>
+<%# Quest card — client-side step machine so missions advance with NO page
+    reload (username -> newsletter -> invite). @quest_step seeds the initial
+    step; username_rename_form.js + questNewsletterSuccess dispatch a
+    'quest-advance' window event to move forward. All reachable steps render
+    (hidden via x-cloak/x-show) so the advance is instant + fades smoothly.
+    h-full keeps grid height parity with the "Earn a Free Entry" card.
+    No mb-* — direct grid child. %>
+<div x-data="questCard({ step: '<%= @quest_step || :invite %>' })" class="h-full">
+  <div x-show="step === 'username'" x-cloak x-transition.opacity.duration.400ms class="h-full">
+    <%= render "contests/quest_username" %>
+  </div>
+  <div x-show="step === 'newsletter'" x-cloak x-transition.opacity.duration.400ms class="h-full">
+    <%= render "contests/quest_newsletter" %>
+  </div>
+  <div x-show="step === 'invite'" x-cloak x-transition.opacity.duration.400ms class="h-full">
+    <%= render "contests/share_invite" %>
+  </div>
+</div>

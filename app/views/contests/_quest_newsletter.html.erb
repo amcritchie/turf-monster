@@ -5,7 +5,7 @@
     fetch + success — no risky logic in the x-data attribute. No mb-* — grid child. %>
 <% needs_email = current_user.email.blank? %>
 <div x-data="questNewsletter({ url: '<%= newsletter_subscribe_path %>', needsEmail: <%= needs_email %> })"
-     class="card shadow p-5 relative">
+     class="card shadow p-5 relative h-full">
   <style>
     /* Pulse beat once every 3s (ring expands + fades, tiny pop), then rests. */
     @keyframes questPulse {

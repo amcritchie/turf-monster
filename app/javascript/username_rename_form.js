@@ -76,14 +76,16 @@ function usernameRenameForm(opts) {
     // card reflect the new state. No bonus (not the first change) -> straight
     // reload, the prior behavior.
     _afterSuccess(data) {
+      // Smooth + NO reload: animate the seeds bar (Earn a Free Entry + navbar)
+      // if the bonus came back, advance the quest card to the newsletter step in
+      // place, then close the modal.
       if (data && data.seeds_earned && window.StateFanout) {
         try {
-          window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 300 });
-        } catch (e) { /* never block the reload on an animation hiccup */ }
-        setTimeout(function () { window.location.reload(); }, 2800);
-      } else {
-        window.location.reload();
+          window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 });
+        } catch (e) { /* never block on an animation hiccup */ }
       }
+      try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "newsletter" } })); } catch (e) {}
+      try { this.$store.modals.close(); } catch (e) {}
     },
 
     async _signAndBroadcast(serializedTxB64) {
