@@ -93,6 +93,11 @@
     <div class="space-y-3">
       <% @games.each do |game| %>
         <%
+          # A goal's team is always one of this game's two teams (both already
+          # eager-loaded), so resolve its emoji from this map instead of
+          # goal.team — a separate belongs_to that would fire a query per goal.
+          # Unknown slug → nil emoji (pill just shows the minute).
+          emoji_by_slug = { game.home_team_slug => game.home_team.emoji, game.away_team_slug => game.away_team.emoji }
           config = {
             slug: game.slug,
             homeScore: game.home_score, awayScore: game.away_score, status: game.status,
@@ -100,7 +105,7 @@
             homeName: game.home_team.name, awayName: game.away_team.name,
             homeEmoji: game.home_team.emoji, awayEmoji: game.away_team.emoji,
             goals: game.goals.sort_by { |g| [g.minute || 999, g.created_at] }.map { |g|
-              { id: g.id, teamSlug: g.team_slug, teamEmoji: g.team&.emoji, minute: g.minute }
+              { id: g.id, teamSlug: g.team_slug, teamEmoji: emoji_by_slug[g.team_slug], minute: g.minute }
             }
           }
           search = [game.home_team.name, game.away_team.name, game.home_team.short_name, game.away_team.short_name].compact.join(" ").downcase
