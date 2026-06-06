@@ -81,7 +81,10 @@ gem "sentry-rails"
 gem "studio-engine", "~> 0.5"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
-gem "solana-studio", "~> 0.4.6"
+# TEMP: pointed at the local feat/cosign-wire checkout for the Phantom-first
+# signing-order work (needs Solana::Transaction.cosign_wire, gem v0.4.7). Revert
+# to `gem "solana-studio", "~> 0.4.7"` once 0.4.7 is published to RubyGems.
+gem "solana-studio", path: "../solana-studio"
 
 # IP geolocation for state-level geo-blocking
 gem "geocoder"

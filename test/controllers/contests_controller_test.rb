@@ -497,9 +497,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as_onchain(@user)
     entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+    # Phantom-FIRST flow: prepare_entry creates the PT pending with NO signature
+    # (broadcast is server-side); confirm_onchain_entry stamps the
+    # server-broadcast signature.
     ptx = PendingTransaction.create!(
       tx_type: "enter_contest", serialized_tx: "stx",
-      status: "submitted", tx_signature: "sig-confirm-1",
+      status: "pending",
       target: entry, initiator_address: @user.web3_solana_address,
       metadata: { entry_pda: "epda-#{@contest.slug}-#{@user.web3_solana_address[0, 4]}-0" }.to_json
     )
@@ -509,12 +512,13 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
     # encode_base58 here would normally turn pda bytes into a base58 string;
     # FakeVault.entry_pda returns the string already, so stub encode_base58
-    # to pass it through unchanged.
+    # to pass it through unchanged. The Phantom-signed wire bytes are opaque to
+    # the controller (passed straight to vault.cosign_and_broadcast_entry, faked).
     Solana::Vault.stub :new, vault do
       Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
         Solana::TxVerifier.stub :verify!, true do
           post confirm_onchain_entry_contest_path(@contest),
-            params: { tx_signature: "sig-confirm-1", entry_id: entry.id, entry_pda: expected_pda },
+            params: { signed_tx: "PHANTOM_SIGNED_WIRE_B64", entry_id: entry.id, entry_pda: expected_pda },
             as: :json
         end
       end
@@ -523,10 +527,14 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = JSON.parse(response.body)
     assert body["success"]
-    assert_equal "sig-confirm-1", body["tx_signature"]
+    # The signature is the SERVER's cosign+broadcast result, not a client value.
+    assert_equal "fake-cosign-broadcast-sig", body["tx_signature"]
+    assert_equal ["PHANTOM_SIGNED_WIRE_B64"], vault.cosign_broadcast_calls
     assert entry.reload.active?
-    assert_equal "sig-confirm-1", entry.onchain_tx_signature
-    assert_equal "confirmed", ptx.reload.status
+    assert_equal "fake-cosign-broadcast-sig", entry.onchain_tx_signature
+    ptx.reload
+    assert_equal "confirmed", ptx.status
+    assert_equal "fake-cosign-broadcast-sig", ptx.tx_signature
   end
 
   test "confirm_onchain_entry rejects a mismatched client-supplied entry_pda" do
@@ -540,7 +548,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     Solana::Vault.stub :new, vault do
       Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
         post confirm_onchain_entry_contest_path(@contest),
-          params: { tx_signature: "sig-attacker", entry_id: entry.id, entry_pda: "epda-attacker-fake" },
+          params: { signed_tx: "PHANTOM_SIGNED_WIRE_B64", entry_id: entry.id, entry_pda: "epda-attacker-fake" },
           as: :json
       end
     end
@@ -719,7 +727,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = JSON.parse(response.body)
     assert_equal "failed", body["status"]
-    assert_match(/did not broadcast/, body["error"])
+    assert_match(/did not go through/, body["error"])
     assert_equal "failed", ptx.reload.status
   end
 

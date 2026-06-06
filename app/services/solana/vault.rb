@@ -1066,10 +1066,21 @@ module Solana
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
-    # Build a partially-signed enter_contest TX for Phantom co-sign. Admin
-    # signs (pays rent), user slot left empty for client-side Phantom signing.
+    # Build an enter_contest TX for Phantom co-sign.
+    #
+    # Phantom-FIRST (default, admin_signs: false): returns a FULLY-UNSIGNED tx —
+    # BOTH the admin (payer) and user slots are empty. Phantom signs FIRST
+    # (clearing the multi-signer-order "could be malicious" banner), then the
+    # server fills the admin slot via cosign_and_broadcast_entry and broadcasts.
+    # The admin is still fee payer + nonce authority + rent subsidizer; it just
+    # signs SECOND now instead of first.
+    #
+    # admin_signs: true preserves the legacy server-first behavior (admin signs
+    # at build time, user slot empty) for any caller/script that broadcasts
+    # client-side. The Phantom USDC entry UI uses the default (false).
+    #
     # Replaces v0.15.1's build_enter_contest_direct.
-    def build_enter_contest(wallet_address, contest_slug, entry_num, currency_idx: 0, season_id: nil)
+    def build_enter_contest(wallet_address, contest_slug, entry_num, currency_idx: 0, season_id: nil, admin_signs: false)
       wallet_bytes = Keypair.decode_base58(wallet_address)
       vault_pda,   _ = vault_state_pda
       user_pda,    _ = user_account_pda(wallet_address)
@@ -1087,28 +1098,41 @@ module Solana
              Borsh.encode_u32(entry_num) +
              Borsh.encode_u8(currency_idx)
 
-      serialized = build_partial_signed(
-        accounts: enter_contest_accounts(
-          payer_bytes:        Keypair.admin.public_key_bytes,
-          user_bytes:         wallet_bytes,
-          user_pda:           user_pda,
-          vault_pda:          vault_pda,
-          contest_pda:        c_pda,
-          entry_pda:          e_pda,
-          currency_mint:      currency_mint_bytes,
-          user_token_account: user_ata,
-          op_rev_ata:         op_rev,
-          season_pda:         s_pda
-        ),
-        data: data,
-        additional_signers: [wallet_bytes],
-        # Mirror create_contest: the half-signed entry tx also waits on a Phantom
-        # click, so anchor it on the durable nonce when one is configured to
-        # survive a slow/flagged-dApp signing window (the mainnet
-        # BlockhashNotFound class of failure). Opt-in: unset
-        # SOLANA_DURABLE_NONCE_PUBKEY = recent blockhash, unchanged.
-        durable_nonce: durable_nonce_config
+      accounts = enter_contest_accounts(
+        payer_bytes:        Keypair.admin.public_key_bytes,
+        user_bytes:         wallet_bytes,
+        user_pda:           user_pda,
+        vault_pda:          vault_pda,
+        contest_pda:        c_pda,
+        entry_pda:          e_pda,
+        currency_mint:      currency_mint_bytes,
+        user_token_account: user_ata,
+        op_rev_ata:         op_rev,
+        season_pda:         s_pda
       )
+
+      # Anchor the entry tx on the durable nonce when one is configured (opt-in
+      # via SOLANA_DURABLE_NONCE_PUBKEY) so it survives a slow/flagged-dApp
+      # signing window (the mainnet BlockhashNotFound class of failure). Unset =
+      # recent blockhash, unchanged.
+      dn = durable_nonce_config
+
+      serialized =
+        if admin_signs
+          # Legacy server-first: admin signs now, only the user slot is left empty.
+          build_partial_signed(
+            accounts: accounts, data: data,
+            additional_signers: [wallet_bytes], durable_nonce: dn
+          )
+        else
+          # Phantom-first: BOTH slots empty. additional_signers ordered admin
+          # FIRST (fee-payer ordering for the gem's keyless build), then user.
+          build_partial_unsigned(
+            accounts: accounts, data: data,
+            additional_signers: [Keypair.admin.public_key_bytes, wallet_bytes],
+            durable_nonce: dn
+          )
+        end
       { serialized_tx: serialized, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
@@ -1745,6 +1769,72 @@ module Solana
       tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
       tx.add_instruction(program_id: @program_id, accounts: accounts, data: data)
       tx.serialize_partial_base64(additional_signers: additional_signers)
+    end
+
+    # Phantom-FIRST variant of build_partial_signed: builds a FULLY-UNSIGNED tx
+    # (no local @signers) — every required signature slot is left empty for
+    # external signers. The admin (fee payer + nonce authority) is passed as an
+    # ADDITIONAL signer so its slot is reserved but NOT filled here; the server
+    # fills it later via Transaction.cosign_wire AFTER Phantom signs.
+    #
+    # Why: when the server pre-signs and Phantom signs second, Phantom's
+    # Lighthouse heuristics flag the multi-signer ordering ("could be malicious").
+    # Flipping the order — Phantom signs the unsigned tx first, server cosigns
+    # second — clears that rule. The server can't rebuild-and-resign after Phantom
+    # (that changes the message bytes and breaks Phantom's sig), so it must build
+    # the tx unsigned and surgically patch the admin slot in afterwards.
+    #
+    # `additional_signers` MUST list the admin FIRST (fee payer ordering) followed
+    # by the user/Phantom wallet. The advanceNonceAccount ix (when a durable nonce
+    # is set) still names the admin as authority — the gem's keyless build leaves
+    # that slot empty too, and cosign_wire fills it with the admin signature.
+    def build_partial_unsigned(accounts:, data:, additional_signers:, durable_nonce: nil)
+      tx = build_tx_unsigned(durable_nonce: durable_nonce)
+      tx.add_instruction(**compute_unit_price_ix(PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS))
+      tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
+      tx.add_instruction(program_id: @program_id, accounts: accounts, data: data)
+      tx.serialize_partial_base64(additional_signers: additional_signers)
+    end
+
+    # Like build_tx but adds NO local signer — used for the Phantom-first build.
+    # The fee payer must be supplied as the first additional_signer at serialize
+    # time (the gem's keyless serialize_partial uses additional_signers.first as
+    # the fee payer when @signers is empty).
+    def build_tx_unsigned(durable_nonce: nil)
+      tx = Transaction.new
+      if durable_nonce
+        tx.set_recent_blockhash(fetch_nonce_value(durable_nonce.fetch(:pubkey)))
+        adv = Solana::SystemProgram.advance_nonce_account(
+          nonce: durable_nonce.fetch(:pubkey), authority: durable_nonce.fetch(:authority)
+        )
+        tx.add_instruction(program_id: adv[:program_id], accounts: adv[:accounts], data: adv[:data])
+      else
+        tx.set_recent_blockhash(client.get_latest_blockhash)
+      end
+      tx
+    end
+
+    # Cosign a Phantom-signed enter_contest wire tx with the admin keypair, run a
+    # server-side simulateTransaction pre-flight, then broadcast. Returns the tx
+    # signature. This is the server half of the Phantom-FIRST flow: the wire bytes
+    # arrive with Phantom's slot filled and the admin slot empty; cosign_wire
+    # drops the admin signature into its slot (re-asserting OPSEC-017 — fully
+    # signed afterwards), simulate catches a program error before broadcast, and
+    # send_and_confirm submits + waits for confirmation.
+    #
+    # signed_wire_base64 : base64 wire tx from Phantom (requireAllSignatures:false)
+    def cosign_and_broadcast_entry(signed_wire_base64)
+      patched_b64 = Transaction.cosign_wire_base64(signed_wire_base64, signer: Keypair.admin)
+
+      # Server-side pre-flight. sig_verify:false — both sigs are present now but we
+      # don't need the RPC to re-verify; we want program-error + log surfacing.
+      sim = client.simulate_transaction(patched_b64, sig_verify: false)
+      if sim && sim["err"]
+        logs = Array(sim["logs"]).last(6).join("\n")
+        raise "Entry pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
+      end
+
+      client.send_and_confirm(patched_b64)
     end
 
     # Opt-in durable-nonce config — set SOLANA_DURABLE_NONCE_PUBKEY to make

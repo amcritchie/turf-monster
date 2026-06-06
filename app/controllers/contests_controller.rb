@@ -655,10 +655,12 @@ class ContestsController < ApplicationController
         season_id: @contest.season_id
       )
 
-      # Persist a PendingTransaction so a refresh mid-flight (between sign
-      # and confirm_onchain_entry) leaves a server-side trail. Status flips
-      # to `submitted` via stamp_entry_signature after broadcast, then
-      # `confirmed` in confirm_onchain_entry.
+      # Persist a PendingTransaction so a refresh mid-flight (between Phantom's
+      # sign and confirm_onchain_entry) leaves a server-side trail. In the
+      # Phantom-FIRST flow (2026-06-05) broadcast is server-side, so the
+      # signature + `confirmed` status are stamped in confirm_onchain_entry; this
+      # row starts `pending` with no signature (nothing is broadcast until the
+      # client returns Phantom's signed bytes to confirm_onchain_entry).
       ptx = PendingTransaction.create!(
         tx_type: "enter_contest",
         serialized_tx: result[:serialized_tx],
@@ -734,12 +736,18 @@ class ContestsController < ApplicationController
       }
     end
 
-    # Signed-but-never-broadcast scenario: stamp_entry_signature never ran,
-    # so we have nothing to look up. The signed TX can't be recovered;
-    # release the user to retry.
+    # No server-stamped signature scenario. In the Phantom-FIRST flow
+    # (2026-06-05) broadcast is server-side INSIDE confirm_onchain_entry, and the
+    # signature is stamped there only after a successful broadcast+confirm. So a
+    # blank tx_signature here means confirm_onchain_entry never reached broadcast
+    # — nothing landed on-chain — and it is SAFE to release the user to retry
+    # (assign_onchain_entry_number! probes the chain for a free slot, so a retry
+    # won't collide with a half-built entry). (Pre-2026-06-05 the client stamped
+    # post-broadcast; the same blank-signature branch covered a signed-but-never-
+    # broadcast tx that couldn't be recovered.)
     if ptx.tx_signature.blank?
       ptx.update!(status: "failed")
-      return render json: { status: "failed", error: "Your last signature did not broadcast — try again." }
+      return render json: { status: "failed", error: "Your last entry did not go through — try again." }
     end
 
     # Ask the RPC about the signature once. The client owns the polling
@@ -785,7 +793,17 @@ class ContestsController < ApplicationController
     render json: { status: "error", error: e.message }, status: :unprocessable_entity
   end
 
-  # Confirm an onchain direct entry after the user has co-signed and submitted the tx.
+  # Confirm an onchain entry. Phantom-FIRST flow (2026-06-05): the client now
+  # sends the Phantom-SIGNED-but-not-broadcast wire bytes (`signed_tx`, base64,
+  # requireAllSignatures:false). The SERVER cosigns with the admin keypair
+  # (Transaction.cosign_wire), runs a simulateTransaction pre-flight, broadcasts,
+  # waits for confirmation, THEN runs the existing on-chain verification.
+  #
+  # Why the order flipped: when the server pre-signs and Phantom signs second,
+  # Phantom's Lighthouse heuristics flag the multi-signer ordering ("could be
+  # malicious"). Phantom signing the fully-unsigned tx first clears that rule.
+  # Broadcast moving server-side means the server now owns + stamps the tx
+  # signature (the client no longer calls stamp_entry_signature before confirm).
   def confirm_onchain_entry
     if @contest.cancelled?
       return render json: { success: false, error: "This contest was cancelled." },
@@ -799,34 +817,43 @@ class ContestsController < ApplicationController
 
     rescue_and_log(target: entry, parent: @contest) do
       raise "Wallet not linked" unless current_user.web3_solana_address.present?
+      raise "Missing signed transaction" if params[:signed_tx].blank?
+
+      vault = Solana::Vault.new
+
+      # Server-side: admin cosign (fills the empty admin slot in the
+      # Phantom-signed wire tx) → simulateTransaction pre-flight → broadcast →
+      # confirm. cosign_and_broadcast_entry re-asserts OPSEC-017 (fully signed)
+      # and raises on a failed simulation before any broadcast.
+      tx_signature = vault.cosign_and_broadcast_entry(params[:signed_tx])
 
       # OPSEC-010 / Lazarus audit #1: server-derive the entry PDA, cross-check
-      # the client-supplied one, assert the on-chain TX is the v0.16
+      # the client-supplied one, assert the broadcast TX is the v0.16
       # enter_contest IX signed by the user's wallet writing to that PDA, then
       # activate. Shared with the crash-recovery path so neither can drift.
-      verify_and_confirm_onchain_entry!(entry, params[:tx_signature],
-                                        expected_entry_pda: params[:entry_pda])
+      verify_and_confirm_onchain_entry!(entry, tx_signature,
+                                        expected_entry_pda: params[:entry_pda],
+                                        vault: vault)
 
-      # Mark the PendingTransaction confirmed. Use the stamped signature as
-      # the lookup key (covers the case where prepare_entry created the row
-      # and the client stamped it post-broadcast). Fall back to target+initiator
-      # for any pre-stamp PTs (refresh-before-stamp legacy scenario).
-      ptx = PendingTransaction.where(target: entry, status: %w[pending submitted])
-                              .find_by(tx_signature: params[:tx_signature]) ||
-            PendingTransaction.where(target: entry, status: %w[pending submitted],
-                                     initiator_address: current_user.web3_solana_address).order(:created_at).last
-      ptx&.update!(tx_signature: params[:tx_signature], status: "confirmed")
+      # Stamp the PendingTransaction confirmed. Broadcast is now server-side, so
+      # the server owns the signature — stamp it here (no client stamp step).
+      # Look up by target+initiator (prepare_entry created the row pre-broadcast,
+      # before any signature existed).
+      ptx = PendingTransaction.where(target: entry, status: %w[pending submitted],
+                                     initiator_address: current_user.web3_solana_address)
+                              .order(:created_at).last
+      ptx&.update!(tx_signature: tx_signature, status: "confirmed")
 
       # Confirmed (Phantom direct-USDC path) — announce the join in chat once.
       announce_contest_join(entry)
 
       seeds = post_entry_seeds_payload(entry,
                                       path: "phantom-direct",
-                                      tx_signature: params[:tx_signature])
+                                      tx_signature: tx_signature)
       render json: {
         success: true,
         redirect: contest_path(@contest),
-        tx_signature: params[:tx_signature],
+        tx_signature: tx_signature,
         **seeds
       }
     end

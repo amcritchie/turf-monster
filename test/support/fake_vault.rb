@@ -130,6 +130,25 @@ class FakeVault
     }
   end
 
+  # Used by ContestsController#confirm_onchain_entry (Phantom-FIRST flow). The
+  # real Vault cosigns the Phantom-signed wire bytes with the admin keypair,
+  # simulates, broadcasts, and returns the confirmed tx signature. The fake
+  # records the call and returns a deterministic signature.
+  attr_writer :cosign_broadcast_raises
+
+  def cosign_and_broadcast_entry(signed_wire_base64)
+    @cosign_broadcast_calls ||= []
+    @cosign_broadcast_calls << signed_wire_base64
+    raise StandardError, @cosign_broadcast_raises if @cosign_broadcast_raises
+    @cosign_broadcast_signature ||= "fake-cosign-broadcast-sig"
+  end
+
+  attr_writer :cosign_broadcast_signature
+
+  def cosign_broadcast_calls
+    @cosign_broadcast_calls ||= []
+  end
+
   # Used by ContestsController#confirm_onchain_entry. Real Vault returns
   # [pda_bytes, bump] and the controller passes pda_bytes through
   # Solana::Keypair.encode_base58. For tests, return a tuple whose first
