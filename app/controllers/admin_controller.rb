@@ -96,7 +96,7 @@ class AdminController < ApplicationController
       props: { step: "tokens-error",
                errorText: "Your purchase is taking longer than expected. Refresh to try again." } },
 
-    { group: "Wallet deposit",
+    { group: "Web3",
       label: "Picker (insufficient USDC/USDT)", key: "wallet-deposit-picker",
       modal_id: "wallet-deposit", file: "app/views/modals/_wallet_deposit.html.erb",
       props: { neededCents: 1900, usdcCents: 300, usdtCents: 0 } },
