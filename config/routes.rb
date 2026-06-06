@@ -351,6 +351,10 @@ Rails.application.routes.draw do
     post "seasons",                            to: "seasons#create"
     post "seasons/:season_id/set_current",     to: "seasons#set_current",   as: :set_current_season
 
+    # Live goal-entry console — operator records goals (team + minute) on game
+    # day. Fixtures listed here; the row forms POST to the games endpoints below.
+    get "scoring", to: "scoring#index", as: :scoring
+
     resources :games, only: [], param: :slug do
       member do
         post :record_goal, path: "goals"
