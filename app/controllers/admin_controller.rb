@@ -155,25 +155,7 @@ class AdminController < ApplicationController
       # imageUrl set → crop view. Avatar cropper ships from studio-engine
       # (studio/modals/_crop_photo, v0.4.12; components/_avatar_cropper v0.4.13).
       modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
-      props: { imageUrl: "/logo.png" } },
-
-    # === Standalone modal-style views ====================================
-    # Full Rails pages (not modal partials) that render the same card
-    # idiom. The :url field bypasses #modal_preview and iframes the page
-    # directly — usually with a preview-state query param that pins one
-    # branch of the page's internal state machine without live behavior.
-    { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Confirming (polling mint)", key: "tokens-processing-loading",
-      file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=loading" },
-    { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Ready (mint complete)", key: "tokens-processing-ready",
-      file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=ready" },
-    { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Errored (poll timed out)", key: "tokens-processing-errored",
-      file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=errored" }
+      props: { imageUrl: "/logo.png" } }
   ].freeze
 
   def navbar
