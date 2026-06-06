@@ -63,6 +63,10 @@ module Solana
     # Solana's `Pubkey::default()` (32 zero bytes) base58-encoded.
     ZERO_PUBKEY_B58 = "11111111111111111111111111111111".freeze
 
+    # Quest seed-grant kinds — mirror turf-vault `seed_grant_kind` (grant_seeds).
+    # Part of the [b"seed_grant", wallet, kind, invitee] guard-PDA seed.
+    SEED_GRANT_KIND = { username: 0, newsletter: 1, invite: 2 }.freeze
+
     def initialize(client: Solana::Client.new)
       @client = client
       @program_id = Keypair.decode_base58(Config::PROGRAM_ID)
@@ -1484,6 +1488,81 @@ module Solana
       signature = client.send_and_confirm(tx.serialize_base64)
       invalidate_entry_tokens_cache(wallet_address)
       { signature: signature, pda: Keypair.encode_base58(pda) }
+    end
+
+    # Admin-signed standalone seed grant (Rails "quest" bonuses). 1-of-3 vault
+    # signer. Credits a fixed `amount` of loyalty seeds into a user's UserAccount
+    # OUTSIDE the entry flow — first username change, newsletter join, friend-
+    # invite-entered. The user does NOT sign (admin credits on their behalf, the
+    # same trust model as settle_contest mutating arbitrary UserAccounts).
+    #
+    # Idempotent ON-CHAIN: the [b"seed_grant", wallet, kind, invitee] guard PDA
+    # is init-once, so a repeat grant of the same (user, kind[, invitee]) collides
+    # on init (custom program error 0x0) and raises — the real double-grant guard,
+    # safe even if a Rails-side flag misfires.
+    #   - :username / :newsletter → invitee MUST be nil (once-EVER per user)
+    #   - :invite                 → invitee = the friend's wallet (once-per-invitee)
+    #
+    # Returns { signature:, pda:, seeds_earned:, seeds_total:, seeds_level: } so a
+    # controller can splat a StateFanout('seeds') payload with no second RPC derive.
+    #
+    # NOTE: requires the user's on-chain UserAccount PDA to already exist (it's
+    # loaded, not init'd). Username-first-change implies it; for a brand-new
+    # account call ensure_user_account first.
+    def grant_seeds(wallet_address:, amount:, kind:, invitee: nil)
+      kind_u8 = kind.is_a?(Symbol) ? SEED_GRANT_KIND.fetch(kind) : kind.to_i
+      amount  = amount.to_i
+      unless amount.between?(1, 1_000)
+        raise ArgumentError, "seed grant amount must be 1..1000 (got #{amount})"
+      end
+      if kind_u8 == SEED_GRANT_KIND[:invite]
+        raise ArgumentError, "invitee required for :invite grants" if invitee.nil?
+      elsif !invitee.nil?
+        raise ArgumentError, "invitee must be nil for :#{kind} grants"
+      end
+
+      admin         = Keypair.admin
+      wallet_bytes  = Keypair.decode_base58(wallet_address)
+      invitee_bytes = invitee ? Keypair.decode_base58(invitee) : ("\x00".b * 32)
+
+      user_pda,  _ = user_account_pda(wallet_address)
+      vault_pda, _ = vault_state_pda
+      grant_pda, _ = Transaction.find_pda(
+        [b("seed_grant"), wallet_bytes, [kind_u8].pack("C"), invitee_bytes], @program_id
+      )
+
+      data = Transaction.anchor_discriminator("grant_seeds") +
+             Borsh.encode_u64(amount) +  # amount: u64
+             [kind_u8].pack("C") +       # kind:   u8
+             invitee_bytes               # invitee: Pubkey (32 raw bytes; zeros = default)
+
+      signature = with_account_init_retry do
+        tx = build_tx(admin)
+        tx.add_instruction(
+          program_id: @program_id,
+          accounts: [
+            { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  }, # admin
+            { pubkey: vault_pda,                      is_signer: false, is_writable: false }, # vault_state
+            { pubkey: wallet_bytes,                   is_signer: false, is_writable: false }, # user_wallet
+            { pubkey: user_pda,                       is_signer: false, is_writable: true  }, # user_account
+            { pubkey: grant_pda,                      is_signer: false, is_writable: true  }, # seed_grant (init)
+            { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          ],
+          data: data
+        )
+        client.send_and_confirm(tx.serialize_base64)
+      end
+
+      onchain     = (sync_balance(wallet_address) rescue nil)
+      seeds_total = onchain&.dig(:seeds).to_i
+
+      {
+        signature:    signature,
+        pda:          Keypair.encode_base58(grant_pda),
+        seeds_earned: amount,
+        seeds_total:  seeds_total,
+        seeds_level:  User.level_for(seeds_total)
+      }
     end
 
     def list_entry_tokens(wallet_address, commitment: "confirmed")

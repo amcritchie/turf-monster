@@ -33,6 +33,12 @@ class User < ApplicationRecord
   # is a no-op when invited_by_id didn't change.
   after_save { ReferralProgress.sync_invitee_attribution!(self) }
 
+  # Newsletter subscribers = joined at least once and not since unsubscribed.
+  scope :subscribed_to_newsletter, -> {
+    where.not(joined_email_list_at: nil)
+         .where("users.left_email_list_at IS NULL OR users.left_email_list_at < users.joined_email_list_at")
+  }
+
   # --- Class methods ---
 
   # OPSEC-005: from_omniauth now refuses to silently link a freshly-arrived
@@ -186,6 +192,52 @@ class User < ApplicationRecord
     return :phantom if phantom_wallet?
     return :managed if managed_wallet?
     :none
+  end
+
+  # --- Newsletter / quest ---
+
+  # Subscribed = joined at least once and not since unsubscribed. Mirrors the
+  # subscribed_to_newsletter scope.
+  def subscribed_to_newsletter?
+    joined_email_list_at.present? &&
+      (left_email_list_at.nil? || left_email_list_at < joined_email_list_at)
+  end
+
+  # The 35-seed bonus fires on the user's FIRST manual username change only.
+  # Every account gets an auto adjective-noun name at signup (before_validation
+  # :ensure_username), so "has changed it" is tracked explicitly via
+  # username_changed_at, never inferred from the current name.
+  def first_username_change?
+    username_changed_at.nil?
+  end
+
+  # Which quest mission the contest card shows: username -> newsletter -> invite
+  # (terminal). Only meaningful once the user has entered a contest (the card is
+  # gated on @has_entry upstream; can_change_username? already requires it).
+  def quest_step
+    return :username   if first_username_change?
+    return :newsletter unless subscribed_to_newsletter?
+    :invite
+  end
+
+  # Append the request IP to the per-user `ips` audit set (admin abuse review).
+  # Shape: { "1.2.3.4" => { "first" => iso8601, "last" => iso8601, "count" => N } }.
+  # Skips the write when the IP is already known and was seen within the last day,
+  # so we don't write the users row on every request.
+  def record_ip!(ip)
+    ip = ip.to_s
+    return if ip.blank?
+
+    now = Time.current
+    if (entry = ips[ip])
+      last_seen = Time.iso8601(entry["last"]) rescue nil
+      return if last_seen && last_seen > now - 1.day
+      entry["count"] = entry["count"].to_i + 1
+      entry["last"]  = now.iso8601
+    else
+      ips[ip] = { "first" => now.iso8601, "last" => now.iso8601, "count" => 1 }
+    end
+    update_column(:ips, ips) # audit append — skip validations/callbacks
   end
 
   def google_connected?

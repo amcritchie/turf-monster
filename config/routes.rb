@@ -189,6 +189,11 @@ Rails.application.routes.draw do
   post "account/wallet/export/:token/complete", to: "wallet_exports#complete", as: :complete_wallet_export,
        constraints: { token: %r{[^/]+} }, format: false
 
+  # Newsletter / quest mission 2 — authed one-click join (+ web3 email capture)
+  # and unsubscribe. First-ever join mints 40 seeds on-chain (Vault#grant_seeds).
+  post "account/newsletter/subscribe",   to: "newsletter#subscribe",   as: :newsletter_subscribe
+  post "account/newsletter/unsubscribe", to: "newsletter#unsubscribe", as: :newsletter_unsubscribe
+
   resources :slates, only: [:index, :show] do
     member do
       patch :update_rankings
