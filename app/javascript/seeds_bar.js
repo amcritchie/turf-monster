@@ -153,8 +153,20 @@ function seedsBar() {
       self._schedule(function () { self.levelingUp = false; }, 2800);
     },
 
+    // #2 — pop the card (scale) + confetti on EVERY seeds increase, not just level-ups.
+    popCard() {
+      if (!this.$refs.confettiZone) return;              // card variant only
+      var card = this.$root.closest(".card");
+      if (!card) return;
+      card.classList.remove("seeds-card-pop");
+      void card.offsetWidth;
+      card.classList.add("seeds-card-pop");
+      this._schedule(function () { card.classList.remove("seeds-card-pop"); }, 700);
+    },
+
     handleSeedsUpdate(d) {
       var self = this;
+      self.popCard();
       if (d.levelUp) {
         // Defensive: only overwrite displayLevel if oldLevel is actually provided
         if (d.oldLevel !== undefined && d.oldLevel !== null) self.displayLevel = d.oldLevel;
@@ -168,6 +180,7 @@ function seedsBar() {
         self._schedule(function () { self.levelingUp = false; }, 3000);
       } else {
         if (d.level !== undefined && d.level !== null) self.displayLevel = d.level;
+        self.spawnFirework();                            // confetti for a same-level increase too
         self.displaySeeds = d.progress;
       }
     }
