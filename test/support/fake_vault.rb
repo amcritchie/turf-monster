@@ -317,6 +317,51 @@ class FakeVault
   def sweep_calls
     @sweep_calls ||= []
   end
+
+  # --- Quest seed grants (v0.23 quests: username / chat / newsletter / invite) ---
+  #
+  # Mirrors Solana::Vault#grant_seeds + #seeds_for_quest. Records every grant so
+  # a test can assert exactly ONE grant fired (the once-ever quest gate), and
+  # returns the same { signature, pda, seeds_earned, seeds_total, seeds_level }
+  # shape the controllers slice into their StateFanout JSON payload.
+  #
+  #   quest_seed_reward → override what seeds_for_quest returns (default 25)
+  #   grant_seeds_total → override the running on-chain total (default = amount)
+  attr_writer :quest_seed_reward, :grant_seeds_total
+
+  def grant_seeds(wallet_address:, amount:, kind:, invitee: nil)
+    @grant_calls ||= []
+    @grant_calls << { wallet: wallet_address, amount: amount, kind: kind, invitee: invitee }
+    total = (@grant_seeds_total || amount).to_i
+    {
+      signature:    "fake-grant-#{kind}-#{SecureRandom.hex(2)}",
+      pda:          "grant-pda-#{kind}",
+      seeds_earned: amount,
+      seeds_total:  total,
+      seeds_level:  User.level_for(total)
+    }
+  end
+
+  def grant_calls
+    @grant_calls ||= []
+  end
+
+  def seeds_for_quest(_kind)
+    @quest_seed_reward || 25
+  end
+
+  # Custodial (managed-wallet) on-chain username co-sign — see
+  # AccountsController#update_username. The controller ignores the return value
+  # (it mirrors the username to the DB itself), so a recorded no-op is enough.
+  def set_username(wallet_address, username, user_keypair: nil)
+    @set_username_calls ||= []
+    @set_username_calls << { wallet: wallet_address, username: username }
+    { signature: "fake-set-username-#{SecureRandom.hex(2)}" }
+  end
+
+  def set_username_calls
+    @set_username_calls ||= []
+  end
 end
 
 # Mirrors the relevant slice of Solana::Client used by
