@@ -65,16 +65,12 @@
   };
 
   // Shared success beat for a newsletter join — fire the seeds tick-up (if the
-  // 40-seed bonus landed), show the welcome modal, then reload so the quest card
-  // advances to mission 3. Global so the email-capture modal path reaches it too.
+  // 40-seed bonus landed), then advance the quest card to mission 3. No success
+  // modal (#1) and no reload. Global so the email-capture modal path reaches it too.
   window.questNewsletterSuccess = function (data) {
     if (data && data.seeds_earned && window.StateFanout) {
       try { window.StateFanout.apply("seeds", data, { source: "quest-newsletter", dispatchDelay: 300 }); } catch (e) {}
     }
-    try {
-      window.Alpine.store("modals").open("newsletter-welcome", { seeds: (data && data.seeds_earned) || 0 });
-    } catch (e) {}
-    // No reload — advance the quest card to the invite step in place.
     try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "invite" } })); } catch (e) {}
   };
 
