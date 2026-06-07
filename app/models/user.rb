@@ -12,7 +12,8 @@ class User < ApplicationRecord
   belongs_to :inviter, class_name: "User", optional: true, foreign_key: :invited_by_id
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
-  validates :email, uniqueness: true, allow_nil: true
+  validates :email, uniqueness: true, allow_nil: true,
+                    format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :web2_solana_address, uniqueness: true, allow_nil: true
   validates :web3_solana_address, uniqueness: true, allow_nil: true
   validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/, message: "only letters, numbers, hyphens, and underscores" }, uniqueness: { case_sensitive: false }, allow_nil: true
