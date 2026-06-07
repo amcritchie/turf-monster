@@ -189,7 +189,32 @@ class AdminController < ApplicationController
     { group: "Crop Photo",
       label: "Crop Photo (placeholder image)", key: "crop-photo",
       modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
-      props: { imageUrl: "/logo.png" } }
+      props: { imageUrl: "/logo.png" } },
+
+    # === Quest / Newsletter (feat/quest-mailing-list) ====================
+    # The quest-success + newsletter join + unsubscribe modal chain. All gate
+    # on current_user in the host; quest-success reads display_seeds_data
+    # (server) for its bar, so the gallery preview shows the viewing admin's seeds.
+    { group: "Quest / Newsletter",
+      label: "Quest success (+25 + subscribe CTA)", key: "quest-success",
+      modal_id: "quest-success", file: "app/views/modals/_quest_success.html.erb",
+      props: { seeds_earned: 25, seeds_total: 75, seeds_level: 1 } },
+    { group: "Quest / Newsletter",
+      label: "Newsletter subscribe (consent-gated)", key: "newsletter-subscribe",
+      modal_id: "newsletter-subscribe", file: "app/views/modals/_newsletter_subscribe.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Newsletter success (+25 — you're in)", key: "newsletter-success",
+      modal_id: "newsletter-success", file: "app/views/modals/_newsletter_success.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Unsubscribe — are you sure?", key: "unsubscribe-confirm",
+      modal_id: "unsubscribe-confirm", file: "app/views/modals/_unsubscribe_confirm.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Unsubscribe — see you later", key: "unsubscribe-goodbye",
+      modal_id: "unsubscribe-goodbye", file: "app/views/modals/_unsubscribe_goodbye.html.erb",
+      props: {} }
   ].freeze
 
   def navbar

@@ -2,7 +2,7 @@
   "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.19.0",
+    "version": "0.23.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
@@ -428,6 +428,14 @@
         {
           "name": "lock_timestamp",
           "type": "i64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "slug",
+          "type": "string"
         }
       ]
     },
@@ -521,6 +529,15 @@
             "array": [
               "u64",
               5
+            ]
+          }
+        },
+        {
+          "name": "quest_seeds",
+          "type": {
+            "array": [
+              "u64",
+              16
             ]
           }
         },
@@ -1035,6 +1052,107 @@
         {
           "name": "entry_num",
           "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "grant_seeds",
+      "docs": [
+        "Credit a fixed `amount` of loyalty seeds into a user's UserAccount,",
+        "OUTSIDE the entry flow (Rails \"quest\" bonuses: first username change,",
+        "newsletter join, friend-invite-entered). 1-of-3 vault signer; the user",
+        "does not sign. Idempotent per (user, kind[, invitee]) via the SeedGrant",
+        "init-guard PDA. `kind` ∈ seed_grant_kind::*; `invitee` is the friend's",
+        "wallet for INVITE_FRIEND and Pubkey::default() otherwise."
+      ],
+      "discriminator": [
+        93,
+        180,
+        44,
+        93,
+        141,
+        188,
+        172,
+        138
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Vault signer (1-of-3). Pays SOL rent for the SeedGrant guard PDA."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_wallet",
+          "docs": [
+            "user's behalf (like settle_contest). Used to derive + bind the",
+            "UserAccount PDA and to seed the guard PDA."
+          ]
+        },
+        {
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seed_grant",
+          "docs": [
+            "Idempotency guard — `init`-once per (user, kind[, invitee])."
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "kind",
+          "type": "u8"
+        },
+        {
+          "name": "invitee",
+          "type": "pubkey"
         }
       ]
     },
@@ -1929,6 +2047,69 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "update_signers",
+      "docs": [
+        "Rotate the multisig signer set IN PLACE (no redeploy). 2-of-3 of the",
+        "CURRENT signers. Re-added in v0.20 so a compromised signer key (e.g. a",
+        "leaked Alex Bot server key) is a cheap on-chain rotation rather than a",
+        "full program redeploy. Threshold is PINNED at 2-of-3 — this rotates",
+        "signer pubkeys only (`validate_multisig` ignores the threshold field).",
+        "Enforces signer continuity (BOTH authorizing cosigners survive the",
+        "rotation; no default/zeroed slots — `SignerContinuityRequired` 6017)",
+        "and no duplicate signers (`DuplicateSigner` 6014)."
+      ],
+      "discriminator": [
+        228,
+        82,
+        68,
+        150,
+        92,
+        66,
+        140,
+        174
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "cosigner",
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_signers",
+          "type": {
+            "array": [
+              "pubkey",
+              3
+            ]
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1982,6 +2163,19 @@
         157,
         248,
         47
+      ]
+    },
+    {
+      "name": "SeedGrant",
+      "discriminator": [
+        232,
+        105,
+        148,
+        147,
+        20,
+        42,
+        209,
+        197
       ]
     },
     {
@@ -2100,7 +2294,7 @@
     {
       "code": 6017,
       "name": "SignerContinuityRequired",
-      "msg": "New signer set must retain at least one current cosigner"
+      "msg": "New signer set must retain BOTH authorizing cosigners (2-of-3) and contain no default/zeroed slots"
     },
     {
       "code": 6018,
@@ -2206,6 +2400,36 @@
       "code": 6038,
       "name": "EntryTokenSeedMismatch",
       "msg": "Entry token seed hash does not match sha256(source_ref)"
+    },
+    {
+      "code": 6039,
+      "name": "ContestNameTooLong",
+      "msg": "Contest name exceeds the 96-byte on-chain limit"
+    },
+    {
+      "code": 6040,
+      "name": "ContestSlugTooLong",
+      "msg": "Contest slug exceeds the 64-byte on-chain limit"
+    },
+    {
+      "code": 6041,
+      "name": "ContestSlugMismatch",
+      "msg": "Stored slug does not hash to contest_id: sha256(slug) != contest_id"
+    },
+    {
+      "code": 6042,
+      "name": "InvalidSeedGrantKind",
+      "msg": "Seed grant kind is not one of the known quest kinds"
+    },
+    {
+      "code": 6043,
+      "name": "InvalidSeedGrantInvitee",
+      "msg": "Invite grants require a non-default invitee; non-invite grants forbid one"
+    },
+    {
+      "code": 6044,
+      "name": "SeedGrantAmountInvalid",
+      "msg": "Seed grant amount must be greater than 0 and at most MAX_GRANT_SEEDS"
     }
   ],
   "types": [
@@ -2283,9 +2507,21 @@
       "docs": [
         "One per contest. Holds the per-currency entry-fee schedule, accumulated",
         "per-currency fee tallies (operator revenue, separate from prize pool),",
-        "payout tiers, status, season binding, and the creator/admin pubkeys.",
+        "payout tiers, status, season binding, the creator/admin pubkeys, and",
+        "(v0.21) the self-describing branded `name` + canonical `slug`.",
         "",
-        "PDA seeds: [b\"contest\", contest_id]  (contest_id = SHA256 of Rails slug)"
+        "PDA seeds: [b\"contest\", contest_id]  (contest_id = SHA256 of Rails slug)",
+        "",
+        "v0.21 layout note — the account GROWS by 160 bytes (96 name + 64 slug).",
+        "Unlike the v0.17/v0.18 time-lock fields (carved from the old `[u8; 32]`",
+        "`_reserved`), `name` + `slug` cannot fit in the remaining 16 reserved",
+        "bytes, so `INIT_SPACE` increases and EXISTING on-chain Contest PDAs on",
+        "the OLD layout (e.g. the `test8` devnet contest) are INCOMPATIBLE with",
+        "the v0.21 decoder — they have neither field and are 160 bytes shorter.",
+        "v0.21 must therefore land BEFORE any real branded contests are created;",
+        "pre-v0.21 contests won't carry name/slug and must not be Borsh-decoded",
+        "with the new layout. `_reserved` stays at 16 bytes (net-new fields are",
+        "appended, not carved out)."
       ],
       "type": {
         "kind": "struct",
@@ -2293,7 +2529,9 @@
           {
             "name": "contest_id",
             "docs": [
-              "SHA256(Rails slug). Stable, opaque, 32 bytes."
+              "SHA256(Rails slug). Stable, opaque, 32 bytes. Equals `sha256(slug)` —",
+              "asserted on-chain in `create_contest` (v0.21) so the stored `slug`",
+              "provably matches this PDA-deriving id."
             ],
             "type": {
               "array": [
@@ -2420,6 +2658,38 @@
               "(their zeroed bytes decode as `conclusion_timestamp == 0`)."
             ],
             "type": "i64"
+          },
+          {
+            "name": "name",
+            "docs": [
+              "Branded, human-facing contest name (v0.21). UTF-8, right-zero-padded",
+              "to a fixed 96 bytes. Non-unique by design (multiple contests can share",
+              "a brand name); uniqueness is STRUCTURAL via the slug-derived PDA, not",
+              "the name. Validated `name.len() <= 96` in `create_contest`",
+              "(`ContestNameTooLong` 6039). Decode in Rails by trimming trailing 0x00."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                96
+              ]
+            }
+          },
+          {
+            "name": "slug",
+            "docs": [
+              "Canonical contest slug (v0.21). UTF-8, right-zero-padded to a fixed",
+              "64 bytes. `sha256(slug) == contest_id` is asserted on-chain at create",
+              "time, so the stored slug provably matches the PDA — the contest is now",
+              "self-describing and the client/server `contest_id`-mismatch bug class",
+              "is closed. Validated `slug.len() <= 64` (`ContestSlugTooLong` 6040)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           },
           {
             "name": "_reserved",
@@ -2644,6 +2914,15 @@
             }
           },
           {
+            "name": "quest_seeds",
+            "type": {
+              "array": [
+                "u64",
+                16
+              ]
+            }
+          },
+          {
             "name": "start_at",
             "type": "i64"
           },
@@ -2654,6 +2933,78 @@
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeedGrant",
+      "docs": [
+        "SeedGrant: a once-only guard + audit record for a standalone admin seed",
+        "grant (quest bonus). Its EXISTENCE is the idempotency lock — `init` collides",
+        "on a repeat grant of the same (user, kind[, invitee]), so the TX fails.",
+        "",
+        "PDA seeds: [b\"seed_grant\", user_wallet, kind, invitee]",
+        "- USERNAME_FIRST_CHANGE / NEWSLETTER_JOIN: invitee = Pubkey::default()",
+        "→ once-EVER per user.",
+        "- INVITE_FRIEND: invitee = the friend's wallet → once-per-invitee."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "docs": [
+              "Recipient wallet (the UserAccount whose seeds were credited)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "kind",
+            "docs": [
+              "seed_grant_kind::{USERNAME_FIRST_CHANGE, NEWSLETTER_JOIN, INVITE_FRIEND}."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "invitee",
+            "docs": [
+              "The invited friend's wallet for INVITE_FRIEND; Pubkey::default() otherwise."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "Seeds credited by this grant."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "granted_at",
+            "docs": [
+              "Unix timestamp (chain Clock) at grant time."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "_reserved",
+            "docs": [
+              "Reserved padding for forward-compat."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
           }
         ]
       }
