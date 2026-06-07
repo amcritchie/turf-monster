@@ -2,7 +2,7 @@
   "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.23.0",
+    "version": "0.24.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
@@ -428,14 +428,6 @@
         {
           "name": "lock_timestamp",
           "type": "i64"
-        },
-        {
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "name": "slug",
-          "type": "string"
         }
       ]
     },
@@ -2507,21 +2499,9 @@
       "docs": [
         "One per contest. Holds the per-currency entry-fee schedule, accumulated",
         "per-currency fee tallies (operator revenue, separate from prize pool),",
-        "payout tiers, status, season binding, the creator/admin pubkeys, and",
-        "(v0.21) the self-describing branded `name` + canonical `slug`.",
+        "payout tiers, status, season binding, and the creator/admin pubkeys.",
         "",
-        "PDA seeds: [b\"contest\", contest_id]  (contest_id = SHA256 of Rails slug)",
-        "",
-        "v0.21 layout note — the account GROWS by 160 bytes (96 name + 64 slug).",
-        "Unlike the v0.17/v0.18 time-lock fields (carved from the old `[u8; 32]`",
-        "`_reserved`), `name` + `slug` cannot fit in the remaining 16 reserved",
-        "bytes, so `INIT_SPACE` increases and EXISTING on-chain Contest PDAs on",
-        "the OLD layout (e.g. the `test8` devnet contest) are INCOMPATIBLE with",
-        "the v0.21 decoder — they have neither field and are 160 bytes shorter.",
-        "v0.21 must therefore land BEFORE any real branded contests are created;",
-        "pre-v0.21 contests won't carry name/slug and must not be Borsh-decoded",
-        "with the new layout. `_reserved` stays at 16 bytes (net-new fields are",
-        "appended, not carved out)."
+        "PDA seeds: [b\"contest\", contest_id]  (contest_id = SHA256 of Rails slug)"
       ],
       "type": {
         "kind": "struct",
@@ -2529,9 +2509,7 @@
           {
             "name": "contest_id",
             "docs": [
-              "SHA256(Rails slug). Stable, opaque, 32 bytes. Equals `sha256(slug)` —",
-              "asserted on-chain in `create_contest` (v0.21) so the stored `slug`",
-              "provably matches this PDA-deriving id."
+              "SHA256(Rails slug). Stable, opaque, 32 bytes."
             ],
             "type": {
               "array": [
@@ -2658,38 +2636,6 @@
               "(their zeroed bytes decode as `conclusion_timestamp == 0`)."
             ],
             "type": "i64"
-          },
-          {
-            "name": "name",
-            "docs": [
-              "Branded, human-facing contest name (v0.21). UTF-8, right-zero-padded",
-              "to a fixed 96 bytes. Non-unique by design (multiple contests can share",
-              "a brand name); uniqueness is STRUCTURAL via the slug-derived PDA, not",
-              "the name. Validated `name.len() <= 96` in `create_contest`",
-              "(`ContestNameTooLong` 6039). Decode in Rails by trimming trailing 0x00."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                96
-              ]
-            }
-          },
-          {
-            "name": "slug",
-            "docs": [
-              "Canonical contest slug (v0.21). UTF-8, right-zero-padded to a fixed",
-              "64 bytes. `sha256(slug) == contest_id` is asserted on-chain at create",
-              "time, so the stored slug provably matches the PDA — the contest is now",
-              "self-describing and the client/server `contest_id`-mismatch bug class",
-              "is closed. Validated `slug.len() <= 64` (`ContestSlugTooLong` 6040)."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                64
-              ]
-            }
           },
           {
             "name": "_reserved",
