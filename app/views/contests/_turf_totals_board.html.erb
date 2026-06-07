@@ -845,6 +845,29 @@ window.selectionBoard = function() {
     // After a reload-based login (see init()), push the guest cart to the
     // server and submit the entry.
     async afterLoginSuccess() {
+      // Surface an entry-eligibility blocker (e.g. no entry tokens) BEFORE the
+      // cart replay below. eligibilityBlocker reads only $store.session — no
+      // server round-trip — so we can decide instantly. It lives in the
+      // solana_utils importmap module, which loads just AFTER Alpine inits the
+      // board, so wait briefly for it (bounded; falls through to the
+      // server-authoritative path if it never appears). This turns the
+      // post-magic-link "Get Entry Tokens" modal from a ~1.5s lag (6 sequential
+      // toggle_selection POSTs in replaySelectionsToServer) into near-instant.
+      // The cart still replays — behind the now-visible modal — so it is ready
+      // once the user buys tokens and holds to confirm.
+      var sess = Alpine.store('session');
+      for (var i = 0; i < 20 && typeof window.eligibilityBlocker !== 'function'; i++) {
+        await new Promise(function (resolve) { setTimeout(resolve, 25); });
+      }
+      var blocker = (typeof window.eligibilityBlocker === 'function')
+        ? window.eligibilityBlocker(sess, this.entryFeeCents)
+        : null;
+      if (blocker) {
+        this.showEligibilityBlockerModal(blocker);
+        await this.replaySelectionsToServer();
+        return;
+      }
+
       if (await this.replaySelectionsToServer()) {
         await this.confirmEntry();
       } else {
