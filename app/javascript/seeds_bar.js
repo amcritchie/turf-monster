@@ -153,6 +153,9 @@ function seedsBar() {
       self._schedule(function () { self.levelingUp = false; }, 2800);
     },
 
+    // Passive seeds-update: progress the bar (+ level-up animation). NO confetti
+    // here — it fires on the navbar's load-time balance refresh too. Quest
+    // confetti is fired deliberately by completeQuest() from the Quest badge.
     handleSeedsUpdate(d) {
       var self = this;
       if (d.levelUp) {

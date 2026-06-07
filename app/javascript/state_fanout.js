@@ -113,6 +113,10 @@ register("seeds", function (d, source, opts) {
   // opts.dispatchDelay = 0 for tests / flows that don't show a modal.
   const dispatchDelay = opts.dispatchDelay !== undefined ? opts.dispatchDelay : 2000;
   setTimeout(function () {
+    // levelUp:true means a free entry was earned (crossed a SEEDS_PER_LEVEL
+    // threshold). The LAYOUT owns the modal store and listens for this to pop
+    // the free-entry-earned modal — state fanout stays UI-store-agnostic and
+    // only signals the crossing here.
     const detail = leveledUp
       ? { levelUp: true,  oldLevel: oldLevel, oldPct: oldPct, newLevel: level, progress: newPct }
       : { levelUp: false, level:    level,    progress: newPct };

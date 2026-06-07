@@ -346,6 +346,19 @@
     <div class="bg-surface rounded-xl border border-subtle shadow-2xl p-6 max-w-sm w-full"
          :class="$store.modals.cardClasses()">
       <%= yield if block_given? %>
+      <%# Audit C1 — cosign-rejected (tx mismatch) modal. Registered here in
+          the shared host shell rather than in the per-app block passed to the
+          host, so a SINGLE registration serves both render paths that route
+          through this partial: the live layout (layouts/application) and the
+          /admin gallery preview iframe (layouts/modal_preview). The app's other
+          modals are registered per-layout in those blocks; this one sits in the
+          shell intentionally. Opened with
+          Alpine.store('modals').open('cosign-rejected', {}) from the entry
+          boards when confirm_onchain_entry answers code 'tx_rejected'. current()
+          is non-null here — gated by the outer template x-if above. %>
+      <template x-if="$store.modals.current().id === 'cosign-rejected'">
+        <%= render "modals/cosign_rejected" %>
+      </template>
     </div>
   </div>
 </template>

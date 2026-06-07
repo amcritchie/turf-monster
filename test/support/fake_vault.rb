@@ -149,6 +149,25 @@ class FakeVault
     @cosign_broadcast_calls ||= []
   end
 
+  # Used by ContestsController#confirm_onchain_entry (audit C1). The real Vault
+  # SEMANTICALLY validates the Phantom-signed wire BEFORE the admin cosigns —
+  # raising Solana::Vault::UnsafeCosignError on a tx that doesn't match the
+  # prepared entry. The fake records the call and is a no-op (safe) by default;
+  # set `cosign_safe_raises = "<reason>"` to exercise the controller's
+  # tx_rejected (422) rescue path without broadcasting.
+  attr_writer :cosign_safe_raises
+
+  def assert_entry_cosign_safe!(signed_wire_base64, entry:, wallet_address:)
+    @cosign_safe_calls ||= []
+    @cosign_safe_calls << { wire: signed_wire_base64, entry: entry, wallet_address: wallet_address }
+    raise Solana::Vault::UnsafeCosignError, @cosign_safe_raises if @cosign_safe_raises
+    true
+  end
+
+  def cosign_safe_calls
+    @cosign_safe_calls ||= []
+  end
+
   # Used by ContestsController#confirm_onchain_entry. Real Vault returns
   # [pda_bytes, bump] and the controller passes pda_bytes through
   # Solana::Keypair.encode_base58. For tests, return a tuple whose first
@@ -316,6 +335,51 @@ class FakeVault
 
   def sweep_calls
     @sweep_calls ||= []
+  end
+
+  # --- Quest seed grants (v0.23 quests: username / chat / newsletter / invite) ---
+  #
+  # Mirrors Solana::Vault#grant_seeds + #seeds_for_quest. Records every grant so
+  # a test can assert exactly ONE grant fired (the once-ever quest gate), and
+  # returns the same { signature, pda, seeds_earned, seeds_total, seeds_level }
+  # shape the controllers slice into their StateFanout JSON payload.
+  #
+  #   quest_seed_reward → override what seeds_for_quest returns (default 25)
+  #   grant_seeds_total → override the running on-chain total (default = amount)
+  attr_writer :quest_seed_reward, :grant_seeds_total
+
+  def grant_seeds(wallet_address:, amount:, kind:, invitee: nil)
+    @grant_calls ||= []
+    @grant_calls << { wallet: wallet_address, amount: amount, kind: kind, invitee: invitee }
+    total = (@grant_seeds_total || amount).to_i
+    {
+      signature:    "fake-grant-#{kind}-#{SecureRandom.hex(2)}",
+      pda:          "grant-pda-#{kind}",
+      seeds_earned: amount,
+      seeds_total:  total,
+      seeds_level:  User.level_for(total)
+    }
+  end
+
+  def grant_calls
+    @grant_calls ||= []
+  end
+
+  def seeds_for_quest(_kind)
+    @quest_seed_reward || 25
+  end
+
+  # Custodial (managed-wallet) on-chain username co-sign — see
+  # AccountsController#update_username. The controller ignores the return value
+  # (it mirrors the username to the DB itself), so a recorded no-op is enough.
+  def set_username(wallet_address, username, user_keypair: nil)
+    @set_username_calls ||= []
+    @set_username_calls << { wallet: wallet_address, username: username }
+    { signature: "fake-set-username-#{SecureRandom.hex(2)}" }
+  end
+
+  def set_username_calls
+    @set_username_calls ||= []
   end
 end
 

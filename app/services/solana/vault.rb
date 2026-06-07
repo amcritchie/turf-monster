@@ -63,6 +63,11 @@ module Solana
     # Solana's `Pubkey::default()` (32 zero bytes) base58-encoded.
     ZERO_PUBKEY_B58 = "11111111111111111111111111111111".freeze
 
+    # Quest seed-grant kinds — mirror turf-vault `seed_grant_kind` (grant_seeds).
+    # Part of the [b"seed_grant", wallet, kind, invitee] guard-PDA seed.
+    # CHAT_MESSAGE = 3 added in v0.23 (send first contest-chat message quest).
+    SEED_GRANT_KIND = { username: 0, newsletter: 1, invite: 2, chat: 3 }.freeze
+
     def initialize(client: Solana::Client.new)
       @client = client
       @program_id = Keypair.decode_base58(Config::PROGRAM_ID)
@@ -1510,6 +1515,81 @@ module Solana
       { signature: signature, pda: Keypair.encode_base58(pda) }
     end
 
+    # Admin-signed standalone seed grant (Rails "quest" bonuses). 1-of-3 vault
+    # signer. Credits a fixed `amount` of loyalty seeds into a user's UserAccount
+    # OUTSIDE the entry flow — first username change, newsletter join, friend-
+    # invite-entered. The user does NOT sign (admin credits on their behalf, the
+    # same trust model as settle_contest mutating arbitrary UserAccounts).
+    #
+    # Idempotent ON-CHAIN: the [b"seed_grant", wallet, kind, invitee] guard PDA
+    # is init-once, so a repeat grant of the same (user, kind[, invitee]) collides
+    # on init (custom program error 0x0) and raises — the real double-grant guard,
+    # safe even if a Rails-side flag misfires.
+    #   - :username / :newsletter → invitee MUST be nil (once-EVER per user)
+    #   - :invite                 → invitee = the friend's wallet (once-per-invitee)
+    #
+    # Returns { signature:, pda:, seeds_earned:, seeds_total:, seeds_level: } so a
+    # controller can splat a StateFanout('seeds') payload with no second RPC derive.
+    #
+    # NOTE: requires the user's on-chain UserAccount PDA to already exist (it's
+    # loaded, not init'd). Username-first-change implies it; for a brand-new
+    # account call ensure_user_account first.
+    def grant_seeds(wallet_address:, amount:, kind:, invitee: nil)
+      kind_u8 = kind.is_a?(Symbol) ? SEED_GRANT_KIND.fetch(kind) : kind.to_i
+      amount  = amount.to_i
+      unless amount.between?(1, 1_000)
+        raise ArgumentError, "seed grant amount must be 1..1000 (got #{amount})"
+      end
+      if kind_u8 == SEED_GRANT_KIND[:invite]
+        raise ArgumentError, "invitee required for :invite grants" if invitee.nil?
+      elsif !invitee.nil?
+        raise ArgumentError, "invitee must be nil for :#{kind} grants"
+      end
+
+      admin         = Keypair.admin
+      wallet_bytes  = Keypair.decode_base58(wallet_address)
+      invitee_bytes = invitee ? Keypair.decode_base58(invitee) : ("\x00".b * 32)
+
+      user_pda,  _ = user_account_pda(wallet_address)
+      vault_pda, _ = vault_state_pda
+      grant_pda, _ = Transaction.find_pda(
+        [b("seed_grant"), wallet_bytes, [kind_u8].pack("C"), invitee_bytes], @program_id
+      )
+
+      data = Transaction.anchor_discriminator("grant_seeds") +
+             Borsh.encode_u64(amount) +  # amount: u64
+             [kind_u8].pack("C") +       # kind:   u8
+             invitee_bytes               # invitee: Pubkey (32 raw bytes; zeros = default)
+
+      signature = with_account_init_retry do
+        tx = build_tx(admin)
+        tx.add_instruction(
+          program_id: @program_id,
+          accounts: [
+            { pubkey: admin.public_key_bytes,         is_signer: true,  is_writable: true  }, # admin
+            { pubkey: vault_pda,                      is_signer: false, is_writable: false }, # vault_state
+            { pubkey: wallet_bytes,                   is_signer: false, is_writable: false }, # user_wallet
+            { pubkey: user_pda,                       is_signer: false, is_writable: true  }, # user_account
+            { pubkey: grant_pda,                      is_signer: false, is_writable: true  }, # seed_grant (init)
+            { pubkey: Transaction::SYSTEM_PROGRAM_ID, is_signer: false, is_writable: false }
+          ],
+          data: data
+        )
+        client.send_and_confirm(tx.serialize_base64)
+      end
+
+      onchain     = (sync_balance(wallet_address) rescue nil)
+      seeds_total = onchain&.dig(:seeds).to_i
+
+      {
+        signature:    signature,
+        pda:          Keypair.encode_base58(grant_pda),
+        seeds_earned: amount,
+        seeds_total:  seeds_total,
+        seeds_level:  User.level_for(seeds_total)
+      }
+    end
+
     def list_entry_tokens(wallet_address, commitment: "confirmed")
       Rails.cache.fetch(entry_tokens_cache_key(wallet_address), expires_in: 60.seconds) do
         owner_b58 = wallet_address
@@ -1539,12 +1619,29 @@ module Solana
 
     # ── Seasons (turf-vault v0.11.0+) ────────────────────────────────────────
 
-    SEASON_LEN = 101 # bytes — 8 disc + 4 season_id + 32 name + 40 schedule + 8 start_at + 8 created_at + 1 bump
+    # v0.23 layout (229 bytes): 8 disc + 4 season_id + 32 name + 40 schedule
+    # + 128 quest_seeds (u64 × 16) + 8 start_at + 8 created_at + 1 bump.
+    # Grew by 128 from the pre-v0.23 101-byte layout when quest_seeds[16] landed.
+    SEASON_LEN = 229
     SEASON_DEFAULT_SCHEDULE = [25, 19, 14, 10, 7].freeze
 
-    def create_season(season_id:, name:, schedule:, start_at: nil)
+    # Per-quest-kind reward defaults (Season.quest_seeds, indexed by kind u8).
+    # username/newsletter/chat = 25; invite (kind 2) = 50 so two referred friends
+    # who enter a contest = 100 = a free entry (matches the share card copy).
+    # Kinds 4–15 reserved = 0.
+    QUEST_SEED_DEFAULTS = ([25, 25, 50, 25] + [0] * 12).freeze
+    # Fallback per-quest reward when no Season is active / can't be read.
+    QUEST_SEED_FALLBACK = 25
+
+    def create_season(season_id:, name:, schedule:, quest_seeds: nil, start_at: nil)
       raise ArgumentError, "schedule must have 5 elements" unless schedule.is_a?(Array) && schedule.length == 5
       schedule.each { |v| raise ArgumentError, "schedule values must be non-negative" if v.to_i.negative? }
+
+      quest_seeds ||= QUEST_SEED_DEFAULTS
+      unless quest_seeds.is_a?(Array) && quest_seeds.length == 16
+        raise ArgumentError, "quest_seeds must have 16 elements"
+      end
+      quest_seeds.each { |v| raise ArgumentError, "quest_seeds values must be non-negative integers" if !v.is_a?(Integer) || v.negative? }
 
       start_at ||= Time.current.to_i
       admin = Keypair.admin
@@ -1558,6 +1655,7 @@ module Solana
              Borsh.encode_u32(season_id) +
              name_bytes.pack("C*") +
              schedule.map { |v| Borsh.encode_u64(v.to_i) }.join +
+             quest_seeds.map { |v| Borsh.encode_u64(v.to_i) }.join +
              Borsh.encode_i64(start_at.to_i)
 
       tx = build_tx(admin)
@@ -1605,6 +1703,20 @@ module Solana
       schedule[[entry_num.to_i, 4].min]
     end
 
+    # Per-quest seed reward, sourced from the active Season's quest_seeds
+    # (v0.23+), indexed by the grant kind (u8). `kind` accepts a Symbol
+    # (:username/:newsletter/:invite/:chat) or the raw u8. Falls back to
+    # QUEST_SEED_FALLBACK when no Season is active, the read fails, or the
+    # configured per-kind reward is zero/missing — mirrors seeds_for_entry's
+    # season-read/rescue style so a deferred grant still pays a sane amount.
+    def seeds_for_quest(kind)
+      kind_u8 = kind.is_a?(Symbol) ? SEED_GRANT_KIND.fetch(kind) : kind.to_i
+      season_id = SeasonConfig.current_season_id
+      season = season_id.to_i.positive? ? (get_season(season_id) rescue nil) : nil
+      reward = season&.dig(:quest_seeds)&.[](kind_u8)
+      reward.is_a?(Integer) && reward.positive? ? reward : QUEST_SEED_FALLBACK
+    end
+
     def fetch_wallet_balances(wallet_address)
       sol_result = client.get_balance(wallet_address)
       sol_lamports = sol_result.is_a?(Hash) ? sol_result["value"] : sol_result
@@ -1633,8 +1745,144 @@ module Solana
       }
     end
 
+    # Raised by #assert_entry_cosign_safe! when the Phantom-signed wire tx the
+    # client POSTs to confirm_onchain_entry is NOT the enter_contest we prepared
+    # (audit C1 — admin blind-cosign). The admin keypair must NEVER blind-sign
+    # arbitrary client bytes: a crafted SystemProgram.transfer{from: admin},
+    # mint_entry_token, grant_seeds, etc. would otherwise be admin-cosigned and
+    # broadcast. The message carries a DETAILED reason for server logs only — the
+    # controller maps it to a generic client message (never leak which check tripped).
+    class UnsafeCosignError < StandardError; end
+
+    # Position of the contest_entry (entry PDA) account inside the enter_contest
+    # instruction's account list — see #enter_contest_accounts: 0 payer, 1 user,
+    # 2 user_account, 3 vault_state, 4 contest, 5 contest_entry.
+    ENTER_CONTEST_ENTRY_PDA_POSITION = 5
+
+    # SystemInstruction::AdvanceNonceAccount discriminant (u32 LE 4). The ONLY
+    # System instruction permitted in a cosignable entry — see SystemProgram
+    # .advance_nonce_account in solana-studio.
+    SYSTEM_ADVANCE_NONCE_DATA = [4].pack("V").freeze
+
+    # SEMANTIC allowlist validation of a Phantom-signed entry wire BEFORE the
+    # admin cosigns it (audit C1). The client round-trips the tx through web3.js
+    # (Transaction.from(...).serialize()), so the returned message bytes may be
+    # RE-ENCODED — byte-equality with the stored serialized_tx would reject legit
+    # entries. Instead we DECODE the wire and assert it is exactly the
+    # enter_contest we built:
+    #
+    #   1. Fee payer (account[0]) == the admin managed wallet. Admin is the only
+    #      signature slot the server fills; if admin isn't the fee payer there is
+    #      nothing legitimate to cosign. The strict instruction allowlist below
+    #      means admin can never be the writable destination of a value transfer
+    #      (every System transfer is rejected; enter_contest debits the USER).
+    #   2. EXACTLY ONE turf-vault instruction, and it must be `enter_contest`
+    #      (discriminator match — rejects mint_entry_token / settle_contest / any
+    #      other instruction on our PROGRAM_ID). Its contest_entry account must
+    #      equal the server-derived entry_pda(contest, wallet, entry_num) for THIS
+    #      entry (defense-in-depth; mirrors verify_and_confirm_onchain_entry!).
+    #   3. System Program: ONLY advanceNonceAccount (data == u32 LE 4), and only
+    #      when a durable nonce is configured AND the advance targets the
+    #      configured SOLANA_DURABLE_NONCE_PUBKEY. A System transfer (opcode 2) or
+    #      anything else → reject. (Durable nonce is LIVE on mainnet — every real
+    #      entry that anchors on it carries this ix; omitting it here would break
+    #      every production entry.)
+    #   4. ComputeBudget: allowed (priority-fee / CU-limit hints; no authority risk).
+    #   5. Any other program id or instruction → reject.
+    #
+    # Raises UnsafeCosignError (logged server-side via #cosign_reject!) on the
+    # first failure. Returns true when the wire is safe to cosign + broadcast.
+    def assert_entry_cosign_safe!(signed_wire_base64, entry:, wallet_address:)
+      cosign_reject!(entry, wallet_address, "empty_wire: no signed_tx bytes") if signed_wire_base64.blank?
+
+      msg =
+        begin
+          parse_wire_message(Base64.decode64(signed_wire_base64).b, entry: entry, wallet_address: wallet_address)
+        rescue UnsafeCosignError
+          raise
+        rescue StandardError => e
+          cosign_reject!(entry, wallet_address, "unparseable_wire: #{e.class}: #{e.message}")
+        end
+      account_keys = msg[:account_keys]
+
+      admin_key = Keypair.admin.public_key_bytes.b
+
+      # (1) Fee payer (account[0]) must be the admin managed wallet.
+      fee_payer = account_keys[0]
+      if fee_payer != admin_key
+        cosign_reject!(entry, wallet_address,
+          "fee_payer_not_admin: account[0]=#{b58(fee_payer)} expected admin=#{Keypair.admin.address}")
+      end
+
+      # Server-derive the enter_contest binding for THIS entry (never trust the wire).
+      entry_num = entry.entry_number
+      if entry_num.nil?
+        cosign_reject!(entry, wallet_address, "no_entry_number: entry ##{entry.id} has no entry_number to bind")
+      end
+      expected_entry_pda = entry_pda(entry.contest.slug, wallet_address, entry_num).first.b
+
+      enter_disc       = Transaction.anchor_discriminator("enter_contest").b
+      turf_vault       = @program_id.b
+      system_program   = Transaction::SYSTEM_PROGRAM_ID.b   # 32 zero bytes
+      compute_budget   = COMPUTE_BUDGET_PROGRAM_ID.b
+      dn               = durable_nonce_config
+      configured_nonce = dn && Keypair.decode_base58(dn.fetch(:pubkey)).b
+
+      enter_count = 0
+
+      msg[:instructions].each_with_index do |ix, i|
+        program_id = account_keys[ix[:program_id_index]]
+        cosign_reject!(entry, wallet_address, "bad_program_index: ix #{i} program index out of range") if program_id.nil?
+        program_id = program_id.b
+
+        case program_id
+        when turf_vault
+          # (2) Only enter_contest, bound to THIS entry's PDA.
+          unless ix[:data].byteslice(0, 8) == enter_disc
+            cosign_reject!(entry, wallet_address,
+              "wrong_turf_vault_ix: ix #{i} disc=#{ix[:data].byteslice(0, 8).to_s.unpack1('H*')} != enter_contest")
+          end
+          enter_count += 1
+          slot = ix[:account_indices][ENTER_CONTEST_ENTRY_PDA_POSITION]
+          ix_entry_pda = slot && account_keys[slot]
+          if ix_entry_pda != expected_entry_pda
+            cosign_reject!(entry, wallet_address,
+              "entry_pda_mismatch: ix #{i} entry account=#{b58(ix_entry_pda)} expected=#{b58(expected_entry_pda)}")
+          end
+        when system_program
+          # (3) Only the durable-nonce advance, targeting the configured nonce.
+          unless ix[:data] == SYSTEM_ADVANCE_NONCE_DATA
+            cosign_reject!(entry, wallet_address,
+              "system_not_advance: ix #{i} data=#{ix[:data].to_s.unpack1('H*')} (only advanceNonceAccount allowed)")
+          end
+          if configured_nonce.nil?
+            cosign_reject!(entry, wallet_address, "advance_without_config: advanceNonceAccount but no durable nonce configured")
+          end
+          nonce_slot = ix[:account_indices][0]
+          nonce_acct = nonce_slot && account_keys[nonce_slot]
+          if nonce_acct != configured_nonce
+            cosign_reject!(entry, wallet_address,
+              "wrong_nonce_account: ix #{i} nonce=#{b58(nonce_acct)} expected=#{dn.fetch(:pubkey)}")
+          end
+        when compute_budget
+          # (4) Priority-fee / CU-limit hints — allowed, carry no authority risk.
+        else
+          # (5) Anything else — reject.
+          cosign_reject!(entry, wallet_address, "disallowed_program: ix #{i} program=#{b58(program_id)}")
+        end
+      end
+
+      unless enter_count == 1
+        cosign_reject!(entry, wallet_address, "enter_contest_count: found #{enter_count} enter_contest ixs, require exactly 1")
+      end
+
+      true
+    end
+
     # Cosign (admin) the Phantom-signed entry wire, pre-flight simulate, then
     # broadcast. Public API called by ContestsController#confirm_onchain_entry.
+    # The caller MUST run #assert_entry_cosign_safe! first (audit C1) — this
+    # method fills the admin signature slot over WHATEVER bytes it is handed.
     def cosign_and_broadcast_entry(signed_wire_base64)
       patched_b64 = Transaction.cosign_wire_base64(signed_wire_base64, signer: Keypair.admin)
 
@@ -1650,6 +1898,78 @@ module Solana
     end
 
     private
+
+    # Decode a LEGACY (unversioned) Solana wire transaction into its account keys
+    # and instructions, for #assert_entry_cosign_safe!. Mirrors the header/account
+    # walk in Solana::Transaction.cosign_wire and reuses its public read_compact_u16
+    # primitive. Every malformed/oversized read raises (→ converted to
+    # UnsafeCosignError by the caller) so a truncated or crafted payload fails
+    # CLOSED. A versioned (v0+) message — high bit set on numRequiredSignatures —
+    # is rejected: this legacy parser can't safely walk address-table lookups, and
+    # the entry build emits + Phantom round-trips a legacy message, so a v0 here is
+    # anomalous.
+    #
+    # Returns { account_keys: [<32-byte String>, ...],
+    #           instructions: [{ program_id_index:, account_indices: [Int], data: String }, ...] }.
+    def parse_wire_message(wire, entry:, wallet_address:)
+      cursor = 0
+      sig_count, cursor = Transaction.read_compact_u16(wire, cursor)
+      cosign_reject!(entry, wallet_address, "no_signatures: zero signature slots") if sig_count.zero?
+      message_start = cursor + (sig_count * 64)
+      cosign_reject!(entry, wallet_address, "truncated_sigs: wire shorter than declared signatures") if wire.bytesize < message_start + 4
+
+      first = wire.getbyte(message_start)
+      cosign_reject!(entry, wallet_address, "versioned_message: v0+ tx not supported") if (first & 0x80) != 0
+
+      c = message_start + 3 # skip the 3-byte message header (numReqSigs, roSigned, roUnsigned)
+      account_count, c = Transaction.read_compact_u16(wire, c)
+      account_keys = []
+      account_count.times do
+        cosign_reject!(entry, wallet_address, "truncated_account_keys") if wire.bytesize < c + 32
+        account_keys << wire.byteslice(c, 32)
+        c += 32
+      end
+      c += 32 # recent blockhash / durable nonce value
+      cosign_reject!(entry, wallet_address, "truncated_blockhash") if c > wire.bytesize
+
+      ix_count, c = Transaction.read_compact_u16(wire, c)
+      instructions = []
+      ix_count.times do
+        program_id_index = wire.getbyte(c)
+        cosign_reject!(entry, wallet_address, "truncated_ix_header") if program_id_index.nil?
+        c += 1
+        accounts_len, c = Transaction.read_compact_u16(wire, c)
+        account_indices = []
+        accounts_len.times do
+          idx = wire.getbyte(c)
+          cosign_reject!(entry, wallet_address, "truncated_ix_accounts") if idx.nil?
+          account_indices << idx
+          c += 1
+        end
+        data_len, c = Transaction.read_compact_u16(wire, c)
+        cosign_reject!(entry, wallet_address, "truncated_ix_data") if wire.bytesize < c + data_len
+        data = wire.byteslice(c, data_len) || "".b
+        c += data_len
+        instructions << { program_id_index: program_id_index, account_indices: account_indices, data: data }
+      end
+
+      { account_keys: account_keys, instructions: instructions }
+    end
+
+    # Log the DETAILED rejection reason server-side (forensics: entry id + wallet
+    # + which check failed) and raise the typed error. The controller maps
+    # UnsafeCosignError to a generic client message — the reason here is NEVER
+    # returned to the client.
+    def cosign_reject!(entry, wallet_address, reason)
+      entry_id = entry.respond_to?(:id) ? entry.id : entry.inspect
+      Rails.logger.warn("[cosign][rejected] entry_id=#{entry_id} wallet=#{wallet_address} reason=#{reason}")
+      raise UnsafeCosignError, reason
+    end
+
+    # Short base58 for log lines; nil-safe.
+    def b58(bytes)
+      bytes.nil? ? "nil" : Keypair.encode_base58(bytes)
+    end
 
     # Pad/truncate a fee array to 16 elements (MAX_CURRENCIES). Accepts:
     #   - Array of u64 lamport amounts (e.g. [1_900_000, 0, 0, ...])
@@ -1882,6 +2202,12 @@ module Solana
         v, offset = Borsh.decode_u64(data, offset)
         schedule << v
       end
+      # v0.23: quest_seeds: [u64; 16] sits between schedule and start_at.
+      quest_seeds = []
+      16.times do
+        v, offset = Borsh.decode_u64(data, offset)
+        quest_seeds << v
+      end
       start_at, offset = Borsh.decode_u64(data, offset)
       created_at, offset = Borsh.decode_u64(data, offset)
       {
@@ -1889,6 +2215,7 @@ module Solana
         season_id: season_id,
         name: name,
         seed_schedule: schedule,
+        quest_seeds: quest_seeds,
         start_at: start_at,
         created_at: created_at
       }

@@ -23,7 +23,10 @@ class MessagesController < ApplicationController
 
     rescue_and_log(target: message, parent: @contest) do
       message.save!
-      render json: { ok: true }
+      # First contest-chat message → 25-seed quest bonus (v0.23). Deferred-safe:
+      # a grant failure is logged + swallowed and never fails the message create.
+      payload = grant_first_chat_seeds(current_user)
+      render json: { ok: true }.merge(payload || {})
     end
   rescue StandardError => e
     render json: { error: e.message }, status: :unprocessable_entity
@@ -89,6 +92,34 @@ class MessagesController < ApplicationController
   end
 
   private
+
+  # First-ever contest-chat message → 25 seeds on-chain (kind: :chat, v0.23).
+  # Returns the StateFanout 'seeds' payload ({ seeds_earned, seeds_total,
+  # seeds_level }) so the client can run the tick-up + level-up animation, or
+  # nil if not the first message / no wallet / the grant is deferred. Sets
+  # first_chat_message_at via update_columns (no callbacks/validations) BEFORE
+  # the grant. The on-chain SeedGrant[chat] init-guard is the hard once-ever
+  # lock, so a deferred grant (pre-deploy / RPC blip) is backfillable without
+  # any double-pay — mirrors AccountsController#grant_first_username_seeds.
+  def grant_first_chat_seeds(user)
+    return nil unless user.first_chat_message_at.nil?
+    return nil if user.solana_address.blank?
+
+    user.update_columns(first_chat_message_at: Time.current)
+    vault = Solana::Vault.new
+    result = vault.grant_seeds(
+      wallet_address: user.solana_address, amount: vault.seeds_for_quest(:chat), kind: :chat
+    )
+    {
+      seeds_earned: result[:seeds_earned],
+      seeds_total:  result[:seeds_total],
+      seeds_level:  result[:seeds_level]
+    }
+  rescue => e
+    Rails.logger.warn "[quest][chat] seed grant deferred for user=#{user.id} " \
+                      "(#{e.class}: #{e.message.to_s[0, 140]})"
+    nil
+  end
 
   # The same partial Reaction#broadcast_reactions sends over the cable, rendered
   # for the toggling request so the actor's DOM updates immediately.

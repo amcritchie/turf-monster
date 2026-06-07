@@ -140,6 +140,13 @@ class AdminController < ApplicationController
       props: { state: "error", title: "Insufficient USDC",
                errorMessage: "You need $19 USDC to enter this contest.",
                recoveryLabel: "Mint $500 Test USDC", recoveryPhantom: false } },
+    { group: "Web3",
+      # Audit C1 — server refused to co-sign a confirm_onchain_entry tx that
+      # didn't match the prepared entry (422, code 'tx_rejected'). Static copy,
+      # no props — opens via the shared host registration in studio/modals/_host.
+      label: "Cosign rejected (tx mismatch)", key: "cosign-rejected",
+      modal_id: "cosign-rejected", file: "app/views/modals/_cosign_rejected.html.erb",
+      props: {} },
 
     { group: "Profile",
       label: "Change username", key: "username",
@@ -161,7 +168,36 @@ class AdminController < ApplicationController
       # imageUrl set → crop view. Avatar cropper ships from studio-engine
       # (studio/modals/_crop_photo, v0.4.12; components/_avatar_cropper v0.4.13).
       modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
-      props: { imageUrl: "/logo.png" } }
+      props: { imageUrl: "/logo.png" } },
+
+    # === Quest / Newsletter (feat/quest-mailing-list) ====================
+    # The quest-success + newsletter join + unsubscribe modal chain. All gate
+    # on current_user in the host; quest-success reads display_seeds_data
+    # (server) for its bar, so the gallery preview shows the viewing admin's seeds.
+    { group: "Quest / Newsletter",
+      label: "Quest success (+25 + subscribe CTA)", key: "quest-success",
+      modal_id: "quest-success", file: "app/views/modals/_quest_success.html.erb",
+      props: { seeds_earned: 25, seeds_total: 75, seeds_level: 1 } },
+    { group: "Quest / Newsletter",
+      label: "Free entry earned (100 seeds / level up)", key: "free-entry-earned",
+      modal_id: "free-entry-earned", file: "app/views/modals/_free_entry_earned.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Newsletter subscribe (consent-gated)", key: "newsletter-subscribe",
+      modal_id: "newsletter-subscribe", file: "app/views/modals/_newsletter_subscribe.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Newsletter success (+25 — you're in)", key: "newsletter-success",
+      modal_id: "newsletter-success", file: "app/views/modals/_newsletter_success.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Unsubscribe — are you sure?", key: "unsubscribe-confirm",
+      modal_id: "unsubscribe-confirm", file: "app/views/modals/_unsubscribe_confirm.html.erb",
+      props: {} },
+    { group: "Quest / Newsletter",
+      label: "Unsubscribe — see you later", key: "unsubscribe-goodbye",
+      modal_id: "unsubscribe-goodbye", file: "app/views/modals/_unsubscribe_goodbye.html.erb",
+      props: {} }
   ].freeze
 
   def navbar

@@ -206,6 +206,34 @@ class TestController < ApplicationController
     }
   end
 
+  # Stage a user's quest ladder position so Playwright can land on a specific
+  # quest_step / next_quest without driving the (on-chain) username + chat
+  # quests first. The contest-card ladder + the gear "Next: …" pointer both read
+  # User#quest_step / #next_quest, which derive from these timestamp columns:
+  #   username_changed_at  → first_username_change?  (username quest done)
+  #   first_chat_message_at → first_chat_message?    (chat quest done)
+  #   joined_email_list_at  → subscribed_to_newsletter? (newsletter quest done)
+  # Mirrors set_user_referral_counts: update_columns (no callbacks/validations),
+  # current_user by default (slug optional). Only advances flags FORWARD — fresh
+  # users already start with all three nil.
+  def set_quest_state
+    user = params[:slug].present? ? User.find_by(slug: params[:slug]) : current_user
+    return render json: { error: "no user" }, status: :unprocessable_entity unless user
+
+    truthy = ->(v) { v == true || v.to_s == "true" }
+    cols = {}
+    cols[:username_changed_at]    = Time.current if truthy.call(params[:username_changed])
+    cols[:first_chat_message_at]  = Time.current if truthy.call(params[:chat_sent])
+    if truthy.call(params[:subscribed])
+      cols[:joined_email_list_at] = Time.current
+      cols[:left_email_list_at]   = nil
+    end
+    user.update_columns(cols) if cols.any?
+
+    render json: { ok: true, slug: user.slug,
+                   quest_step: user.quest_step, next_quest: user.next_quest }
+  end
+
   # Mint a magic-link token for an email so Playwright can drive the
   # create-or-login consume flow without a real inbox. Mirrors what
   # MagicLinksController#create emails (contest + validated picks fold into the

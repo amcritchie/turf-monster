@@ -19,6 +19,208 @@
   Add a new factory: paste it below as `window.factoryName = function(...) {...}`.
 %>
 <script>
+  // === questNewsletter — contest quest mission 2 (newsletter join) =====
+  window.questNewsletter = function (opts) {
+    opts = opts || {};
+    return {
+      saving: false,
+      error: null,
+      consent: true,
+      needsEmail: !!opts.needsEmail,
+      url: opts.url,
+      // web3 (no email on file): open the capture modal first; web2: join now.
+      start() {
+        if (this.saving || !this.consent) return;
+        if (this.needsEmail) {
+          var self = this;
+          window.Alpine.store("modals").open("newsletter-email", {
+            onSubmit: function (email) { self.join(email); }
+          });
+        } else {
+          this.join(null);
+        }
+      },
+      async join(email) {
+        if (this.saving) return;
+        this.saving = true;
+        this.error = null;
+        try {
+          var csrf = (document.querySelector("meta[name='csrf-token']") || {}).content || "";
+          var fetcher = window.authedFetch || window.fetch;
+          var resp = await fetcher(this.url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Accept": "application/json" },
+            body: JSON.stringify({ email: email || null })
+          });
+          if (!resp) { this.saving = false; return; } // 401 short-circuit (login modal already shown)
+          var data = await resp.json();
+          if (!data.success) throw new Error(data.error || "Could not join the newsletter.");
+          window.questNewsletterSuccess(data);
+        } catch (e) {
+          this.error = (e && e.message) || "Could not join the newsletter.";
+          this.saving = false;
+        }
+      }
+    };
+  };
+
+  // === completeQuest — the unified "completed quest" celebration ==========
+  // Fired by all three contest-page quest completions (username->chat,
+  // chat->newsletter, newsletter->invite). Choreography (timing dials inline):
+  //   1. confetti bursts from the just-finished card's "Quest x/4" badge
+  //   2. seeds bar progresses (+ level-up animation) via StateFanout
+  //   3. after the bar settles, the quest card advances — current fades + slides
+  //      right, next fades in + pops (quest-advance event + _quest_card CSS)
+  // Confetti + advance fire even on a deferred grant (the quest IS done); only
+  // the bar tick-up is gated on seeds_earned.
+  window.completeQuest = function (payload, opts) {
+    opts = opts || {};
+    // Beat the celebration out so it doesn't all fire the instant the modal
+    // closes. BEAT (ms) is the gap between steps — tune in one place.
+    var BEAT = 300;
+    // beat 1 (+0.3s) — confetti from the just-finished card's badge
+    setTimeout(function () { try { window.fireQuestBadgeConfetti(); } catch (e) {} }, BEAT);
+    // beat 2 (+0.6s) — seeds bar climbs (+ level-up). StateFanout's own delay is
+    // 0 now; the beat owns the timing.
+    if (payload && payload.seeds_earned && window.StateFanout) {
+      setTimeout(function () {
+        try { window.StateFanout.apply("seeds", payload, { source: "quest-complete", dispatchDelay: 0 }); } catch (e) {}
+      }, BEAT * 2);
+    }
+    // beat 3 — after the bar settles (advanceDelay), advance the card: current
+    // fades + slides right, next fades in + pops.
+    if (opts.to) {
+      // The server doesn't send payload.levelUp — derive whether this award
+      // crossed a level line (SEEDS_PER_LEVEL) so the bar + free-entry modal
+      // get their beat before the card advances.
+      var perLevel = <%= User::SEEDS_PER_LEVEL %>;
+      var sTotal = (payload && payload.seeds_total) || 0;
+      var sEarned = (payload && payload.seeds_earned) || 0;
+      var advanceDelay = (Math.floor(sTotal / perLevel) > Math.floor((sTotal - sEarned) / perLevel)) ? 2800 : 1500;
+      setTimeout(function () {
+        try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: opts.to } })); } catch (e) {}
+      }, BEAT * 2 + advanceDelay);
+    }
+  };
+
+  // Burst canvas-confetti from the currently-visible quest card's "Quest x/4"
+  // badge (the completing card is still on-screen — the advance is delayed).
+  window.fireQuestBadgeConfetti = function () {
+    if (typeof confetti === "undefined") return;
+    var steps = Array.prototype.slice.call(document.querySelectorAll("[data-quest-step]"));
+    var visible = steps.filter(function (el) { return el.offsetParent !== null; })[0];
+    var badge = visible && visible.querySelector("[data-quest-badge]");
+    var rect = badge && badge.getBoundingClientRect();
+    var origin = (rect && rect.width)
+      ? { x: (rect.left + rect.width / 2) / window.innerWidth, y: (rect.top + rect.height / 2) / window.innerHeight }
+      : { x: 0.72, y: 0.4 };
+    var colors = window.CONFETTI_COLORS || ["#4BAF50", "#8E82FE", "#06D6A0", "#FF7C47", "#FFD700", "#00BFFF", "#FF6B9D", "#C084FC"];
+    confetti({ particleCount: 90, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 9999, startVelocity: 24, gravity: 0.6, ticks: 180, scalar: 0.9 });
+    setTimeout(function () {
+      confetti({ particleCount: 45, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 9999, startVelocity: 14, gravity: 0.8, ticks: 140, scalar: 0.7 });
+    }, 160);
+  };
+
+  // Center-burst confetti for a celebration MODAL (free-entry level-up). The
+  // quest-badge variant aims at an on-page element; this fires from the upper-
+  // center where the modal card sits. zIndex sits above the modal host.
+  window.fireFreeEntryConfetti = function () {
+    if (typeof confetti === "undefined") return;
+    var colors = window.CONFETTI_COLORS || ["#4BAF50", "#8E82FE", "#06D6A0", "#FF7C47", "#FFD700", "#00BFFF", "#FF6B9D", "#C084FC"];
+    var origin = { x: 0.5, y: 0.38 };
+    confetti({ particleCount: 110, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 10000, startVelocity: 28, gravity: 0.6, ticks: 200, scalar: 1.0 });
+    setTimeout(function () {
+      confetti({ particleCount: 50, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 10000, startVelocity: 16, gravity: 0.8, ticks: 150, scalar: 0.8 });
+    }, 160);
+  };
+
+  // Newsletter is quest 3 → completing it advances to the invite step. Global so
+  // the email-capture modal path reaches it too.
+  window.questNewsletterSuccess = function (data) {
+    window.completeQuest(data, { to: "invite" });
+  };
+
+  // === questCard — contest quest step machine (client-side advance) =====
+  window.questCard = function (opts) {
+    opts = opts || {};
+    return {
+      step: opts.step || "username",
+      done: opts.done || {},
+      // Ladder order; invite is terminal (always shown). When advancing, skip any
+      // step already completed elsewhere (e.g. newsletter subscribed on /account)
+      // so a done quest never re-appears on the contest ladder.
+      _ladder: ["username", "chat", "newsletter", "invite"],
+      _nextUndone(from) {
+        var i = this._ladder.indexOf(from);
+        if (i < 0) return from;
+        for (var j = i; j < this._ladder.length; j++) {
+          var s = this._ladder[j];
+          if (s === "invite" || !this.done[s]) return s;
+        }
+        return "invite";
+      },
+      init() {
+        var self = this;
+        window.addEventListener("quest-advance", function (e) {
+          if (e && e.detail && e.detail.to) {
+            self.step = self._nextUndone(e.detail.to);
+            self._maybePingChat();
+          }
+        });
+        // If the card lands on the chat mission on first render, pop the chat
+        // panel too so the eye follows the southwest arrow down to it.
+        this._maybePingChat();
+      },
+      // When the chat mission is showing, tell the Contest Chat panel to pop
+      // (a tiny listener on the panel adds a one-shot pulse class). Dispatched
+      // on init AND on every advance to the chat step. setTimeout lets the
+      // crossfade/x-show settle before the pulse so it doesn't fight the
+      // step transition.
+      _maybePingChat() {
+        if (this.step !== "chat") return;
+        setTimeout(function () {
+          try { window.dispatchEvent(new CustomEvent("quest-chat-active")); } catch (e) {}
+        }, 350);
+      }
+    };
+  };
+
+  // === seedsTile — /account balances "Seeds" tile. Ticks up live on a
+  //     navbar-seeds-update (a quest completion) and self-heals its value from
+  //     the seedsNavbar cache when the server seeds read is cold (shows "—"). ==
+  window.seedsTile = function (opts) {
+    opts = opts || {};
+    return {
+      seeds: 0,
+      _iv: null,
+      init() {
+        var server = parseInt(opts.initial, 10);
+        this.seeds = Math.max(isNaN(server) ? 0 : server, this._cacheTotal());
+        var self = this;
+        window.addEventListener("navbar-seeds-update", function () { self._tickTo(self._cacheTotal()); });
+      },
+      destroy() { clearInterval(this._iv); },
+      _cacheTotal() {
+        try {
+          var d = JSON.parse(localStorage.getItem("seedsNavbar") || "null");
+          return (d && typeof d.seeds_total === "number") ? d.seeds_total : 0;
+        } catch (e) { return 0; }
+      },
+      // Count up from the current value to target over ~0.7s. No-op if target
+      // isn't higher (a re-subscribe / non-earning update leaves it steady).
+      _tickTo(target) {
+        if (typeof target !== "number" || target <= this.seeds) return;
+        clearInterval(this._iv);
+        var self = this, start = this.seeds, delta = target - start, steps = 24, i = 0;
+        this._iv = setInterval(function () {
+          i++;
+          self.seeds = (i >= steps) ? target : Math.round(start + delta * (i / steps));
+          if (i >= steps) clearInterval(self._iv);
+        }, 28);
+      }
+    };
+  };
+
   // === entryTokenBadge — navbar 🎟️ pill + popover ==================
   window.entryTokenBadge = function (opts) {
     opts = opts || {};
@@ -210,7 +412,7 @@
           if (!resp) return;
           var data = await resp.json();
           if (data.error) throw new Error(data.error);
-          if (data.success) { window.location.reload(); return; }
+          if (data.success) { this._afterSuccess(data); return; }
           if (data.needs_signature) {
             var sig = await this._signAndBroadcast(data.serialized_tx);
             var confirmResp = await fetcher(opts.confirmUrl, {
@@ -220,11 +422,37 @@
             if (!confirmResp) return;
             var cdata = await confirmResp.json();
             if (cdata.error) throw new Error(cdata.error);
-            window.location.reload();
+            this._afterSuccess(cdata);
           }
         } catch (e) {
           this.error = this._friendlyError(e);
           this.saving = false;
+        }
+      },
+      // Context-aware success beat — MUST mirror app/javascript/username_rename_form.js
+      // (this inline copy is what Alpine uses at x-data parse time; the module is the
+      // importmap-testable duplicate). Contest page (questCard present) → advance the
+      // quest card to the CHAT step + close, no reload. Elsewhere (/account) → swap
+      // the username modal for the quest-success "+25 seeds!" celebration. Both fire
+      // StateFanout so the seeds bar animates.
+      _afterSuccess(data) {
+        var hasQuestCard = !!document.querySelector('[x-data^="questCard"]');
+        if (hasQuestCard) {
+          window.completeQuest(data, { to: "chat" }); // unified celebration: badge confetti → bar → advance
+          try { this.$store.modals.close(); } catch (e) {}
+        } else {
+          if (data && data.seeds_earned && window.StateFanout) {
+            try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) {}
+          }
+          try {
+            this.$store.modals.swap("quest-success", {
+              seeds_earned: data && data.seeds_earned,
+              seeds_total:  data && data.seeds_total,
+              seeds_level:  data && data.seeds_level
+            });
+          } catch (e) {
+            try { this.$store.modals.close(); } catch (_) {}
+          }
         }
       },
       async _signAndBroadcast(serializedTxB64) {
@@ -242,6 +470,136 @@
       _friendlyError(e) {
         if (e && e.code === 4001) return "Signature rejected";
         return (e && e.message) || "Could not save username";
+      }
+    };
+  };
+
+  // === emailValidator — shared/_email_field.html.erb live email check ======
+  // Mirror of the (tightened) server-side User#email format validation —
+  // URI::MailTo::EMAIL_REGEXP PLUS a real dotted TLD. The server stays the real
+  // boundary. The passive typing/blur path NEVER blocks: it only decorates the
+  // field (spinner / green check / red X) and toasts once on a settled-invalid
+  // value. init() ALSO self-installs a capture-phase submit guard on the
+  // enclosing form, so an explicit submit (Enter / button) with an invalid OR
+  // empty email is blocked + shaken BEFORE the form's bubble-phase @submit
+  // (Alpine) ever fires — with zero changes to either host form's x-data.
+  window.emailValidator = function (opts) {
+    opts = opts || {};
+    // Faithful JS port of Ruby's URI::MailTo::EMAIL_REGEXP — local-part "@"
+    // dotted-label domain, same intent as the server check it mirrors. The
+    // backtick in the char-class is a literal here (regex literal inside a
+    // <script>, not an x-data attribute) so it is safe.
+    var EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    // Cheap "ready to judge" gate: an "@" plus a dotted TLD of >=2 letters.
+    // Decides when to START validating mid-type, so we never flash an error at
+    // a half-typed "alex@gmai".
+    var COMPLETE_RE = /@[^@\s]+\.[a-zA-Z]{2,}$/;
+    // Real-email gate: the URI::MailTo port PLUS a dotted TLD of >=2 letters,
+    // so dotless domains ("alex@gmail") and 1-letter TLDs ("alex@gmail.c") are
+    // INVALID. Mirrors the tightened server-side User#email check.
+    var TLD_RE = /\.[a-zA-Z]{2,}$/;
+    return {
+      status: "idle", // "idle" | "loading" | "valid" | "invalid"
+      _timer: null,
+      _lastToasted: null,
+      _rejecting: false, // drives :class="{ 'email-reject': _rejecting }" (shake)
+      _input: null,      // the field's <input>, cached in init()
+      _form: null,       // the enclosing <form>, cached in init()
+      _formGuard: null,  // the capture-phase submit listener, for destroy()
+      get valid() { return this.status === "valid"; },
+      isValid: function (v) { return EMAIL_RE.test(v) && TLD_RE.test(v); },
+      looksComplete: function (v) { return COMPLETE_RE.test(v); },
+      _value: function (e) { return (e && e.target ? e.target.value : "").trim(); },
+      // Self-installed submit gate. Both host forms submit via Alpine's
+      // @submit.prevent (BUBBLE phase). A capture-phase listener runs FIRST;
+      // stopPropagation() there prevents the bubble handler (submit() /
+      // $dispatch('auth-magic-link-submit', ...)) from ever firing for an
+      // invalid/empty email — so no x-data change is needed on either form. A
+      // valid email falls through and the form submits normally.
+      init: function () {
+        var input = this.$el.querySelector("input");
+        if (!input) return;
+        this._input = input;
+        var form = input.closest("form");
+        if (!form) return;
+        this._form = form;
+        var self = this;
+        this._formGuard = function (e) {
+          if (!self.isValid(self._value({ target: self._input }))) {
+            e.preventDefault();
+            e.stopPropagation();
+            self.reject();
+          }
+        };
+        form.addEventListener("submit", this._formGuard, true);
+      },
+      onInput: function (e) {
+        clearTimeout(this._timer);
+        var v = this._value(e);
+        if (!v) { this.status = "idle"; return; }
+        if (this.looksComplete(v)) {
+          this.status = "loading";
+          var self = this;
+          this._timer = setTimeout(function () { self.resolve(v); }, opts.delay || 500);
+        } else {
+          // Still typing something incomplete — stay quiet, no nag.
+          this.status = "idle";
+        }
+      },
+      onBlur: function (e) {
+        clearTimeout(this._timer);
+        var v = this._value(e);
+        if (!v) { this.status = "idle"; return; }
+        // They committed the field — answer immediately, no debounce.
+        this.resolve(v);
+      },
+      resolve: function (v) {
+        if (this.isValid(v)) {
+          this.status = "valid";
+          return;
+        }
+        this.status = "invalid";
+        // Passive (typing/blur) path: dedupe so a debounce-then-blur on the
+        // SAME bad value toasts once.
+        if (this._lastToasted === v) return;
+        this._lastToasted = v;
+        this._toast(v);
+      },
+      // Explicit submit rejection (from the capture-phase form guard). Unlike
+      // the passive resolve() path it ALWAYS toasts — the user just submitted,
+      // so they want the feedback — and fires the shake. Leaves _lastToasted
+      // untouched so the typing-path dedupe stays intact.
+      reject: function () {
+        this.status = "invalid";
+        this._toast(this._value({ target: this._input }));
+        var self = this;
+        // false -> rAF -> true restarts the CSS animation reliably, so it
+        // replays even when the same bad value is submitted twice in a row.
+        this._rejecting = false;
+        requestAnimationFrame(function () {
+          self._rejecting = true;
+          setTimeout(function () { self._rejecting = false; }, 600);
+        });
+      },
+      _toast: function (v) {
+        window.dispatchEvent(new CustomEvent("toast", { detail: {
+          type: "alert",
+          title: "Check your email",
+          message: this.message(v),
+          duration: 5000
+        } }));
+      },
+      message: function (v) {
+        if (!v) return "Enter your email address.";
+        if (v.indexOf("@") === -1) return "Enter a valid email — it's missing an @.";
+        if (!TLD_RE.test(v)) return "Add the domain, like .com";
+        return "That doesn't look like a valid email address.";
+      },
+      destroy: function () {
+        clearTimeout(this._timer);
+        if (this._form && this._formGuard) {
+          this._form.removeEventListener("submit", this._formGuard, true);
+        }
       }
     };
   };

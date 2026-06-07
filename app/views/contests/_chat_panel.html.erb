@@ -9,9 +9,24 @@
 
 <%# .chat-admin*, .chat-message-in, .chat-kbd, .chat-live-ping, .chat-scroll-fade
     + their @keyframes live in application.tailwind.css (migrated 2026-05-24). %>
+<%# chatPanelPop — one-shot scale pulse to draw attention to the chat when the
+    contest quest card lands on its "send your first message" step (the questCard
+    factory dispatches quest-chat-active). Reuses the seedsCardPop easing/shape so
+    it reads as the same family of "look here" pop used elsewhere. Defined here
+    (outside any template) because the pulse target is this panel specifically. %>
+<style>
+  @keyframes chatPanelPop {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.025); }
+    100% { transform: scale(1); }
+  }
+  .chat-panel-pop { animation: chatPanelPop 600ms cubic-bezier(0.34, 1.56, 0.64, 1); will-change: transform; }
+  @media (prefers-reduced-motion: reduce) { .chat-panel-pop { animation: none; } }
+</style>
 <div class="flex flex-col <%= 'chat-admin' if current_user&.admin? %> <%= 'chat-can-react' if can_post %>"
      style="height: 32rem;"
      x-data="contestChat(<%= messages.empty? %>)"
+     @quest-chat-active.window="pulse()"
      data-post-url="<%= contest_messages_path(contest) %>"
      data-can-react="<%= can_post %>">
   <%= turbo_stream_from contest, :messages %>
@@ -40,7 +55,7 @@
       <p class="text-sm text-muted text-center py-1">Enter the contest to join the chat.</p>
     <% else %>
       <form class="flex items-center gap-2" @submit.prevent="send()">
-        <textarea x-model="body" x-ref="input" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
+        <textarea x-model="body" x-ref="input" id="contest-chat-input" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
                   placeholder="Message the contest…"
                   @keydown.enter="if ($event.metaKey || $event.ctrlKey) { $event.preventDefault(); send(); }"
                   class="flex-1 h-10 resize-none rounded-lg bg-surface-alt border border-subtle px-3 py-2 text-sm text-body placeholder:text-muted focus:outline-none focus:border-primary"></textarea>
@@ -155,6 +170,7 @@
         var text = this.body.trim();
         if (!text || this.sending) return;
         this.sending = true;
+        try { window.dispatchEvent(new CustomEvent('quest-chat-sending')); } catch (e) {} // quest 2 arrow -> spinner
         try {
           var resp = await fetch(this.$root.dataset.postUrl, {
             method: 'POST',
@@ -168,14 +184,36 @@
           var data = await resp.json().catch(() => ({}));
           if (resp.ok && data.ok) {
             this.body = '';
+            // First-message quest bonus: MessagesController#create returns the
+            // seeds payload only on the user's first-ever contest-chat message.
+            // Flip the quest arrow to a checkmark, fire the seeds tick-up, and
+            // advance the contest quest card from chat -> newsletter.
+            if (data.seeds_earned) {
+              try { window.dispatchEvent(new CustomEvent('quest-chat-success')); } catch (e) {} // arrow -> checkmark
+              try { window.completeQuest(data, { to: 'newsletter' }); } catch (e) {} // unified celebration
+            } else {
+              try { window.dispatchEvent(new CustomEvent('quest-chat-reset')); } catch (e) {} // no bonus -> un-spin
+            }
           } else {
+            try { window.dispatchEvent(new CustomEvent('quest-chat-reset')); } catch (e) {}
             chatToast('Message not sent', data.error || 'Please try again.');
           }
         } catch (e) {
+          try { window.dispatchEvent(new CustomEvent('quest-chat-reset')); } catch (e2) {}
           chatToast('Message not sent', 'Network error.');
         } finally {
           this.sending = false;
         }
+      },
+      // One-shot attention pop — fired by the quest card's quest-chat-active event
+      // when its chat mission shows. Restart trick (remove → reflow → add) so a
+      // re-trigger replays the keyframe.
+      pulse() {
+        var el = this.$root;
+        el.classList.remove('chat-panel-pop');
+        void el.offsetWidth;
+        el.classList.add('chat-panel-pop');
+        setTimeout(function () { el.classList.remove('chat-panel-pop'); }, 700);
       }
     };
   }

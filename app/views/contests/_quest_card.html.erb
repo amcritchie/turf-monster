@@ -1,0 +1,61 @@
+<%# Quest card — client-side step machine; missions advance with NO reload.
+    Ladder: username -> chat -> newsletter -> invite. The steps are STACKED in
+    one CSS-grid cell (grid-area 1/1) so swapping crossfades cleanly in place
+    instead of reflowing/jumping. @quest_step seeds the initial step; the
+    'quest-advance' window event drives transitions and is dispatched by:
+    username_rename_form.js (-> chat), the chat panel's send() (-> newsletter),
+    and questNewsletterSuccess (-> invite). h-full gives all four steps the same
+    height (grid parity with "Earn a Free Entry") so the crossfade has zero
+    height jump. No mb-* — direct grid child. %>
+<div x-data="questCard({ step: '<%= @quest_step || :invite %>', done: { username: <%= !current_user.first_username_change? %>, chat: <%= !current_user.first_chat_message? %>, newsletter: <%= current_user.subscribed_to_newsletter? %> } })" class="quest-stack h-full">
+  <style>
+    .quest-stack { display: grid; }
+    /* All steps share one cell so they overlap (crossfade) instead of stacking
+       vertically; min-w-0 keeps long content from blowing out the column. */
+    .quest-stack > [data-quest-step] { grid-area: 1 / 1; min-width: 0; }
+    /* "Pop" entrance for an advanced-to step — scale overshoots then settles
+       (easeOutBack) so the new mission grabs the eye as it fades in. */
+    .qp-enter       { transition: transform 450ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 280ms ease-out; }
+    .qp-enter-start { opacity: 0; transform: scale(0.92); }
+    .qp-enter-end   { opacity: 1; transform: scale(1); }
+    /* Exit for the just-finished step — fade + slide right out of the way as the
+       next card pops in. Pairs with qp-enter for the completeQuest hand-off. */
+    .qp-leave       { transition: transform 380ms ease-in, opacity 260ms ease-in; }
+    .qp-leave-start { opacity: 1; transform: translateX(0); }
+    .qp-leave-end   { opacity: 0; transform: translateX(40px); }
+    @media (prefers-reduced-motion: reduce) {
+      .qp-enter { transition: opacity 280ms ease-out; }
+      .qp-enter-start { transform: none; } .qp-enter-end { transform: none; }
+      .qp-leave { transition: opacity 260ms ease-in; }
+      .qp-leave-start { transform: none; } .qp-leave-end { transform: none; }
+    }
+  </style>
+  <%# All four steps use the same enter (fade + pop) / leave (fade + slide right)
+      so completeQuest's hand-off reads identically regardless of which two steps
+      swap. Initial render doesn't transition (x-show true from the start), so no
+      pop on load. %>
+  <div data-quest-step x-show="step === 'username'" x-cloak
+       x-transition:enter="qp-enter" x-transition:enter-start="qp-enter-start" x-transition:enter-end="qp-enter-end"
+       x-transition:leave="qp-leave" x-transition:leave-start="qp-leave-start" x-transition:leave-end="qp-leave-end"
+       class="h-full">
+    <%= render "contests/quest_username" %>
+  </div>
+  <div data-quest-step x-show="step === 'chat'" x-cloak
+       x-transition:enter="qp-enter" x-transition:enter-start="qp-enter-start" x-transition:enter-end="qp-enter-end"
+       x-transition:leave="qp-leave" x-transition:leave-start="qp-leave-start" x-transition:leave-end="qp-leave-end"
+       class="h-full">
+    <%= render "contests/quest_chat" %>
+  </div>
+  <div data-quest-step x-show="step === 'newsletter'" x-cloak
+       x-transition:enter="qp-enter" x-transition:enter-start="qp-enter-start" x-transition:enter-end="qp-enter-end"
+       x-transition:leave="qp-leave" x-transition:leave-start="qp-leave-start" x-transition:leave-end="qp-leave-end"
+       class="h-full">
+    <%= render "contests/quest_newsletter" %>
+  </div>
+  <div data-quest-step x-show="step === 'invite'" x-cloak
+       x-transition:enter="qp-enter" x-transition:enter-start="qp-enter-start" x-transition:enter-end="qp-enter-end"
+       x-transition:leave="qp-leave" x-transition:leave-start="qp-leave-start" x-transition:leave-end="qp-leave-end"
+       class="h-full">
+    <%= render "contests/share_invite" %>
+  </div>
+</div>

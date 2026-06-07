@@ -4,7 +4,8 @@
         class="relative w-full bg-surface p-3 md:p-4 rounded-2xl transition-all text-center border-2 shadow <%= locked ? 'opacity-50' : '' %>"
         :class="{
           'matchup-selected': selections['<%= matchup.id %>'],
-          'border-subtle hover:bg-surface-alt/50': !selections['<%= matchup.id %>']
+          'border-subtle hover:bg-surface-alt/50': !selections['<%= matchup.id %>'],
+          'matchup-pulse': pulseId === '<%= matchup.id %>' && selectionCount === 0
         }"
         role="checkbox" :aria-checked="!!selections['<%= matchup.id %>']"
         aria-label="<%= matchup.team.name %><%= matchup.opponent_team ? " vs #{matchup.opponent_team.name}" : '' %>"

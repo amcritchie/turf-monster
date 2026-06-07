@@ -57,7 +57,7 @@ function usernameRenameForm(opts) {
         if (!resp) return; // 401 short-circuit
         var data = await resp.json();
         if (data.error) throw new Error(data.error);
-        if (data.success) { window.location.reload(); return; }
+        if (data.success) { this._afterSuccess(data); return; }
         if (data.needs_signature) {
           // Phantom path — the rename is an on-chain TX. Reflect the two
           // multi-second phases (wallet approval, then on-chain confirm) in the
@@ -73,11 +73,41 @@ function usernameRenameForm(opts) {
           if (!confirmResp) return;
           var cdata = await confirmResp.json();
           if (cdata.error) throw new Error(cdata.error);
-          window.location.reload();
+          this._afterSuccess(cdata);
         }
       } catch (e) {
         this.error = this._friendlyError(e);
         this.saving = false;
+      }
+    },
+
+    // On a successful rename, fire the seeds tick-up (+ maybe level-up) when the
+    // first-username-change bonus comes back. Then the next beat is CONTEXT-AWARE:
+    //   - Contest page (a questCard is mounted): advance the quest card to the
+    //     CHAT step in place + close the modal — no reload (the chat step is the
+    //     new mission 2, inserted before newsletter).
+    //   - Elsewhere (e.g. /account, no quest card): swap the open username modal
+    //     for the quest-success celebration ("+25 seeds!"), carrying the seed
+    //     payload through so the modal can show the fresh total.
+    // Both paths fire StateFanout so the navbar seeds bar animates either way.
+    _afterSuccess(data) {
+      var hasQuestCard = !!document.querySelector('[x-data^="questCard"]');
+      if (hasQuestCard) {
+        window.completeQuest(data, { to: "chat" }); // unified celebration: badge confetti → bar → advance
+        try { this.$store.modals.close(); } catch (e) {}
+      } else {
+        if (data && data.seeds_earned && window.StateFanout) {
+          try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) { /* never block on an animation hiccup */ }
+        }
+        try {
+          this.$store.modals.swap("quest-success", {
+            seeds_earned: data && data.seeds_earned,
+            seeds_total:  data && data.seeds_total,
+            seeds_level:  data && data.seeds_level
+          });
+        } catch (e) {
+          try { this.$store.modals.close(); } catch (_) {}
+        }
       }
     },
 

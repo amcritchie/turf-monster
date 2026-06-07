@@ -13,6 +13,10 @@ class User < ApplicationRecord
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
   validates :email, uniqueness: true, allow_nil: true
+  # Email format = URI::MailTo structure + a real dotted TLD (see User.valid_email?),
+  # so dotless / 1-letter-TLD addresses can't be saved. Scoped to email changes so
+  # it never blocks an unrelated save of a grandfathered record.
+  validate :email_format, if: :email_changed?
   validates :web2_solana_address, uniqueness: true, allow_nil: true
   validates :web3_solana_address, uniqueness: true, allow_nil: true
   validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/, message: "only letters, numbers, hyphens, and underscores" }, uniqueness: { case_sensitive: false }, allow_nil: true
@@ -33,7 +37,23 @@ class User < ApplicationRecord
   # is a no-op when invited_by_id didn't change.
   after_save { ReferralProgress.sync_invitee_attribution!(self) }
 
+  # Newsletter subscribers = joined at least once and not since unsubscribed.
+  scope :subscribed_to_newsletter, -> {
+    where.not(joined_email_list_at: nil)
+         .where("users.left_email_list_at IS NULL OR users.left_email_list_at < users.joined_email_list_at")
+  }
+
   # --- Class methods ---
+
+  # Single source of email validity — shared by the model validation
+  # (#email_format) and the magic-link request controller, and mirrored by the
+  # client emailValidator: URI::MailTo's structure PLUS a real dotted TLD (>=2
+  # letters), so dotless domains and 1-letter TLDs (which URI::MailTo accepts on
+  # its own) are rejected before we email a magic link into a void.
+  def self.valid_email?(str)
+    str = str.to_s
+    str.present? && str.match?(URI::MailTo::EMAIL_REGEXP) && str.match?(/\.[a-zA-Z]{2,}\z/)
+  end
 
   # OPSEC-005: from_omniauth now refuses to silently link a freshly-arrived
   # Google identity to an unverified-email password user. Caller must pass
@@ -186,6 +206,78 @@ class User < ApplicationRecord
     return :phantom if phantom_wallet?
     return :managed if managed_wallet?
     :none
+  end
+
+  # --- Newsletter / quest ---
+
+  # Subscribed = joined at least once and not since unsubscribed. Mirrors the
+  # subscribed_to_newsletter scope.
+  def subscribed_to_newsletter?
+    joined_email_list_at.present? &&
+      (left_email_list_at.nil? || left_email_list_at < joined_email_list_at)
+  end
+
+  # The 25-seed bonus fires on the user's FIRST manual username change only.
+  # Every account gets an auto adjective-noun name at signup (before_validation
+  # :ensure_username), so "has changed it" is tracked explicitly via
+  # username_changed_at, never inferred from the current name.
+  def first_username_change?
+    username_changed_at.nil?
+  end
+
+  # The 25-seed chat bonus fires on the user's FIRST contest-chat message only
+  # (v0.23 quest). Tracked explicitly via first_chat_message_at; the on-chain
+  # SeedGrant[chat] PDA is the hard once-ever guard.
+  def first_chat_message?
+    first_chat_message_at.nil?
+  end
+
+  # The 25-seed newsletter bonus fires on the user's FIRST-EVER join only.
+  # joined_email_list_at stays set across a later unsubscribe/rejoin, so a
+  # re-subscribe never re-pays (the on-chain SeedGrant[newsletter] PDA is the
+  # hard once-ever guard; this keeps the UI from over-claiming seeds on a rejoin).
+  def first_newsletter_join?
+    joined_email_list_at.nil?
+  end
+
+  # Which quest mission the contest card shows: username -> chat -> newsletter
+  # -> invite (terminal). Only meaningful once the user has entered a contest
+  # (the card is gated on @has_entry upstream; can_change_username? already
+  # requires it).
+  def quest_step
+    return :username   if first_username_change?
+    return :chat       if first_chat_message?
+    return :newsletter unless subscribed_to_newsletter?
+    :invite
+  end
+
+  # The next step to nudge in the gear menu. Prepends the (non-technical) "join a
+  # contest" step ahead of the quest_step ladder, since the quests only unlock
+  # after entering: join -> username -> chat -> newsletter -> invite (terminal,
+  # ongoing).
+  def next_quest
+    return :join unless contest_entered?
+    quest_step
+  end
+
+  # Append the request IP to the per-user `ips` audit set (admin abuse review).
+  # Shape: { "1.2.3.4" => { "first" => iso8601, "last" => iso8601, "count" => N } }.
+  # Skips the write when the IP is already known and was seen within the last day,
+  # so we don't write the users row on every request.
+  def record_ip!(ip)
+    ip = ip.to_s
+    return if ip.blank?
+
+    now = Time.current
+    if (entry = ips[ip])
+      last_seen = Time.iso8601(entry["last"]) rescue nil
+      return if last_seen && last_seen > now - 1.day
+      entry["count"] = entry["count"].to_i + 1
+      entry["last"]  = now.iso8601
+    else
+      ips[ip] = { "first" => now.iso8601, "last" => now.iso8601, "count" => 1 }
+    end
+    update_column(:ips, ips) # audit append — skip validations/callbacks
   end
 
   def google_connected?
@@ -397,6 +489,13 @@ class User < ApplicationRecord
   def has_authentication_method
     return if email.present? || web3_solana_address.present? || (provider.present? && uid.present?)
     errors.add(:base, "Must have email, Solana address, or linked social account")
+  end
+
+  # Delegates to the shared User.valid_email? so the model, the magic-link
+  # controller, and the client emailValidator all enforce ONE rule.
+  def email_format
+    return if email.blank?
+    errors.add(:email, "is not a valid email address") unless User.valid_email?(email)
   end
 
   def set_name_parts

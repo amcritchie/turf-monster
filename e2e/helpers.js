@@ -80,11 +80,113 @@ async function reseed(request) {
   return await response.json();
 }
 
+/**
+ * Give the current session's user an :active Entry on a contest (TestController
+ * #create_active_entry). Fires the same Entry#after_commit the real /enter would
+ * — flips User#contest_entered (so can_change_username? unlocks) and makes the
+ * user a chat_participant — without the on-chain Vault dance devnet needs.
+ *
+ * This is what makes the quest card render: the contest show page gates it on
+ * @has_entry (an :active/:complete entry on this contest).
+ */
+async function createActiveEntry(page, contestSlug) {
+  const res = await page.request.post("/test/create_active_entry", {
+    data: { contest_slug: contestSlug },
+  });
+  if (!res.ok()) {
+    throw new Error(`create_active_entry failed: ${res.status()} ${await res.text()}`);
+  }
+  return res.json();
+}
+
+/**
+ * Stage the current user's quest ladder position (TestController#set_quest_state)
+ * so a spec can land on a given quest_step / next_quest without driving the
+ * on-chain username + chat quests first. Pass any of:
+ *   { username_changed: true, chat_sent: true, subscribed: true }
+ * Returns { quest_step, next_quest } for assertions.
+ */
+async function setQuestState(page, opts = {}) {
+  const res = await page.request.post("/test/set_quest_state", { data: opts });
+  if (!res.ok()) {
+    throw new Error(`set_quest_state failed: ${res.status()} ${await res.text()}`);
+  }
+  return res.json();
+}
+
+/**
+ * Stub the three quest endpoints whose REAL responses depend on an on-chain
+ * seed grant (Solana::Vault) against a live program.
+ *
+ * Why this is needed: e2e test contests are created OFF-CHAIN
+ * (skip_onchain_callback in e2e/seed.rb), so none of these reach a deployed
+ * turf-vault program. The real responses chainless are therefore:
+ *   - update_username  → { success:false } (Vault#set_username / build_set_username raises)
+ *   - messages#create  → { ok:true } with NO seeds_earned (grant deferred) → the
+ *                        quest arrow RESETS to idle instead of going to the checkmark,
+ *                        and the card never advances chat → newsletter.
+ *   - newsletter#subscribe → succeeds, but hits the RPC for the grant first.
+ * Stubbing returns the success payload the server emits AFTER a confirmed grant,
+ * so the REAL client orchestration runs (completeQuest → quest-advance crossfade,
+ * the arrow idle→spinner→checkmark, quest-success / newsletter-success modal
+ * swaps, the web3 add-email capture) with zero devnet. We never assert on-chain
+ * seed totals here — real on-chain seed coverage lives in e2e/devnet-smoke.spec.js.
+ *
+ * Mirrors the page.route interception pattern in e2e/rpc-mock.js
+ * (setupOnchainMocks). Non-POST requests fall through (route.fallback) so any
+ * GET on these paths still hits the real server.
+ */
+async function stubQuestEndpoints(page, opts = {}) {
+  const seeds = {
+    seeds_earned: opts.seedsEarned ?? 25,
+    seeds_total: opts.seedsTotal ?? 25,
+    seeds_level: opts.seedsLevel ?? 0,
+  };
+
+  // Username rename (on-chain set_username) — return the confirmed-rename payload.
+  await page.route("**/account/update_username", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, username: "renamed-quest", ...seeds }),
+    });
+  });
+
+  // First chat message — seeds_earned only comes back on the first-ever message
+  // when the grant runs. The ~600ms delay lets the quest arrow's idle→loading
+  // spinner render before the success checkmark, so both states are observable.
+  await page.route("**/contests/*/messages", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await new Promise((r) => setTimeout(r, 600));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, ...seeds }),
+    });
+  });
+
+  // Newsletter join — the subscription itself persists chainless, but the grant
+  // is on-chain. A clean success keeps the flow fast + deterministic and lets a
+  // spec assert the web3-captured email reached the request body.
+  await page.route("**/account/newsletter/subscribe", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, subscribed: true, ...seeds }),
+    });
+  });
+}
+
 module.exports = {
   login,
   loginAdmin,
   loginViaPhantom,
   reseed,
+  createActiveEntry,
+  setQuestState,
+  stubQuestEndpoints,
   setupPhantomMock,
   MOCK_PUBKEY_B58,
   setupOnchainMocks,
