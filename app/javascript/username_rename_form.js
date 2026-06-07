@@ -72,20 +72,35 @@ function usernameRenameForm(opts) {
     },
 
     // On a successful rename, fire the seeds tick-up (+ maybe level-up) when the
-    // first-username-change bonus comes back, then reload so the page + quest
-    // card reflect the new state. No bonus (not the first change) -> straight
-    // reload, the prior behavior.
+    // first-username-change bonus comes back. Then the next beat is CONTEXT-AWARE:
+    //   - Contest page (a questCard is mounted): advance the quest card to the
+    //     CHAT step in place + close the modal — no reload (the chat step is the
+    //     new mission 2, inserted before newsletter).
+    //   - Elsewhere (e.g. /account, no quest card): swap the open username modal
+    //     for the quest-success celebration ("+25 seeds!"), carrying the seed
+    //     payload through so the modal can show the fresh total.
+    // Both paths fire StateFanout so the navbar seeds bar animates either way.
     _afterSuccess(data) {
-      // Smooth + NO reload: animate the seeds bar (Earn a Free Entry + navbar)
-      // if the bonus came back, advance the quest card to the newsletter step in
-      // place, then close the modal.
       if (data && data.seeds_earned && window.StateFanout) {
         try {
           window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 });
         } catch (e) { /* never block on an animation hiccup */ }
       }
-      try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "newsletter" } })); } catch (e) {}
-      try { this.$store.modals.close(); } catch (e) {}
+      var hasQuestCard = !!document.querySelector('[x-data^="questCard"]');
+      if (hasQuestCard) {
+        try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "chat" } })); } catch (e) {}
+        try { this.$store.modals.close(); } catch (e) {}
+      } else {
+        try {
+          this.$store.modals.swap("quest-success", {
+            seeds_earned: data && data.seeds_earned,
+            seeds_total:  data && data.seeds_total,
+            seeds_level:  data && data.seeds_level
+          });
+        } catch (e) {
+          try { this.$store.modals.close(); } catch (_) {}
+        }
+      }
     },
 
     async _signAndBroadcast(serializedTxB64) {

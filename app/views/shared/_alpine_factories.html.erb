@@ -82,8 +82,25 @@
       init() {
         var self = this;
         window.addEventListener("quest-advance", function (e) {
-          if (e && e.detail && e.detail.to) self.step = e.detail.to;
+          if (e && e.detail && e.detail.to) {
+            self.step = e.detail.to;
+            self._maybePingChat();
+          }
         });
+        // If the card lands on the chat mission on first render, pop the chat
+        // panel too so the eye follows the southwest arrow down to it.
+        this._maybePingChat();
+      },
+      // When the chat mission is showing, tell the Contest Chat panel to pop
+      // (a tiny listener on the panel adds a one-shot pulse class). Dispatched
+      // on init AND on every advance to the chat step. setTimeout lets the
+      // crossfade/x-show settle before the pulse so it doesn't fight the
+      // step transition.
+      _maybePingChat() {
+        if (this.step !== "chat") return;
+        setTimeout(function () {
+          try { window.dispatchEvent(new CustomEvent("quest-chat-active")); } catch (e) {}
+        }, 350);
       }
     };
   };
@@ -317,7 +334,7 @@
           if (!resp) return;
           var data = await resp.json();
           if (data.error) throw new Error(data.error);
-          if (data.success) { window.location.reload(); return; }
+          if (data.success) { this._afterSuccess(data); return; }
           if (data.needs_signature) {
             var sig = await this._signAndBroadcast(data.serialized_tx);
             var confirmResp = await fetcher(opts.confirmUrl, {
@@ -327,11 +344,37 @@
             if (!confirmResp) return;
             var cdata = await confirmResp.json();
             if (cdata.error) throw new Error(cdata.error);
-            window.location.reload();
+            this._afterSuccess(cdata);
           }
         } catch (e) {
           this.error = this._friendlyError(e);
           this.saving = false;
+        }
+      },
+      // Context-aware success beat — MUST mirror app/javascript/username_rename_form.js
+      // (this inline copy is what Alpine uses at x-data parse time; the module is the
+      // importmap-testable duplicate). Contest page (questCard present) → advance the
+      // quest card to the CHAT step + close, no reload. Elsewhere (/account) → swap
+      // the username modal for the quest-success "+25 seeds!" celebration. Both fire
+      // StateFanout so the seeds bar animates.
+      _afterSuccess(data) {
+        if (data && data.seeds_earned && window.StateFanout) {
+          try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) {}
+        }
+        var hasQuestCard = !!document.querySelector('[x-data^="questCard"]');
+        if (hasQuestCard) {
+          try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "chat" } })); } catch (e) {}
+          try { this.$store.modals.close(); } catch (e) {}
+        } else {
+          try {
+            this.$store.modals.swap("quest-success", {
+              seeds_earned: data && data.seeds_earned,
+              seeds_total:  data && data.seeds_total,
+              seeds_level:  data && data.seeds_level
+            });
+          } catch (e) {
+            try { this.$store.modals.close(); } catch (_) {}
+          }
         }
       },
       async _signAndBroadcast(serializedTxB64) {

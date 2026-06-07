@@ -105,6 +105,44 @@
 
   </div>
 
+  <%# -- Newsletter -- %>
+  <%# Subscribed → "Subscribed ✓" + an Unsubscribe link (→ unsubscribe-confirm
+      modal). Not subscribed → "Join the newsletter for 25 seeds" + a Subscribe
+      button (→ newsletter-subscribe modal). `subscribed` is server-seeded and
+      kept in sync in place by the newsletter-state-changed event the subscribe /
+      unsubscribe modals fire on success — no reload needed for the common path;
+      a hard reload also lands in the right state (server-rendered). %>
+  <div x-data="{ subscribed: <%= current_user.subscribed_to_newsletter? %> }"
+       @newsletter-state-changed.window="subscribed = !!$event.detail.subscribed"
+       class="card shadow p-6 mb-6">
+    <h2 class="text-lg font-bold text-heading mb-4">Newsletter</h2>
+
+    <%# Subscribed state %>
+    <div x-show="subscribed" x-cloak class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="flex items-center gap-2 min-w-0">
+        <svg class="w-5 h-5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span class="text-body">Subscribed</span>
+      </div>
+      <button type="button" @click="$store.modals.open('unsubscribe-confirm')"
+              class="text-sm text-secondary hover:text-heading transition underline-offset-2 hover:underline">
+        Unsubscribe
+      </button>
+    </div>
+
+    <%# Not-subscribed state %>
+    <div x-show="!subscribed" x-cloak class="flex items-center justify-between gap-3 flex-wrap">
+      <p class="text-secondary text-sm min-w-0">
+        Join the newsletter for <span class="text-primary font-semibold">25 seeds</span> — sports news and contest updates.
+      </p>
+      <button type="button" @click="$store.modals.open('newsletter-subscribe')"
+              class="btn btn-primary btn-sm flex-shrink-0">
+        Subscribe
+      </button>
+    </div>
+  </div>
+
   <%# -- Identities (wallet + balances + Google + email) -- %>
   <div class="card shadow p-6 mb-6">
     <h2 class="text-lg font-bold text-heading mb-4">Identities</h2>

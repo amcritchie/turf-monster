@@ -1,0 +1,42 @@
+<%# quest-success — generic "+25 seeds!" celebration shown after a quest
+    completes OFF the contest page (e.g. a /account username change, where there's
+    no quest card to advance in place). Trigger:
+      $store.modals.swap('quest-success', { seeds_earned, seeds_total, seeds_level }).
+
+    Contents: a big "+25 seeds" headline, the full seeds progress bar (the same
+    components/seeds_bar card variant used in "Earn a Free Entry" — its global
+    factory is already loaded by the navbar, so it works when this template is
+    cloned in), and — ONLY when the viewer is NOT yet a newsletter subscriber —
+    a "Subscribe for +25 more seeds" CTA that hands off to the newsletter-subscribe
+    modal. Every modal carries a bottom Close link.
+
+    SINGLE root element (the host mounts this through its own <template x-if>).
+    The not-subscribed gate is SERVER-rendered (current_user.subscribed_to_newsletter?)
+    so the CTA never flashes for someone who's already in. %>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }">
+  <%= render "modals/blocks/card_header",
+        size: :lg,
+        icon_emoji: "🌱",
+        title: "+25 seeds!",
+        subtitle: "Nice — that quest is done. Your seeds just went up." %>
+
+  <%# Seeds progress bar — card variant. seeds_data falls back to a zero payload
+      when the cache is cold; the seedsBar factory then self-heals from the
+      seedsNavbar localStorage value (which StateFanout just bumped), so the bar
+      reflects the freshly-earned total either way. %>
+  <div class="mb-5">
+    <%= render "components/seeds_bar", seeds_data: display_seeds_data, compact: false %>
+  </div>
+
+  <% unless current_user.subscribed_to_newsletter? %>
+    <button type="button" @click="$store.modals.swap('newsletter-subscribe')"
+            class="btn btn-primary btn-lg w-full">
+      Subscribe for +25 more seeds
+    </button>
+  <% end %>
+
+  <button type="button" @click="$store.modals.close()"
+          class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+    Close
+  </button>
+</div>

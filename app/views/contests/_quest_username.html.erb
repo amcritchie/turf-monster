@@ -1,9 +1,10 @@
-<%# Quest mission 1 — change username for a one-time 35-seed bonus.
-    Layout: Row 1 = "Change Your Username" header + "Quest 1 of 3" badge.
+<%# Quest mission 1 of 4 — change username for a one-time 25-seed bonus.
+    Layout: Row 1 = "Change Your Username" header + "Quest 1 of 4" badge.
             Row 2 = description (50%) | "Change Username" CTA (50%, pulses 3s).
     Opens the existing username modal; on first confirmed change the server
-    grants 35 seeds and username_rename_form.js fires the tick-up, then reloads
-    (advancing to mission 2). No mb-* — direct grid child. %>
+    grants 25 seeds (from Season.quest_seeds) and username_rename_form.js fires
+    the tick-up, then advances the quest card in place to mission 2 (chat) — no
+    reload. No mb-* — direct grid child. %>
 <div x-data="{}" class="card shadow p-5 relative h-full">
   <style>
     /* Pulse beat once every 3s (ring expands + fades, tiny pop), then rests. */
@@ -20,7 +21,7 @@
   <%# Row 1 — header + quest badge %>
   <div class="flex items-center justify-between gap-3 mb-3">
     <h3 class="text-heading font-semibold text-sm">Change Your Username</h3>
-    <span class="inline-block text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">Quest 1 of 3</span>
+    <span class="inline-block text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">Quest 1 of 4</span>
   </div>
 
   <%# Row 2 — description (50%) | CTA (50%) %>

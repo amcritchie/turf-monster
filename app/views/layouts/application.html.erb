@@ -766,6 +766,27 @@
         <template x-if="$store.modals.current().id === 'newsletter-email'">
           <%= render "modals/newsletter_email" %>
         </template>
+        <%# Quest / newsletter flow modals (v0.23 quest). quest-success is the
+            off-contest-page celebration after a username change; the newsletter
+            quartet (subscribe → success, unsubscribe-confirm → goodbye) drives the
+            account-page newsletter card + the quest-success "Subscribe for +25 more"
+            handoff. All gate on current_user (subscribed?/email), so they live
+            inside this logged_in? block. %>
+        <template x-if="$store.modals.current().id === 'quest-success'">
+          <%= render "modals/quest_success" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'newsletter-subscribe'">
+          <%= render "modals/newsletter_subscribe" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'newsletter-success'">
+          <%= render "modals/newsletter_success" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'unsubscribe-confirm'">
+          <%= render "modals/unsubscribe_confirm" %>
+        </template>
+        <template x-if="$store.modals.current().id === 'unsubscribe-goodbye'">
+          <%= render "modals/unsubscribe_goodbye" %>
+        </template>
       <% end %>
       <%# crop-photo gets pushed on top of whatever modal owns the avatar
           cropper (profile modal, complete_profile, /account). Not gated by

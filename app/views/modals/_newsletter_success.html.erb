@@ -1,0 +1,29 @@
+<%# newsletter-success — celebration after a newsletter join via the
+    newsletter-subscribe modal. Trigger: $store.modals.swap('newsletter-success').
+    "Go to the contest" pulls the user toward the active contest (SeasonConfig's
+    main contest, the same target the locked username modal uses) so the CTA lands
+    somewhere actionable; when there's no contest to point at, it just closes.
+    Bottom Close link on every modal. SINGLE root. %>
+<% target_contest = SeasonConfig.main_contest %>
+<div x-data="{}">
+  <%= render "modals/blocks/card_header",
+        size: :lg,
+        icon_emoji: "🌱",
+        title: "+25 — you're in!",
+        subtitle: "You're on the list. We'll keep the sports news and contest updates coming." %>
+
+  <% if target_contest %>
+    <%= link_to "Go to the contest", contest_path(target_contest),
+                class: "btn btn-primary btn-lg w-full",
+                "@click": "$store.modals.close()" %>
+  <% else %>
+    <button type="button" @click="$store.modals.close()" class="btn btn-primary btn-lg w-full">
+      Go to the contest
+    </button>
+  <% end %>
+
+  <button type="button" @click="$store.modals.close()"
+          class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+    Close
+  </button>
+</div>
