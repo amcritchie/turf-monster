@@ -1745,8 +1745,144 @@ module Solana
       }
     end
 
+    # Raised by #assert_entry_cosign_safe! when the Phantom-signed wire tx the
+    # client POSTs to confirm_onchain_entry is NOT the enter_contest we prepared
+    # (audit C1 — admin blind-cosign). The admin keypair must NEVER blind-sign
+    # arbitrary client bytes: a crafted SystemProgram.transfer{from: admin},
+    # mint_entry_token, grant_seeds, etc. would otherwise be admin-cosigned and
+    # broadcast. The message carries a DETAILED reason for server logs only — the
+    # controller maps it to a generic client message (never leak which check tripped).
+    class UnsafeCosignError < StandardError; end
+
+    # Position of the contest_entry (entry PDA) account inside the enter_contest
+    # instruction's account list — see #enter_contest_accounts: 0 payer, 1 user,
+    # 2 user_account, 3 vault_state, 4 contest, 5 contest_entry.
+    ENTER_CONTEST_ENTRY_PDA_POSITION = 5
+
+    # SystemInstruction::AdvanceNonceAccount discriminant (u32 LE 4). The ONLY
+    # System instruction permitted in a cosignable entry — see SystemProgram
+    # .advance_nonce_account in solana-studio.
+    SYSTEM_ADVANCE_NONCE_DATA = [4].pack("V").freeze
+
+    # SEMANTIC allowlist validation of a Phantom-signed entry wire BEFORE the
+    # admin cosigns it (audit C1). The client round-trips the tx through web3.js
+    # (Transaction.from(...).serialize()), so the returned message bytes may be
+    # RE-ENCODED — byte-equality with the stored serialized_tx would reject legit
+    # entries. Instead we DECODE the wire and assert it is exactly the
+    # enter_contest we built:
+    #
+    #   1. Fee payer (account[0]) == the admin managed wallet. Admin is the only
+    #      signature slot the server fills; if admin isn't the fee payer there is
+    #      nothing legitimate to cosign. The strict instruction allowlist below
+    #      means admin can never be the writable destination of a value transfer
+    #      (every System transfer is rejected; enter_contest debits the USER).
+    #   2. EXACTLY ONE turf-vault instruction, and it must be `enter_contest`
+    #      (discriminator match — rejects mint_entry_token / settle_contest / any
+    #      other instruction on our PROGRAM_ID). Its contest_entry account must
+    #      equal the server-derived entry_pda(contest, wallet, entry_num) for THIS
+    #      entry (defense-in-depth; mirrors verify_and_confirm_onchain_entry!).
+    #   3. System Program: ONLY advanceNonceAccount (data == u32 LE 4), and only
+    #      when a durable nonce is configured AND the advance targets the
+    #      configured SOLANA_DURABLE_NONCE_PUBKEY. A System transfer (opcode 2) or
+    #      anything else → reject. (Durable nonce is LIVE on mainnet — every real
+    #      entry that anchors on it carries this ix; omitting it here would break
+    #      every production entry.)
+    #   4. ComputeBudget: allowed (priority-fee / CU-limit hints; no authority risk).
+    #   5. Any other program id or instruction → reject.
+    #
+    # Raises UnsafeCosignError (logged server-side via #cosign_reject!) on the
+    # first failure. Returns true when the wire is safe to cosign + broadcast.
+    def assert_entry_cosign_safe!(signed_wire_base64, entry:, wallet_address:)
+      cosign_reject!(entry, wallet_address, "empty_wire: no signed_tx bytes") if signed_wire_base64.blank?
+
+      msg =
+        begin
+          parse_wire_message(Base64.decode64(signed_wire_base64).b, entry: entry, wallet_address: wallet_address)
+        rescue UnsafeCosignError
+          raise
+        rescue StandardError => e
+          cosign_reject!(entry, wallet_address, "unparseable_wire: #{e.class}: #{e.message}")
+        end
+      account_keys = msg[:account_keys]
+
+      admin_key = Keypair.admin.public_key_bytes.b
+
+      # (1) Fee payer (account[0]) must be the admin managed wallet.
+      fee_payer = account_keys[0]
+      if fee_payer != admin_key
+        cosign_reject!(entry, wallet_address,
+          "fee_payer_not_admin: account[0]=#{b58(fee_payer)} expected admin=#{Keypair.admin.address}")
+      end
+
+      # Server-derive the enter_contest binding for THIS entry (never trust the wire).
+      entry_num = entry.entry_number
+      if entry_num.nil?
+        cosign_reject!(entry, wallet_address, "no_entry_number: entry ##{entry.id} has no entry_number to bind")
+      end
+      expected_entry_pda = entry_pda(entry.contest.slug, wallet_address, entry_num).first.b
+
+      enter_disc       = Transaction.anchor_discriminator("enter_contest").b
+      turf_vault       = @program_id.b
+      system_program   = Transaction::SYSTEM_PROGRAM_ID.b   # 32 zero bytes
+      compute_budget   = COMPUTE_BUDGET_PROGRAM_ID.b
+      dn               = durable_nonce_config
+      configured_nonce = dn && Keypair.decode_base58(dn.fetch(:pubkey)).b
+
+      enter_count = 0
+
+      msg[:instructions].each_with_index do |ix, i|
+        program_id = account_keys[ix[:program_id_index]]
+        cosign_reject!(entry, wallet_address, "bad_program_index: ix #{i} program index out of range") if program_id.nil?
+        program_id = program_id.b
+
+        case program_id
+        when turf_vault
+          # (2) Only enter_contest, bound to THIS entry's PDA.
+          unless ix[:data].byteslice(0, 8) == enter_disc
+            cosign_reject!(entry, wallet_address,
+              "wrong_turf_vault_ix: ix #{i} disc=#{ix[:data].byteslice(0, 8).to_s.unpack1('H*')} != enter_contest")
+          end
+          enter_count += 1
+          slot = ix[:account_indices][ENTER_CONTEST_ENTRY_PDA_POSITION]
+          ix_entry_pda = slot && account_keys[slot]
+          if ix_entry_pda != expected_entry_pda
+            cosign_reject!(entry, wallet_address,
+              "entry_pda_mismatch: ix #{i} entry account=#{b58(ix_entry_pda)} expected=#{b58(expected_entry_pda)}")
+          end
+        when system_program
+          # (3) Only the durable-nonce advance, targeting the configured nonce.
+          unless ix[:data] == SYSTEM_ADVANCE_NONCE_DATA
+            cosign_reject!(entry, wallet_address,
+              "system_not_advance: ix #{i} data=#{ix[:data].to_s.unpack1('H*')} (only advanceNonceAccount allowed)")
+          end
+          if configured_nonce.nil?
+            cosign_reject!(entry, wallet_address, "advance_without_config: advanceNonceAccount but no durable nonce configured")
+          end
+          nonce_slot = ix[:account_indices][0]
+          nonce_acct = nonce_slot && account_keys[nonce_slot]
+          if nonce_acct != configured_nonce
+            cosign_reject!(entry, wallet_address,
+              "wrong_nonce_account: ix #{i} nonce=#{b58(nonce_acct)} expected=#{dn.fetch(:pubkey)}")
+          end
+        when compute_budget
+          # (4) Priority-fee / CU-limit hints — allowed, carry no authority risk.
+        else
+          # (5) Anything else — reject.
+          cosign_reject!(entry, wallet_address, "disallowed_program: ix #{i} program=#{b58(program_id)}")
+        end
+      end
+
+      unless enter_count == 1
+        cosign_reject!(entry, wallet_address, "enter_contest_count: found #{enter_count} enter_contest ixs, require exactly 1")
+      end
+
+      true
+    end
+
     # Cosign (admin) the Phantom-signed entry wire, pre-flight simulate, then
     # broadcast. Public API called by ContestsController#confirm_onchain_entry.
+    # The caller MUST run #assert_entry_cosign_safe! first (audit C1) — this
+    # method fills the admin signature slot over WHATEVER bytes it is handed.
     def cosign_and_broadcast_entry(signed_wire_base64)
       patched_b64 = Transaction.cosign_wire_base64(signed_wire_base64, signer: Keypair.admin)
 
@@ -1762,6 +1898,78 @@ module Solana
     end
 
     private
+
+    # Decode a LEGACY (unversioned) Solana wire transaction into its account keys
+    # and instructions, for #assert_entry_cosign_safe!. Mirrors the header/account
+    # walk in Solana::Transaction.cosign_wire and reuses its public read_compact_u16
+    # primitive. Every malformed/oversized read raises (→ converted to
+    # UnsafeCosignError by the caller) so a truncated or crafted payload fails
+    # CLOSED. A versioned (v0+) message — high bit set on numRequiredSignatures —
+    # is rejected: this legacy parser can't safely walk address-table lookups, and
+    # the entry build emits + Phantom round-trips a legacy message, so a v0 here is
+    # anomalous.
+    #
+    # Returns { account_keys: [<32-byte String>, ...],
+    #           instructions: [{ program_id_index:, account_indices: [Int], data: String }, ...] }.
+    def parse_wire_message(wire, entry:, wallet_address:)
+      cursor = 0
+      sig_count, cursor = Transaction.read_compact_u16(wire, cursor)
+      cosign_reject!(entry, wallet_address, "no_signatures: zero signature slots") if sig_count.zero?
+      message_start = cursor + (sig_count * 64)
+      cosign_reject!(entry, wallet_address, "truncated_sigs: wire shorter than declared signatures") if wire.bytesize < message_start + 4
+
+      first = wire.getbyte(message_start)
+      cosign_reject!(entry, wallet_address, "versioned_message: v0+ tx not supported") if (first & 0x80) != 0
+
+      c = message_start + 3 # skip the 3-byte message header (numReqSigs, roSigned, roUnsigned)
+      account_count, c = Transaction.read_compact_u16(wire, c)
+      account_keys = []
+      account_count.times do
+        cosign_reject!(entry, wallet_address, "truncated_account_keys") if wire.bytesize < c + 32
+        account_keys << wire.byteslice(c, 32)
+        c += 32
+      end
+      c += 32 # recent blockhash / durable nonce value
+      cosign_reject!(entry, wallet_address, "truncated_blockhash") if c > wire.bytesize
+
+      ix_count, c = Transaction.read_compact_u16(wire, c)
+      instructions = []
+      ix_count.times do
+        program_id_index = wire.getbyte(c)
+        cosign_reject!(entry, wallet_address, "truncated_ix_header") if program_id_index.nil?
+        c += 1
+        accounts_len, c = Transaction.read_compact_u16(wire, c)
+        account_indices = []
+        accounts_len.times do
+          idx = wire.getbyte(c)
+          cosign_reject!(entry, wallet_address, "truncated_ix_accounts") if idx.nil?
+          account_indices << idx
+          c += 1
+        end
+        data_len, c = Transaction.read_compact_u16(wire, c)
+        cosign_reject!(entry, wallet_address, "truncated_ix_data") if wire.bytesize < c + data_len
+        data = wire.byteslice(c, data_len) || "".b
+        c += data_len
+        instructions << { program_id_index: program_id_index, account_indices: account_indices, data: data }
+      end
+
+      { account_keys: account_keys, instructions: instructions }
+    end
+
+    # Log the DETAILED rejection reason server-side (forensics: entry id + wallet
+    # + which check failed) and raise the typed error. The controller maps
+    # UnsafeCosignError to a generic client message — the reason here is NEVER
+    # returned to the client.
+    def cosign_reject!(entry, wallet_address, reason)
+      entry_id = entry.respond_to?(:id) ? entry.id : entry.inspect
+      Rails.logger.warn("[cosign][rejected] entry_id=#{entry_id} wallet=#{wallet_address} reason=#{reason}")
+      raise UnsafeCosignError, reason
+    end
+
+    # Short base58 for log lines; nil-safe.
+    def b58(bytes)
+      bytes.nil? ? "nil" : Keypair.encode_base58(bytes)
+    end
 
     # Pad/truncate a fee array to 16 elements (MAX_CURRENCIES). Accepts:
     #   - Array of u64 lamport amounts (e.g. [1_900_000, 0, 0, ...])

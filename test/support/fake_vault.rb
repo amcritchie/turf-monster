@@ -149,6 +149,25 @@ class FakeVault
     @cosign_broadcast_calls ||= []
   end
 
+  # Used by ContestsController#confirm_onchain_entry (audit C1). The real Vault
+  # SEMANTICALLY validates the Phantom-signed wire BEFORE the admin cosigns —
+  # raising Solana::Vault::UnsafeCosignError on a tx that doesn't match the
+  # prepared entry. The fake records the call and is a no-op (safe) by default;
+  # set `cosign_safe_raises = "<reason>"` to exercise the controller's
+  # tx_rejected (422) rescue path without broadcasting.
+  attr_writer :cosign_safe_raises
+
+  def assert_entry_cosign_safe!(signed_wire_base64, entry:, wallet_address:)
+    @cosign_safe_calls ||= []
+    @cosign_safe_calls << { wire: signed_wire_base64, entry: entry, wallet_address: wallet_address }
+    raise Solana::Vault::UnsafeCosignError, @cosign_safe_raises if @cosign_safe_raises
+    true
+  end
+
+  def cosign_safe_calls
+    @cosign_safe_calls ||= []
+  end
+
   # Used by ContestsController#confirm_onchain_entry. Real Vault returns
   # [pda_bytes, bump] and the controller passes pda_bytes through
   # Solana::Keypair.encode_base58. For tests, return a tuple whose first

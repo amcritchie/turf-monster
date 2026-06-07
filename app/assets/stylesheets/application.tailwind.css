@@ -382,6 +382,23 @@
     to { transform: rotate(360deg); }
   }
 
+  /* Email submit-rejection "no" — a short horizontal shake + a red border that
+     fades back to the field's normal resting border over the same run. Driven
+     by emailValidator.reject() via :class="{ 'email-reject': _rejecting }" on
+     the input. Start color is the field's danger token; the end color is the
+     exact resting border .input-field uses (Tailwind border-strong maps to
+     var(--color-border-strong)), so it settles back with no flash. */
+  @keyframes email-reject {
+    0%   { transform: translateX(0);    border-color: var(--color-danger); }
+    15%  { transform: translateX(-7px); }
+    30%  { transform: translateX(7px);  }
+    45%  { transform: translateX(-5px); }
+    60%  { transform: translateX(4px);  }
+    75%  { transform: translateX(-2px); }
+    100% { transform: translateX(0);    border-color: var(--color-border-strong, inherit); }
+  }
+  .email-reject { animation: email-reject 0.55s ease-in-out; }
+
   /* Debug nudge countdown */
   .nudge-debug {
     position: absolute; right: 10px; top: 50%; transform: translateY(-50%);

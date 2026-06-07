@@ -140,6 +140,13 @@ class AdminController < ApplicationController
       props: { state: "error", title: "Insufficient USDC",
                errorMessage: "You need $19 USDC to enter this contest.",
                recoveryLabel: "Mint $500 Test USDC", recoveryPhantom: false } },
+    { group: "Web3",
+      # Audit C1 — server refused to co-sign a confirm_onchain_entry tx that
+      # didn't match the prepared entry (422, code 'tx_rejected'). Static copy,
+      # no props — opens via the shared host registration in studio/modals/_host.
+      label: "Cosign rejected (tx mismatch)", key: "cosign-rejected",
+      modal_id: "cosign-rejected", file: "app/views/modals/_cosign_rejected.html.erb",
+      props: {} },
 
     { group: "Profile",
       label: "Change username", key: "username",

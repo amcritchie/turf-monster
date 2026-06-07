@@ -474,6 +474,136 @@
     };
   };
 
+  // === emailValidator — shared/_email_field.html.erb live email check ======
+  // Mirror of the (tightened) server-side User#email format validation —
+  // URI::MailTo::EMAIL_REGEXP PLUS a real dotted TLD. The server stays the real
+  // boundary. The passive typing/blur path NEVER blocks: it only decorates the
+  // field (spinner / green check / red X) and toasts once on a settled-invalid
+  // value. init() ALSO self-installs a capture-phase submit guard on the
+  // enclosing form, so an explicit submit (Enter / button) with an invalid OR
+  // empty email is blocked + shaken BEFORE the form's bubble-phase @submit
+  // (Alpine) ever fires — with zero changes to either host form's x-data.
+  window.emailValidator = function (opts) {
+    opts = opts || {};
+    // Faithful JS port of Ruby's URI::MailTo::EMAIL_REGEXP — local-part "@"
+    // dotted-label domain, same intent as the server check it mirrors. The
+    // backtick in the char-class is a literal here (regex literal inside a
+    // <script>, not an x-data attribute) so it is safe.
+    var EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    // Cheap "ready to judge" gate: an "@" plus a dotted TLD of >=2 letters.
+    // Decides when to START validating mid-type, so we never flash an error at
+    // a half-typed "alex@gmai".
+    var COMPLETE_RE = /@[^@\s]+\.[a-zA-Z]{2,}$/;
+    // Real-email gate: the URI::MailTo port PLUS a dotted TLD of >=2 letters,
+    // so dotless domains ("alex@gmail") and 1-letter TLDs ("alex@gmail.c") are
+    // INVALID. Mirrors the tightened server-side User#email check.
+    var TLD_RE = /\.[a-zA-Z]{2,}$/;
+    return {
+      status: "idle", // "idle" | "loading" | "valid" | "invalid"
+      _timer: null,
+      _lastToasted: null,
+      _rejecting: false, // drives :class="{ 'email-reject': _rejecting }" (shake)
+      _input: null,      // the field's <input>, cached in init()
+      _form: null,       // the enclosing <form>, cached in init()
+      _formGuard: null,  // the capture-phase submit listener, for destroy()
+      get valid() { return this.status === "valid"; },
+      isValid: function (v) { return EMAIL_RE.test(v) && TLD_RE.test(v); },
+      looksComplete: function (v) { return COMPLETE_RE.test(v); },
+      _value: function (e) { return (e && e.target ? e.target.value : "").trim(); },
+      // Self-installed submit gate. Both host forms submit via Alpine's
+      // @submit.prevent (BUBBLE phase). A capture-phase listener runs FIRST;
+      // stopPropagation() there prevents the bubble handler (submit() /
+      // $dispatch('auth-magic-link-submit', ...)) from ever firing for an
+      // invalid/empty email — so no x-data change is needed on either form. A
+      // valid email falls through and the form submits normally.
+      init: function () {
+        var input = this.$el.querySelector("input");
+        if (!input) return;
+        this._input = input;
+        var form = input.closest("form");
+        if (!form) return;
+        this._form = form;
+        var self = this;
+        this._formGuard = function (e) {
+          if (!self.isValid(self._value({ target: self._input }))) {
+            e.preventDefault();
+            e.stopPropagation();
+            self.reject();
+          }
+        };
+        form.addEventListener("submit", this._formGuard, true);
+      },
+      onInput: function (e) {
+        clearTimeout(this._timer);
+        var v = this._value(e);
+        if (!v) { this.status = "idle"; return; }
+        if (this.looksComplete(v)) {
+          this.status = "loading";
+          var self = this;
+          this._timer = setTimeout(function () { self.resolve(v); }, opts.delay || 500);
+        } else {
+          // Still typing something incomplete — stay quiet, no nag.
+          this.status = "idle";
+        }
+      },
+      onBlur: function (e) {
+        clearTimeout(this._timer);
+        var v = this._value(e);
+        if (!v) { this.status = "idle"; return; }
+        // They committed the field — answer immediately, no debounce.
+        this.resolve(v);
+      },
+      resolve: function (v) {
+        if (this.isValid(v)) {
+          this.status = "valid";
+          return;
+        }
+        this.status = "invalid";
+        // Passive (typing/blur) path: dedupe so a debounce-then-blur on the
+        // SAME bad value toasts once.
+        if (this._lastToasted === v) return;
+        this._lastToasted = v;
+        this._toast(v);
+      },
+      // Explicit submit rejection (from the capture-phase form guard). Unlike
+      // the passive resolve() path it ALWAYS toasts — the user just submitted,
+      // so they want the feedback — and fires the shake. Leaves _lastToasted
+      // untouched so the typing-path dedupe stays intact.
+      reject: function () {
+        this.status = "invalid";
+        this._toast(this._value({ target: this._input }));
+        var self = this;
+        // false -> rAF -> true restarts the CSS animation reliably, so it
+        // replays even when the same bad value is submitted twice in a row.
+        this._rejecting = false;
+        requestAnimationFrame(function () {
+          self._rejecting = true;
+          setTimeout(function () { self._rejecting = false; }, 600);
+        });
+      },
+      _toast: function (v) {
+        window.dispatchEvent(new CustomEvent("toast", { detail: {
+          type: "alert",
+          title: "Check your email",
+          message: this.message(v),
+          duration: 5000
+        } }));
+      },
+      message: function (v) {
+        if (!v) return "Enter your email address.";
+        if (v.indexOf("@") === -1) return "Enter a valid email — it's missing an @.";
+        if (!TLD_RE.test(v)) return "Add the domain, like .com";
+        return "That doesn't look like a valid email address.";
+      },
+      destroy: function () {
+        clearTimeout(this._timer);
+        if (this._form && this._formGuard) {
+          this._form.removeEventListener("submit", this._formGuard, true);
+        }
+      }
+    };
+  };
+
   // seedsBar factory stays defined inline in components/_seeds_bar.html.erb
   // because its body is ~150 lines and it has a single render site (navbar);
   // pulling it here would bloat this shared file without saving page weight.

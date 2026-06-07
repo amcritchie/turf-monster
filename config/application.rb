@@ -19,6 +19,11 @@ module TurfMonster
     # Use Sidekiq for background jobs
     config.active_job.queue_adapter = :sidekiq
 
+    # Escape <, >, & in JSON string values (Rails default is false). Defense-in-depth
+    # for every `.to_json` rendered inside a <script> block — a stray unescaped
+    # </script> or HTML metachar can't break out of the JSON island. (Audit JSON-1.)
+    config.active_support.escape_html_entities_in_json = true
+
     # Configuration for the application, engines, and railties goes here.
     #
     # These settings can be overridden in specific environments using the files

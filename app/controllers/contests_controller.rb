@@ -825,6 +825,18 @@ class ContestsController < ApplicationController
 
       vault = Solana::Vault.new
 
+      # Audit C1 (admin blind-cosign): SEMANTICALLY validate the Phantom-signed
+      # wire BEFORE the admin signs anything. Decodes the client's tx and asserts
+      # it is exactly the enter_contest we prepared — admin fee-payer, a single
+      # enter_contest IX bound to THIS entry's PDA, and only the durable-nonce
+      # advance / ComputeBudget hints alongside. Raises Solana::Vault::
+      # UnsafeCosignError (rescued below) on anything else, so a crafted
+      # SystemProgram.transfer{from: admin} / mint_entry_token / grant_seeds never
+      # reaches the cosign. Validate-then-cosign: NO cosign, NO broadcast on reject.
+      vault.assert_entry_cosign_safe!(params[:signed_tx],
+                                      entry: entry,
+                                      wallet_address: current_user.web3_solana_address)
+
       # Server-side: admin cosign (fills the empty admin slot in the
       # Phantom-signed wire tx) → simulateTransaction pre-flight → broadcast →
       # confirm. cosign_and_broadcast_entry re-asserts OPSEC-017 (fully signed)
@@ -868,6 +880,16 @@ class ContestsController < ApplicationController
         **seeds
       }
     end
+  rescue Solana::Vault::UnsafeCosignError
+    # Audit C1: the submitted wire didn't match the entry we prepared, so the
+    # admin never cosigned and nothing was broadcast. The detailed reason is
+    # already logged server-side ([cosign][rejected] …) — return ONLY a generic,
+    # non-revealing message + a stable `code` the frontend keys its retry UX off.
+    render json: {
+      success: false,
+      code: "tx_rejected",
+      error: "For your security we couldn't co-sign this transaction — it didn't match the entry we prepared. Please try again."
+    }, status: :unprocessable_entity
   rescue StandardError => e
     render_entry_error(e)
   end

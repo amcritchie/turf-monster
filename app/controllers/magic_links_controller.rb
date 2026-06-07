@@ -23,7 +23,7 @@ class MagicLinksController < ApplicationController
   # added. A malformed email gets the same response with no mail sent.
   def create
     email = params[:email].to_s.strip.downcase
-    if email.match?(URI::MailTo::EMAIL_REGEXP)
+    if User.valid_email?(email)
       token = MagicLink.generate(email: email, return_to: resolved_return_to)
       UserMailer.magic_link(email, token, contest: @magic_contest).deliver_later
     end
