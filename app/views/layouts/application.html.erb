@@ -60,11 +60,45 @@
     <meta name="twitter:description" content="<%= meta_description %>">
     <meta name="twitter:image" content="<%= og_image_url %>">
 
-    <script src="https://unpkg.com/@solana/web3.js@1/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <%# SRI-pinned (audit H2): exact versions + integrity so a poisoned CDN/package
+        can't swap the signing-path crypto. web3.js @1 currently resolves to 1.98.4;
+        pinning freezes that (re-pin + recompute the sha384 on any intentional bump). %>
+    <script src="https://unpkg.com/@solana/web3.js@1.98.4/lib/index.iife.min.js"
+            integrity="sha384-I45YF+S0YGWIolUyTksLk9TNtTqaDgZg8e6T1OoBoJvvFmphqYNIPZw3Kl0TkZNN"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"
+            integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp"
+            crossorigin="anonymous"></script>
     <% if session_replay_active? %>
       <script src="https://cdn.logr-in.com/LogRocket.min.js" crossorigin="anonymous"></script>
-      <script>window.LogRocket && window.LogRocket.init('jodsqq/mcritchie-studio');</script>
+      <script>
+        // LogRocket records DOM + network in prod. Sanitize before anything leaves the
+        // browser (audit LR-1): never ship the CSRF token, the api-keyed Helius RPC URL,
+        // or auth/account/wallet request+response bodies (SIWS sigs, emails, tokens) to
+        // the third-party recorder. Defensive (try/catch) so a field-shape change can
+        // only under-record, never throw or break init.
+        window.LogRocket && window.LogRocket.init('jodsqq/mcritchie-studio', {
+          dom: { inputSanitizer: true },
+          network: {
+            requestSanitizer: function (request) {
+              try {
+                var u = request.url || '';
+                if (u.indexOf('api-key=') !== -1) request.url = u.replace(/api-key=[^&]+/gi, 'api-key=REDACTED');
+                if (/\/(auth|account|wallet|magic_link|webhooks)(\/|\?|$)/.test(u)) request.body = undefined;
+                if (request.headers) { delete request.headers['X-CSRF-Token']; delete request.headers['x-csrf-token']; }
+              } catch (e) {}
+              return request;
+            },
+            responseSanitizer: function (response) {
+              try {
+                var u = (response && response.url) || '';
+                if (/\/(auth|account|wallet|magic_link|session_state)(\/|\?|$)/.test(u)) response.body = undefined;
+              } catch (e) {}
+              return response;
+            }
+          }
+        });
+      </script>
     <% end %>
     <% content_for :head do %>
       <script>
