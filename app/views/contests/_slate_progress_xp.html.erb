@@ -7,16 +7,6 @@
     own margin shrinks its visible box within the cell — same bug pattern as
     _share_invite — so this card was rendering ~24px shorter than the share
     card next to it. Dropping mb-6 lets stretch parity hold. %>
-<style>
-  /* One-shot attention pop when seeds land (fired by seedsBar.popCard, #2). */
-  @keyframes seedsCardPop {
-    0%   { transform: scale(1); }
-    35%  { transform: scale(1.035); }
-    100% { transform: scale(1); }
-  }
-  .seeds-card-pop { animation: seedsCardPop 600ms cubic-bezier(0.34, 1.56, 0.64, 1); will-change: transform; }
-  @media (prefers-reduced-motion: reduce) { .seeds-card-pop { animation: none; } }
-</style>
 <div class="card shadow p-5">
   <%= render "components/seeds_bar",
         seeds_data: seeds_data,

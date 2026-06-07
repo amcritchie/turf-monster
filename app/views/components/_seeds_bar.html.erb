@@ -184,20 +184,12 @@
         self._schedule(function () { self.levelingUp = false; }, 2800);
       },
 
-      // #2 — pop the card (scale) + confetti on EVERY seeds increase, not just level-ups.
-      popCard() {
-        if (!this.$refs.confettiZone) return;              // card variant only (navbar has no zone)
-        var card = this.$root.closest(".card");
-        if (!card) return;
-        card.classList.remove("seeds-card-pop");
-        void card.offsetWidth;                             // restart the animation
-        card.classList.add("seeds-card-pop");
-        this._schedule(function () { card.classList.remove("seeds-card-pop"); }, 700);
-      },
-
+      // Passive seeds-update: progress the bar (+ level-up animation if crossing a
+      // level). NO confetti/pop here — this fires on the navbar's load-time balance
+      // refresh too, so any celebration here pops on page load. Quest-completion
+      // confetti is fired deliberately by completeQuest() from the Quest badge.
       handleSeedsUpdate(d) {
         var self = this;
-        self.popCard();
         if (d.levelUp) {
           if (d.oldLevel !== undefined && d.oldLevel !== null) self.displayLevel = d.oldLevel;
           self.levelingUp = true;
@@ -210,7 +202,6 @@
           self._schedule(function () { self.levelingUp = false; }, 3000);
         } else {
           if (d.level !== undefined && d.level !== null) self.displayLevel = d.level;
-          self.spawnFirework();                            // confetti for a same-level increase too
           self.displaySeeds = d.progress;
         }
       }
