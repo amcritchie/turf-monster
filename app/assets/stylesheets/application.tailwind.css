@@ -364,6 +364,24 @@
     to { transform: rotate(360deg); }
   }
 
+  /* Reusable CTA spinner — a simple border spinner for any modal button in a
+     pending state (e.g. the username modal's "Saving…"). Uses currentColor so
+     it reads on any button variant; pair with the label inside an
+     inline-flex span. Meant to propagate to every pending-state modal CTA. */
+  .cta-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 9999px;
+    opacity: 0.85;
+    animation: cta-spin 0.7s linear infinite;
+  }
+  @keyframes cta-spin {
+    to { transform: rotate(360deg); }
+  }
+
   /* Debug nudge countdown */
   .nudge-debug {
     position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
@@ -670,29 +688,9 @@
   from { transform: scaleX(1); }
   to   { transform: scaleX(0); }
 }
-/* Auth wizard submit-button text shimmer — applied while a network attempt
-   is in flight (props.submitting truthy). The text becomes the loader: a
-   bright gradient sweeps left-to-right across the label, no spinner glyph
-   needed. Uses background-clip:text so the underlying button fill stays
-   unchanged. */
-.auth-text-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0.55) 0%,
-    rgba(255,255,255,1)   50%,
-    rgba(255,255,255,0.55) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  animation: auth-text-shimmer 1.4s linear infinite;
-}
-@keyframes auth-text-shimmer {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
+/* (Auth submit-button text shimmer removed 2026-06-07 — pending CTAs across the
+   modals now use the shared .cta-spinner glyph instead, for one consistent
+   loading affordance.) */
 /* Registered custom property — makes --bar-progress interpolatable so a single transition drives all 5 segment widths in lockstep (one ease curve, not 5 chained). */
 @property --bar-progress {
   syntax: '<number>';

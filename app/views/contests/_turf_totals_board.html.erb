@@ -167,8 +167,7 @@ window.selectionBoard = function() {
           console.log('[tokens] board.handleTokenSignal: legacy "minted" — closing modal, resetting holds');
           // Legacy fallback — the new tab fully completed the mint. Close
           // the modal and let the user do a fresh Hold to Confirm; we no
-          // longer auto-submit the entry. (The pendingCheckEmail nudge
-          // fires after the user's confirmEntry success path.)
+          // longer auto-submit the entry.
           if (cur && cur.id === 'auth') modals.close();
           try { board.resetHoldButtons(); } catch (_) {}
         }
@@ -237,7 +236,6 @@ window.selectionBoard = function() {
                 this.showTokensPanel();
               }
             }
-            if (step.step === 'check-email') this.sendVerificationEmail();
           }
         }
       } catch (e) {
@@ -801,8 +799,8 @@ window.selectionBoard = function() {
                 // the mint. The badge punches (scale+wobble) so the
                 // user catches the new 🎟️ in their peripheral vision,
                 // and the confetti burst is positioned to shoot out
-                // of it. A second burst fires later when the entry
-                // actually confirms ('tokens-submitted').
+                // of it. A second burst fires later from the shared Entry
+                // Confirmed card when the entry actually confirms.
                 try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
                 // Also mirror the new count into $store.session so the
                 // next confirmEntry()'s eligibilityBlocker reads fresh
@@ -817,8 +815,9 @@ window.selectionBoard = function() {
                 try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 180); } catch (_) {}
               });
               // The modal STAYS OPEN in 'tokens-minted' — it renders the
-              // in-modal Hold to Confirm Entry button. On success → step
-              // 'tokens-submitted' (set in confirmEntry).
+              // in-modal Hold to Confirm Entry button. On success,
+              // confirmEntry() calls resolveEntry() — swapping to the
+              // shared onchain-tx "Entry Confirmed" card.
               return;
             }
           } else {
@@ -843,66 +842,32 @@ window.selectionBoard = function() {
       tick();
     },
 
-    // Email signup — request a verification email (its link returns the
-    // user to this contest) and open the "check your email" modal through
-    // the generic Alpine.store('modals') stack. Resend is handled by the
-    // @modal-resend-verification listener on the selectionBoard root, so
-    // the modal partial doesn't need this scope to dispatch back here.
-    //
-    // Two paths through the same fetch:
-    //   first-time open (no modal yet) → open in 'default' state, patch
-    //     sendError inline if the fetch fails. No resending spinner —
-    //     the user opened a modal expecting "check your email" copy,
-    //     not a loader.
-    //   resend (modal already open) → advance() into 'resending' to slide
-    //     in the spinner, then advance() into 'resent' on success or
-    //     back to 'default' + sendError on failure. The slides give the
-    //     user confirmation that something happened mid-flight.
-    async sendVerificationEmail() {
-      var s = Alpine.store('modals');
-      var alreadyOpen = s.isOpen('check-email');
-      if (alreadyOpen) {
-        s.advance({ state: 'resending', sendError: '' });
-      } else {
-        s.open('check-email', { email: this.userEmail, state: 'default' });
-      }
-
-      var sendError = '';
-      try {
-        var resp = await fetch('/email_verification', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-Token': this.csrfToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ contest: this.contestId })
-        });
-        var data = await resp.json();
-        if (!resp.ok || !data.success) {
-          sendError = data.error || 'Could not send the confirmation email.';
-        }
-      } catch (e) {
-        sendError = 'Network error sending the email.';
-      }
-
-      if (alreadyOpen) {
-        if (sendError) {
-          s.advance({ state: 'default', sendError: sendError }, { direction: 'back' });
-        } else {
-          s.advance({ state: 'resent' });
-        }
-      } else if (sendError) {
-        // First-time path — modal is already on screen in default state;
-        // patch sendError inline without an animation (no state change).
-        var cur = s.current();
-        if (cur && cur.id === 'check-email') cur.props.sendError = sendError;
-      }
-    },
-
     // After a reload-based login (see init()), push the guest cart to the
     // server and submit the entry.
     async afterLoginSuccess() {
+      // Surface an entry-eligibility blocker (e.g. no entry tokens) BEFORE the
+      // cart replay below. eligibilityBlocker reads only $store.session — no
+      // server round-trip — so we can decide instantly. It lives in the
+      // solana_utils importmap module, which loads just AFTER Alpine inits the
+      // board, so wait briefly for it (bounded; falls through to the
+      // server-authoritative path if it never appears). This turns the
+      // post-magic-link "Get Entry Tokens" modal from a ~1.5s lag (6 sequential
+      // toggle_selection POSTs in replaySelectionsToServer) into near-instant.
+      // The cart still replays — behind the now-visible modal — so it is ready
+      // once the user buys tokens and holds to confirm.
+      var sess = Alpine.store('session');
+      for (var i = 0; i < 20 && typeof window.eligibilityBlocker !== 'function'; i++) {
+        await new Promise(function (resolve) { setTimeout(resolve, 25); });
+      }
+      var blocker = (typeof window.eligibilityBlocker === 'function')
+        ? window.eligibilityBlocker(sess, this.entryFeeCents)
+        : null;
+      if (blocker) {
+        this.showEligibilityBlockerModal(blocker);
+        await this.replaySelectionsToServer();
+        return;
+      }
+
       if (await this.replaySelectionsToServer()) {
         await this.confirmEntry();
       } else {
@@ -1145,10 +1110,11 @@ window.selectionBoard = function() {
 
         } else {
           // Suppress the solanaModal "Submitting Entry" overlay when
-          // we're already inside the auth wizard at tokens-minted — that
-          // wizard handles its own in-place feedback (hold button
-          // "Submitting…" → 'tokens-submitted' celebration card) so we
-          // don't want two stacked modals.
+          // we're already inside the auth wizard at tokens-minted — the
+          // hold button shows its own in-place "Submitting…" feedback, and
+          // on success resolveEntry() swaps this wizard for the shared
+          // Entry Confirmed card. Stacking a "Submitting Entry" onchain-tx
+          // modal on the auth modal would be two stacked modals.
           var authProps      = this._authProps();
           var insideTokensModal = !!(authProps && authProps.step === 'tokens-minted');
           if (!insideTokensModal) {
@@ -1194,29 +1160,22 @@ window.selectionBoard = function() {
 
             if (data.tx_signature) {
               if (inTokensMinted) {
-                // Stay in the wizard — show the on-chain receipt + CTA
-                // in the 'tokens-submitted' card instead of stacking the
-                // solanaModal on top. mintedBalance + navTokens fire
-                // synchronously so the navbar count is accurate at the
-                // moment the slide begins; the celebratory props (tx,
-                // seeds, redirect) land via advance() alongside the
-                // step change so the success card renders ready-to-go
-                // when the slide-in starts.
+                // In-wizard token entry resolves to the SAME shared "Entry
+                // Confirmed" card as the web3 path. resolveEntry() swaps the
+                // auth wizard for the onchain-tx success modal (replace, not
+                // stack — no two stacked modals). updateNavTokens fires
+                // synchronously so the navbar count is right as the slide
+                // begins; the success card fires its own confetti on mount.
                 var nextBalance = Math.max(0, (p.mintedBalance || 0) - 1);
                 try { if (window.updateNavTokens) window.updateNavTokens(nextBalance); } catch (_) {}
-                Alpine.store('modals').advance({
-                  mintedBalance: nextBalance,
-                  txSignature:   data.tx_signature,
-                  redirectUrl:   data.redirect || '/',
-                  seedsEarned:   data.seeds_earned || 0,
-                  seedsTotal:    data.seeds_total  || 0,
-                  step:          'tokens-submitted'
+                Alpine.store('solanaModal').resolveEntry({
+                  txSignature: data.tx_signature,
+                  lobbyUrl:    data.redirect || '/',
+                  seedsEarned: data.seeds_earned || 0,
+                  seedsTotal:  data.seeds_total  || 0,
+                  seedsLevel:  data.seeds_level  || 0
                 });
                 refreshBalanceDelayed();
-                // Modal-card confetti — delayed past the slide-in start
-                // so the burst originates from the success card after it
-                // settles in place (not the confirming card sliding off).
-                try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 320); } catch (_) {}
               } else {
                 var sm = Alpine.store('solanaModal');
                 sm.seedsEarned = data.seeds_earned || 0;
@@ -1227,36 +1186,22 @@ window.selectionBoard = function() {
               }
             } else {
               if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
-              // Deferred email-verification nudge — set during email signup,
-              // consumed when this entry confirms.
-              var hasPendingEmail = false;
-              try { hasPendingEmail = sessionStorage.getItem('pendingCheckEmail') === this.contestId; } catch (_) {}
 
               if (inTokensMinted) {
-                // The entry just consumed one token — keep the navbar in
-                // sync (server-side decrement already happened).
+                // Token entry with no on-chain tx — still resolve to the
+                // shared Entry Confirmed card (the tx-link simply doesn't
+                // render when the signature is null). Swaps the auth wizard
+                // for the onchain-tx success modal (replace, not stack).
                 var nextBalance2 = Math.max(0, (p.mintedBalance || 0) - 1);
                 try { if (window.updateNavTokens) window.updateNavTokens(nextBalance2); } catch (_) {}
-                if (hasPendingEmail) {
-                  try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
-                  Alpine.store('modals').close();
-                  this.sendVerificationEmail();
-                } else {
-                  Alpine.store('modals').advance({
-                    mintedBalance: nextBalance2,
-                    redirectUrl:   data.redirect || '/',
-                    seedsEarned:   data.seeds_earned || 0,
-                    seedsTotal:    data.seeds_total  || 0,
-                    step:          'tokens-submitted'
-                  });
-                  // Modal-card confetti — delayed past the slide-in start
-                  // so the burst originates from the settled success card.
-                  try { if (window.fireConfettiFromModal) setTimeout(window.fireConfettiFromModal, 320); } catch (_) {}
-                  refreshBalanceDelayed();
-                }
-              } else if (hasPendingEmail) {
-                try { sessionStorage.removeItem('pendingCheckEmail'); } catch (_) {}
-                this.sendVerificationEmail();
+                Alpine.store('solanaModal').resolveEntry({
+                  txSignature: null,
+                  lobbyUrl:    data.redirect || '/',
+                  seedsEarned: data.seeds_earned || 0,
+                  seedsTotal:  data.seeds_total  || 0,
+                  seedsLevel:  data.seeds_level  || 0
+                });
+                refreshBalanceDelayed();
               } else {
                 window.location.href = data.redirect || '/';
               }
@@ -1379,7 +1324,6 @@ window.selectionBoard = function() {
 </script>
 
 <div x-data="selectionBoard()" x-cloak
-     @modal-resend-verification.window="sendVerificationEmail()"
      @auth-magic-link-submit.window="requestMagicLink($event.detail.email)"
      @auth-wallet-hub-open.window="openWalletConnect()"
      @auth-google-click.window="loginWithGoogle()">

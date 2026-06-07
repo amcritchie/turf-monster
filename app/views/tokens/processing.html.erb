@@ -7,15 +7,20 @@
     Fallback — if there's no opener (user navigated directly, or the
     opener tab was closed mid-flow), poll /tokens/status here and show
     the standalone success card. %>
-<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : '' %>')" x-init="start()">
+<div class="max-w-md mx-auto mt-12" x-data="tokenProcessing('<%= j @session_id %>', '<%= @contest ? j(contest_path(@contest)) : '' %>', '<%= j @preview_state.to_s %>')" x-init="start()">
   <div class="card shadow p-8 text-center">
-    <%# Loading state — also covers the moment after hand-off, before window.close() %>
+    <%# Loading state — also covers the moment after hand-off, before window.close().
+        Renders the SAME shared card_header (spinner + copy) as the in-contest
+        auth modal's tokens-confirming step (modals/auth/_tokens.html.erb), so the
+        standalone Stripe-return spinner and the in-modal "Confirming (polling
+        mint)" card are one design, not two. %>
     <template x-if="!ready && !errored">
       <div>
-        <div class="mx-auto w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-6"></div>
-        <h1 class="text-xl font-bold text-heading mb-2">Confirming your purchase…</h1>
-        <p class="text-sm text-secondary">Minting your entry tokens on-chain.</p>
-        <p class="text-xs text-muted mt-4" x-show="elapsed >= 8">
+        <%= render "modals/blocks/card_header",
+              spinner: true,
+              title: "Confirming your purchase…",
+              subtitle: "Minting your entry tokens on-chain." %>
+        <p class="text-xs text-muted -mt-2" x-show="elapsed >= 8">
           Still working… this can take up to 30 seconds.
         </p>
       </div>
@@ -63,7 +68,7 @@
 </div>
 
 <script>
-  function tokenProcessing(sessionId, contestUrl) {
+  function tokenProcessing(sessionId, contestUrl, previewState) {
     return {
       ready: false,
       contestUrl: contestUrl,
@@ -75,6 +80,15 @@
       _ticker: null,
 
       start() {
+        // Gallery preview (/admin/modals): force a static state, no
+        // postMessage / polling / window.close. Keeps the preview iframe
+        // from hand-shaking with a non-existent opener or polling forever.
+        if (previewState) {
+          if (previewState === 'ready')   { this.minted = 3; this.balance = 5; this.ready = true; }
+          else if (previewState === 'errored') { this.errored = true; }
+          // 'loading' → leave the default spinner state as-is.
+          return;
+        }
         console.log('[tokens] processing.start sessionId=', sessionId, 'contestUrl=', contestUrl);
         if (!sessionId) {
           console.warn('[tokens] processing.start: no sessionId — flipping to errored state');

@@ -162,11 +162,10 @@
         // ends each of those flows; the simpler alternative (Rails flash
         // via SessionContext) would couple SessionContext to flash, which
         // it currently avoids by design.
-        window.handleSolanaVerifySuccess = function(result) {
-          if (result && result.new_user) {
-            localStorage.setItem('show_profile_modal', 'true');
-          }
-        };
+        // Post-Solana-verify hook. The new-Phantom-signup avatar prompt (the
+        // 'profile' modal) was retired — usernames auto-generate, nothing to
+        // complete — so this is now a no-op extension point for future hooks.
+        window.handleSolanaVerifySuccess = function(result) {};
 
         // Minimal wallet provider stub — enough for Alpine x-data evaluation
         window.walletProvider = {
@@ -395,6 +394,50 @@
               if (this._recoveryHandler) this._recoveryHandler();
             },
 
+            // resolveEntry(opts) — land on the shared "Entry Confirmed"
+            // resolution card no matter which modal is currently open. The
+            // web3 path already runs show()+success() (onchain-tx is current).
+            // The in-wizard token path is mid-auth-wizard, so we SWAP the auth
+            // modal for the onchain-tx success modal (replace, not stack —
+            // avoids two stacked modals). Both flows therefore resolve to ONE
+            // card. The entry_confirmed block fires its own confetti on mount,
+            // so callers don't need to.
+            //   opts: { txSignature, lobbyUrl, seedsEarned, seedsTotal, seedsLevel }
+            resolveEntry: function(opts) {
+              opts = opts || {};
+              this._recoveryHandler = null;
+              this._onCloseHandler = null;
+              var successProps = {
+                dismissible:     true,
+                state:           'success',
+                title:           'Good Luck',
+                message:         null,
+                txSignature:     opts.txSignature || null,
+                errorMessage:    null,
+                seedsEarned:     opts.seedsEarned || 0,
+                seedsTotal:      opts.seedsTotal  || 0,
+                seedsLevel:      opts.seedsLevel  || 0,
+                lobbyUrl:        opts.lobbyUrl || null,
+                recoveryLabel:   null,
+                recoveryPhantom: false,
+                successVariant:  'entry',
+                successTitle:    null,
+                successSubtitle: null,
+                ctaLabel:        null,
+                ctaHref:         null,
+                confetti:        true
+              };
+              var modals = Alpine.store('modals');
+              var cur = modals.current();
+              if (cur && cur.id === 'onchain-tx') {
+                Object.assign(cur.props, successProps);   // already on the tx modal
+              } else if (cur) {
+                modals.swap('onchain-tx', successProps);  // mid-wizard → replace (no stack)
+              } else {
+                modals.open('onchain-tx', successProps);  // nothing open → fresh
+              }
+            },
+
             // === Field accessors — read/write 'onchain-tx' props ===
             get visible()         { return !!_onCurrent(); },
             get state()           { return _propRead('state', null); },
@@ -438,18 +481,10 @@
             }
           });
 
-          // Auto-open the profile modal once after a new Phantom signup.
-          // The wallet verify path sets localStorage 'show_profile_modal'
-          // on result.new_user; consume it here and route through the
-          // shared modal stack. setTimeout defers past Alpine's own init
-          // pass so the store is fully wired when we call open().
-          if (localStorage.getItem('show_profile_modal') === 'true') {
-            localStorage.removeItem('show_profile_modal');
-            setTimeout(function() {
-              var m = Alpine.store('modals');
-              if (m) m.open('profile');
-            }, 300);
-          }
+          // (Retired) The new-Phantom-signup avatar prompt ('profile' modal)
+          // used to auto-open here off a 'show_profile_modal' flag. Usernames
+          // auto-generate and there's nothing to complete, so new wallet users
+          // go straight to their redirect (tokens/buy, or back to the contest).
         });
         // Alpine.store('modals') + window.StudioModals.holdAtLeast both
         // live in studio-engine's studio/modals/host partial now — see
@@ -577,7 +612,7 @@
         var last    = localStorage.getItem('lastUserId') || '';
         if (current === last) return;
         // Exact user-scoped keys.
-        ['seedsNavbar', 'seedsLevelUp', 'show_profile_modal'].forEach(function(k) {
+        ['seedsNavbar', 'seedsLevelUp'].forEach(function(k) {
           try { localStorage.removeItem(k); } catch (_) {}
         });
         // Prefix-scoped: phantom_dl_* holds the mobile-Phantom deeplink
@@ -711,9 +746,6 @@
         escape / click-outside / ARIA / transitions, and renders this app's
         content partials by id (registered in the block below). %>
     <%= render "studio/modals/host" do %>
-      <template x-if="$store.modals.current().id === 'check-email'">
-        <%= render "modals/check_email" %>
-      </template>
       <%# Email-change-pending — opened on the /account page after a held
           email change (AccountsController#update). Informational handoff:
           "go click the confirm link in your inbox." Auto-opened from the
@@ -757,9 +789,6 @@
         <%= render "modals/it_begins" %>
       </template>
       <% if logged_in? %>
-        <template x-if="$store.modals.current().id === 'profile'">
-          <%= render "modals/profile" %>
-        </template>
         <template x-if="$store.modals.current().id === 'username'">
           <%= render "modals/username" %>
         </template>

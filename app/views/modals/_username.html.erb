@@ -22,7 +22,8 @@
   <div x-data="usernameRenameForm({
          initialUsername: '<%= j current_user.username %>',
          updateUrl: '<%= update_username_account_path %>',
-         confirmUrl: '<%= confirm_username_account_path %>'
+         confirmUrl: '<%= confirm_username_account_path %>',
+         initialSaving: (($store.modals.current() || {}).props || {}).previewLoading || false
        })">
     <%= render layout: "modals/blocks/shell", locals: { title: "Change Username" } do %>
       <p class="text-sm text-muted mb-4">
@@ -41,7 +42,10 @@
                autofocus>
         <button type="submit" class="btn btn-primary btn-lg w-full" :disabled="saving || !changed">
           <span x-show="!saving" x-text="changed ? 'Save' : 'Saved'">Save</span>
-          <span x-show="saving">Saving…</span>
+          <span x-show="saving" class="inline-flex items-center justify-center gap-2">
+            <span class="cta-spinner" aria-hidden="true"></span>
+            <span x-text="savingLabel">Saving…</span>
+          </span>
         </button>
       </form>
     <% end %>

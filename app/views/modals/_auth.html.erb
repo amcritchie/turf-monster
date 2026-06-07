@@ -10,8 +10,9 @@
     tokens-waiting    — Stripe checkout open in new tab; awaiting return
     tokens-confirming — Stripe returned; polling /tokens/status for the mint
     tokens-minted     — tokens credited; in-modal Hold to Confirm Entry
-    tokens-submitted  — entry confirmed; explorer link + leaderboard CTA
     tokens-error      — poll timed out / submission failed
+                        (entry success has no step — board's resolveEntry()
+                        swaps to the shared onchain-tx Entry Confirmed card)
     redirect          — countdown auto-redirect (entry blocked, geo, etc.)
 
   State split:
@@ -30,8 +31,7 @@
     in shared/_modal_host.html.erb. Alpine requires the template's content to
     have a SINGLE root element — anything else mounts as a silent no-op. Keep
     all rendered output inside the wizard's outer <div>; every inner
-    <template x-if>/<template x-for> also has exactly one root child.
-    .auth-text-shimmer lives in application.tailwind.css. %>
+    <template x-if>/<template x-for> also has exactly one root child. %>
 <div x-data="{
        email: '',
        // Hardened against a transient null current() during modal open/close
@@ -123,7 +123,8 @@
       <button @click="$dispatch('auth-google-click')"
               :disabled="props.submitting"
               class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
-        <%= render "components/google_logo" %>
+        <span x-show="props.submitting !== 'google'" class="inline-flex"><%= render "components/google_logo" %></span>
+        <span x-show="props.submitting === 'google'" class="cta-spinner" aria-hidden="true"></span>
         <span x-text="props.submitting === 'google' ? 'Waiting for Google…' : 'Google'"></span>
       </button>
       <template x-if="props.googleError">
@@ -135,7 +136,8 @@
            selectionBoard#openWalletConnect). -->
       <button @click="$dispatch('auth-wallet-hub-open')" :disabled="props.submitting"
               class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
-        <img src="/solana-mark.svg" alt="" class="w-5 h-5">
+        <img src="/solana-mark.svg" alt="" class="w-5 h-5" x-show="props.submitting !== 'wallet'">
+        <span x-show="props.submitting === 'wallet'" class="cta-spinner" aria-hidden="true"></span>
         <span x-text="props.submitting === 'wallet' ? 'Connecting…' : 'Solana'"></span>
       </button>
       <template x-if="props.phantomError">
@@ -160,19 +162,18 @@
           <p class="text-red-400 text-xs mb-3" x-text="props.formError"></p>
         </template>
         <button type="submit" :disabled="props.submitting"
-                class="btn btn-neutral btn-lg w-full disabled:cursor-wait">
-          <span :class="props.submitting === 'magic-link' ? 'auth-text-shimmer' : ''"
-                x-text="props.submitting === 'magic-link' ? 'Sending link…' : 'Email Link'"></span>
+                class="btn btn-neutral btn-lg w-full gap-2 disabled:cursor-wait">
+          <span x-show="props.submitting === 'magic-link'" class="cta-spinner" aria-hidden="true"></span>
+          <span x-text="props.submitting === 'magic-link' ? 'Sending link…' : 'Email Link'"></span>
         </button>
         <p class="text-xs text-muted text-center mt-2">No password needed — we'll email you a one-tap link.</p>
       </form>
   </div>
 
   <%# === MAGIC-LINK-SENT STEP =============================================== %>
-  <%# Follows the standard check-email template: icon-on-top via the shared
-      card_header block, email inline in the subtext. Resend is a centered LINK
-      (not a button) + a Close link, matching the studio _check_email convention
-      (one difference: resend stays a link, per the design call). %>
+  <%# Status-card pattern: icon-on-top via the shared card_header block, email
+      inline in the subtext. Resend is a centered LINK (not a button) + a Close
+      link (resend stays a link, per the design call). %>
   <template x-if="props.step === 'magic-link-sent'">
     <div>
       <%= render 'modals/blocks/card_header', icon_emoji: '📬', title: 'Check your inbox' do %>
@@ -190,9 +191,8 @@
   <%# === MAGIC-LINK-RESENT STEP ============================================ %>
   <%# Success confirmation after a resend — resendMagicLink advances here so the
       directional slide is the visual "it sent!" beat. Check-pill icon via
-      card_header (matches _check_email's resent state). Single root <div>. Keeps
-      its own resend link so the user can resend again once the cooldown clears
-      (re-advancing re-runs the slide). %>
+      card_header. Single root <div>. Keeps its own resend link so the user can
+      resend again once the cooldown clears (re-advancing re-runs the slide). %>
   <template x-if="props.step === 'magic-link-resent'">
     <div>
       <%= render 'modals/blocks/card_header', icon_color: 'primary', title: 'Link Resent!' do %>

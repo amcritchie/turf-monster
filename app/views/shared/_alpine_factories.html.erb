@@ -267,44 +267,6 @@
     };
   };
 
-  // === imageDropzone — /contests/new + /contests/edit banner picker
-  window.imageDropzone = function (opts) {
-    opts = opts || {};
-    return {
-      fileName: opts.fileName || "",
-      previewUrl: opts.previewUrl || "",
-      dragging: false,
-      _ownsPreviewUrl: false,
-      pickFile: function (e) {
-        var file = e.target.files[0];
-        if (file) this.setFile(file);
-      },
-      dropFile: function (e) {
-        this.dragging = false;
-        var file = e.dataTransfer.files[0];
-        if (!file || !file.type.startsWith("image/")) return;
-        var input = this.$refs.fileInput;
-        var dt = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-        this.setFile(file);
-      },
-      setFile: function (file) {
-        this.fileName = file.name;
-        if (this._ownsPreviewUrl && this.previewUrl) URL.revokeObjectURL(this.previewUrl);
-        this.previewUrl = URL.createObjectURL(file);
-        this._ownsPreviewUrl = true;
-      },
-      clear: function () {
-        if (this._ownsPreviewUrl && this.previewUrl) URL.revokeObjectURL(this.previewUrl);
-        this.fileName = "";
-        this.previewUrl = "";
-        this._ownsPreviewUrl = false;
-        this.$refs.fileInput.value = "";
-      }
-    };
-  };
-
   // === cardListFilter — /players + /teams index search+filter =====
   window.cardListFilter = function (opts) {
     opts = opts || {};

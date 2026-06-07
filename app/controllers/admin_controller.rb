@@ -47,13 +47,37 @@ class AdminController < ApplicationController
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
       props: { mode: "signup", step: "credentials" } },
     { group: "Auth — credentials",
+      label: "Credentials (sending magic link)", key: "auth-credentials-sending",
+      # submitting: 'magic-link' drives the Email Link button's .cta-spinner;
+      # Google/Solana spin the same way with submitting 'google'/'wallet'.
+      modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      props: { mode: "signup", step: "credentials", submitting: "magic-link" } },
+    { group: "Auth — credentials",
       label: "Magic link sent", key: "auth-magic-link-sent",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
       props: { step: "magic-link-sent", sentEmail: "you@example.com" } },
     { group: "Auth — credentials",
+      label: "Magic link resent", key: "auth-magic-link-resent",
+      modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      props: { step: "magic-link-resent", sentEmail: "you@example.com" } },
+    { group: "Web3",
       label: "Connect Wallet (picker)", key: "wallet-connect",
       modal_id: "wallet-connect", file: "app/views/modals/_wallet_connect.html.erb",
       props: {} },
+    { group: "Web3",
+      label: "Success (Entry Confirmed)", key: "onchain-success",
+      modal_id: "onchain-tx", file: "app/views/modals/blocks/_entry_confirmed.html.erb",
+      # lobbyUrl: '#' so the success card's 5s auto-redirect is a
+      # harmless hash-change instead of navigating the iframe away.
+      props: { state: "success",
+               txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
+               lobbyUrl: "#", seedsEarned: 13, seedsTotal: 78 } },
+    { group: "Web3",
+      label: "Success — level up (Free Entry)", key: "onchain-success-levelup",
+      modal_id: "onchain-tx", file: "app/views/modals/blocks/_entry_confirmed.html.erb",
+      props: { state: "success",
+               txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
+               lobbyUrl: "#", seedsEarned: 70, seedsTotal: 130 } },
 
     { group: "Auth — token purchase sub-flow",
       label: "Picker", key: "auth-tokens-picker",
@@ -78,77 +102,39 @@ class AdminController < ApplicationController
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
       props: { step: "tokens-minted", mintedCount: 3, mintedBalance: 3 } },
     { group: "Auth — token purchase sub-flow",
-      label: "Submitted (entry confirmed)", key: "auth-tokens-submitted",
-      modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
-      # redirectUrl: nil — the cta_redirect partial sees null and skips
-      # the timer-end window.location, so the gallery preview keeps the
-      # drain animation but never navigates the iframe.
-      props: { step: "tokens-submitted",
-               txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
-               redirectUrl: nil, seedsEarned: 13, seedsTotal: 13 } },
-    { group: "Auth — token purchase sub-flow",
       label: "Error (poll timed out)", key: "auth-tokens-error",
       modal_id: "auth", file: "app/views/modals/auth/_tokens.html.erb",
       props: { step: "tokens-error",
                errorText: "Your purchase is taking longer than expected. Refresh to try again." } },
 
-    { group: "Wallet deposit",
+    { group: "Web3",
       label: "Picker (insufficient USDC/USDT)", key: "wallet-deposit-picker",
       modal_id: "wallet-deposit", file: "app/views/modals/_wallet_deposit.html.erb",
       props: { neededCents: 1900, usdcCents: 300, usdtCents: 0 } },
 
     { group: "Auth — redirect",
-      label: "Redirect countdown", key: "auth-redirect",
+      label: "Geo restricted (redirect countdown)", key: "auth-redirect",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      # The auth modal's generic countdown-redirect step. Its ONLY production
+      # caller is the geo-restriction path (showRedirectModal in
+      # contests/_turf_totals_board.html.erb) — so the sample mirrors that.
       # url: nil — cta_redirect drains the bar but skips the actual
       # window.location at timer-end, so the gallery preview stays put.
-      props: { step: "redirect", icon: "⏱️", title: "Heading to the lobby",
-               message: "We're sending you to the contest lobby.",
-               url: nil, cta: "Go now" } },
+      props: { step: "redirect", icon: "📍", title: "Location Restricted",
+               message: "Contest entries are not available in your state.",
+               url: nil, cta: "OK" } },
 
-    { group: "Check email",
-      label: "Default", key: "check-email",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com" } },
-    { group: "Check email",
-      label: "With resend error", key: "check-email-error",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com",
-               sendError: "Failed to resend — please try again in a moment." } },
-    { group: "Check email",
-      label: "Resending (loader)", key: "check-email-resending",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com", state: "resending" } },
-    { group: "Check email",
-      label: "Confirmation Resent", key: "check-email-resent",
-      modal_id: "check-email", file: "app/views/modals/_check_email.html.erb",
-      props: { email: "you@example.com", state: "resent" } },
-
-    { group: "On-chain TX (Solana)",
+    { group: "Web3",
       label: "Processing", key: "onchain-processing",
       modal_id: "onchain-tx", file: "app/views/modals/_onchain_tx.html.erb",
       props: { state: "processing", title: "Confirming entry",
                message: "Waiting for Phantom signature…" } },
-    { group: "On-chain TX (Solana)",
-      label: "Success (Entry Confirmed)", key: "onchain-success",
-      modal_id: "onchain-tx", file: "app/views/modals/blocks/_entry_confirmed.html.erb",
-      # lobbyUrl: '#' so the success card's 5s auto-redirect is a
-      # harmless hash-change instead of navigating the iframe away.
-      props: { state: "success",
-               txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
-               lobbyUrl: "#", seedsEarned: 13, seedsTotal: 78 } },
-    { group: "On-chain TX (Solana)",
-      label: "Success — level up (Free Entry)", key: "onchain-success-levelup",
-      modal_id: "onchain-tx", file: "app/views/modals/blocks/_entry_confirmed.html.erb",
-      props: { state: "success",
-               txSignature: "5KJp2N6abc123demoTxSignatureForPreview7xYz8wQrSt",
-               lobbyUrl: "#", seedsEarned: 70, seedsTotal: 130 } },
-    { group: "On-chain TX (Solana)",
+    { group: "Web3",
       label: "Error (no recovery)", key: "onchain-error",
       modal_id: "onchain-tx", file: "app/views/modals/_onchain_tx.html.erb",
       props: { state: "error", title: "Entry failed",
                errorMessage: "Insufficient SOL to pay network fee." } },
-    { group: "On-chain TX (Solana)",
+    { group: "Web3",
       label: "Error + Phantom recovery", key: "onchain-error-recovery",
       modal_id: "onchain-tx", file: "app/views/modals/_onchain_tx.html.erb",
       props: { state: "error", title: "Insufficient USDC",
@@ -156,38 +142,24 @@ class AdminController < ApplicationController
                recoveryLabel: "Mint $500 Test USDC", recoveryPhantom: false } },
 
     { group: "Profile",
-      label: "Edit profile", key: "profile",
-      modal_id: "profile", file: "app/views/modals/_profile.html.erb",
-      props: {} },
-
-    { group: "Username",
       label: "Change username", key: "username",
+      # loadable → the gallery shows a "Load" button (next to Open) that opens
+      # this modal with previewLoading:true, driving the CTA spinner. The
+      # username modal maps previewLoading → initialSaving (no request runs).
+      # This is the generic pending-state preview convention to propagate.
       modal_id: "username", file: "app/views/modals/_username.html.erb",
+      loadable: true, props: {} },
+    { group: "Profile",
+      label: "Crop Photo (upload — empty state)", key: "crop-photo-upload",
+      # No imageUrl → the modal IS the picker: drop / click to upload. This is
+      # the first state of the avatar + contest-banner upload, before a file
+      # is chosen. See studio-engine _crop_photo's `x-if="!imageUrl"` branch.
+      modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
       props: {} },
-
-    # === Standalone modal-style views ====================================
-    # Full Rails pages (not modal partials) that render the same card
-    # idiom. The :url field bypasses #modal_preview and iframes the page
-    # directly — usually with a preview-state query param that pins one
-    # branch of the page's internal state machine without live behavior.
-    { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Loading (waiting on mint)", key: "tokens-processing-loading",
-      file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=loading" },
-    { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Ready (mint complete)", key: "tokens-processing-ready",
-      file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=ready" },
-    { group: "Standalone — Stripe return (/tokens/processing)",
-      label: "Errored (poll timed out)", key: "tokens-processing-errored",
-      file: "app/views/tokens/processing.html.erb",
-      url:  "/tokens/processing?preview_state=errored" },
-
-    # === Crop Photo (avatar cropper) ====================================
-    # Now ships from studio-engine — see studio/modals/_crop_photo (v0.4.12)
-    # and components/_avatar_cropper (v0.4.13; no longer a local override).
-    { group: "Crop Photo",
-      label: "Crop Photo (placeholder image)", key: "crop-photo",
+    { group: "Profile",
+      label: "Crop Photo (with image — crop state)", key: "crop-photo",
+      # imageUrl set → crop view. Avatar cropper ships from studio-engine
+      # (studio/modals/_crop_photo, v0.4.12; components/_avatar_cropper v0.4.13).
       modal_id: "crop-photo", file: "studio/modals/_crop_photo.html.erb",
       props: { imageUrl: "/logo.png" } },
 
