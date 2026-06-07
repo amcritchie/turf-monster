@@ -10,8 +10,10 @@
 %>
 <button @click="resendMagicLink()" :disabled="props.submitting === 'magic-link' || (props.resendCooldown || 0) > 0"
         class="block mx-auto text-sm text-primary hover:text-primary-300 underline underline-offset-2 disabled:opacity-50 disabled:no-underline">
-  <span :class="props.submitting === 'magic-link' ? 'auth-text-shimmer' : ''"
-        x-text="props.submitting === 'magic-link' ? 'Resending…' : ((props.resendCooldown || 0) > 0 ? ('Resend available in ' + props.resendCooldown + 's') : 'Resend link')"></span>
+  <span class="inline-flex items-center justify-center gap-1.5">
+    <span x-show="props.submitting === 'magic-link'" class="cta-spinner" aria-hidden="true"></span>
+    <span x-text="props.submitting === 'magic-link' ? 'Resending…' : ((props.resendCooldown || 0) > 0 ? ('Resend available in ' + props.resendCooldown + 's') : 'Resend link')"></span>
+  </span>
 </button>
 <p x-show="props.resendError" x-cloak class="text-xs text-red-400 mt-3 text-center" x-text="props.resendError"></p>
 <button @click="$store.modals.close()" class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">Close</button>
