@@ -47,6 +47,12 @@ class AdminController < ApplicationController
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
       props: { mode: "signup", step: "credentials" } },
     { group: "Auth — credentials",
+      label: "Credentials (sending magic link)", key: "auth-credentials-sending",
+      # submitting: 'magic-link' drives the Email Link button's .cta-spinner;
+      # Google/Solana spin the same way with submitting 'google'/'wallet'.
+      modal_id: "auth", file: "app/views/modals/_auth.html.erb",
+      props: { mode: "signup", step: "credentials", submitting: "magic-link" } },
+    { group: "Auth — credentials",
       label: "Magic link sent", key: "auth-magic-link-sent",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
       props: { step: "magic-link-sent", sentEmail: "you@example.com" } },

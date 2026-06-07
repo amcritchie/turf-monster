@@ -97,7 +97,7 @@
         <img :src="w.icon || '/solana-mark.svg'" alt="" class="w-9 h-9 rounded-lg">
         <span class="font-semibold text-heading" x-text="w.name"></span>
         <span class="ml-auto flex items-center gap-2">
-          <span x-show="picking === w.name" class="text-xs text-secondary">Connecting…</span>
+          <span x-show="picking === w.name" class="inline-flex items-center gap-1.5 text-xs text-secondary"><span class="cta-spinner" aria-hidden="true"></span>Connecting…</span>
           <span x-show="picking !== w.name" class="badge border-primary text-primary">Installed</span>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-muted">
             <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
