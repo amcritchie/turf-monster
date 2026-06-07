@@ -268,7 +268,7 @@ async function selectMatchups(page, indices) {
     }
 
     await cards.nth(indices[i]).click();
-    await expect(page.locator("body")).toContainText(`${i + 1}/6`);
+    await expect(page.locator("body")).toContainText(`${i + 1} / 6`);
   }
 
   // Wait for all fire-and-forget toggle_selection fetch calls to complete
@@ -633,7 +633,7 @@ test("@devnet 10 — small contest: Alex picks 6 → enters onchain", async ({
   await page.goto(sharedSmallContestUrl);
   await page.waitForLoadState("networkidle");
   await selectMatchups(page);
-  await expect(page.locator("body")).toContainText("6/6");
+  await expect(page.locator("body")).toContainText("6 / 6");
 
   // Submit onchain entry
   await confirmEntryOnchain(page);

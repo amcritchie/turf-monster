@@ -10,8 +10,9 @@
     tokens-waiting    — Stripe checkout open in new tab; awaiting return
     tokens-confirming — Stripe returned; polling /tokens/status for the mint
     tokens-minted     — tokens credited; in-modal Hold to Confirm Entry
-    tokens-submitted  — entry confirmed; explorer link + leaderboard CTA
     tokens-error      — poll timed out / submission failed
+                        (entry success has no step — board's resolveEntry()
+                        swaps to the shared onchain-tx Entry Confirmed card)
     redirect          — countdown auto-redirect (entry blocked, geo, etc.)
 
   State split:
@@ -169,10 +170,9 @@
   </div>
 
   <%# === MAGIC-LINK-SENT STEP =============================================== %>
-  <%# Follows the standard check-email template: icon-on-top via the shared
-      card_header block, email inline in the subtext. Resend is a centered LINK
-      (not a button) + a Close link, matching the studio _check_email convention
-      (one difference: resend stays a link, per the design call). %>
+  <%# Status-card pattern: icon-on-top via the shared card_header block, email
+      inline in the subtext. Resend is a centered LINK (not a button) + a Close
+      link (resend stays a link, per the design call). %>
   <template x-if="props.step === 'magic-link-sent'">
     <div>
       <%= render 'modals/blocks/card_header', icon_emoji: '📬', title: 'Check your inbox' do %>
@@ -190,9 +190,8 @@
   <%# === MAGIC-LINK-RESENT STEP ============================================ %>
   <%# Success confirmation after a resend — resendMagicLink advances here so the
       directional slide is the visual "it sent!" beat. Check-pill icon via
-      card_header (matches _check_email's resent state). Single root <div>. Keeps
-      its own resend link so the user can resend again once the cooldown clears
-      (re-advancing re-runs the slide). %>
+      card_header. Single root <div>. Keeps its own resend link so the user can
+      resend again once the cooldown clears (re-advancing re-runs the slide). %>
   <template x-if="props.step === 'magic-link-resent'">
     <div>
       <%= render 'modals/blocks/card_header', icon_color: 'primary', title: 'Link Resent!' do %>

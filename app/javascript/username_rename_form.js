@@ -17,13 +17,17 @@
 //                    serialized_tx, token } (Phantom flow)
 //   confirmUrl:      POST endpoint to call after Phantom sign + broadcast
 //                    with { token, tx_signature }
+//   initialSaving:   gallery-only — start in the "Saving…" state for the
+//                    modals-index preview (no real request runs)
 
 function usernameRenameForm(opts) {
   opts = opts || {};
   return {
     initial: opts.initialUsername || "",
     username: opts.initialUsername || "",
-    saving: false,
+    saving: !!opts.initialSaving,
+    // Phase-aware label shown beside the CTA spinner during a real save.
+    savingLabel: "Saving…",
     error: null,
 
     get changed() {
@@ -33,6 +37,7 @@ function usernameRenameForm(opts) {
     async save() {
       if (!this.changed || this.saving) return;
       this.saving = true;
+      this.savingLabel = "Saving…";
       this.error = null;
 
       var csrf = document.querySelector("meta[name='csrf-token']")?.content || "";
@@ -54,7 +59,12 @@ function usernameRenameForm(opts) {
         if (data.error) throw new Error(data.error);
         if (data.success) { window.location.reload(); return; }
         if (data.needs_signature) {
+          // Phantom path — the rename is an on-chain TX. Reflect the two
+          // multi-second phases (wallet approval, then on-chain confirm) in the
+          // CTA label so a 5–10s wait isn't a silent static "Saving…".
+          this.savingLabel = "Approve in Phantom…";
           var sig = await this._signAndBroadcast(data.serialized_tx);
+          this.savingLabel = "Confirming…";
           var confirmResp = await fetcher(opts.confirmUrl, {
             method: "POST",
             headers: headers,

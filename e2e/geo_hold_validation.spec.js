@@ -98,7 +98,7 @@ test("hold-to-confirm aborts at 1s with geo blocked modal", async ({ page }) => 
       await blurOverlay.click();
     }
     await cards.nth(i).click();
-    await expect(page.locator("body")).toContainText(`${i + 1}/6`);
+    await expect(page.locator("body")).toContainText(`${i + 1} / 6`);
   }
 
   // NOW enable geo blocking (after selections are saved)
