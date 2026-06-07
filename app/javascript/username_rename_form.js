@@ -81,16 +81,14 @@ function usernameRenameForm(opts) {
     //     payload through so the modal can show the fresh total.
     // Both paths fire StateFanout so the navbar seeds bar animates either way.
     _afterSuccess(data) {
-      if (data && data.seeds_earned && window.StateFanout) {
-        try {
-          window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 });
-        } catch (e) { /* never block on an animation hiccup */ }
-      }
       var hasQuestCard = !!document.querySelector('[x-data^="questCard"]');
       if (hasQuestCard) {
-        try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "chat" } })); } catch (e) {}
+        window.completeQuest(data, { to: "chat" }); // unified celebration: badge confetti → bar → advance
         try { this.$store.modals.close(); } catch (e) {}
       } else {
+        if (data && data.seeds_earned && window.StateFanout) {
+          try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) { /* never block on an animation hiccup */ }
+        }
         try {
           this.$store.modals.swap("quest-success", {
             seeds_earned: data && data.seeds_earned,

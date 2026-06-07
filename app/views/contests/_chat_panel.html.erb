@@ -187,9 +187,8 @@
             // seeds payload only on the user's first-ever contest-chat message.
             // Fire the seeds tick-up (navbar + Earn-a-Free-Entry bar) and advance
             // the contest quest card from the chat step to the newsletter step.
-            if (data.seeds_earned && window.StateFanout) {
-              try { window.StateFanout.apply('seeds', data, { source: 'quest-chat', dispatchDelay: 300 }); } catch (e) {}
-              try { window.dispatchEvent(new CustomEvent('quest-advance', { detail: { to: 'newsletter' } })); } catch (e) {}
+            if (data.seeds_earned) {
+              try { window.completeQuest(data, { to: 'newsletter' }); } catch (e) {} // unified celebration
             }
           } else {
             chatToast('Message not sent', data.error || 'Please try again.');

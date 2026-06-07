@@ -64,14 +64,51 @@
     };
   };
 
-  // Shared success beat for a newsletter join — fire the seeds tick-up (if the
-  // 40-seed bonus landed), then advance the quest card to mission 3. No success
-  // modal (#1) and no reload. Global so the email-capture modal path reaches it too.
-  window.questNewsletterSuccess = function (data) {
-    if (data && data.seeds_earned && window.StateFanout) {
-      try { window.StateFanout.apply("seeds", data, { source: "quest-newsletter", dispatchDelay: 300 }); } catch (e) {}
+  // === completeQuest — the unified "completed quest" celebration ==========
+  // Fired by all three contest-page quest completions (username->chat,
+  // chat->newsletter, newsletter->invite). Choreography (timing dials inline):
+  //   1. confetti bursts from the just-finished card's "Quest x/4" badge
+  //   2. seeds bar progresses (+ level-up animation) via StateFanout
+  //   3. after the bar settles, the quest card advances — current fades + slides
+  //      right, next fades in + pops (quest-advance event + _quest_card CSS)
+  // Confetti + advance fire even on a deferred grant (the quest IS done); only
+  // the bar tick-up is gated on seeds_earned.
+  window.completeQuest = function (payload, opts) {
+    opts = opts || {};
+    try { window.fireQuestBadgeConfetti(); } catch (e) {}
+    if (payload && payload.seeds_earned && window.StateFanout) {
+      try { window.StateFanout.apply("seeds", payload, { source: "quest-complete", dispatchDelay: 250 }); } catch (e) {}
     }
-    try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "invite" } })); } catch (e) {}
+    var advanceDelay = (payload && payload.levelUp) ? 2800 : 1500; // hold for the bar/level-up moment
+    if (opts.to) {
+      setTimeout(function () {
+        try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: opts.to } })); } catch (e) {}
+      }, advanceDelay);
+    }
+  };
+
+  // Burst canvas-confetti from the currently-visible quest card's "Quest x/4"
+  // badge (the completing card is still on-screen — the advance is delayed).
+  window.fireQuestBadgeConfetti = function () {
+    if (typeof confetti === "undefined") return;
+    var steps = Array.prototype.slice.call(document.querySelectorAll("[data-quest-step]"));
+    var visible = steps.filter(function (el) { return el.offsetParent !== null; })[0];
+    var badge = visible && visible.querySelector("[data-quest-badge]");
+    var rect = badge && badge.getBoundingClientRect();
+    var origin = (rect && rect.width)
+      ? { x: (rect.left + rect.width / 2) / window.innerWidth, y: (rect.top + rect.height / 2) / window.innerHeight }
+      : { x: 0.72, y: 0.4 };
+    var colors = window.CONFETTI_COLORS || ["#4BAF50", "#8E82FE", "#06D6A0", "#FF7C47", "#FFD700", "#00BFFF", "#FF6B9D", "#C084FC"];
+    confetti({ particleCount: 90, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 9999, startVelocity: 24, gravity: 0.6, ticks: 180, scalar: 0.9 });
+    setTimeout(function () {
+      confetti({ particleCount: 45, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 9999, startVelocity: 14, gravity: 0.8, ticks: 140, scalar: 0.7 });
+    }, 160);
+  };
+
+  // Newsletter is quest 3 → completing it advances to the invite step. Global so
+  // the email-capture modal path reaches it too.
+  window.questNewsletterSuccess = function (data) {
+    window.completeQuest(data, { to: "invite" });
   };
 
   // === questCard — contest quest step machine (client-side advance) =====
@@ -358,14 +395,14 @@
       // the username modal for the quest-success "+25 seeds!" celebration. Both fire
       // StateFanout so the seeds bar animates.
       _afterSuccess(data) {
-        if (data && data.seeds_earned && window.StateFanout) {
-          try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) {}
-        }
         var hasQuestCard = !!document.querySelector('[x-data^="questCard"]');
         if (hasQuestCard) {
-          try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: "chat" } })); } catch (e) {}
+          window.completeQuest(data, { to: "chat" }); // unified celebration: badge confetti → bar → advance
           try { this.$store.modals.close(); } catch (e) {}
         } else {
+          if (data && data.seeds_earned && window.StateFanout) {
+            try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) {}
+          }
           try {
             this.$store.modals.swap("quest-success", {
               seeds_earned: data && data.seeds_earned,
