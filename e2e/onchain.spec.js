@@ -48,7 +48,7 @@ async function selectMatchups(page) {
     }
 
     await cards.nth(i).click();
-    await expect(page.locator("body")).toContainText(`${i + 1}/6`);
+    await expect(page.locator("body")).toContainText(`${i + 1} / 6`);
   }
 }
 
