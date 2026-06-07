@@ -108,37 +108,14 @@ test("phantom sign-in creates new user", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 3: Standard contest entry (mack, no wallet)
-// ---------------------------------------------------------------------------
-
-test("standard entry with balance deduction", async ({ page }) => {
-  await login(page, "mack@mcritchie.studio", "password");
-
-  // Navigate to the contest show page (matchup board)
-  await page.goto(CONTEST_PATH);
-  await page.waitForLoadState("networkidle");
-
-  // Select 5 matchups
-  await selectMatchups(page);
-
-  // Confirm entry via direct POST (same pattern as smoke.spec.js)
-  await page.evaluate(async (contestPath) => {
-    const csrfToken = document.querySelector(
-      'meta[name="csrf-token"]'
-    )?.content;
-    await fetch(`${contestPath}/enter`, {
-      method: "POST",
-      headers: { "X-CSRF-Token": csrfToken, Accept: "application/json" },
-    });
-  }, CONTEST_PATH);
-
-  // Reload the contest show page — Mack should be on the leaderboard
-  await page.goto(CONTEST_PATH);
-  await expect(page.locator("body")).toContainText("mack");
-});
-
-// ---------------------------------------------------------------------------
-// Test 4: Onchain contest entry (alex, Phantom + mocked devnet)
+// Onchain contest entry (alex, Phantom + mocked devnet)
+//
+// NOTE: the old "standard entry with balance deduction" (mack) test was
+// removed — it asserted a PAID entry landed on the leaderboard, which can't
+// happen in the chainless CI lane (paid entry needs an on-chain Contest PDA).
+// Its selection/POST mechanics are covered by smoke.spec.js, and the real
+// funded paid entry + balance deduction is covered by devnet-smoke.spec.js
+// (Test 9: "Mack picks 6 → enters onchain") against real devnet.
 // ---------------------------------------------------------------------------
 
 test.fixme("onchain entry via Phantom with mocked devnet", async ({ page }) => {
