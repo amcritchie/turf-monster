@@ -119,7 +119,7 @@ test.describe("Audit consolidation (2026-05-23)", () => {
     const emptyState = page.locator(".empty-state");
     await expect(emptyState).toBeVisible();
     await expect(emptyState).toContainText("No treasury transactions yet.");
-    await expect(emptyState).toContainText("Settlement transactions requiring cosigning will appear here.");
+    await expect(emptyState).toContainText("Multisig transactions requiring cosigning will appear here.");
     // Engine partial wraps the message in <p class="text-secondary text-lg">.
     await expect(emptyState.locator("p.text-lg")).toHaveCount(1);
   });
