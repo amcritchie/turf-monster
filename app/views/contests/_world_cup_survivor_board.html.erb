@@ -208,7 +208,21 @@ window.survivorBoard = function() {
           });
           if (!confirmResp) { this.submitting = false; return; } // 401 — login modal surfaced
           var confirmData = await confirmResp.json();
-          if (!confirmData.success) throw new Error(confirmData.error || 'Failed to confirm entry');
+          if (!confirmData.success) {
+            // Audit C1 — server refused to co-sign because the submitted tx
+            // didn't match the prepared entry (422, code 'tx_rejected'). Close
+            // the on-chain overlay, re-enable the Enter button (submitting=false),
+            // and show the reassuring cosign-rejected modal instead of throwing
+            // the generic error. This board has no _handleBlockerResponse, so the
+            // case is handled inline here. Good actors never hit this.
+            if (confirmData.code === 'tx_rejected') {
+              try { modal.close(); } catch (e) {}
+              this.submitting = false;
+              Alpine.store('modals').open('cosign-rejected', {});
+              return;
+            }
+            throw new Error(confirmData.error || 'Failed to confirm entry');
+          }
           var txSig = confirmData.tx_signature;
           console.log('[contest-entry] server cosigned + confirmed on-chain:', txSig);
 

@@ -558,6 +558,34 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert entry.reload.cart?
   end
 
+  test "confirm_onchain_entry returns tx_rejected (422) and NEVER broadcasts when cosign validation refuses the wire (audit C1)" do
+    @user.update!(web3_solana_address: "Web3Cosign#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_c1", season_id: 1)
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart, entry_number: 0)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    # The real validator refuses a tx that doesn't match the prepared entry —
+    # e.g. an admin-fee-payer SystemProgram.transfer (the C1 attack). The detailed
+    # reason is for server logs only; it must never reach the client.
+    vault.cosign_safe_raises = "system_not_advance: ix 0 (the C1 attack)"
+
+    Solana::Vault.stub :new, vault do
+      post confirm_onchain_entry_contest_path(@contest),
+        params: { signed_tx: "MALICIOUS_WIRE_B64", entry_id: entry.id, entry_pda: "whatever" },
+        as: :json
+    end
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    refute body["success"]
+    assert_equal "tx_rejected", body["code"]          # stable code the frontend keys its modal off
+    assert_empty vault.cosign_broadcast_calls          # validation ran BEFORE cosign — nothing broadcast
+    refute_match(/system_not_advance/, body["error"].to_s) # detailed reason never leaked to the client
+    assert entry.reload.cart?                          # no charge, safe to retry
+  end
+
   test "confirm_onchain_entry surfaces a cosign/broadcast failure, leaves entry in cart with a BLANK PT (safe retry)" do
     @user.update!(web3_solana_address: "Web3CosignFail#{SecureRandom.hex(4)}")
     @contest.update!(onchain_contest_id: "onchain_cf", season_id: 1)

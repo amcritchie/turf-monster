@@ -486,7 +486,21 @@ window.selectionBoard = function() {
     // top of the modal. Closes solanaModal if it's mid-flight so the
     // blocker modal isn't stacked underneath an on-chain-tx card.
     _handleBlockerResponse(data) {
-      if (!data || !data.blocker) return false;
+      if (!data) return false;
+      // Audit C1 — server refused to co-sign because the submitted tx didn't
+      // match the entry it prepared (confirm_onchain_entry → 422, code
+      // 'tx_rejected'). Good actors never hit this. Close the on-chain overlay,
+      // drop the hold buttons, and surface the reassuring cosign-rejected modal
+      // instead of throwing the generic error. Sits before the blocker check so
+      // every entry-flow caller of this dispatcher gets it uniformly.
+      if (data.code === 'tx_rejected') {
+        if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
+        this.submitting = false;
+        this.resetHoldButtons();
+        Alpine.store('modals').open('cosign-rejected', {});
+        return true;
+      }
+      if (!data.blocker) return false;
       if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
       this.submitting = false;
       this.showEligibilityBlockerModal(data.blocker);

@@ -1,0 +1,32 @@
+<%#
+  Cosign-rejected modal (audit fix C1) — opened via
+  Alpine.store('modals').open('cosign-rejected', {}) when POST
+  confirm_onchain_entry returns HTTP 422 with code 'tx_rejected'. The server
+  refused to co-sign because the submitted transaction did not match the entry
+  it prepared, so the on-chain entry flow stops here.
+
+  Good actors never see this — it only fires on a tampered or mismatched
+  transaction. Copy is deliberately reassuring and intentionally vague about
+  which server-side check failed (no detail that would help an attacker probe
+  the validation). Dismissible; a single 'Got it' button closes the stack
+  (escape + click-outside also dismiss via the host).
+
+  Single root element (the host mounts this through its own template x-if;
+  sibling roots there silently no-op). No props, so x-data is an empty scope
+  whose only job is to give the close button an Alpine tree to reach $store
+  from. Keep the x-data body free of double-quotes and backticks — it is a
+  double-quoted HTML attribute, so an inner double-quote would close it and
+  silently break the modal.
+%>
+<div x-data="{}">
+  <%= render 'modals/blocks/card_header',
+        icon_emoji: '🛡️',
+        title: 'Transaction not signed' do %>
+    For your security we didn't co-sign this transaction — it didn't match the
+    entry we prepared, so nothing was submitted and your funds are safe. Please
+    close this and try entering again. If it keeps happening,
+    <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">contact support</a>.
+  <% end %>
+  <button @click="$store.modals.close()"
+          class="btn btn-primary btn-lg w-full">Got it</button>
+</div>
