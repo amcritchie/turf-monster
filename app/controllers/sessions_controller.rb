@@ -32,6 +32,14 @@ class SessionsController < ApplicationController
   end
 
   def destroy
+    # Drop the user's in-progress cart so logging out leaves no stale picks
+    # behind (the board's localStorage copy is cleared client-side on the
+    # logout link too). Rescued so a cart-destroy hiccup can't 500 the logout.
+    begin
+      current_user&.entries&.cart&.destroy_all
+    rescue => e
+      Rails.logger.warn("[logout] cart clear failed: #{e.message}")
+    end
     clear_app_session
     # clear_app_session (engine) deletes the user session key + sso_* fields
     # but doesn't know about turf-monster's additional per-session state.

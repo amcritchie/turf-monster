@@ -1626,8 +1626,10 @@ module Solana
     SEASON_DEFAULT_SCHEDULE = [25, 19, 14, 10, 7].freeze
 
     # Per-quest-kind reward defaults (Season.quest_seeds, indexed by kind u8).
-    # Kinds 0–3 (username/newsletter/invite/chat) = 25; kinds 4–15 reserved = 0.
-    QUEST_SEED_DEFAULTS = ([25, 25, 25, 25] + [0] * 12).freeze
+    # username/newsletter/chat = 25; invite (kind 2) = 50 so two referred friends
+    # who enter a contest = 100 = a free entry (matches the share card copy).
+    # Kinds 4–15 reserved = 0.
+    QUEST_SEED_DEFAULTS = ([25, 25, 50, 25] + [0] * 12).freeze
     # Fallback per-quest reward when no Season is active / can't be read.
     QUEST_SEED_FALLBACK = 25
 

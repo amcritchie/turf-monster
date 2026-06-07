@@ -134,7 +134,11 @@
     <%# Not-subscribed state %>
     <div x-show="!subscribed" x-cloak class="flex items-center justify-between gap-3 flex-wrap">
       <p class="text-secondary text-sm min-w-0">
-        Join the newsletter for <span class="text-primary font-semibold">25 seeds</span> — sports news and contest updates.
+        <% if current_user.first_newsletter_join? %>
+          Join the newsletter for <span class="text-primary font-semibold">25 seeds</span> — sports news and contest updates.
+        <% else %>
+          Join the newsletter — sports news and contest updates.
+        <% end %>
       </p>
       <button type="button" @click="$store.modals.open('newsletter-subscribe')"
               class="btn btn-primary btn-sm flex-shrink-0">
@@ -219,13 +223,16 @@
           </span>
         </div>
 
-        <%# Seeds %>
-        <div class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
+        <%# Seeds — ticks up live on quest completion (navbar-seeds-update);
+            seedsTile self-heals the value from the seedsNavbar cache when the
+            server read is cold (the "—" below shows pre-Alpine only). %>
+        <div x-data="seedsTile({ initial: <%= @user_seeds.to_i %> })"
+             class="bg-inset rounded-lg p-3 flex flex-col items-center text-center">
           <div class="flex items-center justify-center mb-1" style="height: 28px;">
             <span style="font-size: 22px; line-height: 1;">🌱</span>
           </div>
           <span class="text-[10px] uppercase tracking-wide text-muted">Seeds</span>
-          <span class="font-mono font-bold text-heading text-sm mt-0.5">
+          <span class="font-mono font-bold text-heading text-sm mt-0.5" x-text="seeds">
             <%= @user_seeds.nil? ? "—" : @user_seeds %>
           </span>
         </div>
@@ -424,9 +431,12 @@
     <% end %>
   </div>
 
+  <%# -- Quests progress -- %>
+  <%= render "quests" %>
+
   <%# -- Log out + Buy Entry Tokens (side by side) -- %>
   <div class="grid grid-cols-2 gap-4 mb-6">
-    <%= link_to "Log out", logout_path, class: "btn btn-outline w-full" %>
+    <%= link_to "Log out", logout_path, class: "btn btn-outline w-full", onclick: "try{localStorage.removeItem('pendingContestEntry')}catch(e){}" %>
     <%= link_to "Buy Entry Tokens", tokens_buy_path, class: "btn btn-primary w-full" %>
   </div>
 

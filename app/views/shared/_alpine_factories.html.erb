@@ -75,15 +75,31 @@
   // the bar tick-up is gated on seeds_earned.
   window.completeQuest = function (payload, opts) {
     opts = opts || {};
-    try { window.fireQuestBadgeConfetti(); } catch (e) {}
+    // Beat the celebration out so it doesn't all fire the instant the modal
+    // closes. BEAT (ms) is the gap between steps — tune in one place.
+    var BEAT = 300;
+    // beat 1 (+0.3s) — confetti from the just-finished card's badge
+    setTimeout(function () { try { window.fireQuestBadgeConfetti(); } catch (e) {} }, BEAT);
+    // beat 2 (+0.6s) — seeds bar climbs (+ level-up). StateFanout's own delay is
+    // 0 now; the beat owns the timing.
     if (payload && payload.seeds_earned && window.StateFanout) {
-      try { window.StateFanout.apply("seeds", payload, { source: "quest-complete", dispatchDelay: 250 }); } catch (e) {}
+      setTimeout(function () {
+        try { window.StateFanout.apply("seeds", payload, { source: "quest-complete", dispatchDelay: 0 }); } catch (e) {}
+      }, BEAT * 2);
     }
-    var advanceDelay = (payload && payload.levelUp) ? 2800 : 1500; // hold for the bar/level-up moment
+    // beat 3 — after the bar settles (advanceDelay), advance the card: current
+    // fades + slides right, next fades in + pops.
     if (opts.to) {
+      // The server doesn't send payload.levelUp — derive whether this award
+      // crossed a level line (SEEDS_PER_LEVEL) so the bar + free-entry modal
+      // get their beat before the card advances.
+      var perLevel = <%= User::SEEDS_PER_LEVEL %>;
+      var sTotal = (payload && payload.seeds_total) || 0;
+      var sEarned = (payload && payload.seeds_earned) || 0;
+      var advanceDelay = (Math.floor(sTotal / perLevel) > Math.floor((sTotal - sEarned) / perLevel)) ? 2800 : 1500;
       setTimeout(function () {
         try { window.dispatchEvent(new CustomEvent("quest-advance", { detail: { to: opts.to } })); } catch (e) {}
-      }, advanceDelay);
+      }, BEAT * 2 + advanceDelay);
     }
   };
 
@@ -116,11 +132,25 @@
     opts = opts || {};
     return {
       step: opts.step || "username",
+      done: opts.done || {},
+      // Ladder order; invite is terminal (always shown). When advancing, skip any
+      // step already completed elsewhere (e.g. newsletter subscribed on /account)
+      // so a done quest never re-appears on the contest ladder.
+      _ladder: ["username", "chat", "newsletter", "invite"],
+      _nextUndone(from) {
+        var i = this._ladder.indexOf(from);
+        if (i < 0) return from;
+        for (var j = i; j < this._ladder.length; j++) {
+          var s = this._ladder[j];
+          if (s === "invite" || !this.done[s]) return s;
+        }
+        return "invite";
+      },
       init() {
         var self = this;
         window.addEventListener("quest-advance", function (e) {
           if (e && e.detail && e.detail.to) {
-            self.step = e.detail.to;
+            self.step = self._nextUndone(e.detail.to);
             self._maybePingChat();
           }
         });
@@ -138,6 +168,42 @@
         setTimeout(function () {
           try { window.dispatchEvent(new CustomEvent("quest-chat-active")); } catch (e) {}
         }, 350);
+      }
+    };
+  };
+
+  // === seedsTile — /account balances "Seeds" tile. Ticks up live on a
+  //     navbar-seeds-update (a quest completion) and self-heals its value from
+  //     the seedsNavbar cache when the server seeds read is cold (shows "—"). ==
+  window.seedsTile = function (opts) {
+    opts = opts || {};
+    return {
+      seeds: 0,
+      _iv: null,
+      init() {
+        var server = parseInt(opts.initial, 10);
+        this.seeds = Math.max(isNaN(server) ? 0 : server, this._cacheTotal());
+        var self = this;
+        window.addEventListener("navbar-seeds-update", function () { self._tickTo(self._cacheTotal()); });
+      },
+      destroy() { clearInterval(this._iv); },
+      _cacheTotal() {
+        try {
+          var d = JSON.parse(localStorage.getItem("seedsNavbar") || "null");
+          return (d && typeof d.seeds_total === "number") ? d.seeds_total : 0;
+        } catch (e) { return 0; }
+      },
+      // Count up from the current value to target over ~0.7s. No-op if target
+      // isn't higher (a re-subscribe / non-earning update leaves it steady).
+      _tickTo(target) {
+        if (typeof target !== "number" || target <= this.seeds) return;
+        clearInterval(this._iv);
+        var self = this, start = this.seeds, delta = target - start, steps = 24, i = 0;
+        this._iv = setInterval(function () {
+          i++;
+          self.seeds = (i >= steps) ? target : Math.round(start + delta * (i / steps));
+          if (i >= steps) clearInterval(self._iv);
+        }, 28);
       }
     };
   };

@@ -203,7 +203,7 @@ class User < ApplicationRecord
       (left_email_list_at.nil? || left_email_list_at < joined_email_list_at)
   end
 
-  # The 35-seed bonus fires on the user's FIRST manual username change only.
+  # The 25-seed bonus fires on the user's FIRST manual username change only.
   # Every account gets an auto adjective-noun name at signup (before_validation
   # :ensure_username), so "has changed it" is tracked explicitly via
   # username_changed_at, never inferred from the current name.
@@ -218,6 +218,14 @@ class User < ApplicationRecord
     first_chat_message_at.nil?
   end
 
+  # The 25-seed newsletter bonus fires on the user's FIRST-EVER join only.
+  # joined_email_list_at stays set across a later unsubscribe/rejoin, so a
+  # re-subscribe never re-pays (the on-chain SeedGrant[newsletter] PDA is the
+  # hard once-ever guard; this keeps the UI from over-claiming seeds on a rejoin).
+  def first_newsletter_join?
+    joined_email_list_at.nil?
+  end
+
   # Which quest mission the contest card shows: username -> chat -> newsletter
   # -> invite (terminal). Only meaningful once the user has entered a contest
   # (the card is gated on @has_entry upstream; can_change_username? already
@@ -227,6 +235,15 @@ class User < ApplicationRecord
     return :chat       if first_chat_message?
     return :newsletter unless subscribed_to_newsletter?
     :invite
+  end
+
+  # The next step to nudge in the gear menu. Prepends the (non-technical) "join a
+  # contest" step ahead of the quest_step ladder, since the quests only unlock
+  # after entering: join -> username -> chat -> newsletter -> invite (terminal,
+  # ongoing).
+  def next_quest
+    return :join unless contest_entered?
+    quest_step
   end
 
   # Append the request IP to the per-user `ips` audit set (admin abuse review).

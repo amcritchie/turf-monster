@@ -1,0 +1,23 @@
+<%# free-entry-earned — pops when a user crosses a seed level (every 100 seeds
+    earns one free entry). Opened from app/javascript/state_fanout.js's seeds
+    handler on a level-up (swap over any open modal, else open). Title is the
+    level reached; body explains the Free Entry Token arrives within 48h + a
+    keep-leveling nudge. SINGLE root. %>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }">
+  <%# title is the level reached, passed in props by the layout's
+      navbar-seeds-update listener; generic fallback when absent. %>
+  <%= render "modals/blocks/card_header",
+        size: :lg,
+        icon_emoji: "&#127915;".html_safe,
+        title_key: "props.level ? ('Level ' + props.level) : 'Free Entry Earned'",
+        subtitle: "Well done! You earned a <strong class='text-heading font-semibold'>Free Entry Token</strong>, that will arrive in 48 hours. Keep earning more free entries with each level.".html_safe %>
+
+  <button type="button" @click="$store.modals.close()" class="btn btn-primary btn-lg w-full">
+    Got it
+  </button>
+
+  <button type="button" @click="$store.modals.close()"
+          class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+    Dismiss
+  </button>
+</div>

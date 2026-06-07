@@ -1,0 +1,47 @@
+<%# Quests progress card - server-rendered, no Alpine. Four quests checked
+    against current_user; done ones show a completed timestamp for timing
+    reference, the ongoing invite quest shows its referral count instead. %>
+<%
+  quests = [
+    { name: "Change username",         reward: "+25 seeds",      complete: current_user.username_changed_at.present?,  done_at: current_user.username_changed_at },
+    { name: "Send first chat message", reward: "+25 seeds",      complete: current_user.first_chat_message_at.present?, done_at: current_user.first_chat_message_at },
+    { name: "Join the newsletter",     reward: "+25 seeds",      complete: current_user.subscribed_to_newsletter?,      done_at: current_user.joined_email_list_at },
+    { name: "Invite friends",          reward: "+50 seeds each", ongoing: true,                                         count:   current_user.invitees_in_contest_count }
+  ]
+%>
+<div class="card shadow p-6 mb-6">
+  <h2 class="text-lg font-bold text-heading mb-4">Quests</h2>
+
+  <div class="divide-y divide-subtle">
+    <% quests.each do |quest| %>
+      <% complete = quest[:ongoing] ? quest[:count].to_i.positive? : quest[:complete] %>
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <% if complete %>
+            <%# Done - same check used by the Newsletter "Subscribed" state above. %>
+            <svg class="w-5 h-5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+          <% else %>
+            <%# To-do - hollow muted circle, matched to the check size. %>
+            <svg class="w-5 h-5 text-muted flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9"/>
+            </svg>
+          <% end %>
+          <div class="min-w-0">
+            <div class="text-body"><%= quest[:name] %></div>
+            <div class="text-primary text-sm"><%= quest[:reward] %></div>
+          </div>
+        </div>
+
+        <div class="text-muted text-sm flex-shrink-0 text-right">
+          <% if quest[:ongoing] %>
+            <%= pluralize(quest[:count], "referral") %>
+          <% elsif complete && quest[:done_at].present? %>
+            <%= time_ago_in_words(quest[:done_at]) %> ago
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>

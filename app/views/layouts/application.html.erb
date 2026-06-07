@@ -282,6 +282,34 @@
             catch (e) { console.warn('[session] context parse failed', e); }
           })();
 
+          // Free-entry-earned modal — the layout owns the modal store, so the
+          // seeds level-up modal is triggered HERE off the navbar-seeds-update
+          // event (state_fanout.js stays UI-store-agnostic and dispatches it
+          // with levelUp:true on a SEEDS_PER_LEVEL crossing). Pop it a beat
+          // after the seeds bar starts climbing; swap over any open modal (e.g.
+          // the newsletter-success celebration), else open fresh.
+          window.addEventListener('navbar-seeds-update', function(e) {
+            if (!e || !e.detail || !e.detail.levelUp) return;
+            var props = { level: e.detail.newLevel };
+            setTimeout(function() {
+              try {
+                var m = Alpine.store('modals');
+                if (!m) return;
+                var cur = m.current && m.current();
+                // Swap over a dismissible modal (e.g. newsletter-success), but
+                // never clobber an in-flight non-dismissible one (the onchain-tx
+                // entry modal mid-broadcast) — open on top of that instead.
+                if (cur && cur.id && !(cur.props && cur.props.dismissible === false)) {
+                  m.swap('free-entry-earned', props);
+                } else {
+                  m.open('free-entry-earned', props);
+                }
+              } catch (err) {
+                console.warn('[free-entry] modal open failed', err);
+              }
+            }, 900);
+          });
+
           // solanaModal is a STATELESS proxy over Alpine.store('modals').
           // Every field reads/writes props on the 'onchain-tx' modal entry
           // in the shared stack — there's no duplicate state. The store
@@ -815,6 +843,11 @@
         </template>
         <template x-if="$store.modals.current().id === 'unsubscribe-goodbye'">
           <%= render "modals/unsubscribe_goodbye" %>
+        </template>
+        <%# free-entry-earned — level-up (every 100 seeds) free-entry celebration,
+            opened by the seeds StateFanout level-up handler. %>
+        <template x-if="$store.modals.current().id === 'free-entry-earned'">
+          <%= render "modals/free_entry_earned" %>
         </template>
       <% end %>
       <%# crop-photo gets pushed on top of whatever modal owns the avatar

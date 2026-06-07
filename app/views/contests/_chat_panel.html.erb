@@ -55,7 +55,7 @@
       <p class="text-sm text-muted text-center py-1">Enter the contest to join the chat.</p>
     <% else %>
       <form class="flex items-center gap-2" @submit.prevent="send()">
-        <textarea x-model="body" x-ref="input" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
+        <textarea x-model="body" x-ref="input" id="contest-chat-input" rows="1" maxlength="<%= Message::BODY_MAX_LENGTH %>"
                   placeholder="Message the contest…"
                   @keydown.enter="if ($event.metaKey || $event.ctrlKey) { $event.preventDefault(); send(); }"
                   class="flex-1 h-10 resize-none rounded-lg bg-surface-alt border border-subtle px-3 py-2 text-sm text-body placeholder:text-muted focus:outline-none focus:border-primary"></textarea>
@@ -170,6 +170,7 @@
         var text = this.body.trim();
         if (!text || this.sending) return;
         this.sending = true;
+        try { window.dispatchEvent(new CustomEvent('quest-chat-sending')); } catch (e) {} // quest 2 arrow -> spinner
         try {
           var resp = await fetch(this.$root.dataset.postUrl, {
             method: 'POST',
@@ -185,15 +186,20 @@
             this.body = '';
             // First-message quest bonus: MessagesController#create returns the
             // seeds payload only on the user's first-ever contest-chat message.
-            // Fire the seeds tick-up (navbar + Earn-a-Free-Entry bar) and advance
-            // the contest quest card from the chat step to the newsletter step.
+            // Flip the quest arrow to a checkmark, fire the seeds tick-up, and
+            // advance the contest quest card from chat -> newsletter.
             if (data.seeds_earned) {
+              try { window.dispatchEvent(new CustomEvent('quest-chat-success')); } catch (e) {} // arrow -> checkmark
               try { window.completeQuest(data, { to: 'newsletter' }); } catch (e) {} // unified celebration
+            } else {
+              try { window.dispatchEvent(new CustomEvent('quest-chat-reset')); } catch (e) {} // no bonus -> un-spin
             }
           } else {
+            try { window.dispatchEvent(new CustomEvent('quest-chat-reset')); } catch (e) {}
             chatToast('Message not sent', data.error || 'Please try again.');
           }
         } catch (e) {
+          try { window.dispatchEvent(new CustomEvent('quest-chat-reset')); } catch (e2) {}
           chatToast('Message not sent', 'Network error.');
         } finally {
           this.sending = false;

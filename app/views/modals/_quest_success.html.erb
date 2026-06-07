@@ -13,12 +13,12 @@
     SINGLE root element (the host mounts this through its own <template x-if>).
     The not-subscribed gate is SERVER-rendered (current_user.subscribed_to_newsletter?)
     so the CTA never flashes for someone who's already in. %>
-<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }">
+<div x-data="{}">
   <%= render "modals/blocks/card_header",
         size: :lg,
         icon_emoji: "🌱",
-        title: "+25 seeds!",
-        subtitle: "Nice — that quest is done. Your seeds just went up." %>
+        title: "Great Username",
+        subtitle: "Nice — you earned 25 seeds by completing a quest. Complete more quests to earn a Free Entry Token." %>
 
   <%# Seeds progress bar — card variant. seeds_data falls back to a zero payload
       when the cache is cold; the seedsBar factory then self-heals from the
@@ -28,10 +28,16 @@
     <%= render "components/seeds_bar", seeds_data: display_seeds_data, compact: false %>
   </div>
 
-  <% unless current_user.subscribed_to_newsletter? %>
+  <%# Next Quest: not-subscribed → the newsletter quest in-flow; subscribed →
+      off to the contest where the chat/invite quests live. %>
+  <% if current_user.subscribed_to_newsletter? %>
+    <%= link_to "Next Quest",
+                (SeasonConfig.main_contest ? contest_path(SeasonConfig.main_contest) : contests_path),
+                class: "btn btn-primary btn-lg w-full", "@click": "$store.modals.close()" %>
+  <% else %>
     <button type="button" @click="$store.modals.swap('newsletter-subscribe')"
             class="btn btn-primary btn-lg w-full">
-      Subscribe for +25 more seeds
+      Next Quest
     </button>
   <% end %>
 
