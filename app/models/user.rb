@@ -14,6 +14,12 @@ class User < ApplicationRecord
 
   validates :email, uniqueness: true, allow_nil: true,
                     format: { with: URI::MailTo::EMAIL_REGEXP }
+  # Require a real dotted TLD (>=2 letters) on top of URI::MailTo's structure, so
+  # dotless domains ("a@gmail") and 1-letter TLDs ("a@gmail.c") — which URI::MailTo
+  # accepts — are rejected before we email a magic link into a void. Mirrors the
+  # client emailValidator. Scoped to email changes so it never blocks an unrelated
+  # save of a grandfathered record.
+  validate :email_has_tld, if: :email_changed?
   validates :web2_solana_address, uniqueness: true, allow_nil: true
   validates :web3_solana_address, uniqueness: true, allow_nil: true
   validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/, message: "only letters, numbers, hyphens, and underscores" }, uniqueness: { case_sensitive: false }, allow_nil: true
@@ -398,6 +404,14 @@ class User < ApplicationRecord
   def has_authentication_method
     return if email.present? || web3_solana_address.present? || (provider.present? && uid.present?)
     errors.add(:base, "Must have email, Solana address, or linked social account")
+  end
+
+  # See the `validate :email_has_tld` declaration. URI::MailTo accepts dotless /
+  # 1-letter-TLD domains; this rejects them so magic links don't go to a void.
+  def email_has_tld
+    return if email.blank?
+    return if email.match?(/\.[a-zA-Z]{2,}\z/)
+    errors.add(:email, "must include a domain like .com")
   end
 
   def set_name_parts

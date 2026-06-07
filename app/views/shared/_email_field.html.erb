@@ -1,14 +1,16 @@
 <%#
   Reusable email input + live, client-side validity indicator.
 
-  A drop-in decorator over an <input type="email">. It mirrors the server-side
-  User#email format check (URI::MailTo::EMAIL_REGEXP) through
-  window.emailValidator (defined in shared/_alpine_factories) for instant
-  feedback, but it NEVER blocks submit — the field still posts through its own
-  name (or feeds its enclosing x-model) exactly as before. Alpine only watches
-  input/change/blur and paints a spinner / green check / red X on the right
-  edge, toasting once when a committed value is invalid. The server stays the
-  real boundary.
+  A drop-in decorator over an <input type="email">. It mirrors the (tightened)
+  server-side User#email format check (URI::MailTo::EMAIL_REGEXP plus a real
+  dotted TLD) through window.emailValidator (defined in shared/_alpine_factories)
+  for instant feedback. The passive typing/blur path never blocks — the field
+  still posts through its own name (or feeds its enclosing x-model) exactly as
+  before — painting a spinner / green check / red X on the right edge and
+  toasting once when a committed value is invalid. emailValidator.init() ALSO
+  installs a capture-phase submit guard on the enclosing form that blocks an
+  explicit submit (Enter / button) of an invalid or empty email and plays the
+  reject shake. The server stays the real boundary.
 
   Locals (all optional, sensible defaults via local_assigns.fetch):
     name          - input name attr (default "email"; pass false/nil to omit,
@@ -45,6 +47,7 @@
 <div class="relative" x-data="emailValidator()">
   <input type="email" inputmode="email"
          class="<%= input_class %> pr-10"
+         :class="{ 'email-reject': _rejecting }"
          placeholder="<%= placeholder %>"
          autocomplete="<%= autocomplete %>"
          <%= "required" if required %>
