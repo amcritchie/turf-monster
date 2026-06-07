@@ -12,14 +12,11 @@ class User < ApplicationRecord
   belongs_to :inviter, class_name: "User", optional: true, foreign_key: :invited_by_id
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
-  validates :email, uniqueness: true, allow_nil: true,
-                    format: { with: URI::MailTo::EMAIL_REGEXP }
-  # Require a real dotted TLD (>=2 letters) on top of URI::MailTo's structure, so
-  # dotless domains ("a@gmail") and 1-letter TLDs ("a@gmail.c") — which URI::MailTo
-  # accepts — are rejected before we email a magic link into a void. Mirrors the
-  # client emailValidator. Scoped to email changes so it never blocks an unrelated
-  # save of a grandfathered record.
-  validate :email_has_tld, if: :email_changed?
+  validates :email, uniqueness: true, allow_nil: true
+  # Email format = URI::MailTo structure + a real dotted TLD (see User.valid_email?),
+  # so dotless / 1-letter-TLD addresses can't be saved. Scoped to email changes so
+  # it never blocks an unrelated save of a grandfathered record.
+  validate :email_format, if: :email_changed?
   validates :web2_solana_address, uniqueness: true, allow_nil: true
   validates :web3_solana_address, uniqueness: true, allow_nil: true
   validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/, message: "only letters, numbers, hyphens, and underscores" }, uniqueness: { case_sensitive: false }, allow_nil: true
@@ -41,6 +38,16 @@ class User < ApplicationRecord
   after_save { ReferralProgress.sync_invitee_attribution!(self) }
 
   # --- Class methods ---
+
+  # Single source of email validity — shared by the model validation
+  # (#email_format) and the magic-link request controller, and mirrored by the
+  # client emailValidator: URI::MailTo's structure PLUS a real dotted TLD (>=2
+  # letters), so dotless domains and 1-letter TLDs (which URI::MailTo accepts on
+  # its own) are rejected before we email a magic link into a void.
+  def self.valid_email?(str)
+    str = str.to_s
+    str.present? && str.match?(URI::MailTo::EMAIL_REGEXP) && str.match?(/\.[a-zA-Z]{2,}\z/)
+  end
 
   # OPSEC-005: from_omniauth now refuses to silently link a freshly-arrived
   # Google identity to an unverified-email password user. Caller must pass
@@ -406,12 +413,11 @@ class User < ApplicationRecord
     errors.add(:base, "Must have email, Solana address, or linked social account")
   end
 
-  # See the `validate :email_has_tld` declaration. URI::MailTo accepts dotless /
-  # 1-letter-TLD domains; this rejects them so magic links don't go to a void.
-  def email_has_tld
+  # Delegates to the shared User.valid_email? so the model, the magic-link
+  # controller, and the client emailValidator all enforce ONE rule.
+  def email_format
     return if email.blank?
-    return if email.match?(/\.[a-zA-Z]{2,}\z/)
-    errors.add(:email, "must include a domain like .com")
+    errors.add(:email, "is not a valid email address") unless User.valid_email?(email)
   end
 
   def set_name_parts

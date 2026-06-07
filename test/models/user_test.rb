@@ -73,6 +73,21 @@ class UserTest < ActiveSupport::TestCase
     assert user.valid?, user.errors.full_messages.join(", ")
   end
 
+  test "User.valid_email? requires URI::MailTo structure + a real dotted TLD" do
+    %w[a@b.co jordan@gmail.com user.name+tag@sub.example.org].each do |ok|
+      assert User.valid_email?(ok), "expected #{ok} to be valid"
+    end
+    [nil, "", "  ", "jordan", "jordan@gmail", "jordan@gmail.c", "jordan@@gmail.com"].each do |bad|
+      refute User.valid_email?(bad), "expected #{bad.inspect} to be invalid"
+    end
+  end
+
+  test "the model rejects a dotless or 1-letter-TLD email (mirrors User.valid_email?)" do
+    assert User.new(email: "jordan@gmail").tap(&:valid?).errors[:email].present?
+    assert User.new(email: "jordan@gmail.c").tap(&:valid?).errors[:email].present?
+    refute User.new(email: "jordan@gmail.com").tap(&:valid?).errors[:email].present?
+  end
+
   test "user invalid with no auth methods" do
     user = User.new
     assert_not user.valid?
