@@ -1,12 +1,12 @@
 # Newsletter subscription — the contest-card quest's second mission
-# ("Join Newsletter, get 40 seeds"). Authed by the global require_authentication.
+# ("Join Newsletter, get 25 seeds"). Authed by the global require_authentication.
 #
 # Web2 users one-click (email already on file). Web3 (Phantom) users have no
 # email, so the quest opens a secondary modal that POSTs the captured `email`
 # here — we fill the blank account email (newsletter-only; NOT auto-verified for
 # login, per the operator's call).
 #
-# Reward: the FIRST-EVER join mints 40 seeds on-chain via Solana::Vault#grant_seeds
+# Reward: the FIRST-EVER join mints 25 seeds on-chain via Solana::Vault#grant_seeds
 # (kind: :newsletter). The on-chain [b"seed_grant", wallet, NEWSLETTER] guard PDA
 # is the hard once-ever guard — leave/rejoin (left_email_list_at vs
 # joined_email_list_at) never re-pays. The subscription is the durable fact; if
@@ -53,7 +53,7 @@ class NewsletterController < ApplicationController
 
   private
 
-  # First-ever newsletter join → 40 seeds on-chain. Returns the StateFanout
+  # First-ever newsletter join → 25 seeds on-chain. Returns the StateFanout
   # 'seeds' payload ({ seeds_earned, seeds_total, seeds_level }) so the client can
   # run the same tick-up + level-up animation as a contest entry, or nil if the
   # grant can't run yet (deferred + backfillable — the subscription still stands).

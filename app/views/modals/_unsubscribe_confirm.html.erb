@@ -40,7 +40,9 @@
   <button type="button" @click="unsubscribe()" :disabled="saving"
           class="btn btn-danger btn-lg w-full disabled:opacity-50 disabled:cursor-not-allowed">
     <span x-show="!saving">Unsubscribe</span>
-    <span x-show="saving" x-cloak>Unsubscribing…</span>
+    <span x-show="saving" x-cloak class="inline-flex items-center justify-center gap-2">
+      <span class="cta-spinner" aria-hidden="true"></span>Unsubscribing…
+    </span>
   </button>
 
   <button type="button" @click="$store.modals.close()"
