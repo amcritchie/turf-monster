@@ -1,167 +1,244 @@
 #!/usr/bin/env bash
-# bin/deploy — ongoing Rails deploy to Heroku.
+# bin/deploy — ongoing Rails deploy to Heroku (multi-app aware).
 #
-# For the one-time v0.15.0 mainnet first deploy, follow MAINNET_LAUNCH.md
-# instead — there's too much one-shot setup (program deploy, vault init,
-# Stripe webhook wiring) for a script.
+# Targets (app → git remote, resolved automatically):
+#   bin/deploy                       # turf-monster      (devnet prod)  → heroku
+#   bin/deploy turf-monster          # same, explicit
+#   bin/deploy turf-monster-mainnet  # mainnet prod      → heroku-mainnet (confirm)
 #
-# This script handles repeatable post-launch deploys:
-#   1. Pre-flight checks (clean tree, expected IDL hash present, etc.)
-#   2. Push to Heroku
-#   3. Run any pending migrations
-#   4. Smoke-check the live site
+# What it does:
+#   1. Pre-flight (clean tree, branch, sync, network-keyed IDL pin, Stripe, tests)
+#   2. Confirm (mainnet requires explicit consent)
+#   3. IDL re-pin via allow-list widen→tighten if the bundled IDL bumped
+#      (EXPECTED_IDL_HASH accepts {old,new} across the release → no unverified window)
+#   4. Push to the CORRECT remote for the target app
+#   5. Smoke-check; roll back on failure
+#   Migrations run in Heroku's release phase (Procfile `release:`), NOT here.
 #
-# Usage:
-#   bin/deploy              # deploy to default app (turf-monster, prod)
-#   bin/deploy staging      # deploy to staging app
-#   bin/deploy --skip-checks  # bypass pre-flight (last-resort)
+# Flags / env:
+#   --skip-checks   bypass pre-flight (last-resort)
+#   --yes / -y      non-interactive consent (required for mainnet in CI/agent shells)
+#   SKIP_TESTS=1    skip the local test run
+#
+# One-time mainnet FIRST deploy: follow MAINNET_LAUNCH.md (program deploy, vault
+# init, Stripe wiring — too much one-shot setup to script).
 
 set -euo pipefail
 
-APP="${1:-turf-monster}"
-case "$APP" in
-  staging) HEROKU_APP="turf-monster-staging" ;;
-  -h|--help)
-    cat <<'USAGE'
-bin/deploy — ongoing Rails deploy to Heroku.
+# ── Args ─────────────────────────────────────────────────────────────────────
+APP="turf-monster"
+SKIP_CHECKS=0
+ASSUME_YES=0
+SHOW_HELP=0
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)     SHOW_HELP=1 ;;
+    --skip-checks) SKIP_CHECKS=1 ;;
+    --yes|-y)      ASSUME_YES=1 ;;
+    -*)            echo "unknown flag: $arg" >&2; exit 1 ;;
+    *)             APP="$arg" ;;
+  esac
+done
+
+if [ "$SHOW_HELP" = "1" ]; then
+  cat <<'USAGE'
+bin/deploy — ongoing Rails deploy to Heroku (multi-app aware).
 
 Usage:
-  bin/deploy              # deploy to default app (turf-monster)
-  bin/deploy staging      # deploy to staging app
-  bin/deploy --skip-checks  # bypass pre-flight (last-resort)
+  bin/deploy                       # turf-monster      (devnet prod)  → heroku
+  bin/deploy turf-monster-mainnet  # mainnet prod      → heroku-mainnet (confirm)
 
-Env overrides:
-  SKIP_TESTS=1          # skip the local test run
+Flags:
+  --skip-checks   bypass pre-flight (last-resort)
+  --yes, -y       non-interactive consent (required for mainnet in CI/agent shells)
 
-For the one-time v0.15.0 mainnet first deploy, follow MAINNET_LAUNCH.md
-instead — there's too much one-shot setup (program deploy, vault init,
-Stripe webhook wiring) to script.
+Env:
+  SKIP_TESTS=1    skip the local test run
+
+IDL bumps are handled automatically: EXPECTED_IDL_HASH is a comma allow-list, so
+the script widens it to {old,new}, pushes, then tightens to {new} — the live and
+incoming slugs both verify across the release, with no BYPASS / unverified window.
+
+One-time mainnet first deploy: follow MAINNET_LAUNCH.md instead.
 USAGE
-    exit 0
-    ;;
-  --skip-checks)
-    HEROKU_APP="turf-monster"
-    SKIP_CHECKS=1
-    ;;
-  *) HEROKU_APP="$APP" ;;
-esac
+  exit 0
+fi
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 fail() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
 
-# ── Pre-flight ─────────────────────────────────────────────────────────────
+# ── Resolve target: app → remote (F0a) ───────────────────────────────────────
+HEROKU_APP="$APP"
+case "$HEROKU_APP" in
+  turf-monster)         REMOTE="heroku" ;;
+  turf-monster-mainnet) REMOTE="heroku-mainnet" ;;
+  *) fail "Unknown app '$HEROKU_APP'. Known: turf-monster (devnet), turf-monster-mainnet." ;;
+esac
 
-if [ "${SKIP_CHECKS:-0}" != "1" ]; then
-  bold "Pre-flight checks (app: $HEROKU_APP)"
+# The remote MUST point at this app — otherwise we'd ship code to the wrong place
+# while gating/migrating the right one (the split-brain bug this rewrite fixes).
+REMOTE_URL=$(git remote get-url "$REMOTE" 2>/dev/null || echo "")
+# Accept HTTPS (…/app[.git]) and SSH (git@…:app[.git]) remote URLs; the app name
+# must be the final path segment so turf-monster can't match turf-monster-mainnet.
+case "$REMOTE_URL" in
+  *"/$HEROKU_APP.git"|*":$HEROKU_APP.git"|*"/$HEROKU_APP"|*":$HEROKU_APP") : ;;
+  "") fail "Git remote '$REMOTE' not found. Add it:  heroku git:remote -a $HEROKU_APP -r $REMOTE" ;;
+  *)  fail "Remote '$REMOTE' → '$REMOTE_URL', not $HEROKU_APP — refusing to push to the wrong app." ;;
+esac
 
-  # 1. Clean working tree
-  if ! git diff-index --quiet HEAD --; then
-    fail "Working tree has uncommitted changes. Commit or stash first."
-  fi
+BRANCH=$(git rev-parse --abbrev-ref HEAD)   # computed BEFORE the skip-checks gate
+IS_MAINNET=0; [ "$HEROKU_APP" = "turf-monster-mainnet" ] && IS_MAINNET=1
+
+# Defined under set -u even when checks are skipped.
+LOCAL_HASH=""; REMOTE_HASHES=""; IDL_BUMP=0; IDL_FILE="config/turf_vault.idl.json"
+
+# ── Pre-flight ───────────────────────────────────────────────────────────────
+if [ "$SKIP_CHECKS" != "1" ]; then
+  bold "Pre-flight checks (app: $HEROKU_APP, remote: $REMOTE)"
+
+  git diff-index --quiet HEAD -- || fail "Working tree has uncommitted changes. Commit or stash first."
   ok "Working tree clean"
 
-  # 2. On main branch (or explicitly overridden)
-  BRANCH=$(git rev-parse --abbrev-ref HEAD)
   if [ "$BRANCH" != "main" ]; then
-    warn "Not on main (current: $BRANCH). Pushing this branch to Heroku's main."
+    warn "Not on main (current: $BRANCH). Pushing this branch to $HEROKU_APP's main."
   else
     ok "On main"
   fi
 
-  # 3. Local main is up to date with origin
-  git fetch origin main --quiet
-  LOCAL=$(git rev-parse HEAD)
-  REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "")
-  if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ] && [ "$BRANCH" = "main" ]; then
+  git fetch origin main --quiet || warn "Couldn't reach origin (skipping sync check)"
+  REMOTE_MAIN=$(git rev-parse origin/main 2>/dev/null || echo "")
+  if [ -n "$REMOTE_MAIN" ] && [ "$(git rev-parse HEAD)" != "$REMOTE_MAIN" ] && [ "$BRANCH" = "main" ]; then
     warn "Local main differs from origin/main. Consider 'git push origin main' first."
   else
     ok "Synced with origin"
   fi
 
-  # 4. IDL file present + hash matches Heroku's EXPECTED_IDL_HASH
-  IDL_FILE="config/turf_vault.idl.json"
-  if [ ! -f "$IDL_FILE" ]; then
-    fail "$IDL_FILE missing — re-pin per MAINNET_LAUNCH.md step 5."
+  # IDL pin — resolve the file by the TARGET's network (mirrors
+  # Solana::Config::IDL_PATH), compare to the app's EXPECTED_IDL_HASH allow-list.
+  NET=$(heroku config:get SOLANA_NETWORK --app "$HEROKU_APP" 2>/dev/null || echo "")
+  if [ "$NET" = "mainnet-beta" ]; then
+    IDL_FILE="config/turf_vault.mainnet.idl.json"
+  else
+    IDL_FILE="config/turf_vault.idl.json"
   fi
-  ok "IDL file present"
+  [ -f "$IDL_FILE" ] || fail "$IDL_FILE missing (target network: ${NET:-devnet}) — re-pin per MAINNET_LAUNCH.md."
+  ok "IDL file present ($IDL_FILE)"
 
   LOCAL_HASH=$(shasum -a 256 "$IDL_FILE" | awk '{print $1}')
-  REMOTE_HASH=$(heroku config:get EXPECTED_IDL_HASH --app "$HEROKU_APP" 2>/dev/null || echo "")
-  if [ -z "$REMOTE_HASH" ]; then
-    fail "EXPECTED_IDL_HASH not set on $HEROKU_APP — boot will fail (audit OPSEC-014). Set it before deploying."
+  REMOTE_HASHES=$(heroku config:get EXPECTED_IDL_HASH --app "$HEROKU_APP" 2>/dev/null || echo "")
+  [ -n "$REMOTE_HASHES" ] || fail "EXPECTED_IDL_HASH not set on $HEROKU_APP — boot will fail (OPSEC-014). Set it first."
+  # Membership test mirrors Solana::Config.idl_hash_acceptable? (comma allow-list).
+  if printf '%s' "$REMOTE_HASHES" | tr ',' '\n' | sed 's/[[:space:]]//g' | grep -qxF "$LOCAL_HASH"; then
+    ok "IDL hash already pinned ($LOCAL_HASH)"
+  else
+    IDL_BUMP=1
+    warn "IDL hash bump: $LOCAL_HASH not in EXPECTED_IDL_HASH set — will widen→tighten across the release"
   fi
-  if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-    fail "IDL hash drift: local=$LOCAL_HASH remote=$REMOTE_HASH. Re-run shasum + 'heroku config:set EXPECTED_IDL_HASH=...' before deploying."
-  fi
-  ok "IDL hash matches Heroku ($LOCAL_HASH)"
 
-  # 5. Verify SKIP_IDL_VERIFICATION isn't set (audit H4 — refuses to boot)
   SKIP_IDL=$(heroku config:get SKIP_IDL_VERIFICATION --app "$HEROKU_APP" 2>/dev/null || echo "")
-  if [ -n "$SKIP_IDL" ]; then
-    fail "SKIP_IDL_VERIFICATION is set on $HEROKU_APP — audit H4 boot guard will refuse start. 'heroku config:unset SKIP_IDL_VERIFICATION --app $HEROKU_APP' first."
-  fi
+  [ -z "$SKIP_IDL" ] || fail "SKIP_IDL_VERIFICATION is set on $HEROKU_APP (audit H4 refuses boot). Unset it first."
   ok "No SKIP_IDL_VERIFICATION override"
 
-  # 6. STRIPE_SECRET_KEY is live mode in prod
-  if [ "$HEROKU_APP" = "turf-monster" ]; then
+  # Both prod apps (devnet-prod turf-monster + mainnet) process REAL Stripe
+  # money, so both require a live key. Only a future test/staging app skips this.
+  if [ "$HEROKU_APP" = "turf-monster" ] || [ "$IS_MAINNET" = "1" ]; then
     STRIPE_KEY=$(heroku config:get STRIPE_SECRET_KEY --app "$HEROKU_APP" 2>/dev/null || echo "")
-    if [[ "$STRIPE_KEY" =~ ^sk_test_ ]]; then
-      fail "STRIPE_SECRET_KEY on prod starts with sk_test_ — must be sk_live_."
-    fi
+    case "$STRIPE_KEY" in sk_test_*) fail "STRIPE_SECRET_KEY on $HEROKU_APP is test mode — must be sk_live_." ;; esac
     ok "Stripe live mode"
   fi
 
-  # 7. Tests pass locally (skip if --skip-tests was set, opt-in)
   if [ "${SKIP_TESTS:-0}" != "1" ]; then
     bold "Running tests"
-    if ! bin/rails test 2>&1 | tail -3; then
-      fail "Tests failed. Fix or set SKIP_TESTS=1 to bypass (not recommended)."
+    TESTLOG=$(mktemp)
+    if bin/rails test >"$TESTLOG" 2>&1; then
+      ok "Tests pass"
+    else
+      tail -25 "$TESTLOG"; rm -f "$TESTLOG"
+      fail "Tests failed. Fix, or SKIP_TESTS=1 to bypass (not recommended)."
     fi
-    ok "Tests pass"
+    rm -f "$TESTLOG"
   fi
 fi
 
-# ── Deploy ─────────────────────────────────────────────────────────────────
-
-bold "Deploying to $HEROKU_APP"
-
-if [ "$BRANCH" = "main" ]; then
-  git push heroku main
-else
-  git push heroku "$BRANCH:main"
-fi
-ok "Pushed"
-
-# ── Migrations ─────────────────────────────────────────────────────────────
-
-PENDING=$(heroku run --app "$HEROKU_APP" --no-tty bin/rails db:migrate:status 2>/dev/null | grep -c '  down  ' || true)
-if [ "$PENDING" -gt 0 ]; then
-  bold "Running $PENDING pending migrations"
-  heroku run --app "$HEROKU_APP" bin/rails db:migrate
-  ok "Migrations complete"
-else
-  ok "No pending migrations"
+# ── Confirmation (mainnet) ───────────────────────────────────────────────────
+if [ "$IS_MAINNET" = "1" ] && [ "$ASSUME_YES" != "1" ]; then
+  bold "⚠️  MAINNET deploy → $HEROKU_APP (real funds)."
+  if [ -t 0 ]; then
+    printf "  Type the app name to confirm: "
+    read -r reply
+    [ "$reply" = "$HEROKU_APP" ] || fail "Confirmation mismatch — aborted."
+    ok "Mainnet deploy confirmed"
+  else
+    fail "Mainnet deploy needs confirmation — re-run with --yes in a non-interactive shell."
+  fi
 fi
 
-# ── Smoke check ────────────────────────────────────────────────────────────
+# ── Rollback point ───────────────────────────────────────────────────────────
+PREV_RELEASE=$(heroku releases --app "$HEROKU_APP" -n 1 2>/dev/null | awk '/^ *v[0-9]/ {print $1; exit}' || echo "")
 
+rollback_or_hint() {
+  warn "$1"
+  # If we tightened the IDL allow-list to {new}, rolling the slug back to the old
+  # IDL would fail the check. Re-widen to {old,new} first so the rolled-back slug
+  # verifies; leave it widened (operator tightens to the correct hash after).
+  if [ "$IDL_BUMP" = "1" ]; then
+    heroku config:set EXPECTED_IDL_HASH="${REMOTE_HASHES},${LOCAL_HASH}" --app "$HEROKU_APP" >/dev/null 2>&1 || true
+    warn "Re-widened EXPECTED_IDL_HASH to {old,new} so a rollback boots; tighten to the correct hash after investigating."
+  fi
+  if [ "$IS_MAINNET" = "1" ] && [ -n "$PREV_RELEASE" ]; then
+    bold "Rolling back $HEROKU_APP to $PREV_RELEASE"
+    heroku rollback "$PREV_RELEASE" --app "$HEROKU_APP" || warn "Auto-rollback failed — run: heroku rollback $PREV_RELEASE --app $HEROKU_APP"
+  else
+    warn "Roll back with: heroku rollback ${PREV_RELEASE:-<prev>} --app $HEROKU_APP"
+  fi
+}
+
+# ── IDL allow-list widen (dance step 1) ──────────────────────────────────────
+# Accept {old,new} so BOTH the live slug and the incoming slug verify across the
+# release boundary — no BYPASS, no unverified window.
+if [ "$IDL_BUMP" = "1" ]; then
+  bold "IDL re-pin: widening EXPECTED_IDL_HASH allow-list (old + new)"
+  heroku config:set EXPECTED_IDL_HASH="${REMOTE_HASHES},${LOCAL_HASH}" --app "$HEROKU_APP" >/dev/null
+  ok "Allow-list now accepts both the live and incoming IDL"
+fi
+
+# ── Deploy ───────────────────────────────────────────────────────────────────
+bold "Deploying to $HEROKU_APP ($REMOTE)"
+if [ "$BRANCH" = "main" ]; then PUSH_SPEC="main"; else PUSH_SPEC="$BRANCH:main"; fi
+if ! git push "$REMOTE" "$PUSH_SPEC"; then
+  [ "$IDL_BUMP" = "1" ] && warn "Push failed after widening; EXPECTED_IDL_HASH still accepts the old IDL, so the live slug stays verified."
+  fail "git push to $REMOTE failed."
+fi
+ok "Pushed (migrations ran in the release phase)"
+
+# ── IDL allow-list tighten (dance step 2) ────────────────────────────────────
+# The new slug is live and verified (it matched the widened set). Tighten to
+# {new}. If this fails, prod is STILL on the new VERIFIED slug — just re-run it.
+if [ "$IDL_BUMP" = "1" ]; then
+  bold "IDL re-pin: tightening EXPECTED_IDL_HASH to the new hash"
+  if heroku config:set EXPECTED_IDL_HASH="$LOCAL_HASH" --app "$HEROKU_APP" >/dev/null; then
+    ok "Pinned to $LOCAL_HASH"
+  else
+    warn "Tighten failed — prod is on the new VERIFIED slug, allow-list still includes the old hash. Re-run: heroku config:set EXPECTED_IDL_HASH=$LOCAL_HASH --app $HEROKU_APP"
+  fi
+fi
+
+# ── Smoke check (rollback on failure) ────────────────────────────────────────
 bold "Smoke check"
-# Heroku CLI's --json output no longer includes web_url; parse the
-# textual output instead. `|| true` so a missing-app error doesn't
-# trip pipefail before the empty-URL guard below catches it.
 URL=$(heroku info --app "$HEROKU_APP" 2>/dev/null | awk '/^Web URL:/ {print $3; exit}' || true)
 if [ -z "$URL" ]; then
   warn "Couldn't determine web URL. Skipping smoke check."
 else
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${URL}up" || echo "000")
   if [ "$STATUS" = "200" ]; then
-    ok "Health check returned 200 ($URL)"
+    ok "Health check 200 ($URL)"
   else
-    fail "Health check failed: $STATUS at ${URL}up"
+    rollback_or_hint "Health check failed: $STATUS at ${URL}up"
+    fail "Deploy unhealthy."
   fi
 fi
 
-bold "Deploy complete."
+bold "Deploy complete → $HEROKU_APP"
 echo "Next: heroku logs --tail --app $HEROKU_APP  (watch for VaultPaused / WithdrawDailyCapExceeded / 5xx)"

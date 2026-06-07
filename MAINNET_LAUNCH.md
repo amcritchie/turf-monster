@@ -142,10 +142,10 @@ shasum -a 256 config/turf_vault.idl.json
 
 ## 6. Set Heroku env vars (mainnet config)
 
-**Critical**: set ALL of these BEFORE the first `git push heroku main`. The boot initializers will refuse to start otherwise (OPSEC-014, OPSEC-039).
+**Critical**: set ALL of these BEFORE the first deploy (`bin/deploy turf-monster-mainnet`). The boot initializers will refuse to start otherwise (OPSEC-014, OPSEC-039).
 
 ```bash
-heroku config:set --app turf-monster \
+heroku config:set --app turf-monster-mainnet \
   SOLANA_NETWORK=mainnet-beta \
   SOLANA_RPC_URL=<your-private-mainnet-rpc> \
   SOLANA_PROGRAM_ID=<MAINNET_PROGRAM_ID> \
@@ -163,12 +163,12 @@ heroku config:set --app turf-monster \
 
 # Sanity: SKIP_IDL_VERIFICATION MUST be unset (the v0.15.0 boot guard refuses
 # to start production if this is set — see audit H4).
-heroku config:unset SKIP_IDL_VERIFICATION --app turf-monster 2>/dev/null
-heroku config:unset SOLANA_SKIP_NETWORK_CHECK --app turf-monster 2>/dev/null
-heroku config:unset ENABLE_TEST_SCAFFOLDING --app turf-monster 2>/dev/null  # disable $1 micro contests
+heroku config:unset SKIP_IDL_VERIFICATION --app turf-monster-mainnet 2>/dev/null
+heroku config:unset SOLANA_SKIP_NETWORK_CHECK --app turf-monster-mainnet 2>/dev/null
+heroku config:unset ENABLE_TEST_SCAFFOLDING --app turf-monster-mainnet 2>/dev/null  # disable $1 micro contests
 ```
 
-- [ ] All vars set. `heroku config --app turf-monster | grep SOLANA` matches the table above.
+- [ ] All vars set. `heroku config --app turf-monster-mainnet | grep SOLANA` matches the table above.
 - [ ] `STRIPE_SECRET_KEY` starts with `sk_live_` (not `sk_test_`). The webhook rejects livemode mismatch (OPSEC-033).
 
 ---
@@ -194,7 +194,7 @@ Copy the resulting `whsec_...` into Heroku as `STRIPE_WEBHOOK_SECRET` (already d
 cd /Users/alex/projects/turf-monster
 git add config/turf_vault.idl.json
 git commit -m "Mainnet IDL pin (program <MAINNET_PROGRAM_ID>)"
-git push heroku main  # or: bin/deploy (see below)
+bin/deploy turf-monster-mainnet  # → heroku-mainnet remote; runs the IDL allow-list re-pin + migrations
 ```
 
 - [ ] Heroku build succeeds (no IDL hash mismatch, no env-var failures).
@@ -202,13 +202,17 @@ git push heroku main  # or: bin/deploy (see below)
 
 ---
 
-## 9. Run any pending migrations
+## 9. Verify migrations ran
+
+`bin/deploy` (step 8) runs migrations in Heroku's **release phase** — atomically
+with promotion, so a failed migration blocks the release. No manual step needed;
+just confirm the release-phase output was clean:
 
 ```bash
-heroku run --app turf-monster bin/rails db:migrate
+heroku releases:output --app turf-monster-mainnet
 ```
 
-- [ ] Migration output clean.
+- [ ] Migration output clean (ran during the release phase).
 
 ---
 
@@ -236,7 +240,7 @@ Do this with a real Phantom wallet on mainnet. Plan to spend ~$5.
 
 ## 12. Day-1 monitoring
 
-- [ ] Heroku logs streaming: `heroku logs --tail --app turf-monster`. Watch for `VaultPaused`, `WithdrawDailyCapExceeded`, any 500s.
+- [ ] Heroku logs streaming: `heroku logs --tail --app turf-monster-mainnet`. Watch for `VaultPaused`, `WithdrawDailyCapExceeded`, any 500s.
 - [ ] Stripe dashboard: monitor for disputes / unusual chargeback patterns.
 - [ ] On-chain: watch `vault_usdc` PDA balance — should grow with deposits, shrink with payouts/withdrawals. Spikes warrant a pause.
 - [ ] Set yourself a calendar reminder to verify the Squads cosign flow works end-to-end against mainnet within the first week (grade + cosign + settle on a small contest).
@@ -248,7 +252,7 @@ Do this with a real Phantom wallet on mainnet. Plan to spend ~$5.
 If something goes wrong post-launch:
 
 1. **Suspected exploit**: pause the vault immediately via 2-of-3 Squads cosign (use the M5 UI once built, or a one-shot script). Pause is one TX away and stops all user-facing funds movement.
-2. **Bad Rails deploy**: `heroku rollback --app turf-monster` — instant revert.
+2. **Bad Rails deploy**: `heroku rollback --app turf-monster-mainnet` — instant revert.
 3. **Bad program deploy**: roll forward, not back. Build a fix + new buffer + `node scripts/squad-upgrade.js`. There's no "downgrade" path on Solana — but the program data is forward-compatible if you preserve the layout.
 
 The vault paused state DOES persist across program upgrades (it's in VaultState, not program code) so pausing → fixing → upgrading → unpausing is the standard recovery dance.
