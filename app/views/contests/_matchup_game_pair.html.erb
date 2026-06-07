@@ -1,5 +1,5 @@
 <%# locals: (left:, right:, locked:) %>
-<div class="flex rounded-2xl overflow-hidden shadow transition-all <%= locked ? 'opacity-50' : '' %>"
+<div class="flex rounded-2xl shadow transition-all <%= locked ? 'opacity-50' : '' %>"
      :style="(selections['<%= left.id %>'] && selections['<%= right.id %>'])
        ? 'outline: 3px solid rgb(var(--color-primary-rgb)); box-shadow: 0 0 20px 4px rgb(var(--color-primary-rgb) / 0.35)'
        : ''">
@@ -9,7 +9,8 @@
             :class="{
               'matchup-selected': selections['<%= matchup.id %>'] && !(selections['<%= left.id %>'] && selections['<%= right.id %>']),
               'bg-primary/5': selections['<%= matchup.id %>'] && selections['<%= left.id %>'] && selections['<%= right.id %>'],
-              'border-subtle hover:bg-surface-alt/50': !selections['<%= matchup.id %>']
+              'border-subtle hover:bg-surface-alt/50': !selections['<%= matchup.id %>'],
+              'matchup-pulse': pulseId === '<%= matchup.id %>' && selectionCount === 0
             }"
             :style="(selections['<%= left.id %>'] && selections['<%= right.id %>']) ? 'border-color: transparent' : ''"
             role="checkbox" :aria-checked="!!selections['<%= matchup.id %>']"

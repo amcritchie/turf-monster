@@ -121,6 +121,19 @@
     }, 160);
   };
 
+  // Center-burst confetti for a celebration MODAL (free-entry level-up). The
+  // quest-badge variant aims at an on-page element; this fires from the upper-
+  // center where the modal card sits. zIndex sits above the modal host.
+  window.fireFreeEntryConfetti = function () {
+    if (typeof confetti === "undefined") return;
+    var colors = window.CONFETTI_COLORS || ["#4BAF50", "#8E82FE", "#06D6A0", "#FF7C47", "#FFD700", "#00BFFF", "#FF6B9D", "#C084FC"];
+    var origin = { x: 0.5, y: 0.38 };
+    confetti({ particleCount: 110, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 10000, startVelocity: 28, gravity: 0.6, ticks: 200, scalar: 1.0 });
+    setTimeout(function () {
+      confetti({ particleCount: 50, angle: 90, spread: 360, origin: origin, colors: colors, zIndex: 10000, startVelocity: 16, gravity: 0.8, ticks: 150, scalar: 0.8 });
+    }, 160);
+  };
+
   // Newsletter is quest 3 → completing it advances to the invite step. Global so
   // the email-capture modal path reaches it too.
   window.questNewsletterSuccess = function (data) {

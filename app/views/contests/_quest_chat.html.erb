@@ -6,11 +6,12 @@
     idle (arrow) -> loading (spinner, on submit) -> success (checkmark, on the
     seeds-earning first message). No mb-* (direct grid child). x-data is
     double-quoted, so every inner quote is single. %>
-<div x-data="{ st: 'idle' }"
+<div x-data="{ st: 'idle', focusChat() { var i = document.getElementById('contest-chat-input'); if (i) { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); i.focus({ preventScroll: true }); } window.dispatchEvent(new CustomEvent('quest-chat-active')); } }"
      @quest-chat-sending.window="st = 'loading'"
      @quest-chat-success.window="st = 'success'"
      @quest-chat-reset.window="st = 'idle'"
-     class="card shadow p-5 relative h-full">
+     @click="focusChat()"
+     class="card shadow p-5 relative h-full cursor-pointer">
   <style>
     /* Southwest nudge — the arrow drifts toward the chat (down + left) and
        eases back, once every 2.4s, so it reads as "look down there". */
@@ -50,7 +51,7 @@
     <div class="flex-shrink-0 text-primary flex items-center justify-center" style="width: 2.75rem; height: 2.75rem;">
       <%# idle: clickable southwest arrow -> scroll + focus the chat input %>
       <button x-show="st === 'idle'" type="button"
-              @click="var i=document.getElementById('contest-chat-input'); if(i){i.scrollIntoView({behavior:'smooth',block:'center'}); i.focus({preventScroll:true});} window.dispatchEvent(new CustomEvent('quest-chat-active'))"
+              @click.stop="focusChat()"
               class="quest-arrow-sw leading-none cursor-pointer bg-transparent border-0 p-0 hover:opacity-75 transition-opacity"
               style="font-size: 2.75rem;"
               aria-label="Jump to Contest Chat">&#x2199;</button>

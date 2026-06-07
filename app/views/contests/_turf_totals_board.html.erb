@@ -32,6 +32,21 @@
   @media (min-width: 1479px) { .cart-pushed { margin-right: 10rem; } } /*  50% (160px) */
   @media (min-width: 1614px) { .cart-pushed { margin-right:  5rem; } } /*  25%  (80px) */
   @media (min-width: 1749px) { .cart-pushed { margin-right:    0; } } /*   0% (overlay) */
+
+  /* First-pick nudge — a random one of the first four matchup cards (selectionBoard
+     .pulseId) pulses until the first selection, using the SAME beat as quest 1's
+     "Change Username" card: a green ring expands + a tiny scale once every 3s.
+     Keep in sync with questPulse in _quest_username.html.erb. */
+  @keyframes matchupPulse {
+    0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    3%   { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.25); }
+    7%   { transform: scale(1);    box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+    100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  }
+  /* Same quest-1 flash (~0.7s), but every 10s with the first at 2s (2s delay →
+     pulses at 2s, 12s, 22s…). The flash lives in 0-7% of the 10s loop, then rests. */
+  .matchup-pulse { animation: matchupPulse 10s ease-out 2s infinite; }
+  @media (prefers-reduced-motion: reduce) { .matchup-pulse { animation: none; } }
 </style>
 
 <script type="application/json" id="board-config">
@@ -46,6 +61,14 @@
       locked: m.locked?
     }
   end
+
+  # Game pairs (group by game, each pair low-turf-first, pairs ordered by lower
+  # turf_score). Computed ONCE here and reused by both firstMatchupIds below (the
+  # pulse-target pool) and the game-view render, so the two never disagree on a
+  # turf_score tie at the boundary (sort_by isn't stable).
+  game_pairs = @matchups.group_by(&:game_slug).values.select { |pair| pair.size == 2 }
+  game_pairs.each { |pair| pair.sort_by! { |m| m.turf_score || 999 } }
+  game_pairs.sort_by! { |pair| pair.first.turf_score || 999 }
 %>
 <%#
   Contest/cart data only. Auth + wallet state (loggedIn, mode, userId,
@@ -61,6 +84,7 @@
   contestOnchain: @contest.onchain?,
   contestName: @contest.name,
   picksRequired: @contest.picks_required,
+  firstMatchupIds: game_pairs.first(2).flatten.map { |m| m.id.to_s },
   userEmail: current_user&.email.to_s,
   seedsPerLevel: User::SEEDS_PER_LEVEL,
   pendingRecoveryPtxSlug: @pending_recovery_ptx&.slug,
@@ -89,6 +113,10 @@ window.selectionBoard = function() {
     get isEditMode() { return this.mode === 'edit'; },
     shakeKey: 0,
     submitting: false,
+    // First-pick nudge: a random one of the first four matchups border-pulses
+    // until the first selection is made, then goes quiet (selectionCount > 0).
+    pulseId: (Object.keys(cfg.cartSelections).length === 0 && cfg.firstMatchupIds && cfg.firstMatchupIds.length)
+      ? cfg.firstMatchupIds[Math.floor(Math.random() * cfg.firstMatchupIds.length)] : null,
     contestId: cfg.contestSlug,
     csrfToken: document.querySelector('meta[name="csrf-token"]')?.content,
     // Auth/wallet state is read live from the canonical Alpine.store('session')
@@ -1339,12 +1367,8 @@ window.selectionBoard = function() {
 
   <!-- Sort toggle + Matchup Cards -->
   <%
-    # Game pairs: group by game, sort by lower turf_score
-    game_pairs = @matchups.group_by(&:game_slug).values.select { |pair| pair.size == 2 }
-    game_pairs.each { |pair| pair.sort_by! { |m| m.turf_score || 999 } }
-    game_pairs.sort_by! { |pair| pair.first.turf_score || 999 }
-
-    # Flat matchups sorted by turf_score (asc and desc)
+    # game_pairs is computed once up in the #board-config block (reused for the
+    # pulse-target pool). Here we just need the flat turf_score sorts.
     matchups_asc = @matchups.sort_by { |m| m.turf_score || 999 }
     matchups_desc = matchups_asc.reverse
   %>

@@ -5,7 +5,8 @@
     grants 25 seeds (from Season.quest_seeds) and username_rename_form.js fires
     the tick-up, then advances the quest card in place to mission 2 (chat) — no
     reload. No mb-* — direct grid child. %>
-<div x-data="{}" class="card shadow p-5 relative h-full">
+<div x-data="{}" @click="$store.modals.open('username')"
+     class="card shadow p-5 relative h-full cursor-pointer">
   <style>
     /* Pulse beat once every 3s (ring expands + fades, tiny pop), then rests. */
     @keyframes questPulse {
@@ -29,7 +30,7 @@
     <p class="text-secondary text-xs leading-relaxed">
       Your username is <span class="font-mono text-heading">@<%= current_user.username %></span> now. Pick a name that's right for you <span class="text-primary font-semibold">&rarr;</span>
     </p>
-    <button type="button" @click="$store.modals.open('username')"
+    <button type="button" @click.stop="$store.modals.open('username')"
             class="btn btn-primary quest-pulse w-full h-full">
       Change Username
     </button>
