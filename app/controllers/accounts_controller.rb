@@ -454,7 +454,7 @@ class AccountsController < ApplicationController
     return nil unless user.solana_connected?
 
     result = Solana::Vault.new.grant_seeds(
-      wallet_address: user.solana_address, amount: 35, kind: :username
+      wallet_address: user.solana_address, amount: Solana::Vault.new.seeds_for_quest(:username), kind: :username
     )
     {
       seeds_earned: result[:seeds_earned],

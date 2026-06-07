@@ -65,7 +65,8 @@ module Solana
 
     # Quest seed-grant kinds — mirror turf-vault `seed_grant_kind` (grant_seeds).
     # Part of the [b"seed_grant", wallet, kind, invitee] guard-PDA seed.
-    SEED_GRANT_KIND = { username: 0, newsletter: 1, invite: 2 }.freeze
+    # CHAT_MESSAGE = 3 added in v0.23 (send first contest-chat message quest).
+    SEED_GRANT_KIND = { username: 0, newsletter: 1, invite: 2, chat: 3 }.freeze
 
     def initialize(client: Solana::Client.new)
       @client = client
@@ -1618,12 +1619,27 @@ module Solana
 
     # ── Seasons (turf-vault v0.11.0+) ────────────────────────────────────────
 
-    SEASON_LEN = 101 # bytes — 8 disc + 4 season_id + 32 name + 40 schedule + 8 start_at + 8 created_at + 1 bump
+    # v0.23 layout (229 bytes): 8 disc + 4 season_id + 32 name + 40 schedule
+    # + 128 quest_seeds (u64 × 16) + 8 start_at + 8 created_at + 1 bump.
+    # Grew by 128 from the pre-v0.23 101-byte layout when quest_seeds[16] landed.
+    SEASON_LEN = 229
     SEASON_DEFAULT_SCHEDULE = [25, 19, 14, 10, 7].freeze
 
-    def create_season(season_id:, name:, schedule:, start_at: nil)
+    # Per-quest-kind reward defaults (Season.quest_seeds, indexed by kind u8).
+    # Kinds 0–3 (username/newsletter/invite/chat) = 25; kinds 4–15 reserved = 0.
+    QUEST_SEED_DEFAULTS = ([25, 25, 25, 25] + [0] * 12).freeze
+    # Fallback per-quest reward when no Season is active / can't be read.
+    QUEST_SEED_FALLBACK = 25
+
+    def create_season(season_id:, name:, schedule:, quest_seeds: nil, start_at: nil)
       raise ArgumentError, "schedule must have 5 elements" unless schedule.is_a?(Array) && schedule.length == 5
       schedule.each { |v| raise ArgumentError, "schedule values must be non-negative" if v.to_i.negative? }
+
+      quest_seeds ||= QUEST_SEED_DEFAULTS
+      unless quest_seeds.is_a?(Array) && quest_seeds.length == 16
+        raise ArgumentError, "quest_seeds must have 16 elements"
+      end
+      quest_seeds.each { |v| raise ArgumentError, "quest_seeds values must be non-negative integers" if !v.is_a?(Integer) || v.negative? }
 
       start_at ||= Time.current.to_i
       admin = Keypair.admin
@@ -1637,6 +1653,7 @@ module Solana
              Borsh.encode_u32(season_id) +
              name_bytes.pack("C*") +
              schedule.map { |v| Borsh.encode_u64(v.to_i) }.join +
+             quest_seeds.map { |v| Borsh.encode_u64(v.to_i) }.join +
              Borsh.encode_i64(start_at.to_i)
 
       tx = build_tx(admin)
@@ -1682,6 +1699,20 @@ module Solana
       season = season_id.to_i.positive? ? (get_season(season_id) rescue nil) : nil
       schedule = season ? season[:seed_schedule] : SEASON_DEFAULT_SCHEDULE
       schedule[[entry_num.to_i, 4].min]
+    end
+
+    # Per-quest seed reward, sourced from the active Season's quest_seeds
+    # (v0.23+), indexed by the grant kind (u8). `kind` accepts a Symbol
+    # (:username/:newsletter/:invite/:chat) or the raw u8. Falls back to
+    # QUEST_SEED_FALLBACK when no Season is active, the read fails, or the
+    # configured per-kind reward is zero/missing — mirrors seeds_for_entry's
+    # season-read/rescue style so a deferred grant still pays a sane amount.
+    def seeds_for_quest(kind)
+      kind_u8 = kind.is_a?(Symbol) ? SEED_GRANT_KIND.fetch(kind) : kind.to_i
+      season_id = SeasonConfig.current_season_id
+      season = season_id.to_i.positive? ? (get_season(season_id) rescue nil) : nil
+      reward = season&.dig(:quest_seeds)&.[](kind_u8)
+      reward.is_a?(Integer) && reward.positive? ? reward : QUEST_SEED_FALLBACK
     end
 
     def fetch_wallet_balances(wallet_address)
@@ -1961,6 +1992,12 @@ module Solana
         v, offset = Borsh.decode_u64(data, offset)
         schedule << v
       end
+      # v0.23: quest_seeds: [u64; 16] sits between schedule and start_at.
+      quest_seeds = []
+      16.times do
+        v, offset = Borsh.decode_u64(data, offset)
+        quest_seeds << v
+      end
       start_at, offset = Borsh.decode_u64(data, offset)
       created_at, offset = Borsh.decode_u64(data, offset)
       {
@@ -1968,6 +2005,7 @@ module Solana
         season_id: season_id,
         name: name,
         seed_schedule: schedule,
+        quest_seeds: quest_seeds,
         start_at: start_at,
         created_at: created_at
       }

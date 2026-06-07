@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_05_215004) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_06_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -487,6 +487,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_05_215004) do
     t.datetime "joined_email_list_at"
     t.datetime "left_email_list_at"
     t.jsonb "ips", default: {}, null: false
+    t.datetime "first_chat_message_at"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"

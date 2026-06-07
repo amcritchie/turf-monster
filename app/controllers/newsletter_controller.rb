@@ -60,8 +60,9 @@ class NewsletterController < ApplicationController
   def grant_newsletter_seeds(user)
     return nil unless user.solana_connected?
 
-    result = Solana::Vault.new.grant_seeds(
-      wallet_address: user.solana_address, amount: 40, kind: :newsletter
+    vault = Solana::Vault.new
+    result = vault.grant_seeds(
+      wallet_address: user.solana_address, amount: vault.seeds_for_quest(:newsletter), kind: :newsletter
     )
     {
       seeds_earned: result[:seeds_earned],

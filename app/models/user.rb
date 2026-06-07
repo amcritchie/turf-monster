@@ -211,11 +211,20 @@ class User < ApplicationRecord
     username_changed_at.nil?
   end
 
-  # Which quest mission the contest card shows: username -> newsletter -> invite
-  # (terminal). Only meaningful once the user has entered a contest (the card is
-  # gated on @has_entry upstream; can_change_username? already requires it).
+  # The 25-seed chat bonus fires on the user's FIRST contest-chat message only
+  # (v0.23 quest). Tracked explicitly via first_chat_message_at; the on-chain
+  # SeedGrant[chat] PDA is the hard once-ever guard.
+  def first_chat_message?
+    first_chat_message_at.nil?
+  end
+
+  # Which quest mission the contest card shows: username -> chat -> newsletter
+  # -> invite (terminal). Only meaningful once the user has entered a contest
+  # (the card is gated on @has_entry upstream; can_change_username? already
+  # requires it).
   def quest_step
     return :username   if first_username_change?
+    return :chat       if first_chat_message?
     return :newsletter unless subscribed_to_newsletter?
     :invite
   end
