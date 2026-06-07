@@ -58,12 +58,18 @@
                 } finally { this.sending = false; }
               }
             }"
-            @submit.prevent="submit($refs.mlEmail.value)" novalidate>
+            @submit.prevent="submit(document.getElementById('email').value)" novalidate>
         <div class="mb-4">
           <label for="email" class="block text-sm text-secondary mb-2 font-medium">Email</label>
-          <input type="email" name="email" id="email" x-ref="mlEmail" required autofocus
-                 value="<%= params[:email] %>"
-                 class="input-field" placeholder="you@example.com">
+          <%# Live client-side validity decorator (UX only — the form still
+              posts via the input's name; server validation is the boundary).
+              The form reads the value by id (document.getElementById('email'))
+              because x-ref now lives in this field's own emailValidator scope,
+              which the form's $refs cannot see. %>
+          <%= render "shared/email_field",
+                name: "email", id: "email",
+                value: params[:email], placeholder: "you@example.com",
+                required: true, autofocus: true %>
         </div>
         <button type="submit" :disabled="sending" class="btn btn-neutral btn-lg w-full disabled:cursor-wait">
           <span x-text="sending ? 'Sending…' : 'Email Link'">Email Link</span>

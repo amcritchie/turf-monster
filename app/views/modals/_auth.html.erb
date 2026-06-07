@@ -154,9 +154,15 @@
       <form @submit.prevent="$dispatch('auth-magic-link-submit', { email: email })" novalidate>
         <div class="mb-3">
           <label class="block text-xs text-secondary mb-1 font-medium">Email</label>
-          <input type="email" x-model="email" autocomplete="email" required
-                 class="input-field" placeholder="you@example.com"
-                 :disabled="props.submitting">
+          <%# Live client-side validity decorator (UX only — never blocks
+              submit). name omitted so this still feeds the parent modal scope's
+              "email" via x-model (the form dispatches that value rather than
+              natively posting); the emailValidator child scope does not define
+              "email" or "props", so both bind upward to the modal's x-data. %>
+          <%= render "shared/email_field",
+                name: nil, x_model: "email",
+                placeholder: "you@example.com", required: true,
+                disabled_expr: "props.submitting" %>
         </div>
         <template x-if="props.formError">
           <p class="text-red-400 text-xs mb-3" x-text="props.formError"></p>
