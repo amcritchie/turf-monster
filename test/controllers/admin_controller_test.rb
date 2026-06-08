@@ -24,9 +24,10 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get admin_hub_path
     assert_response :success
-    reviewed = [contests_path, admin_seasons_path, slates_path, admin_geo_path, admin_error_logs_path, "/admin/jobs"]
-    flagged  = [admin_formula_slates_path, new_contest_path, formula_report_slates_path, generator_contests_path,
-                admin_pending_transactions_path, admin_transactions_path]
+    reviewed = [admin_users_path, admin_geo_path, admin_error_logs_path, contests_path, admin_landing_pages_path]
+    flagged  = [new_contest_path, admin_seasons_path, admin_pending_transactions_path, "/admin/jobs",
+                slates_path, formula_report_slates_path, admin_formula_slates_path,
+                generator_contests_path, admin_transactions_path]
     reviewed.each { |path| assert_select "a[href=?][data-status=?]", path, "reviewed" }
     flagged.each  { |path| assert_select "a[href=?][data-status=?]", path, "flagged" }
 
@@ -50,12 +51,11 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get faucet_path
     assert_response :success
-    assert_select "a[href=?]", admin_seasons_path  # a curated link inside the gear
-    assert_select "a[href=?]", slates_path         # FIFA: Slate Formula link
-    assert_select "a[href=?]", admin_geo_path      # Admin: Geo Settings link
-    assert_select "a[href=?]", error_logs_path     # Admin: Error Logs link
-    assert_select "a[href=?]", "/admin/jobs"       # Admin: Jobs link
-    assert_select "a[href=?]", admin_hub_path      # full Link Hub link inside the gear
+    # Slim admin shortlist (everything else lives on the Link Hub, reachable
+    # from the dashboard — no longer linked from the gear).
+    assert_select "a[href=?]", admin_dashboard_path     # Admin: Dashboard
+    assert_select "a[href=?]", admin_users_path         # Admin: Users
+    assert_select "a[href=?]", admin_landing_pages_path # Admin: Landing Pages
   end
 
   test "navbar gear dropdown hidden from non-admins" do

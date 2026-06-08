@@ -6,31 +6,21 @@
       # Funnel pages are the URLs most likely to be shared in SMS/Slack/social,
       # so they need rich link-preview tags. This layout doesn't use the app
       # layout (no navbar/footer), so the canonical og/twitter block is mirrored
-      # here — title + description come from the show view's content_for, the
-      # image is the branded landscape og.png (1200x630). The show view defers
-      # the unfurl metadata to exactly these tags.
-      lp_title       = content_for(:title).presence || "Turf Totals"
-      lp_description = content_for(:meta_description).presence ||
-                       "Solana-powered World Cup pick'em contests. Pick 6 matchups, stack Turf Scores, and win prizes settled on-chain."
-      lp_og_image    = "#{request.base_url}/og.png"
+      # here. Everything resolves through OgHelper, passing the current
+      # @landing_page so a per-funnel og:image/title/description override (set
+      # in /admin/landing_pages) wins, then the SiteSetting site-wide defaults,
+      # then the branded landscape og.png (1200x630).
+      lp_title       = og_title(content_for(:title))
+      lp_description = og_description(content_for(:meta_description))
+      lp_og_image    = og_image_url(@landing_page)
+      lp_image_default = og_image_default?(@landing_page)
     %>
     <title><%= lp_title %></title>
     <meta name="description" content="<%= lp_description %>">
 
-    <meta property="og:site_name" content="Turf Totals">
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="<%= lp_title %>">
-    <meta property="og:description" content="<%= lp_description %>">
-    <meta property="og:url" content="<%= request.original_url %>">
-    <meta property="og:image" content="<%= lp_og_image %>">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <meta property="og:image:type" content="image/png">
-
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="<%= lp_title %>">
-    <meta name="twitter:description" content="<%= lp_description %>">
-    <meta name="twitter:image" content="<%= lp_og_image %>">
+    <%# Open Graph + Twitter unfurl tags (shared with the application layout). %>
+    <%= render "layouts/link_preview_meta", title: lp_title, description: lp_description,
+          image: lp_og_image, image_default: lp_image_default %>
 
     <%= render "layouts/studio/head" %>
   </head>

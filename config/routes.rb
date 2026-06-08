@@ -309,11 +309,16 @@ Rails.application.routes.draw do
     post   "impersonations/:user_slug", to: "impersonations#create",  as: :impersonate
     delete "impersonations",            to: "impersonations#destroy", as: :stop_impersonating
 
-    # Site-wide singleton config — currently just the main_contest pointer,
-    # but the page is the canonical home for any future global setting that
-    # doesn't fit on a per-record edit form.
-    get   "site_config", to: "site_configs#show",   as: :site_config
-    patch "site_config", to: "site_configs#update"
+    # Site-wide singleton config — the main_contest pointer (SeasonConfig) plus
+    # the link-preview (og:image) defaults (SiteSetting). The canonical home for
+    # any global setting that doesn't fit on a per-record edit form.
+    get   "dashboard", to: "dashboard#show",   as: :dashboard
+    patch "dashboard", to: "dashboard#update"
+    # Link-preview (og:image) defaults — SiteSetting singleton. Text fields
+    # save via the normal patch; the image is an immediate cropper save (its
+    # own multipart endpoint, mirroring the contest banner flow).
+    patch "dashboard/link_preview",       to: "dashboard#update_link_preview",       as: :dashboard_link_preview
+    patch "dashboard/link_preview_image", to: "dashboard#update_link_preview_image", as: :dashboard_link_preview_image
 
     resources :outbound_requests, only: [:index, :show]
 
@@ -324,7 +329,13 @@ Rails.application.routes.draw do
     resources :error_logs, only: [:index, :show], param: :slug
 
     # Landing pages — funnel page manager (public pages live at /l/:slug)
-    resources :landing_pages, only: %i[index new create edit update destroy], param: :slug
+    resources :landing_pages, only: %i[index new create edit update destroy], param: :slug do
+      # Immediate cropper save for the per-page link-preview image (edit only —
+      # the record must exist to attach to). Mirrors the contest banner flow.
+      member do
+        patch :og_image, action: :update_og_image
+      end
+    end
 
     resources :pending_transactions, only: [:index, :show], param: :slug do
       member do

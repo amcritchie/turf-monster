@@ -43,6 +43,13 @@ class User < ApplicationRecord
          .where("users.left_email_list_at IS NULL OR users.left_email_list_at < users.joined_email_list_at")
   }
 
+  # Most-recently-active first (admin dashboard). last_seen_at is touched
+  # throttled per authenticated request (ApplicationController#touch_last_seen);
+  # users never seen since the column was added sort last.
+  scope :by_recent_session, -> {
+    order(Arel.sql("users.last_seen_at DESC NULLS LAST, users.created_at DESC"))
+  }
+
   # --- Class methods ---
 
   # Single source of email validity — shared by the model validation
@@ -406,10 +413,21 @@ class User < ApplicationRecord
   end
 
   def update_level_from_seeds!(seeds_total)
+    return nil if seeds_total.nil?
+
     computed_level = self.class.level_for(seeds_total)
-    return nil if computed_level == level
-    update!(level: computed_level)
-    computed_level
+    leveled_up = computed_level != level
+    # Cache the seed total (admin list display + sort) and bump level on a level
+    # change. Write ONLY on change, via update_column(s) — this is a denormalized
+    # mirror of on-chain state, so it skips validations/callbacks/updated_at
+    # (avoids RecordInvalid on legacy rows + write churn on every award).
+    if leveled_up
+      update_columns(seeds: seeds_total, level: computed_level)
+    elsif seeds != seeds_total
+      update_column(:seeds, seeds_total)
+    end
+    # Returns the new level on a level-up, else nil (callers fire the level-up UI).
+    leveled_up ? computed_level : nil
   end
 
   # --- Entry tokens (on-chain EntryTokenAccount PDAs, turf-vault v0.9.0+) ---

@@ -39,4 +39,13 @@ module ApplicationHelper
   def session_replay_active?
     Rails.env.production? && !@suppress_session_replay
   end
+
+  # --- LogRocket deep links (admin dashboard) ---
+  # The LogRocket project the app inits with (application.html.erb). Users are
+  # identify()'d by their slug, so we can deep-link a single user's sessions.
+  LOGROCKET_APP_PATH = "jodsqq/mcritchie-studio".freeze
+
+  def logrocket_sessions_url
+    "https://app.logrocket.com/#{LOGROCKET_APP_PATH}/sessions"
+  end
 end

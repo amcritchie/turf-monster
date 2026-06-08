@@ -1,5 +1,11 @@
 class LandingPage < ApplicationRecord
   include Sluggable
+  include OgImageAttachable
+
+  # Per-page link-preview image. Public-read service so og:image resolves to a
+  # permanent absolute S3 URL (see OgImageAttachable / OgHelper). Funnel URLs
+  # are the most-shared pages, so a custom unfurl image per page is worth it.
+  has_one_attached :og_image, service: OgImageAttachable::PUBLIC_OG_SERVICE
 
   # The CTA target. Optional so a page can be drafted before a contest
   # exists; `contest_required_when_active` blocks publishing without one.

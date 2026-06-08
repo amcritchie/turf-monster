@@ -13,6 +13,10 @@ class ApplicationController < ActionController::Base
   before_action :verify_session_token  # OPSEC-045
   before_action :set_current_context
   before_action :capture_reference
+  # Stamp activity right after auth resolves, BEFORE the geo/profile redirects —
+  # an after_action is skipped when those before_actions halt the chain, so a
+  # genuinely-active but redirected user would never get stamped.
+  before_action :touch_last_seen
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
@@ -79,6 +83,21 @@ class ApplicationController < ActionController::Base
     return false unless request.get? || request.head?
     return true if controller_name == "landing_pages"
     controller_name == "contests" && action_name.in?(%w[show world_cup index live])
+  end
+
+  # Stamp the REAL logged-in user's last activity (admin dashboard "by recent
+  # session"). Throttled to one write per 5 min via update_column (no callbacks,
+  # no updated_at churn) so it's cheap on the hot path; uses true_user so admin
+  # impersonation never bumps the impersonated user's activity. Never raises.
+  LAST_SEEN_THROTTLE = 5.minutes
+  def touch_last_seen
+    user = true_user
+    return unless user
+    return if user.last_seen_at && user.last_seen_at > LAST_SEEN_THROTTLE.ago
+
+    user.update_column(:last_seen_at, Time.current)
+  rescue => e
+    Rails.logger.warn("[last_seen] #{e.class}: #{e.message}")
   end
 
   # ── Admin impersonation (OPSEC-046) ────────────────────────────────────────
@@ -358,6 +377,9 @@ class ApplicationController < ActionController::Base
     end
     unless seeds.nil?
       Rails.cache.write(seeds_cache_key(user), seeds_payload(seeds), expires_in: 60.seconds)
+      # Sync the denormalized seeds/level cache on the users row (admin list
+      # display + sort) from this fresh on-chain read — write-on-change only.
+      user.update_level_from_seeds!(seeds)
     end
 
     {

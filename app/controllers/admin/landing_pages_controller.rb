@@ -1,7 +1,7 @@
 module Admin
   class LandingPagesController < ApplicationController
     before_action :require_admin
-    before_action :set_landing_page, only: %i[edit update destroy]
+    before_action :set_landing_page, only: %i[edit update destroy update_og_image]
     before_action :load_contests,    only: %i[new create edit update]
 
     def index
@@ -41,6 +41,33 @@ module Admin
       end
     end
 
+    # Immediate cropper save for the per-page link-preview image (mirrors the
+    # contest banner flow — its own multipart form, refreshes the preview via
+    # Turbo). Edit-only: the record must exist to attach to.
+    def update_og_image
+      rescue_and_log(target: @landing_page) do
+        file = params.dig(:landing_page, :og_image)
+
+        if valid_image?(file)
+          @landing_page.og_image.attach(file)
+          respond_to do |format|
+            format.turbo_stream do
+              render turbo_stream: turbo_stream.replace(
+                "landing-og-image-preview",
+                partial: "admin/shared/og_image_preview",
+                locals: { dom_id: "landing-og-image-preview", attachment: @landing_page.og_image,
+                          alt: "Link-preview image", fallback: "No custom image — falls back to the site default, then /og.png" }
+              )
+            end
+            format.html { redirect_to edit_admin_landing_page_path(@landing_page), notice: "Link-preview image updated." }
+          end
+        else
+          message = file.blank? ? "Choose an image to upload." : "Use a PNG, JPG, or WebP under 8 MB."
+          redirect_to edit_admin_landing_page_path(@landing_page), alert: message, status: :see_other
+        end
+      end
+    end
+
     private
 
     def set_landing_page
@@ -55,7 +82,10 @@ module Admin
     end
 
     def landing_page_params
-      params.require(:landing_page).permit(:name, :slug, :headline, :subheadline, :badge, :cta_label, :contest_id, :active, :background_style)
+      # :og_image is permitted for programmatic/seed attach; the admin UI sets
+      # it via the immediate-save update_og_image endpoint (the cropper submits
+      # its own form), not through this main form.
+      params.require(:landing_page).permit(:name, :slug, :headline, :subheadline, :badge, :cta_label, :contest_id, :active, :background_style, :og_image)
     end
   end
 end

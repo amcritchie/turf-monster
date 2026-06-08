@@ -30,7 +30,7 @@ class AccountsController < ApplicationController
     # needed here.
     #
     # Referral widget — share URL points at the canonical main contest
-    # (admin-set via /admin/site_config). SeasonConfig.main_contest masks
+    # (admin-set via /admin/dashboard). SeasonConfig.main_contest masks
     # the explicit pick when it's settled/locked and falls back to the
     # most recent open contest; nil if nothing is open at all (the widget
     # then degrades to a root-path share URL).

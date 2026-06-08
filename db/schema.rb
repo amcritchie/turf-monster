@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -322,6 +322,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
     t.index ["slug"], name: "index_selections_on_slug", unique: true
   end
 
+  create_table "site_settings", force: :cascade do |t|
+    t.string "slug", null: false
+    t.string "default_og_title"
+    t.string "default_og_description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_site_settings_on_slug", unique: true
+  end
+
   create_table "slate_matchups", force: :cascade do |t|
     t.bigint "slate_id", null: false
     t.string "team_slug", null: false
@@ -501,6 +510,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
     t.datetime "left_email_list_at"
     t.jsonb "ips", default: {}, null: false
     t.datetime "first_chat_message_at"
+    t.datetime "last_seen_at"
+    t.integer "seeds", default: 0, null: false
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
@@ -508,9 +519,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"
     t.index ["ips"], name: "index_users_on_ips", using: :gin
     t.index ["joined_email_list_at"], name: "index_users_on_joined_email_list_at"
+    t.index ["last_seen_at"], name: "index_users_on_last_seen_at"
     t.index ["left_email_list_at"], name: "index_users_on_left_email_list_at"
     t.index ["provider", "uid"], name: "index_users_on_provider_and_uid", unique: true, where: "(provider IS NOT NULL)"
     t.index ["reference"], name: "index_users_on_reference"
+    t.index ["seeds"], name: "index_users_on_seeds"
     t.index ["self_custodied_at"], name: "index_users_on_self_custodied_at"
     t.index ["session_token"], name: "index_users_on_session_token"
     t.index ["slug"], name: "index_users_on_slug", unique: true
