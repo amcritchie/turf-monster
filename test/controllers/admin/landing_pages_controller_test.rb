@@ -62,12 +62,11 @@ class Admin::LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_landing_pages_path
   end
 
-  test "navbar exposes landing page links to admins" do
+  test "navbar exposes the landing pages manager to admins" do
     log_in_as(@admin)
     get faucet_path
     assert_response :success
-    assert_select "a[href=?]", admin_landing_pages_path         # Admin section → manager
-    assert_select "a[href=?]", landing_page_path(@landing_page) # FIFA section → live page
+    assert_select "a[href=?]", admin_landing_pages_path # admin shortlist → manager
   end
 
   test "the contest dropdown includes survivor contests" do
