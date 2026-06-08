@@ -24,6 +24,7 @@
           <th class="text-right px-3 py-3" title="How many users have this user as their inviter">Invitees</th>
           <th class="text-right px-3 py-3" title="How many of those invitees have entered a contest">In&nbsp;Contest</th>
           <th class="text-right px-4 py-3">Joined</th>
+          <th class="text-right px-4 py-3" title="Act as this user for support / migration (admin only)">Act&nbsp;as</th>
         </tr>
       </thead>
       <tbody>
@@ -87,10 +88,23 @@
             <td class="px-4 py-3 text-right text-muted text-xs whitespace-nowrap">
               <%= u.created_at.strftime("%b %-d, %Y") %>
             </td>
+            <td class="px-4 py-3 text-right">
+              <%# OPSEC-046: impersonation entry point — non-admins only (admins
+                  can't be impersonated; this also excludes the current admin). %>
+              <% unless u.admin? %>
+                <%= button_to "Act as", admin_impersonate_path(u.slug),
+                              method: :post,
+                              class: "btn btn-outline btn-sm",
+                              form_class: "inline-block",
+                              data: { turbo_confirm: "Act as #{u.display_name}? You'll browse the app as this user until you return." } %>
+              <% else %>
+                <span class="text-muted">—</span>
+              <% end %>
+            </td>
           </tr>
         <% end %>
         <% if @users.empty? %>
-          <tr><td colspan="8" class="px-4 py-10 text-center text-muted">No users yet.</td></tr>
+          <tr><td colspan="9" class="px-4 py-10 text-center text-muted">No users yet.</td></tr>
         <% end %>
       </tbody>
     </table>

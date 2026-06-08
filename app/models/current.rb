@@ -9,7 +9,10 @@
 #   - `Current.outbound_source` — set by jobs/services that own a domain object
 #     (e.g. TokenPurchaseJob sets it to the StripePurchase being processed)
 class Current < ActiveSupport::CurrentAttributes
-  attribute :user, :outbound_source
+  # `:true_admin` — set by ApplicationController#set_current_context when an admin
+  # is impersonating (OPSEC-046). Lets OutboundRequestLogger stamp the REAL actor
+  # behind an impersonated Stripe/Solana call (acting_admin_id) for audit.
+  attribute :user, :outbound_source, :true_admin
 
   # Per-request memo for the on-chain VaultState read used by the admin
   # dropdown's "Vault Init" / "Vault State (PAUSED)" badges. Both badges

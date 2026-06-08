@@ -19,14 +19,27 @@
   <td class="px-3 py-3 text-right font-mono"><%= row[:unconsumed] %></td>
   <td class="px-3 py-3 text-right font-mono font-bold" style="<%= row[:owed] > 0 ? 'color: var(--color-cta);' : 'color: var(--color-text-muted);' %>"><%= row[:owed] %></td>
   <td class="px-4 py-3 text-right">
-    <% if row[:owed] > 0 %>
-      <%= button_to admin_mint_free_entries_path(user_slug: user.slug),
-                    class: "btn btn-success btn-sm",
-                    data: { turbo_confirm: "Mint #{row[:owed]} free #{'entry'.pluralize(row[:owed])} for #{user.display_name}?" } do %>
-        Mint <%= row[:owed] %>
+    <div class="inline-flex items-center justify-end gap-2">
+      <% if row[:owed] > 0 %>
+        <%= button_to admin_mint_free_entries_path(user_slug: user.slug),
+                      class: "btn btn-success btn-sm",
+                      form_class: "inline-block",
+                      data: { turbo_confirm: "Mint #{row[:owed]} free #{'entry'.pluralize(row[:owed])} for #{user.display_name}?" } do %>
+          Mint <%= row[:owed] %>
+        <% end %>
       <% end %>
-    <% else %>
-      <span class="text-muted text-xs">—</span>
-    <% end %>
+      <%# OPSEC-046: act-as entry point in the web2 console (the Lauren support
+          workflow). Non-admins only — admins can't be impersonated. %>
+      <% unless user.admin? %>
+        <%= button_to "Act as", admin_impersonate_path(user.slug),
+                      method: :post,
+                      class: "btn btn-outline btn-sm",
+                      form_class: "inline-block",
+                      data: { turbo_confirm: "Act as #{user.display_name}? You'll browse the app as this user until you return." } %>
+      <% end %>
+      <% if row[:owed] <= 0 && user.admin? %>
+        <span class="text-muted text-xs">—</span>
+      <% end %>
+    </div>
   </td>
 </tr>

@@ -25,24 +25,29 @@ module OutboundRequestLogger
               request_body: nil, response_body: nil,
               status_code: nil, duration_ms: nil,
               error_class: nil, error_message: nil,
-              source: nil, user: nil)
+              source: nil, user: nil, acting_admin: nil)
     # Fall back to request/job context if caller didn't pass explicit attribution.
     # See app/models/current.rb.
-    source ||= Current.outbound_source if defined?(Current)
-    user   ||= Current.user            if defined?(Current)
+    source       ||= Current.outbound_source if defined?(Current)
+    user         ||= Current.user            if defined?(Current)
+    # OPSEC-046: when an admin is impersonating, Current.true_admin is the real
+    # actor behind this call. Stamp it so the audit row points at the admin, not
+    # just the impersonated user.
+    acting_admin ||= Current.true_admin      if defined?(Current)
 
     OutboundRequest.create!(
-      service:        service,
-      method:         method&.to_s,
-      endpoint:       endpoint&.to_s,
-      request_body:   prepare_body(request_body),
-      response_body:  prepare_body(response_body),
-      status_code:    status_code,
-      duration_ms:    duration_ms,
-      error_class:    error_class,
-      error_message:  error_message&.to_s&.first(2000),
-      source:         source,
-      user:           user
+      service:         service,
+      method:          method&.to_s,
+      endpoint:        endpoint&.to_s,
+      request_body:    prepare_body(request_body),
+      response_body:   prepare_body(response_body),
+      status_code:     status_code,
+      duration_ms:     duration_ms,
+      error_class:     error_class,
+      error_message:   error_message&.to_s&.first(2000),
+      source:          source,
+      user:            user,
+      acting_admin_id: acting_admin&.id
     )
   rescue => e
     # Logger must never break the caller. Surface in dev logs so we can spot misconfig.
