@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# bin/deploy — ongoing Rails deploy to Heroku (multi-app aware).
+# bin/deploy — ongoing Rails deploy to Heroku (mainnet prod).
 #
-# Targets (app → git remote, resolved automatically):
-#   bin/deploy                       # turf-monster      (devnet prod)  → heroku
-#   bin/deploy turf-monster          # same, explicit
-#   bin/deploy turf-monster-mainnet  # mainnet prod      → heroku-mainnet (confirm)
+# Single target: turf-monster-mainnet (app.turfmonster.media) via the
+# heroku-mainnet git remote. (The old devnet-prod deploy target — the
+# turf-monster app on turf.mcritchie.studio — was decommissioned 2026-06;
+# mainnet is the only public prod app now. The devnet CLUSTER itself is still
+# very much alive — local dev, CI devnet-nightly, and Solana::Config's network
+# selection all still use it. This script just no longer DEPLOYS a second app.)
+#
+#   bin/deploy        # turf-monster-mainnet (real funds) → heroku-mainnet (confirm)
 #
 # What it does:
 #   1. Pre-flight (clean tree, branch, sync, network-keyed IDL pin, Stripe, tests)
-#   2. Confirm (mainnet requires explicit consent)
+#   2. Confirm (real-funds deploy requires explicit consent)
 #   3. IDL re-pin via allow-list widen→tighten if the bundled IDL bumped
 #      (EXPECTED_IDL_HASH accepts {old,new} across the release → no unverified window)
-#   4. Push to the CORRECT remote for the target app
+#   4. Push to the heroku-mainnet remote
 #   5. Smoke-check; roll back on failure
 #   Migrations run in Heroku's release phase (Procfile `release:`), NOT here.
 #
 # Flags / env:
 #   --skip-checks   bypass pre-flight (last-resort)
-#   --yes / -y      non-interactive consent (required for mainnet in CI/agent shells)
+#   --yes / -y      non-interactive consent (required in CI/agent shells)
 #   SKIP_TESTS=1    skip the local test run
 #
 # One-time mainnet FIRST deploy: follow MAINNET_LAUNCH.md (program deploy, vault
@@ -26,7 +30,6 @@
 set -euo pipefail
 
 # ── Args ─────────────────────────────────────────────────────────────────────
-APP="turf-monster"
 SKIP_CHECKS=0
 ASSUME_YES=0
 SHOW_HELP=0
@@ -36,21 +39,25 @@ for arg in "$@"; do
     --skip-checks) SKIP_CHECKS=1 ;;
     --yes|-y)      ASSUME_YES=1 ;;
     -*)            echo "unknown flag: $arg" >&2; exit 1 ;;
-    *)             APP="$arg" ;;
+    *)             echo "unexpected argument '$arg' — bin/deploy takes no positional args (single mainnet target). See --help." >&2; exit 1 ;;
   esac
 done
 
 if [ "$SHOW_HELP" = "1" ]; then
   cat <<'USAGE'
-bin/deploy — ongoing Rails deploy to Heroku (multi-app aware).
+bin/deploy — ongoing Rails deploy to Heroku (mainnet prod).
+
+Single target: turf-monster-mainnet (app.turfmonster.media) → heroku-mainnet remote.
+(The devnet-prod deploy target was decommissioned 2026-06; the devnet cluster
+itself — local dev, CI devnet-nightly, Solana::Config network selection — is
+unaffected.)
 
 Usage:
-  bin/deploy                       # turf-monster      (devnet prod)  → heroku
-  bin/deploy turf-monster-mainnet  # mainnet prod      → heroku-mainnet (confirm)
+  bin/deploy        # turf-monster-mainnet (real funds) → heroku-mainnet (confirm)
 
 Flags:
   --skip-checks   bypass pre-flight (last-resort)
-  --yes, -y       non-interactive consent (required for mainnet in CI/agent shells)
+  --yes, -y       non-interactive consent (required in CI/agent shells)
 
 Env:
   SKIP_TESTS=1    skip the local test run
@@ -69,27 +76,17 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 fail() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
 
-# ── Resolve target: app → remote (F0a) ───────────────────────────────────────
-HEROKU_APP="$APP"
-case "$HEROKU_APP" in
-  turf-monster)         REMOTE="heroku" ;;
-  turf-monster-mainnet) REMOTE="heroku-mainnet" ;;
-  *) fail "Unknown app '$HEROKU_APP'. Known: turf-monster (devnet), turf-monster-mainnet." ;;
-esac
+# ── Target (single mainnet app) ──────────────────────────────────────────────
+HEROKU_APP="turf-monster-mainnet"
+REMOTE="heroku-mainnet"
 
-# The remote MUST point at this app — otherwise we'd ship code to the wrong place
-# while gating/migrating the right one (the split-brain bug this rewrite fixes).
-REMOTE_URL=$(git remote get-url "$REMOTE" 2>/dev/null || echo "")
-# Accept HTTPS (…/app[.git]) and SSH (git@…:app[.git]) remote URLs; the app name
-# must be the final path segment so turf-monster can't match turf-monster-mainnet.
-case "$REMOTE_URL" in
-  *"/$HEROKU_APP.git"|*":$HEROKU_APP.git"|*"/$HEROKU_APP"|*":$HEROKU_APP") : ;;
-  "") fail "Git remote '$REMOTE' not found. Add it:  heroku git:remote -a $HEROKU_APP -r $REMOTE" ;;
-  *)  fail "Remote '$REMOTE' → '$REMOTE_URL', not $HEROKU_APP — refusing to push to the wrong app." ;;
-esac
+# Confirm the remote exists so we fail with a fixable hint, not a cryptic git
+# error. (There's no longer a remote↔app guard — with one prod app there's no
+# wrong app to ship code to.)
+git remote get-url "$REMOTE" >/dev/null 2>&1 \
+  || fail "Git remote '$REMOTE' not found. Add it:  heroku git:remote -a $HEROKU_APP -r $REMOTE"
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)   # computed BEFORE the skip-checks gate
-IS_MAINNET=0; [ "$HEROKU_APP" = "turf-monster-mainnet" ] && IS_MAINNET=1
 
 # Defined under set -u even when checks are skipped.
 LOCAL_HASH=""; REMOTE_HASHES=""; IDL_BUMP=0; IDL_FILE="config/turf_vault.idl.json"
@@ -117,6 +114,8 @@ if [ "$SKIP_CHECKS" != "1" ]; then
 
   # IDL pin — resolve the file by the TARGET's network (mirrors
   # Solana::Config::IDL_PATH), compare to the app's EXPECTED_IDL_HASH allow-list.
+  # The mainnet app runs SOLANA_NETWORK=mainnet-beta, so this resolves to the
+  # mainnet IDL; the devnet branch stays as a safe fallback (mirrors Config).
   NET=$(heroku config:get SOLANA_NETWORK --app "$HEROKU_APP" 2>/dev/null || echo "")
   if [ "$NET" = "mainnet-beta" ]; then
     IDL_FILE="config/turf_vault.mainnet.idl.json"
@@ -141,13 +140,10 @@ if [ "$SKIP_CHECKS" != "1" ]; then
   [ -z "$SKIP_IDL" ] || fail "SKIP_IDL_VERIFICATION is set on $HEROKU_APP (audit H4 refuses boot). Unset it first."
   ok "No SKIP_IDL_VERIFICATION override"
 
-  # Both prod apps (devnet-prod turf-monster + mainnet) process REAL Stripe
-  # money, so both require a live key. Only a future test/staging app skips this.
-  if [ "$HEROKU_APP" = "turf-monster" ] || [ "$IS_MAINNET" = "1" ]; then
-    STRIPE_KEY=$(heroku config:get STRIPE_SECRET_KEY --app "$HEROKU_APP" 2>/dev/null || echo "")
-    case "$STRIPE_KEY" in sk_test_*) fail "STRIPE_SECRET_KEY on $HEROKU_APP is test mode — must be sk_live_." ;; esac
-    ok "Stripe live mode"
-  fi
+  # The mainnet app processes REAL Stripe money, so it requires a live key.
+  STRIPE_KEY=$(heroku config:get STRIPE_SECRET_KEY --app "$HEROKU_APP" 2>/dev/null || echo "")
+  case "$STRIPE_KEY" in sk_test_*) fail "STRIPE_SECRET_KEY on $HEROKU_APP is test mode — must be sk_live_." ;; esac
+  ok "Stripe live mode"
 
   if [ "${SKIP_TESTS:-0}" != "1" ]; then
     bold "Running tests"
@@ -162,8 +158,8 @@ if [ "$SKIP_CHECKS" != "1" ]; then
   fi
 fi
 
-# ── Confirmation (mainnet) ───────────────────────────────────────────────────
-if [ "$IS_MAINNET" = "1" ] && [ "$ASSUME_YES" != "1" ]; then
+# ── Confirmation (real funds) ────────────────────────────────────────────────
+if [ "$ASSUME_YES" != "1" ]; then
   bold "⚠️  MAINNET deploy → $HEROKU_APP (real funds)."
   if [ -t 0 ]; then
     printf "  Type the app name to confirm: "
@@ -187,11 +183,11 @@ rollback_or_hint() {
     heroku config:set EXPECTED_IDL_HASH="${REMOTE_HASHES},${LOCAL_HASH}" --app "$HEROKU_APP" >/dev/null 2>&1 || true
     warn "Re-widened EXPECTED_IDL_HASH to {old,new} so a rollback boots; tighten to the correct hash after investigating."
   fi
-  if [ "$IS_MAINNET" = "1" ] && [ -n "$PREV_RELEASE" ]; then
+  if [ -n "$PREV_RELEASE" ]; then
     bold "Rolling back $HEROKU_APP to $PREV_RELEASE"
     heroku rollback "$PREV_RELEASE" --app "$HEROKU_APP" || warn "Auto-rollback failed — run: heroku rollback $PREV_RELEASE --app $HEROKU_APP"
   else
-    warn "Roll back with: heroku rollback ${PREV_RELEASE:-<prev>} --app $HEROKU_APP"
+    warn "Roll back with: heroku rollback <prev> --app $HEROKU_APP"
   fi
 }
 

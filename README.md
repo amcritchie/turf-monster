@@ -2,7 +2,7 @@
 
 Sports pick'em game for the FIFA World Cup 2026. Players select 5 team matchups with multipliers per entry, scored by actual goals. Features Solana blockchain integration for contest escrow and prize distribution.
 
-**Live**: https://turf.mcritchie.studio
+**Live**: https://app.turfmonster.media
 
 Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritchie/mcritchie-studio) (the SSO hub + flagship of the 5-repo ecosystem).
 
@@ -76,11 +76,12 @@ npm run test:headed             # with visible browser
 ## Deploy
 
 ```bash
-git push heroku main
-heroku run bin/rails db:migrate --app turf-monster
+bin/deploy   # single mainnet target → turf-monster-mainnet (real funds, confirms)
 ```
 
-Platform: Heroku (heroku-24 stack). Required env vars: `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+Migrations run in Heroku's release phase (Procfile `release:`), not the deploy
+script. See CLAUDE.md → Deployment and `MAINNET_LAUNCH.md` (one-time first
+deploy). Platform: Heroku (heroku-24 stack). Required env vars: `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 
 ## Solana Integration
 
