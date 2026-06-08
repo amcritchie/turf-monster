@@ -91,6 +91,10 @@
 
       <div class="border-t border-subtle my-1"></div>
       <div class="<%= header_class %>">Admin</div>
+      <%# Admin Dashboard — settings home (default og image, etc.). Static path
+          (like Jobs below) so the navbar never depends on a route helper; the
+          page itself ships in a separate PR. %>
+      <%= link_to "Dashboard", "/admin/dashboard", class: link_class %>
       <% if Admin::VaultInitController.vault_uninitialized? %>
         <%= link_to admin_vault_init_path, class: link_class do %>
           Vault Init
