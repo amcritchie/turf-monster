@@ -11,7 +11,6 @@
     swap on hover (see emoji_swap). %>
 <% link_class   = "group block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition font-medium" %>
 <% muted_class  = "group block px-4 py-2 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
-<% header_class = "label-upper font-bold px-4 py-1" %>
 
 <%# Fixed-width emoji gutter that swaps `base` → `hover` when its row is hovered. %>
 <% emoji_swap = ->(base, hover) {
@@ -39,28 +38,28 @@
         Refresh Wallet. Each leads with an emoji in a fixed-width gutter so the
         labels stay column-aligned. Admins get the admin section appended below
         (admin links stay text-only). %>
-    <%# Next quest — dynamic pointer to the user's next step in the flow. username
-        + newsletter open their modals (same as /account); join, send-message +
-        invite link to the contest. Invite is ongoing, so it stays once reached. %>
+    <%= link_to account_path, class: link_class do %><%= emoji_swap.("🙂", "✏️") %>My Profile<% end %>
+    <%= link_to my_contests_path, class: link_class do %><%= emoji_swap.("🏆", "⚔️") %>My Contests<% end %>
+    <%# Next quest — dynamic pointer to the user's next step in the flow, sits
+        under My Contests. username + newsletter open their modals (same as
+        /account); join, send-message + invite link to the contest. Invite is
+        ongoing, so it stays once reached. %>
     <% nq = current_user.respond_to?(:next_quest) ? current_user.next_quest : nil %>
     <% if nq %>
       <% quest_contest_path = SeasonConfig.main_contest ? contest_path(SeasonConfig.main_contest) : contests_path %>
       <% case nq
          when :join %>
-        <%= link_to quest_contest_path, class: link_class do %><%= emoji_swap.("🎯", "▶️") %>Next: Join a contest<% end %>
+        <%= link_to quest_contest_path, class: link_class do %><%= emoji_swap.("⚽️", "⚔️") %>Join contest<% end %>
       <% when :username %>
-        <button type="button" @click="open = false; $store.modals.open('username')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("✨", "✏️") %>Next: Change username</button>
+        <button type="button" @click="open = false; $store.modals.open('username')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("🤖", "✨") %>Pick a username</button>
       <% when :chat %>
-        <%= link_to quest_contest_path, class: link_class do %><%= emoji_swap.("💬", "✍️") %>Next: Send a message<% end %>
+        <%= link_to quest_contest_path, class: link_class do %><%= emoji_swap.("💬", "👋🏻") %>Send a message<% end %>
       <% when :newsletter %>
-        <button type="button" @click="open = false; $store.modals.open('newsletter-subscribe')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("📬", "✅") %>Next: Join the newsletter</button>
+        <button type="button" @click="open = false; $store.modals.open('newsletter-subscribe')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("📭", "📬") %>Join newsletter</button>
       <% when :invite %>
-        <%= link_to quest_contest_path, class: link_class do %><%= emoji_swap.("🤝", "🎁") %>Next: Invite friends<% end %>
+        <%= link_to quest_contest_path, class: link_class do %><%= emoji_swap.("🤝", "🎁") %>Invite a friend<% end %>
       <% end %>
-      <div class="border-t border-subtle my-1"></div>
     <% end %>
-    <%= link_to account_path, class: link_class do %><%= emoji_swap.("🙂", "✏️") %>My Profile<% end %>
-    <%= link_to my_contests_path, class: link_class do %><%= emoji_swap.("🏆", "⚔️") %>My Contests<% end %>
     <%= link_to help_how_to_play_path, class: link_class do %><%= emoji_swap.("🎮", "🤔") %>How to Play<% end %>
     <%= link_to proof_of_reserves_path, class: link_class do %><%= emoji_swap.("🪎", "🏦") %>Proof of Reserves<% end %>
     <%# Refresh Wallet — runs the standard wallet data resync (USDC + tokens +
@@ -72,43 +71,13 @@
 
     <% if current_user.admin? %>
       <%# === Admin section — appended to the user menu for admins ===
-          (curated shortlist of admin/hub.html.erb). %>
+          A deliberately tiny shortlist (Dashboard / Contests / Users / Landing
+          Pages); everything else lives on the Link Hub. %>
       <div class="border-t border-subtle my-1"></div>
-      <%= link_to "Contests", contests_path, class: link_class %>
-      <%= link_to "Seasons", admin_seasons_path, class: link_class %>
-
-      <div class="border-t border-subtle my-1"></div>
-      <div class="<%= header_class %>">FIFA</div>
-      <% active_slate = Slate.joins(:slate_matchups).distinct.order(created_at: :desc).first %>
-      <% if active_slate %>
-        <%= link_to "Slate Simulator", manage_admin_slate_path(active_slate), class: link_class %>
-      <% end %>
-      <%= link_to "Slate Formula", slates_path, class: link_class %>
-      <% featured_landing_page = LandingPage.active.order(updated_at: :desc).first %>
-      <% if featured_landing_page %>
-        <%= link_to "Landing Page", landing_page_path(featured_landing_page), class: link_class %>
-      <% end %>
-
-      <div class="border-t border-subtle my-1"></div>
-      <div class="<%= header_class %>">Admin</div>
       <%= link_to "Dashboard", admin_dashboard_path, class: link_class %>
-      <% if Admin::VaultInitController.vault_uninitialized? %>
-        <%= link_to admin_vault_init_path, class: link_class do %>
-          Vault Init
-          <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-400 text-black align-middle">!</span>
-        <% end %>
-      <% else %>
-        <%= link_to admin_vault_state_path, class: link_class do %>
-          Vault State
-          <% if Admin::VaultStateController.vault_paused? %>
-            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500 text-white align-middle">🚨 PAUSED</span>
-          <% end %>
-        <% end %>
-      <% end %>
+      <%= link_to "Contests", contests_path, class: link_class %>
+      <%= link_to "Users", admin_users_path, class: link_class %>
       <%= link_to "Landing Pages", admin_landing_pages_path, class: link_class %>
-      <%= link_to "Geo Settings", admin_geo_path, class: link_class %>
-      <%= link_to "Error Logs", error_logs_path, class: link_class %>
-      <%= link_to "Jobs", "/admin/jobs", class: link_class %>
 
       <div class="border-t border-subtle my-1"></div>
       <%= link_to "Link Hub", admin_hub_path, class: muted_class %>
