@@ -42,27 +42,9 @@
         (clears the Chrome deprecation warning). Both are intentionally kept. %>
     <meta name="mobile-web-app-capable" content="yes">
 
-    <%# Open Graph (Facebook / iMessage / Discord / Slack unfurls). %>
-    <meta property="og:site_name" content="Turf Totals">
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="<%= page_title %>">
-    <meta property="og:description" content="<%= meta_description %>">
-    <meta property="og:url" content="<%= request.original_url %>">
-    <meta property="og:image" content="<%= resolved_og_image %>">
-    <%# Explicit dimensions let unfurlers reserve the 1.91:1 card without
-        fetching the image first. Only emitted for the default landscape og.png
-        — a page-level override or an uploaded image may be a different size. %>
-    <% if og_image_is_default %>
-      <meta property="og:image:width" content="1200">
-      <meta property="og:image:height" content="630">
-      <meta property="og:image:type" content="image/png">
-    <% end %>
-
-    <%# Twitter / X card. summary_large_image matches the 1.91:1 og.png. %>
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="<%= page_title %>">
-    <meta name="twitter:description" content="<%= meta_description %>">
-    <meta name="twitter:image" content="<%= resolved_og_image %>">
+    <%# Open Graph + Twitter unfurl tags (shared with the landing layout). %>
+    <%= render "layouts/link_preview_meta", title: page_title, description: meta_description,
+          image: resolved_og_image, image_default: og_image_is_default %>
 
     <%# SRI-pinned (audit H2): exact versions + integrity so a poisoned CDN/package
         can't swap the signing-path crypto. web3.js @1 currently resolves to 1.98.4;
