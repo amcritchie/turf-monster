@@ -791,6 +791,9 @@
       })();
     </script>
     <%= render "layouts/studio/flash" %>
+    <%# OPSEC-046: sticky "Acting as …" bar above the navbar while an admin is
+        impersonating a user. SSR + JS-free so the return button always works. %>
+    <%= render "shared/impersonation_banner" if impersonating? %>
     <%= render "layouts/navbar" %>
 
     <div class="max-w-7xl mx-auto px-4">

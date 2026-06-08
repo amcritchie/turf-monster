@@ -4,11 +4,16 @@
 #
 # Immutable: created once per call, never updated. The retention sweeper job
 # trims the table on a schedule (90d for success, 180d for errors).
+#
+# `acting_admin` (OPSEC-046) is the real admin behind an impersonated session —
+# stamped from Current.true_admin by OutboundRequestLogger#record! so a Stripe /
+# Solana call made while "acting as" a user attributes back to the admin too.
 class OutboundRequest < ApplicationRecord
   self.record_timestamps = false # we manage created_at manually, no updated_at
 
   belongs_to :source, polymorphic: true, optional: true
   belongs_to :user,                       optional: true
+  belongs_to :acting_admin, class_name: "User", optional: true
 
   SERVICES = %w[stripe solana_rpc moonpay].freeze
 

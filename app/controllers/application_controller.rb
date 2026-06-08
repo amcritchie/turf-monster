@@ -10,7 +10,7 @@ class ApplicationController < ActionController::Base
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload
+  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
   # session_token in the cookie. The verify_session_token before_action
@@ -26,6 +26,12 @@ class ApplicationController < ActionController::Base
     # #enter demand a wallet signature). SolanaSessionsController#verify calls
     # set_app_session and then re-grants the flag for genuine wallet auth.
     session.delete(:onchain)
+    # OPSEC-046: a fresh login must never inherit a prior impersonation — e.g. a
+    # second admin re-authing (OAuth/wallet, which don't reset_session) over a
+    # live impersonation on a shared browser. Logout already clears these.
+    session.delete(:impersonated_user_id)
+    session.delete(:true_admin_id)
+    session.delete(:impersonation_started_at)
   end
 
   # Clear the onchain flag on logout too, alongside the engine's session wipe.
@@ -54,6 +60,52 @@ class ApplicationController < ActionController::Base
   end
 
   private
+
+  # ── Admin impersonation (OPSEC-046) ────────────────────────────────────────
+  # An admin can "act as" a non-admin user for support / migration / a prod
+  # smoke test. The admin's REAL session (Studio.session_key + :session_token)
+  # is left untouched; only current_user resolution is layered on top. See
+  # Admin::ImpersonationsController + the _impersonation_banner partial.
+  # Truly functional ONLY for web2/managed users (the server signs with their
+  # managed key); web3/Phantom targets are debug/read-only — no key to borrow.
+  IMPERSONATION_MAX_MINUTES = 30
+
+  # The real session owner — always the logged-in admin, never the impersonated
+  # user. The OPSEC-045 token check + the admin gate bind to THIS.
+  def true_user
+    return @true_user if defined?(@true_user)
+    @true_user = User.find_by(id: session[Studio.session_key])
+  end
+
+  # Overrides Studio::ErrorHandling#current_user: resolves to the impersonated
+  # target while impersonating, else the true admin.
+  def current_user
+    return @current_user if defined?(@current_user)
+    @current_user = impersonating? ? User.find_by(id: session[:impersonated_user_id]) : true_user
+  end
+
+  # Active only when a target is set, the real user is an admin, the target
+  # exists + is NOT an admin + isn't the admin themselves, and the window
+  # hasn't expired. Any failed guard transparently falls back to the admin.
+  def impersonating?
+    return @impersonating if defined?(@impersonating)
+    @impersonating = compute_impersonating?
+  end
+
+  def compute_impersonating?
+    imp = session[:impersonated_user_id]
+    return false if imp.blank?
+    return false unless true_user&.admin?
+
+    # Fail closed: a blank/unparseable start time = expired, not "never expires".
+    started = session[:impersonation_started_at]
+    return false if started.blank? || Time.zone.parse(started.to_s) < IMPERSONATION_MAX_MINUTES.minutes.ago
+
+    target = User.find_by(id: imp)
+    target.present? && !target.admin? && target.id != true_user.id
+  rescue
+    false
+  end
 
   # Bounce an already-authenticated viewer away from the auth-entry GET pages
   # (the /login + /signup form renders). A logged-in user landing on "Sign in
@@ -85,6 +137,10 @@ class ApplicationController < ActionController::Base
   # attribute Stripe / Solana calls back to the user without param threading.
   def set_current_context
     Current.user = current_user if logged_in?
+    # OPSEC-046: real actor behind an impersonated session. Request-scoped, so
+    # outbound calls in a background job spawned mid-impersonation won't carry it
+    # (the in-request fund-touch — contest entry — is stamped; jobs are not).
+    Current.true_admin = true_user if impersonating?
   rescue
     nil # context is best-effort; never break the request path
   end
@@ -102,16 +158,21 @@ class ApplicationController < ActionController::Base
   end
 
   # OPSEC-045: enforces session-token binding. Runs early so a stale session
-  # gets cleared before any downstream code reads current_user.
+  # gets cleared before any downstream code reads current_user. Binds to
+  # true_user (the real session owner), NOT current_user — admin impersonation
+  # leaves the admin's cookie token in place while current_user resolves to the
+  # target, so checking the target's token here would force-logout every request.
   def verify_session_token
-    return unless logged_in?
-    user_token   = current_user.session_token
+    return unless true_user
+    user_token   = true_user.session_token
     cookie_token = session[:session_token]
 
     return if user_token.present? && user_token == cookie_token
 
-    Rails.logger.info("[opsec-045] session_token mismatch user_id=#{current_user.id} — forcing re-login")
+    Rails.logger.info("[opsec-045] session_token mismatch user_id=#{true_user.id} — forcing re-login")
     @current_user = nil
+    @true_user = nil
+    @impersonating = false
     clear_app_session
     respond_to do |format|
       format.html { redirect_to signin_path, alert: "Your session expired. Please sign in again." }
@@ -120,8 +181,12 @@ class ApplicationController < ActionController::Base
   end
 
   # True when the current session was authenticated via Solana wallet signature
-  # (not email/password). Set by SolanaSessionsController#verify.
+  # (not email/password). Set by SolanaSessionsController#verify. Forced false
+  # while impersonating (OPSEC-046): an admin can't produce the target's Phantom
+  # signature, and this stops the admin's real :onchain flag from leaking into
+  # the impersonated view — forcing the web2/managed server-sign path for entries.
   def onchain_session?
+    return false if impersonating?
     session[:onchain] == true
   end
 

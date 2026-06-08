@@ -13,6 +13,15 @@ class AccountsController < ApplicationController
   skip_before_action :require_authentication, only: [:session_state, :confirm_email_change, :apply_email_change]
   skip_before_action :require_profile_completion, only: [:show, :complete_profile, :save_profile, :session_state]
 
+  # OPSEC-046 (Avi HIGH-2): an impersonating admin must NOT mutate the target's
+  # identity / auth bindings — setting a first email, linking a wallet, changing
+  # the username — because that creates PERSISTENT access that survives "Return"
+  # and never appears in the ImpersonationLog. Entering contests (the intended
+  # use) is unaffected. Wallet withdraw + key-export are blocked in their own
+  # controllers; this covers the account-identity surface.
+  before_action :block_account_mutation_while_impersonating,
+                only: %i[update link_solana unlink_google set_inviter update_username confirm_username]
+
   def show
     @user = current_user
     # All on-chain data (@wallet_balances, @user_seeds, the User's
@@ -376,6 +385,9 @@ class AccountsController < ApplicationController
   # (magic-link / Google) managed users out of self-custody. The verified-email
   # requirement above is the standing re-auth factor.
   def initiate_wallet_export
+    # OPSEC-046: never let an impersonating admin export a user's private key.
+    # Hard stop before any token mint / email send — defense in depth.
+    return redirect_to account_path, alert: "Wallet export is disabled while acting as another user." if impersonating?
     return render_export_error(:forbidden, "Self-custody export is only available for managed-wallet accounts.") unless current_user.managed_wallet?
     return render_export_error(:forbidden, "Wallet is already self-custodied.") if current_user.self_custodied?
     return render_export_error(:unprocessable_entity, "Add and verify an email address before exporting your wallet.") if current_user.email.blank? || current_user.email_verified_at.blank?
@@ -428,6 +440,17 @@ class AccountsController < ApplicationController
     raise "Unknown account" unless user
     raise "This email-change link is no longer valid" unless user.email.to_s.downcase == payload[:current_email].to_s.downcase
     payload
+  end
+
+  # OPSEC-046 (Avi HIGH-2): block identity/auth-binding mutations while an admin
+  # is impersonating. JSON → 403; HTML → bounce to the account page.
+  def block_account_mutation_while_impersonating
+    return unless impersonating?
+
+    respond_to do |format|
+      format.json { render json: { error: "Account changes are disabled while acting as another user." }, status: :forbidden }
+      format.any  { redirect_to account_path, alert: "Account changes are disabled while acting as another user." }
+    end
   end
 
 

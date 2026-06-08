@@ -304,6 +304,11 @@ Rails.application.routes.draw do
     # User browser — refer chain, invitees count, audit columns. Read-only.
     resources :users, only: [:index]
 
+    # OPSEC-046: admin "act as user" impersonation. POST enters (target by
+    # slug), DELETE returns to the admin account. See Admin::ImpersonationsController.
+    post   "impersonations/:user_slug", to: "impersonations#create",  as: :impersonate
+    delete "impersonations",            to: "impersonations#destroy", as: :stop_impersonating
+
     # Site-wide singleton config — currently just the main_contest pointer,
     # but the page is the canonical home for any future global setting that
     # doesn't fit on a per-record edit form.

@@ -32,6 +32,32 @@ class SessionsController < ApplicationController
   end
 
   def destroy
+    # OPSEC-046: if an admin logs out WHILE impersonating (instead of clicking
+    # "Return"), record the exit (reason: logout) and drop the impersonation
+    # keys here, before the real-session wipe below. Captured first so true_user
+    # / current_user still resolve. Plain begin/rescue (not rescue_and_log) for
+    # the same reason the cart clear is — an audit hiccup must never strand a
+    # user half-logged-out.
+    if impersonating?
+      begin
+        ImpersonationLog.create!(
+          action:      :exit,
+          admin:       User.find_by(id: session[:true_admin_id]),
+          target_user: current_user,
+          reason:      "logout",
+          ip:          request.remote_ip,
+          user_agent:  request.user_agent
+        )
+      rescue => e
+        Rails.logger.warn("[logout] impersonation exit log failed: #{e.message}")
+      end
+    end
+    # Always drop the impersonation keys on logout — even if expired/inert — so
+    # they can never linger in the cookie across a re-login (Avi NIT-2).
+    session.delete(:impersonated_user_id)
+    session.delete(:true_admin_id)
+    session.delete(:impersonation_started_at)
+
     # Drop the user's in-progress cart so logging out leaves no stale picks
     # behind (the board's localStorage copy is cleared client-side on the
     # logout link too). Rescued so a cart-destroy hiccup can't 500 the logout.

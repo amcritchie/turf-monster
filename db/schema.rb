@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_06_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -180,6 +180,17 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_06_120000) do
     t.index ["s3_key"], name: "index_image_caches_on_s3_key", unique: true
   end
 
+  create_table "impersonation_logs", force: :cascade do |t|
+    t.integer "admin_id", null: false
+    t.integer "target_user_id", null: false
+    t.integer "action", default: 0, null: false
+    t.string "ip"
+    t.string "user_agent"
+    t.string "reason"
+    t.datetime "created_at", null: false
+    t.index ["admin_id", "created_at"], name: "index_impersonation_logs_on_admin_id_and_created_at"
+  end
+
   create_table "landing_pages", force: :cascade do |t|
     t.string "name", null: false
     t.string "slug"
@@ -237,6 +248,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_06_120000) do
     t.bigint "source_id"
     t.bigint "user_id"
     t.datetime "created_at", null: false
+    t.integer "acting_admin_id"
+    t.index ["acting_admin_id"], name: "index_outbound_requests_on_acting_admin_id", where: "(acting_admin_id IS NOT NULL)"
     t.index ["created_at"], name: "index_outbound_requests_on_created_at"
     t.index ["error_class"], name: "index_outbound_requests_on_error_class", where: "(error_class IS NOT NULL)"
     t.index ["service", "created_at"], name: "index_outbound_requests_on_service_and_created_at"

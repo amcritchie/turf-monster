@@ -56,6 +56,11 @@ class WalletsController < ApplicationController
   end
 
   def withdraw
+    # OPSEC-046: an impersonating admin must never move a user's funds. Hard
+    # stop, even though the impersonated session is web2 (no Phantom signature)
+    # and couldn't complete a self-custodied withdraw anyway — defense in depth.
+    return redirect_to account_path, alert: "Withdrawals are disabled while acting as another user." if impersonating?
+
     amount_dollars   = params[:amount].to_f
     destination_info = params[:destination_info].to_s.strip
     return redirect_to wallet_path, alert: "Invalid amount" if amount_dollars <= 0
