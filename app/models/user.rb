@@ -43,6 +43,13 @@ class User < ApplicationRecord
          .where("users.left_email_list_at IS NULL OR users.left_email_list_at < users.joined_email_list_at")
   }
 
+  # Most-recently-active first (admin dashboard). last_seen_at is touched
+  # throttled per authenticated request (ApplicationController#touch_last_seen);
+  # users never seen since the column was added sort last.
+  scope :by_recent_session, -> {
+    order(Arel.sql("users.last_seen_at DESC NULLS LAST, users.created_at DESC"))
+  }
+
   # --- Class methods ---
 
   # Single source of email validity — shared by the model validation

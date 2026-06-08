@@ -1,123 +1,192 @@
 <% content_for(:title, "Dashboard — Admin") %>
 
-<div class="max-w-2xl mx-auto py-8 px-4 space-y-8">
+<div class="max-w-5xl mx-auto py-8 px-4 space-y-8">
   <div>
     <h1 class="text-heading text-2xl font-bold mb-1">Dashboard</h1>
-    <p class="text-muted text-sm">
-      Site-wide singleton settings. Currently: the <strong>main contest</strong> —
-      the default contest the app links to when it doesn&rsquo;t otherwise know
-      which contest to use (root <code class="text-xs bg-inset px-1 rounded">/</code> redirect,
-      <code class="text-xs bg-inset px-1 rounded">/account</code> share widget,
-      <code class="text-xs bg-inset px-1 rounded">/faucet</code> CTA).
-    </p>
+    <p class="text-muted text-sm">Admin home — recent activity, session replay, and site-wide settings.</p>
   </div>
 
-  <div class="card p-6 space-y-5">
-    <h2 class="text-heading text-lg font-semibold">Main Contest</h2>
+  <%# ── Top row: Users + LogRocket ─────────────────────────────────────── %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
-    <%# Current-state callout — explicit pick vs. resolved fallback. %>
-    <div class="bg-inset rounded-lg p-4 text-sm space-y-2">
-      <div class="flex items-baseline justify-between gap-3">
-        <span class="text-muted">Admin-set:</span>
-        <span class="font-mono text-heading">
-          <%= @explicit_main ? @explicit_main.name : "— none —" %>
-          <% if @explicit_main && !@explicit_main.open? %>
-            <span class="text-[10px] uppercase font-bold ml-1 px-1.5 py-0.5 rounded bg-warning-500/20 text-warning border border-warning-500/40">
-              <%= @explicit_main.status %>
-            </span>
+    <%# Users — most recently active first; the interesting ones just did
+        something. Shows 5, reveals the rest (loaded up to 25) via Show more. %>
+    <div class="card p-6" x-data="{ expanded: false }">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-heading text-lg font-semibold">Users</h2>
+        <span class="text-xs text-muted"><%= User.count %> total</span>
+      </div>
+
+      <% if @recent_users.any? %>
+        <ul class="divide-y divide-subtle">
+          <% @recent_users.each_with_index do |u, i| %>
+            <li <%== 'x-show="expanded" x-cloak ' if i >= 5 %>class="flex items-center gap-3 py-2.5">
+              <%= render "components/avatar", user: u, size: "nav" %>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-heading truncate">
+                  <%= u.display_name %>
+                  <% if u.admin? %><span class="text-[10px] uppercase font-bold ml-1 px-1 py-0.5 rounded bg-primary/15 text-primary align-middle">admin</span><% end %>
+                </p>
+                <p class="text-xs text-muted truncate">
+                  <%= u.last_seen_at ? "active #{time_ago_in_words(u.last_seen_at)} ago" : "no recent session" %>
+                </p>
+              </div>
+              <%= link_to logrocket_user_url(u), target: "_blank", rel: "noopener",
+                    class: "text-secondary hover:text-primary transition shrink-0 p-1",
+                    title: "#{u.display_name}'s sessions in LogRocket" do %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                </svg>
+              <% end %>
+            </li>
           <% end %>
-        </span>
-      </div>
-      <div class="flex items-baseline justify-between gap-3">
-        <span class="text-muted">Resolved (what the app uses):</span>
-        <span class="font-mono text-heading">
-          <% if @resolved_main %>
-            <%= link_to @resolved_main.name, contest_path(@resolved_main),
-                  class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
-          <% else %>
-            — no open contests —
-          <% end %>
-        </span>
-      </div>
-      <p class="text-xs text-muted pt-1">
-        Resolved falls back to the most recent open contest when no explicit
-        pick is set or when the pick has locked/settled.
-      </p>
-    </div>
+        </ul>
 
-    <%= form_with url: admin_dashboard_path, method: :patch, html: { class: "space-y-4" } do |f| %>
-      <div>
-        <label for="main_contest_id" class="block text-sm text-secondary mb-2 font-medium">
-          Pick a contest (open + locked only)
-        </label>
-        <%= select_tag :main_contest_id,
-              options_for_select(
-                [["— none (auto-fallback) —", ""]] +
-                @selectable_contests.map { |c| ["#{c.name} (#{c.status})", c.id] },
-                @explicit_main&.id
-              ),
-              id: "main_contest_id",
-              class: "input-field" %>
-      </div>
-
-      <button type="submit" class="btn btn-primary">Save</button>
-    <% end %>
-
-    <% if @selectable_contests.empty? %>
-      <p class="text-xs text-muted">
-        No open or locked contests exist yet — create one at
-        <%= link_to "/contests/new", new_contest_path, class: "text-primary hover:underline" %>.
-      </p>
-    <% end %>
-  </div>
-
-  <%# -- Link Preview (og:image) defaults -- %>
-  <%# Cropper.js + the crop-photo modal (registered in the application layout)
-      back the immediate image save below. %>
-  <%= render "studio/cropper_assets" %>
-  <div class="card p-6 space-y-5">
-    <div>
-      <h2 class="text-heading text-lg font-semibold">Link Preview Defaults</h2>
-      <p class="text-muted text-sm mt-1">
-        The image, title, and description shown when a turfmonster.media link is
-        shared in iMessage, Discord, Slack, or X. Used site-wide unless a page
-        sets its own. Falls back to the built-in <code class="text-xs bg-inset px-1 rounded">/og.png</code>
-        when no image is uploaded.
-      </p>
-    </div>
-
-    <%# Default og image — immediate crop save (its OWN multipart form; HTML
-        can't nest it inside the text form below). aspectRatio 1200/630. %>
-    <div x-data="imageUploadHost({ aspectRatio: <%= 1200.0 / 630 %>, maxWidth: 1200, filename: 'og-image.png', saving: 'Saving image…', success: 'Image updated', successMessage: 'Your new link-preview image is live.', failure: 'Couldn\'t save the image' })"
-         @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
-      <label class="block text-sm text-secondary mb-2 font-medium">Default image (1200&times;630)</label>
-      <%= render "admin/dashboard/og_image_preview", site_setting: @site_setting %>
-      <button type="button" @click="open()" class="btn btn-outline btn-sm mt-2 inline-flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-        </svg>
-        Edit image
-      </button>
-      <%= form_with url: admin_dashboard_link_preview_image_path, method: :patch,
-            html: { multipart: true, id: "og-image-form", "x-ref": "form" } do %>
-        <%= file_field_tag "site_setting[default_og_image]", class: "hidden", "x-ref": "fileInput" %>
+        <% if @recent_users.size > 5 %>
+          <button type="button" @click="expanded = !expanded" class="mt-3 text-sm text-primary hover:underline">
+            <span x-show="!expanded">Show more (<%= @recent_users.size - 5 %>)</span>
+            <span x-show="expanded" x-cloak>Show less</span>
+          </button>
+        <% end %>
+      <% else %>
+        <p class="text-sm text-muted">No users yet.</p>
       <% end %>
     </div>
 
-    <%= form_with url: admin_dashboard_link_preview_path, method: :patch, html: { class: "space-y-4" } do |f| %>
-      <div>
-        <label for="default_og_title" class="block text-sm text-secondary mb-2 font-medium">Default title</label>
-        <%= text_field_tag "site_setting[default_og_title]", @site_setting.default_og_title,
-              id: "default_og_title", class: "input-field",
-              placeholder: "Turf Totals — Solana Pick’em Contests" %>
+    <%# LogRocket — we surface our own user data (left) and link out to LogRocket
+        for the actual session replays + errors. Users are identify()'d by slug,
+        so the per-user links above deep-link straight to their sessions. %>
+    <div class="card p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-heading text-lg font-semibold">LogRocket</h2>
+        <span class="text-xs text-muted">session replay</span>
       </div>
-      <div>
-        <label for="default_og_description" class="block text-sm text-secondary mb-2 font-medium">Default description</label>
-        <%= text_area_tag "site_setting[default_og_description]", @site_setting.default_og_description,
-              id: "default_og_description", rows: 3, class: "input-field",
-              placeholder: "Solana-powered World Cup pick’em contests…" %>
+      <p class="text-muted text-sm mb-4">
+        Watch real user sessions and reproduce bugs. Click a user to jump to their
+        sessions, or open the full project below.
+      </p>
+      <%= link_to logrocket_sessions_url, target: "_blank", rel: "noopener",
+            class: "btn btn-outline btn-sm w-full justify-center inline-flex items-center gap-2" do %>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
+        </svg>
+        Open sessions
+      <% end %>
+      <p class="text-[11px] text-muted mt-3">Project: <code class="bg-inset px-1 rounded"><%= ApplicationHelper::LOGROCKET_APP_PATH %></code></p>
+    </div>
+  </div>
+
+  <%# ── Settings row: Main Contest + Link Preview defaults ──────────────── %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+
+    <div class="card p-6 space-y-5">
+      <h2 class="text-heading text-lg font-semibold">Main Contest</h2>
+      <p class="text-muted text-xs -mt-3">
+        The default contest the app links to (root <code class="text-xs bg-inset px-1 rounded">/</code>,
+        <code class="text-xs bg-inset px-1 rounded">/account</code> share, <code class="text-xs bg-inset px-1 rounded">/faucet</code> CTA).
+      </p>
+
+      <div class="bg-inset rounded-lg p-4 text-sm space-y-2">
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-muted">Admin-set:</span>
+          <span class="font-mono text-heading">
+            <%= @explicit_main ? @explicit_main.name : "— none —" %>
+            <% if @explicit_main && !@explicit_main.open? %>
+              <span class="text-[10px] uppercase font-bold ml-1 px-1.5 py-0.5 rounded bg-warning-500/20 text-warning border border-warning-500/40">
+                <%= @explicit_main.status %>
+              </span>
+            <% end %>
+          </span>
+        </div>
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-muted">Resolved (what the app uses):</span>
+          <span class="font-mono text-heading">
+            <% if @resolved_main %>
+              <%= link_to @resolved_main.name, contest_path(@resolved_main),
+                    class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
+            <% else %>
+              — no open contests —
+            <% end %>
+          </span>
+        </div>
+        <p class="text-xs text-muted pt-1">
+          Resolved falls back to the most recent open contest when no explicit
+          pick is set or when the pick has locked/settled.
+        </p>
       </div>
-      <button type="submit" class="btn btn-primary">Save text</button>
-    <% end %>
+
+      <%= form_with url: admin_dashboard_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+        <div>
+          <label for="main_contest_id" class="block text-sm text-secondary mb-2 font-medium">
+            Pick a contest (open + locked only)
+          </label>
+          <%= select_tag :main_contest_id,
+                options_for_select(
+                  [["— none (auto-fallback) —", ""]] +
+                  @selectable_contests.map { |c| ["#{c.name} (#{c.status})", c.id] },
+                  @explicit_main&.id
+                ),
+                id: "main_contest_id",
+                class: "input-field" %>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+      <% end %>
+
+      <% if @selectable_contests.empty? %>
+        <p class="text-xs text-muted">
+          No open or locked contests exist yet — create one at
+          <%= link_to "/contests/new", new_contest_path, class: "text-primary hover:underline" %>.
+        </p>
+      <% end %>
+    </div>
+
+    <%# Link Preview (og:image) defaults. Cropper.js + the crop-photo modal
+        (registered in the application layout) back the immediate image save. %>
+    <div>
+      <%= render "studio/cropper_assets" %>
+      <div class="card p-6 space-y-5">
+        <div>
+          <h2 class="text-heading text-lg font-semibold">Link Preview Defaults</h2>
+          <p class="text-muted text-sm mt-1">
+            The image, title, and description shown when a turfmonster.media link is
+            shared in iMessage, Discord, Slack, or X. Used site-wide unless a page
+            sets its own. Falls back to the built-in <code class="text-xs bg-inset px-1 rounded">/og.png</code>
+            when no image is uploaded.
+          </p>
+        </div>
+
+        <div x-data="imageUploadHost({ aspectRatio: <%= 1200.0 / 630 %>, maxWidth: 1200, filename: 'og-image.png', saving: 'Saving image…', success: 'Image updated', successMessage: 'Your new link-preview image is live.', failure: 'Couldn\'t save the image' })"
+             @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
+          <label class="block text-sm text-secondary mb-2 font-medium">Default image (1200&times;630)</label>
+          <%= render "admin/dashboard/og_image_preview", site_setting: @site_setting %>
+          <button type="button" @click="open()" class="btn btn-outline btn-sm mt-2 inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Edit image
+          </button>
+          <%= form_with url: admin_dashboard_link_preview_image_path, method: :patch,
+                html: { multipart: true, id: "og-image-form", "x-ref": "form" } do %>
+            <%= file_field_tag "site_setting[default_og_image]", class: "hidden", "x-ref": "fileInput" %>
+          <% end %>
+        </div>
+
+        <%= form_with url: admin_dashboard_link_preview_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+          <div>
+            <label for="default_og_title" class="block text-sm text-secondary mb-2 font-medium">Default title</label>
+            <%= text_field_tag "site_setting[default_og_title]", @site_setting.default_og_title,
+                  id: "default_og_title", class: "input-field",
+                  placeholder: "Turf Totals — Solana Pick’em Contests" %>
+          </div>
+          <div>
+            <label for="default_og_description" class="block text-sm text-secondary mb-2 font-medium">Default description</label>
+            <%= text_area_tag "site_setting[default_og_description]", @site_setting.default_og_description,
+                  id: "default_og_description", rows: 3, class: "input-field",
+                  placeholder: "Solana-powered World Cup pick’em contests…" %>
+          </div>
+          <button type="submit" class="btn btn-primary">Save text</button>
+        <% end %>
+      </div>
+    </div>
   </div>
 </div>

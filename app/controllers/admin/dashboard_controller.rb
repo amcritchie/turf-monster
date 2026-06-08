@@ -13,6 +13,11 @@ module Admin
       # finished contest would route new traffic to a dead end.
       @selectable_contests = Contest.where(status: [:open])
                                     .order(created_at: :desc)
+
+      # Recently-active users for the dashboard's Users card. Load a page worth
+      # (the view shows 5 and reveals the rest via "Show more"); the recently
+      # active are the interesting ones, so order by last session.
+      @recent_users = User.by_recent_session.limit(25)
     end
 
     def update

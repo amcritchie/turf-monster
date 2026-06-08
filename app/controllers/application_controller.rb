@@ -16,6 +16,7 @@ class ApplicationController < ActionController::Base
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
+  after_action :touch_last_seen
   helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
@@ -75,6 +76,21 @@ class ApplicationController < ActionController::Base
     return false unless request.get?
     return true if controller_name == "landing_pages"
     controller_name == "contests" && action_name.in?(%w[show world_cup index live])
+  end
+
+  # Stamp the REAL logged-in user's last activity (admin dashboard "by recent
+  # session"). Throttled to one write per 5 min via update_column (no callbacks,
+  # no updated_at churn) so it's cheap on the hot path; uses true_user so admin
+  # impersonation never bumps the impersonated user's activity. Never raises.
+  LAST_SEEN_THROTTLE = 5.minutes
+  def touch_last_seen
+    user = true_user
+    return unless user
+    return if user.last_seen_at && user.last_seen_at > LAST_SEEN_THROTTLE.ago
+
+    user.update_column(:last_seen_at, Time.current)
+  rescue => e
+    Rails.logger.warn("[last_seen] #{e.class}: #{e.message}")
   end
 
   # ── Admin impersonation (OPSEC-046) ────────────────────────────────────────
