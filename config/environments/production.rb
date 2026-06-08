@@ -43,11 +43,12 @@ Rails.application.configure do
   # config.action_cable.mount_path = nil
   # config.action_cable.url = "wss://example.com/cable"
   # APP_HOST is the canonical public hostname for this deployment. Defaults to
-  # the devnet-prod host so the existing turf-monster app is byte-for-byte
-  # unchanged (var unset there); the mainnet app sets APP_HOST=app.turfmonster.media.
+  # the mainnet public host (the only prod app since the devnet-prod target was
+  # decommissioned); the mainnet app also sets APP_HOST=app.turfmonster.media
+  # explicitly, so the default is just a sane fallback.
   # Drives: ActionCable origin allowlist, mailer/OAuth-callback default_url_options,
   # and the host-authorization allowlist below.
-  app_host = ENV.fetch("APP_HOST", "turf.mcritchie.studio")
+  app_host = ENV.fetch("APP_HOST", "app.turfmonster.media")
 
   # ActionCable (contest chat) — restrict WebSocket origins to the app host.
   config.action_cable.allowed_request_origins = [ %r{\Ahttps://#{Regexp.escape(app_host)}\z} ]
@@ -146,14 +147,14 @@ Rails.application.configure do
   # *.herokuapp.com URL (bypassing CDN/WAF allowlists) and enables DNS-rebinding
   # to reach the app under a foreign origin's cookie scope.
   # Primary public host (app_host) + this app's direct Heroku dyno host. The
-  # dyno host is parameterized via DYNO_HOST so each Heroku app (devnet
-  # turf-monster.herokuapp.com, mainnet turf-monster-mainnet-*.herokuapp.com)
-  # authorizes its own *.herokuapp.com without a code change. Devnet leaves
-  # both unset → identical allowlist to before. (Avoid the HEROKU_* namespace,
+  # dyno host is parameterized via DYNO_HOST so the Heroku app authorizes its
+  # own *.herokuapp.com without a code change; the mainnet app sets
+  # DYNO_HOST=turf-monster-mainnet-*.herokuapp.com explicitly, and the default
+  # below is the mainnet dyno host as a fallback. (Avoid the HEROKU_* namespace,
   # which the platform reserves and may clobber.)
   config.hosts = [
-    app_host,                                                      # primary public URL
-    ENV.fetch("DYNO_HOST", "turf-monster.herokuapp.com"),          # direct Heroku dyno URL (health checks, etc.)
+    app_host,                                                                  # primary public URL
+    ENV.fetch("DYNO_HOST", "turf-monster-mainnet-1c0aa8261ff8.herokuapp.com"), # direct Heroku dyno URL (health checks, etc.)
   ]
   # /up is the Rails health-check endpoint Heroku polls — Heroku's load balancer
   # may use internal addressing, so exclude it from host authorization to avoid
