@@ -158,4 +158,65 @@ class Admin::ErrorLogsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_error_logs_path
     assert_equal "Error log not found.", flash[:alert]
   end
+
+  test "show deep-links a User target to the admin users page" do
+    user_log = make_log(
+      klass:   "RuntimeError",
+      message: "user-targeted failure",
+      target:  @user
+    )
+    log_in_as(@admin)
+    get admin_error_log_path(user_log)
+    assert_response :success
+    assert_select "a[href=?]", admin_users_path
+  end
+
+  test "show renders plain text for an orphaned target without raising" do
+    orphan_log = make_log(
+      klass:   "RuntimeError",
+      message: "orphaned target failure",
+      target:  @contest
+    )
+    # Point the target at a record that no longer exists: type is set but
+    # neither the slug nor the id resolves, so error_record_path returns nil
+    # and the helper must fall back to plain "Type: name" text.
+    orphan_log.update_columns(target_id: 999_999, target_name: "contest-gone")
+
+    log_in_as(@admin)
+    get admin_error_log_path(orphan_log)
+    assert_response :success
+    # The helper's plain-text fallback renders "Type: name" — the linked branch
+    # would emit only the bare label, so this match proves the no-route path.
+    assert_match "Contest: contest-gone", response.body
+  end
+
+  # --- outer rescue: the viewer never 500s (operator directive) ---
+
+  test "index falls back to a friendly empty page when its work raises" do
+    log_in_as(@admin)
+    # Force the action's main body to blow up. The stub stays in force through
+    # the whole request, so if the outer rescue re-queried via .order it would
+    # raise again and bubble to a 500 — a clean 200 proves it does NOT re-query.
+    ErrorLog.stub(:order, ->(*) { raise StandardError, "kaboom" }) do
+      get admin_error_logs_path
+    end
+    assert_response :success
+    # Empty @error_logs (ErrorLog.none) renders the no-results row...
+    assert_match "No error logs match these filters.", response.body
+    # ...and the blank_summary surfaces a zero total, not a real count.
+    assert_select "p.text-2xl", text: "0"
+    # The captured error is surfaced to the operator as a flash alert.
+    assert_match "Could not load error logs: kaboom", response.body
+  end
+
+  test "show redirects with an alert when its work raises a StandardError" do
+    log_in_as(@admin)
+    # A non-RecordNotFound failure inside the action hits the distinct
+    # StandardError rescue (vs. the bad-slug RecordNotFound path above).
+    ErrorLog.stub(:find_by!, ->(*) { raise StandardError, "kaboom" }) do
+      get admin_error_log_path(@runtime_log)
+    end
+    assert_redirected_to admin_error_logs_path
+    assert_equal "Could not load error log: kaboom", flash[:alert]
+  end
 end
