@@ -1387,11 +1387,6 @@ window.selectionBoard = function() {
     matchups_desc = matchups_asc.reverse
   %>
   <section class="mb-8 transition-all" :class="{ 'cart-pushed': cartOpen }">
-    <% unless local_assigns[:compact] || edit_entry %>
-      <div class="mb-6">
-        <%= render "contests/lobby_info_cards" %>
-      </div>
-    <% end %>
     <div class="flex items-center justify-between gap-2 mb-4">
       <div class="flex items-center gap-2">
         <span class="text-sm text-muted font-medium">Sort by</span>
@@ -1405,7 +1400,7 @@ window.selectionBoard = function() {
                 class="px-3 py-1.5 rounded-full text-sm font-semibold transition-all flex items-center gap-1"
                 :class="sortMode === 'turfScore' ? 'bg-primary text-white' : 'bg-surface-alt text-secondary hover:text-heading'"
                 :aria-pressed="sortMode === 'turfScore'">
-          Turf Score
+          Advantage
           <span x-show="sortMode === 'turfScore'" x-text="sortDir === 'asc' ? '↑' : '↓'" class="text-xs"></span>
         </button>
       </div>
@@ -1443,48 +1438,6 @@ window.selectionBoard = function() {
           <%= render "contests/matchup_card", matchup: matchup %>
         </div>
       <% end %>
-    </div>
-  </section>
-
-  <!-- Contest Header -->
-  <section class="mb-8 transition-all" :class="{ 'cart-pushed': cartOpen }">
-    <div class="card shadow p-4 md:p-6">
-      <div class="flex justify-between items-start mb-4">
-        <div>
-          <h2 class="text-xl md:text-2xl font-bold text-heading"><%= @contest.name %></h2>
-          <p class="text-sm text-secondary mt-1">
-            <% if @contest.starts_at %>
-              Starts: <%= @contest.starts_at.strftime("%b %d, %Y %I:%M %p") %>
-            <% end %>
-          </p>
-        </div>
-        <span class="px-3 py-1 rounded-full text-sm font-semibold border <%= contest_badge_classes(@contest.status) %>">
-          <%= @contest.status.upcase %>
-        </span>
-      </div>
-      <div class="grid grid-cols-3 gap-3 md:gap-4 text-center">
-        <div class="bg-surface-alt rounded-lg p-2 md:p-3">
-          <p class="label-upper">Entry Fee</p>
-          <% if logged_in? && current_user.managed_wallet? && !current_user.phantom_wallet? %>
-            <p class="font-mono text-base md:text-lg text-heading">1 token</p>
-            <p class="text-xs text-muted"><%= current_user.entry_token_balance %> available · <%= link_to "buy", tokens_buy_path, class: "underline" %></p>
-          <% else %>
-            <p class="font-mono text-base md:text-lg text-heading"><%= dollars(@contest.entry_fee_dollars) %></p>
-          <% end %>
-        </div>
-        <div class="bg-surface-alt rounded-lg p-2 md:p-3">
-          <p class="label-upper">Guaranteed Prize</p>
-          <p class="font-mono text-base md:text-lg text-primary"><%= dollars(@contest.guaranteed_prize_dollars) %></p>
-        </div>
-        <div class="bg-surface-alt rounded-lg p-2 md:p-3">
-          <p class="label-upper">Entries</p>
-          <p class="font-mono text-base md:text-lg text-heading"><%= @entries.count %></p>
-        </div>
-      </div>
-      <div class="mt-4 text-center">
-        <%= link_to "View Contest Details", contest_path(@contest),
-          class: "text-primary hover:text-primary-300 text-sm font-medium underline underline-offset-2" %>
-      </div>
     </div>
   </section>
 

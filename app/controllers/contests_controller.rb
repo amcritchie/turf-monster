@@ -410,7 +410,7 @@ class ContestsController < ApplicationController
     else
       load_contest_board_data
       partial = @contest.world_cup_survivor? ? "contests/world_cup_survivor_leaderboard" : "contests/turf_totals_leaderboard"
-      html = render_to_string(partial: partial, locals: { compact: true })
+      html = render_to_string(partial: partial, locals: { compact: true, viewer: current_user })
       render json: { changed: true, version: current_version, html: html }
     end
   end
