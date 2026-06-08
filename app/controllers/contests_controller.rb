@@ -476,11 +476,24 @@ class ContestsController < ApplicationController
       raise "Wallet mismatch" unless params[:pubkey] == current_user.web3_solana_address
     end
 
-    # Declared here so the respond_to block below (outside the with_lock
-    # transaction) can reference it for the JSON payload.
+    # Declared here so the durable-capture write + confirm! + respond_to below
+    # (all OUTSIDE the with_lock transaction) can reference them. The on-chain
+    # signature/PDA MUST outlive a confirm! failure — see the durable-capture
+    # block after with_lock (incident 2026-06-08).
     token_consumed = false
+    tx_signature = nil
+    onchain_entry_id = nil
 
     rescue_and_log(target: entry, parent: @contest) do
+      # DB-side gates (capacity, season, on-chain backing) + entry-slot
+      # reservation, serialized under the contest row lock. The IRREVERSIBLE
+      # on-chain consume/transfer runs inside this block too, but the
+      # gate-running Entry#confirm! is DELIBERATELY hoisted out below: confirm!
+      # re-checks lock-time / started-games / sybil / per-user-limit and can
+      # raise AFTER the broadcast. Inside this transaction that rollback would
+      # strand the user in `cart` with the token already spent on-chain (the
+      # exact 2026-06-08 incident). Hoisting it out lets the durable-capture
+      # write commit first, so a post-broadcast failure is recoverable.
       @contest.with_lock do
         active_count = @contest.entries.where(status: [:active, :complete]).count
         raise "Contest is full" if @contest.max_entries && active_count >= @contest.max_entries
@@ -500,9 +513,6 @@ class ContestsController < ApplicationController
         if @contest.entry_fee_cents.to_i.positive? && !@contest.onchain?
           raise "This contest isn't on-chain yet — paid entry is unavailable."
         end
-
-        tx_signature = nil
-        onchain_entry_id = nil
 
         if @contest.onchain? && @contest.entry_fee_cents > 0 && current_user.managed_wallet? && !current_user.phantom_wallet?
           # Web2 / managed wallet: consume an on-chain EntryTokenAccount via the new
@@ -562,12 +572,23 @@ class ContestsController < ApplicationController
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
         end
-
-        entry.confirm!(tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
       end
 
-      # Confirmed (managed/token path) — announce the join in chat once.
-      announce_contest_join(entry)
+      # Durable capture (incident 2026-06-08). The on-chain consume/transfer
+      # above is IRREVERSIBLE — the token is spent + the Entry PDA exists on
+      # chain. Persist that proof onto the (still-`cart`) entry NOW, in a write
+      # that has already left the with_lock transaction, so the gate-running
+      # confirm! below can fail without erasing the fact that the user paid.
+      # A strand is then a recoverable row (`cart` + onchain_tx_signature) that
+      # self-heals via Entries::OnchainReconcileJob / `rake entries:reconcile_onchain`.
+      entry.update!(onchain_tx_signature: tx_signature, onchain_entry_id: onchain_entry_id) if tx_signature
+
+      finalize_managed_entry!(entry, tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
+
+      # Announce the join in chat once — only when the entry actually went
+      # active. A post-broadcast confirm failure (reconcile pending) skips this;
+      # the reconciler announces when it heals the entry.
+      announce_contest_join(entry) if entry.active?
 
       respond_to do |format|
         format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
@@ -1257,6 +1278,29 @@ class ContestsController < ApplicationController
   def announce_contest_join(entry)
     return unless entry&.user
     Message.announce_join!(contest: @contest, user: entry.user)
+  end
+
+  # Flip the cart entry to `active` now that payment has settled (on-chain
+  # consume/transfer done, or a free contest). For an on-chain-paid entry whose
+  # proof we already durably captured, a confirm! failure must NOT strand the
+  # user or invite a double-spend retry: the token/USDC is already gone on chain
+  # and the Entry PDA exists, so the entry IS valid — we schedule the reconciler
+  # to converge the Rails row to active out-of-band and let the success response
+  # stand (the durable onchain_tx_signature keeps the row recoverable). A free /
+  # off-chain entry has nothing to recover, so its confirm! failure re-raises as
+  # a normal error. (Incident 2026-06-08.)
+  def finalize_managed_entry!(entry, tx_signature:, onchain_entry_id:)
+    entry.confirm!(tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
+  rescue StandardError => e
+    raise e if tx_signature.blank?
+
+    Rails.logger.error(
+      "[entry][post-broadcast-confirm-failed] entry_id=#{entry.id} " \
+      "contest=#{@contest.slug} user_id=#{entry.user_id} " \
+      "tx=#{tx_signature.to_s.first(8)}... #{e.class}: #{e.message} — " \
+      "scheduling reconcile (token already consumed on-chain)"
+    )
+    Entries::OnchainReconcileJob.perform_later(entry.id)
   end
 
   def post_entry_seeds_payload(entry, path:, tx_signature:, token_consumed: nil)

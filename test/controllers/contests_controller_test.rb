@@ -2,6 +2,7 @@ require "test_helper"
 require "minitest/mock"
 
 class ContestsControllerTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
   # FakeVault is shared — see test/support/fake_vault.rb (LW1 extraction).
   setup do
     @contest = contests(:one)
@@ -409,6 +410,47 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/No entry tokens/, JSON.parse(response.body)["error"])
     assert entry.reload.cart?
     assert_equal 0, vault.enter_calls.length
+  end
+
+  # Incident 2026-06-08 (entry #133): the on-chain consume succeeds (token
+  # spent, Entry PDA created) but the gate-running confirm! raises AFTER the
+  # broadcast — here forced by a past lock time. The entry MUST NOT silently
+  # strand in `cart`: the durable-capture write leaves the consume signature on
+  # the row (recoverable) and a reconcile job is scheduled to converge it.
+  test "enter leaves a recoverable record + schedules reconcile when confirm! fails after a successful token consume" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    # Past lock time → Entry#confirm! raises "Contest has locked" AFTER the
+    # FakeVault consume has already "spent" the token on-chain.
+    @contest.update!(onchain_contest_id: "onchain133", season_id: 1, starts_at: 1.hour.ago)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        assert_enqueued_with(job: Entries::OnchainReconcileJob, args: [entry.id]) do
+          post enter_contest_path(@contest), as: :json
+        end
+      end
+    end
+
+    # The on-chain consume happened exactly once...
+    assert_equal 1, vault.enter_calls.length
+    assert_equal :enter_contest_with_token, vault.enter_calls.first[:method]
+
+    # ...and although confirm! failed, the entry is NOT a silent cart: the
+    # consume signature + Entry PDA are durably captured so it can self-heal.
+    entry.reload
+    assert entry.cart?, "entry stays cart until the reconciler heals it"
+    assert entry.onchain_tx_signature.present?, "consume signature must survive the confirm! failure"
+    assert entry.onchain_entry_id.present?, "entry PDA must survive the confirm! failure"
   end
 
   # --- prepare_entry tests (web3 single-signature flow) ---
