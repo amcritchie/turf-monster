@@ -9,7 +9,7 @@ module Admin
       "seeds"      => "Seeds",
       "name"       => "Name",
       "created"    => "Created",
-      "last_entry" => "Last entry",
+      "last_entry" => "Last entry"
     }.freeze
 
     def index
