@@ -51,11 +51,11 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get faucet_path
     assert_response :success
-    # Slim admin shortlist (everything else lives on the Link Hub).
+    # Slim admin shortlist (everything else lives on the Link Hub, reachable
+    # from the dashboard — no longer linked from the gear).
     assert_select "a[href=?]", admin_dashboard_path     # Admin: Dashboard
     assert_select "a[href=?]", admin_users_path         # Admin: Users
     assert_select "a[href=?]", admin_landing_pages_path # Admin: Landing Pages
-    assert_select "a[href=?]", admin_hub_path           # full Link Hub link inside the gear
   end
 
   test "navbar gear dropdown hidden from non-admins" do
