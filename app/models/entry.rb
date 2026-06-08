@@ -101,6 +101,63 @@ class Entry < ApplicationRecord
     end
   end
 
+  # Read-only entry-eligibility gates. These MUST run BEFORE any irreversible
+  # on-chain side effect — the token consume in ContestsController#enter and the
+  # cosign+broadcast in #confirm_onchain_entry both call this as a PRE-FLIGHT
+  # check (backend discipline #2: validate before irreversible side effects). A
+  # failure here leaves the token UNCONSUMED and the entry in `cart` — nothing
+  # burned. `confirm!` / `confirm_onchain!` also invoke it as a serialized
+  # backstop so the two call sites can never drift and the post-broadcast path
+  # stays safe.
+  #
+  # Incident 2026-06-08 (entry #133): the managed-token path consumed the token
+  # on-chain and THEN ran confirm!, whose selection-count gate raised AFTER the
+  # irreversible burn — stranding the user (paid + entered on-chain, app showed
+  # `cart`). A reconciler can't heal a genuine validation failure (re-running the
+  # gate fails the same way); the only correct fix is to gate BEFORE the consume.
+  #
+  # PURE READS ONLY — no writes, and NO payment gate. The tx_signature-presence
+  # check belongs in confirm!/confirm_onchain! (after the broadcast), because the
+  # signature does not exist yet when this pre-flight runs.
+  #
+  # `comped: true` is the admin-seed escape hatch (Contest#fill! only): it exempts
+  # the lock-time gate so admin seeding may legitimately happen after lock.
+  def assert_enterable!(comped: false)
+    raise "Contest is not open" unless contest.open?
+
+    # H7 prelaunch audit (2026-05-24): enforce contest-wide lock time. Closes
+    # the staggered-kickoff information-edge attack — a user could otherwise
+    # wait until 30 min after the contest's stated lock, read live scores from
+    # already-kicked games, then submit picks drawn from later-kickoff matchups
+    # whose individual `locked?` is still false. `comped: true` (admin fill via
+    # Contest#fill!) is exempt; admin seeding may legitimately happen after lock.
+    if contest.locks_at && Time.current >= contest.locks_at && !comped
+      raise "Contest has locked — entries closed"
+    end
+
+    raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
+
+    # Check no locked games
+    selections.includes(slate_matchup: :game).each do |s|
+      raise "#{s.slate_matchup.team.name}'s game has already started" if s.slate_matchup.locked?
+    end
+
+    # Contest capacity. This entry is still `cart`, so it is not double-counted.
+    active_count = contest.entries.where(status: [:active, :complete]).count
+    raise "Contest is full" if contest.max_entries && active_count >= contest.max_entries
+
+    # Per-user entry limit
+    user_active_count = contest.entries.where(user: user, status: [:active, :complete]).count
+    raise "Maximum #{contest.max_entries_per_user} entries per contest" if user_active_count >= contest.max_entries_per_user
+
+    # Sybil / duplicate-exact-combo check
+    my_combo = selections.map(&:slate_matchup_id).sort
+    contest.entries.where(user: user, status: [:active, :complete]).find_each do |other|
+      other_combo = other.selections.map(&:slate_matchup_id).sort
+      raise "You already have an entry with this exact selection combination" if other_combo == my_combo
+    end
+  end
+
   # Activate a cart entry. A paid contest's entry may only be activated with
   # proof of payment: `tx_signature` is the on-chain signature returned by a
   # consumed entry token or a vault entry, set server-side in
@@ -111,40 +168,20 @@ class Entry < ApplicationRecord
   # activates entries for seeded users without payment. Real user entries
   # always pass through the gate.
   def confirm!(tx_signature: nil, onchain_entry_id: nil, comped: false)
-    raise "Contest is not open" unless contest.open?
-    # H7 prelaunch audit (2026-05-24): enforce contest-wide lock time. Closes
-    # the staggered-kickoff information-edge attack — a user could otherwise
-    # wait until 30 min after the contest's stated lock, read live scores from
-    # already-kicked games, then submit picks drawn from later-kickoff matchups
-    # whose individual `locked?` is still false. `comped: true` (admin fill via
-    # Contest#fill!) is exempt; admin seeding may legitimately happen after lock.
-    if contest.locks_at && Time.current >= contest.locks_at && !comped
-      raise "Contest has locked — entries closed"
-    end
-    raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
-
-    # Check no locked games
-    selections.includes(slate_matchup: :game).each do |s|
-      raise "#{s.slate_matchup.team.name}'s game has already started" if s.slate_matchup.locked?
-    end
-
     user.with_lock do
-      # Per-user entry limit
-      user_active_count = contest.entries.where(user: user, status: [:active, :complete]).count
-      raise "Maximum #{contest.max_entries_per_user} entries per contest" if user_active_count >= contest.max_entries_per_user
-
-      # Sybil check (inside lock to prevent concurrent duplicate entries)
-      my_combo = selections.map(&:slate_matchup_id).sort
-      contest.entries.where(user: user, status: [:active, :complete]).find_each do |other|
-        other_combo = other.selections.map(&:slate_matchup_id).sort
-        raise "You already have an entry with this exact selection combination" if other_combo == my_combo
-      end
+      # Backstop the read-only gates under the user row lock so the per-user
+      # limit / sybil checks stay race-safe. ContestsController#enter already
+      # ran assert_enterable! as a PRE-FLIGHT before the irreversible consume;
+      # this re-runs the SAME method (no drift) as the serialized backstop.
+      assert_enterable!(comped: comped)
 
       transaction do
         # Payment gate: never activate a paid entry without proof of payment —
-        # a tx_signature from a consumed entry token or a vault entry. `comped`
-        # exempts admin-seeded fills. This closes the free-entry hole where an
-        # off-chain paid contest skipped every payment branch in #enter.
+        # a tx_signature from a consumed entry token or a vault entry. Lives
+        # here (NOT in assert_enterable!) because the signature only exists
+        # AFTER the broadcast. `comped` exempts admin-seeded fills. This closes
+        # the free-entry hole where an off-chain paid contest skipped every
+        # payment branch in #enter.
         if contest.entry_fee_cents.to_i.positive? && tx_signature.blank? && !comped
           raise "Entry payment required — no entry token consumed or on-chain payment recorded"
         end
@@ -195,42 +232,25 @@ class Entry < ApplicationRecord
   # Confirm entry via direct onchain payment (Phantom wallet users).
   # No DB balance deduction — USDC was transferred onchain directly.
   def confirm_onchain!(tx_signature:, entry_pda:)
-    raise "Contest is not open" unless contest.open?
-    # H7 prelaunch audit (2026-05-24): enforce contest-wide lock time — see
-    # Entry#confirm! for the attack scenario. No `comped:` here because the
-    # on-chain path is user-initiated only (admin fills go through #confirm!).
-    if contest.locks_at && Time.current >= contest.locks_at
-      raise "Contest has locked — entries closed"
-    end
-
-    # Fail-closed payment gate (Lazarus audit #1/#7, 2026-05-31). The caller
-    # (ContestsController#confirm_onchain_entry and #recover_pending_entry)
-    # verifies the signature semantically via Solana::TxVerifier before
-    # reaching here. This assertion is defense-in-depth: a future caller that
-    # forgets to verify still cannot activate a paid entry without a
-    # signature — mirroring the gate Entry#confirm! already carries.
-    if contest.entry_fee_cents.to_i.positive? && tx_signature.blank?
-      raise "Entry payment required — no verified on-chain signature recorded"
-    end
-
-    raise "Exactly #{contest.picks_required} selections required" unless selections.count == contest.picks_required
-
-    # Check no locked games
-    selections.includes(slate_matchup: :game).each do |s|
-      raise "#{s.slate_matchup.team.name}'s game has already started" if s.slate_matchup.locked?
-    end
-
-    # Lock user row to prevent concurrent entry limit bypass
+    # Lock user row to prevent concurrent entry-limit bypass, then re-run the
+    # read-only gates as the serialized backstop. ContestsController#
+    # confirm_onchain_entry already ran assert_enterable! as a PRE-FLIGHT before
+    # the irreversible cosign+broadcast (validate before side effects). No
+    # `comped:` here — the on-chain path is user-initiated only (admin fills go
+    # through #confirm!).
     user.with_lock do
-      # Per-user entry limit
-      user_active_count = contest.entries.where(user: user, status: [:active, :complete]).count
-      raise "Maximum #{contest.max_entries_per_user} entries per contest" if user_active_count >= contest.max_entries_per_user
+      assert_enterable!
 
-      # Sybil check
-      my_combo = selections.map(&:slate_matchup_id).sort
-      contest.entries.where(user: user, status: [:active, :complete]).find_each do |other|
-        other_combo = other.selections.map(&:slate_matchup_id).sort
-        raise "You already have an entry with this exact selection combination" if other_combo == my_combo
+      # Fail-closed payment gate (Lazarus audit #1/#7, 2026-05-31). The caller
+      # (ContestsController#confirm_onchain_entry and #recover_pending_entry)
+      # verifies the signature semantically via Solana::TxVerifier before
+      # reaching here. This assertion is defense-in-depth: a future caller that
+      # forgets to verify still cannot activate a paid entry without a
+      # signature — mirroring the gate Entry#confirm! already carries. It lives
+      # here (not in assert_enterable!) because the signature only exists after
+      # the broadcast.
+      if contest.entry_fee_cents.to_i.positive? && tx_signature.blank?
+        raise "Entry payment required — no verified on-chain signature recorded"
       end
 
       update!(

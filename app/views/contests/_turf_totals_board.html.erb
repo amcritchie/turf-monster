@@ -483,13 +483,39 @@ window.selectionBoard = function() {
           self.selections = oldSelections;
           self.selectionOrder = oldOrder;
           self.showError(result.data.error || 'Failed to save selection');
+          return;
         }
+        // Server is the source of truth. Adopt its authoritative selection set
+        // so an optimistic mutation the server normalised/dropped can't leave
+        // the client showing N/6 while the DB holds N-1 — which would otherwise
+        // sail past the Hold-to-Confirm guard and 422 at #enter (incident
+        // 2026-06-08, Bug 2). selectionCount is a getter over this.selections,
+        // so it self-corrects once we reconcile.
+        self.reconcileSelections(result.data.selections);
       })
       .catch(function() {
         self.selections = oldSelections;
         self.selectionOrder = oldOrder;
         self.showError('Network error. Selection not saved.');
       });
+    },
+
+    // Replace the client selection set with the server's authoritative one,
+    // preserving the current display order for ids the server kept and
+    // appending any server-present id we weren't already tracking. Keys are
+    // matchup-id strings (matchupData + selectionOrder are string-keyed).
+    reconcileSelections(serverSelections) {
+      if (!serverSelections || typeof serverSelections !== 'object') return;
+      var next = {};
+      Object.keys(serverSelections).forEach(function(id) {
+        if (serverSelections[id]) next[String(id)] = true;
+      });
+      this.selections = next;
+      var kept = this.selectionOrder.filter(function(id) { return next[id]; });
+      Object.keys(next).forEach(function(id) {
+        if (kept.indexOf(id) === -1) kept.push(id);
+      });
+      this.selectionOrder = kept;
     },
 
     removeSelection(matchupId) {
