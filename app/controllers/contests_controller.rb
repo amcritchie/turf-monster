@@ -84,6 +84,7 @@ class ContestsController < ApplicationController
     }
   rescue StandardError => e
     Rails.logger.error("[ContestsController#generate_bundle] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -115,6 +116,7 @@ class ContestsController < ApplicationController
     render_create_error("Invalid or expired bundle token — restart the provision flow.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#finalize_bundle] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -156,6 +158,7 @@ class ContestsController < ApplicationController
     }
   rescue StandardError => e
     Rails.logger.error("[ContestsController#create] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -196,6 +199,7 @@ class ContestsController < ApplicationController
     render_create_error("Invalid or expired form token — restart the contest creation flow.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#rebuild_create_tx] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -225,6 +229,7 @@ class ContestsController < ApplicationController
     render_create_error("Invalid or expired form token — restart the contest creation flow.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#finalize] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -728,6 +733,7 @@ class ContestsController < ApplicationController
     ptx.update!(tx_signature: params[:tx_signature], status: "submitted")
     render json: { success: true }
   rescue StandardError => e
+    capture_unlogged(e, parent: @contest)
     render json: { success: false, error: e.message }, status: :unprocessable_entity
   end
 
@@ -817,10 +823,12 @@ class ContestsController < ApplicationController
         tx_signature: ptx.tx_signature
       }
     rescue StandardError => e
+      capture_unlogged(e, target: entry, parent: @contest)
       ptx.update!(status: "failed")
       render json: { status: "failed", error: "Recovery failed: #{e.message}" }
     end
   rescue StandardError => e
+    capture_unlogged(e, parent: @contest)
     render json: { status: "error", error: e.message }, status: :unprocessable_entity
   end
 
@@ -1317,6 +1325,20 @@ class ContestsController < ApplicationController
       "tx=#{tx_signature.to_s.first(8)}... #{e.class}: #{e.message} — " \
       "scheduling reconcile (token already consumed on-chain)"
     )
+
+    # This branch SWALLOWS the exception (the on-chain payment already settled, so
+    # the entry is valid and reconciles out-of-band) — which means the outer
+    # rescue_and_log never sees it. Persist an ErrorLog ourselves, with the same
+    # target/parent context rescue_and_log would attach, so a stranded entry is
+    # diagnosable in seconds (this exact failure class is what incident #133 was
+    # reconstructed from log scraping). Capture BEFORE the enqueue.
+    error_log = ErrorLog.capture!(e)
+    error_log.target = entry
+    error_log.target_name = entry.slug
+    error_log.parent = @contest
+    error_log.parent_name = @contest.slug
+    error_log.save!
+
     Entries::OnchainReconcileJob.perform_later(entry.id)
   end
 
@@ -1368,6 +1390,14 @@ class ContestsController < ApplicationController
   # escalated to Rails.logger.error so ops sees it; rescue_and_log has
   # already persisted an error_logs row with the full backtrace.
   def render_entry_error(exception)
+    # rescue_and_log persists an error_logs row for any fault raised INSIDE its
+    # block (and sets @_error_logged). But the entry endpoints (enter,
+    # prepare_entry, confirm_onchain_entry) do guard/auth work BEFORE that block
+    # — a fault there would reach here unlogged. capture_unlogged closes that gap
+    # without double-logging the rescue_and_log path. (Operator directive: every
+    # endpoint records failures to ErrorLog.)
+    capture_unlogged(exception, parent: @contest)
+
     result = Solana::ErrorInterpreter.interpret(exception, contest: @contest)
     Rails.logger.error("[entry][escalate] #{exception.class}: #{exception.message}") if result[:log]
 
@@ -1383,6 +1413,30 @@ class ContestsController < ApplicationController
 
   def render_create_error(msg)
     render json: { success: false, error: msg }, status: :unprocessable_entity
+  end
+
+  # Persist an ErrorLog for an exception rescued OUTSIDE rescue_and_log (the
+  # create/finalize flows, the entry-flow pre-block guards, the stamp/recover
+  # endpoints) so every endpoint's failures land in ErrorLog per the operator
+  # directive. No-op when rescue_and_log already logged this request
+  # (@_error_logged) so we never double-log. Attaches optional target/parent
+  # context (using slugs, matching rescue_and_log). The caller still renders /
+  # raises as before — this only records.
+  def capture_unlogged(exception, target: nil, parent: nil)
+    return if @_error_logged
+
+    log = create_error_log(exception)
+    if target
+      log.target = target
+      log.target_name = target.slug
+    end
+    if parent
+      log.parent = parent
+      log.parent_name = parent.slug
+    end
+    log.save! if target || parent
+    @_error_logged = true
+    log
   end
 
   def build_unpersisted_contest_from_params

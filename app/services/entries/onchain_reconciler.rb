@@ -90,7 +90,19 @@ module Entries
       end
       :reconciled
     rescue StandardError => e
-      ErrorLog.capture!(e)
+      # Attach which entry/contest failed to heal so the ErrorLog reads as
+      # "entry-<id> in <contest>" rather than a context-free backtrace. `contest`
+      # is nil if the fault preceded its assignment (e.g. an entry.reload race).
+      error_log = ErrorLog.capture!(e)
+      if entry
+        error_log.target = entry
+        error_log.target_name = entry.slug
+      end
+      if contest
+        error_log.parent = contest
+        error_log.parent_name = contest.slug
+      end
+      error_log.save!
       Rails.logger.error("[reconcile][error] entry_id=#{entry&.id} #{e.class}: #{e.message}")
       :error
     end

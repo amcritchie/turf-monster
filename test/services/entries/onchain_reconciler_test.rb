@@ -89,6 +89,29 @@ class Entries::OnchainReconcilerTest < ActiveSupport::TestCase
     assert_equal pda0, entry.onchain_entry_id
   end
 
+  # N1 (PR #115 review): a heal failure must record an ErrorLog that names WHICH
+  # entry/contest failed to converge — not a context-free backtrace.
+  test "a heal failure records an ErrorLog with entry + contest context" do
+    entry = cart_entry_with_picks(
+      onchain_tx_signature: "consume-sig-err",
+      onchain_entry_id: "epda-err",
+      entry_number: 0
+    )
+
+    outcome = nil
+    entry.stub :confirm!, ->(*, **) { raise StandardError, "simulated heal failure" } do
+      outcome = Entries::OnchainReconciler.reconcile_entry(entry, vault: FakeVault.new)
+    end
+
+    assert_equal :error, outcome
+    log = ErrorLog.where(target: entry).order(:id).last
+    assert log, "a heal failure must create an ErrorLog"
+    assert_equal entry.slug, log.target_name
+    assert_equal @contest, log.parent
+    assert_equal @contest.slug, log.parent_name
+    assert_match "simulated heal failure", log.message
+  end
+
   test "skips an entry that is already active" do
     entry = cart_entry_with_picks(onchain_tx_signature: "sig-x", entry_number: 0)
     entry.update!(status: :active)

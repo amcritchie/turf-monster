@@ -457,6 +457,16 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert entry.cart?, "entry stays cart until the reconciler heals it"
     assert entry.onchain_tx_signature.present?, "consume signature must survive the confirm! failure"
     assert entry.onchain_entry_id.present?, "entry PDA must survive the confirm! failure"
+
+    # B1 (PR #115 review): the swallow-and-reconcile branch records an ErrorLog
+    # with entry/contest context so the strand is diagnosable (incident #133 was
+    # reconstructed by hand precisely because this row was missing).
+    log = ErrorLog.where(target: entry).order(:id).last
+    assert log, "a swallowed post-broadcast confirm! failure must still create an ErrorLog"
+    assert_equal entry.slug, log.target_name
+    assert_equal @contest, log.parent
+    assert_equal @contest.slug, log.parent_name
+    assert_match "simulated post-broadcast DB failure", log.message
   end
 
   # validate-before-consume (backend discipline #2). A read-only eligibility
