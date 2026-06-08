@@ -33,14 +33,17 @@ class OgMetaTest < ActionDispatch::IntegrationTest
     assert_select "meta[property='og:image:width']", count: 0
   end
 
-  test "application layout uses the admin-set default title and description" do
+  test "admin-set default description fills in; a page's own title still wins" do
     SiteSetting.instance.update!(
       default_og_title: "Admin Title", default_og_description: "Admin Description"
     )
     get faucet_path
     assert_response :success
-    assert_select "meta[property='og:title'][content='Admin Title']"
+    # Faucet sets its own title (page-specific wins over the site default) but
+    # no description, so the admin-set default description fills in.
     assert_select "meta[property='og:description'][content='Admin Description']"
+    assert_select "meta[property='og:title'][content='Devnet Faucet — Turf Monster']"
+    assert_select "meta[property='og:title'][content='Admin Title']", count: 0
   end
 
   # --- landing layout (per-page override wins) ---

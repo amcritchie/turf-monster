@@ -20,16 +20,18 @@ module OgHelper
   def og_image_url(landing_page = nil)
     attachment = landing_page&.og_image
     attachment = site_setting.default_og_image unless attachment&.attached?
+    return "#{request.base_url}/og.png" unless attachment&.attached?
 
-    if attachment&.attached?
-      url = attachment.url
-      # Public S3 returns an absolute permanent URL already; Disk (local/test)
-      # returns a host-relative path that an unfurler needs absolutized.
-      return url if url.to_s.start_with?("http")
-      return "#{request.base_url}#{url}"
+    # Public S3 (prod) returns a permanent absolute URL directly — exactly what
+    # an unfurler needs. Disk (dev/test) has no public URL, and `attachment.url`
+    # there raises without ActiveStorage::Current.url_options (unset in
+    # integration tests), so build an absolute URL from a host-relative blob
+    # path instead — no Current dependency, still ends with the filename.
+    if attachment.blob.service.public?
+      attachment.url
+    else
+      "#{request.base_url}#{rails_blob_path(attachment)}"
     end
-
-    "#{request.base_url}/og.png"
   end
 
   # True when neither a landing-page nor a site-default image is attached — the

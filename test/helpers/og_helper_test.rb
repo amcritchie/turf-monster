@@ -57,13 +57,13 @@ class OgHelperTest < ActionView::TestCase
       io: file_fixture("banner_wide.png").open, filename: "page.png", content_type: "image/png"
     )
 
-    # The landing page's own blob wins. Compare against the resolved URL for
-    # that exact attachment (Disk url in test, public S3 url in prod). Freeze
-    # time so the test-env Disk signature is identical across both .url calls.
-    freeze_time do
-      assert_equal lp.og_image.url, og_image_url(lp)
-      assert_not_equal SiteSetting.instance.default_og_image.url, og_image_url(lp)
-    end
+    # The landing page's own blob wins. The resolved URL is absolute and ends
+    # with the page blob's filename, not the site default's (Disk path in test,
+    # permanent public S3 url in prod — both carry the filename).
+    url = og_image_url(lp)
+    assert url.start_with?("http"), "expected absolute url, got #{url}"
+    assert_includes url, "page.png"
+    assert_not_includes url, "site.png"
   end
 
   test "og_image_url falls back to the site default when the page has none" do
@@ -71,9 +71,9 @@ class OgHelperTest < ActionView::TestCase
       io: file_fixture("banner.png").open, filename: "site.png", content_type: "image/png"
     )
     lp = landing_pages(:launch) # no og_image attached
-    freeze_time do
-      assert_equal SiteSetting.instance.default_og_image.url, og_image_url(lp)
-    end
+    url = og_image_url(lp)
+    assert url.start_with?("http"), "expected absolute url, got #{url}"
+    assert_includes url, "site.png"
   end
 
   # --- og_image_default? (single-state cases, per the memoization note above) ---
