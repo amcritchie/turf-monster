@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_08_000002) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -511,6 +511,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_08_000002) do
     t.jsonb "ips", default: {}, null: false
     t.datetime "first_chat_message_at"
     t.datetime "last_seen_at"
+    t.integer "seeds", default: 0, null: false
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
@@ -522,6 +523,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_08_000002) do
     t.index ["left_email_list_at"], name: "index_users_on_left_email_list_at"
     t.index ["provider", "uid"], name: "index_users_on_provider_and_uid", unique: true, where: "(provider IS NOT NULL)"
     t.index ["reference"], name: "index_users_on_reference"
+    t.index ["seeds"], name: "index_users_on_seeds"
     t.index ["self_custodied_at"], name: "index_users_on_self_custodied_at"
     t.index ["session_token"], name: "index_users_on_session_token"
     t.index ["slug"], name: "index_users_on_slug", unique: true

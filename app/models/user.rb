@@ -414,9 +414,12 @@ class User < ApplicationRecord
 
   def update_level_from_seeds!(seeds_total)
     computed_level = self.class.level_for(seeds_total)
-    return nil if computed_level == level
-    update!(level: computed_level)
-    computed_level
+    leveled_up = computed_level != level
+    # Always cache the seed total (admin list display + sort); bump level only on
+    # a level change. Returns the new level on a level-up, else nil (callers use
+    # this to fire the level-up UI).
+    update!(leveled_up ? { level: computed_level, seeds: seeds_total } : { seeds: seeds_total })
+    leveled_up ? computed_level : nil
   end
 
   # --- Entry tokens (on-chain EntryTokenAccount PDAs, turf-vault v0.9.0+) ---
