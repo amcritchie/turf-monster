@@ -2,7 +2,13 @@ class ApplicationController < ActionController::Base
   include Studio::ErrorHandling
   include GeoHelper
 
-  allow_browser versions: :modern
+  # Guard the JS-heavy *interactive* app against ancient browsers — but NOT the
+  # public, shareable, crawlable pages. `allow_browser` 406s any UA it deems
+  # non-modern, and link-preview fetchers (iMessage/Apple especially) present a
+  # pinned OLD-Safari UA → they'd get 406 and never see the og tags, so shared
+  # links never unfurl. Skipping these public GET pages lets previews work AND
+  # stops bouncing a real visitor who lands on the funnel from an older phone.
+  allow_browser versions: :modern, unless: :public_preview_request?
 
   before_action :verify_session_token  # OPSEC-045
   before_action :set_current_context
@@ -60,6 +66,16 @@ class ApplicationController < ActionController::Base
   end
 
   private
+
+  # Public, crawlable GET pages that must unfurl in link previews (and never
+  # 406 a visitor). These carry og/twitter tags and are the URLs people paste
+  # into Messages/Slack/social: the marketing funnel + the public contest reads.
+  # The interactive/authenticated app still gets the allow_browser guard.
+  def public_preview_request?
+    return false unless request.get?
+    return true if controller_name == "landing_pages"
+    controller_name == "contests" && action_name.in?(%w[show world_cup index live])
+  end
 
   # ── Admin impersonation (OPSEC-046) ────────────────────────────────────────
   # An admin can "act as" a non-admin user for support / migration / a prod
