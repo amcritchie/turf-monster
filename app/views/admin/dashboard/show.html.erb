@@ -8,13 +8,15 @@
 
   <%# ── Quick actions — external tools + common admin destinations ──────── %>
   <div class="grid grid-cols-4 gap-3">
+    <%# LogRocket — brand purple + rocket so it pops vs the neutral cards. The
+        brand hex is a one-off inline style (arbitrary hexes aren't in the
+        Tailwind build). %>
     <%= link_to logrocket_sessions_url, target: "_blank", rel: "noopener",
-          class: "card hover:bg-surface-alt transition p-4 flex flex-col items-center justify-center gap-1.5 text-center" do %>
-      <svg class="w-6 h-6 text-secondary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
-      </svg>
-      <span class="text-sm font-semibold text-heading">LogRocket <span class="text-muted text-xs">&#8599;</span></span>
-      <span class="text-[11px] text-muted">session replay</span>
+          class: "card transition p-4 flex flex-col items-center justify-center gap-1.5 text-center hover:opacity-90",
+          style: "background-color: #764ABC; border-color: #764ABC;" do %>
+      <span class="text-2xl leading-none">🚀</span>
+      <span class="text-sm font-semibold text-white">LogRocket <span class="text-white/70 text-xs">&#8599;</span></span>
+      <span class="text-[11px] text-white/70">session replay</span>
     <% end %>
 
     <%= link_to "/admin/jobs",
