@@ -31,13 +31,6 @@
                   <%= u.last_seen_at ? "active #{time_ago_in_words(u.last_seen_at)} ago" : "no recent session" %>
                 </p>
               </div>
-              <%= link_to logrocket_user_url(u), target: "_blank", rel: "noopener",
-                    class: "text-secondary hover:text-primary transition shrink-0 p-1",
-                    title: "#{u.display_name}'s sessions in LogRocket" do %>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
-                </svg>
-              <% end %>
             </li>
           <% end %>
         </ul>
@@ -62,8 +55,7 @@
         <span class="text-xs text-muted">session replay</span>
       </div>
       <p class="text-muted text-sm mb-4">
-        Watch real user sessions and reproduce bugs. Click a user to jump to their
-        sessions, or open the full project below.
+        Watch real user sessions and reproduce bugs in the LogRocket project.
       </p>
       <%= link_to logrocket_sessions_url, target: "_blank", rel: "noopener",
             class: "btn btn-outline btn-sm w-full justify-center inline-flex items-center gap-2" do %>

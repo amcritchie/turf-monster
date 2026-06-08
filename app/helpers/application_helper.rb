@@ -48,10 +48,4 @@ module ApplicationHelper
   def logrocket_sessions_url
     "https://app.logrocket.com/#{LOGROCKET_APP_PATH}/sessions"
   end
-
-  # Best-effort deep link to one user's sessions (they're identified by slug).
-  # Adjust the query shape here if LogRocket's session-search URL differs.
-  def logrocket_user_url(user)
-    "#{logrocket_sessions_url}?#{{ query: user.slug }.to_query}"
-  end
 end
