@@ -15,6 +15,11 @@ Rails.application.config.after_initialize do
       service = ActiveStorage::Blob.services.fetch(name)
       service.upload_options.delete(:acl) if service.respond_to?(:upload_options)
     rescue => e
+      # This is a structural workaround for an Active Storage internal; if that
+      # internal drifts, fail LOUD in dev/test/CI so we catch it at boot — not
+      # months later as an AccessControlListNotSupported 500 on an admin upload.
+      # Prod degrades gracefully (a missing image upload beats a boot crash).
+      raise e unless Rails.env.production?
       Rails.logger.warn("[active_storage] could not strip ACL from #{name}: #{e.class}: #{e.message}")
     end
   end

@@ -17,7 +17,7 @@ module Admin
       # Recently-active users for the dashboard's Users card. Load a page worth
       # (the view shows 5 and reveals the rest via "Show more"); the recently
       # active are the interesting ones, so order by last session.
-      @recent_users = User.by_recent_session.limit(25)
+      @recent_users = User.by_recent_session.with_attached_avatar.limit(25)
 
       # Recent outbound API calls (Stripe / Solana RPC / MoonPay) for the
       # Request Logs card — full browser + filters at /admin/outbound_requests.
@@ -59,8 +59,9 @@ module Admin
             format.turbo_stream do
               render turbo_stream: turbo_stream.replace(
                 "default-og-image-preview",
-                partial: "admin/dashboard/og_image_preview",
-                locals: { site_setting: SiteSetting.instance }
+                partial: "admin/shared/og_image_preview",
+                locals: { dom_id: "default-og-image-preview", attachment: SiteSetting.instance.default_og_image,
+                          alt: "Default link-preview image", fallback: "No image — falls back to /og.png" }
               )
             end
             format.html { redirect_to admin_dashboard_path, notice: "Default link-preview image updated." }

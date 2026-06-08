@@ -54,8 +54,9 @@ module Admin
             format.turbo_stream do
               render turbo_stream: turbo_stream.replace(
                 "landing-og-image-preview",
-                partial: "admin/landing_pages/og_image_preview",
-                locals: { landing_page: @landing_page }
+                partial: "admin/shared/og_image_preview",
+                locals: { dom_id: "landing-og-image-preview", attachment: @landing_page.og_image,
+                          alt: "Link-preview image", fallback: "No custom image — falls back to the site default, then /og.png" }
               )
             end
             format.html { redirect_to edit_admin_landing_page_path(@landing_page), notice: "Link-preview image updated." }

@@ -19,32 +19,12 @@
       <span class="text-[11px] text-white/70">session replay</span>
     <% end %>
 
-    <%= link_to "/admin/jobs",
-          class: "card hover:bg-surface-alt transition p-4 flex flex-col items-center justify-center gap-1.5 text-center" do %>
-      <svg class="w-6 h-6 text-secondary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
-      </svg>
-      <span class="text-sm font-semibold text-heading">Jobs</span>
-      <span class="text-[11px] text-muted">Sidekiq queue</span>
-    <% end %>
-
-    <%= link_to admin_pending_transactions_path,
-          class: "card hover:bg-surface-alt transition p-4 flex flex-col items-center justify-center gap-1.5 text-center" do %>
-      <svg class="w-6 h-6 text-secondary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z"/>
-      </svg>
-      <span class="text-sm font-semibold text-heading">Treasury</span>
-      <span class="text-[11px] text-muted">cosign queue</span>
-    <% end %>
-
-    <%= link_to admin_hub_path,
-          class: "card hover:bg-surface-alt transition p-4 flex flex-col items-center justify-center gap-1.5 text-center" do %>
-      <svg class="w-6 h-6 text-secondary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z"/>
-      </svg>
-      <span class="text-sm font-semibold text-heading">Link Hub</span>
-      <span class="text-[11px] text-muted">all admin links</span>
-    <% end %>
+    <%= render "admin/dashboard/quick_action", url: "/admin/jobs", label: "Jobs", subtitle: "Sidekiq queue",
+          icon: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" %>
+    <%= render "admin/dashboard/quick_action", url: admin_pending_transactions_path, label: "Treasury", subtitle: "cosign queue",
+          icon: "M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" %>
+    <%= render "admin/dashboard/quick_action", url: admin_hub_path, label: "Link Hub", subtitle: "all admin links",
+          icon: "M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" %>
   </div>
 
   <%# ── Activity row: Users + Request Logs ──────────────────────────────── %>
@@ -195,7 +175,9 @@
         <div x-data="imageUploadHost({ aspectRatio: <%= 1200.0 / 630 %>, maxWidth: 1200, filename: 'og-image.png', saving: 'Saving image…', success: 'Image updated', successMessage: 'Your new link-preview image is live.', failure: 'Couldn\'t save the image' })"
              @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
           <label class="block text-sm text-secondary mb-2 font-medium">Default image (1200&times;630)</label>
-          <%= render "admin/dashboard/og_image_preview", site_setting: @site_setting %>
+          <%= render "admin/shared/og_image_preview", dom_id: "default-og-image-preview",
+                attachment: @site_setting.default_og_image, alt: "Default link-preview image",
+                fallback: "No image — falls back to /og.png" %>
           <button type="button" @click="open()" class="btn btn-outline btn-sm mt-2 inline-flex items-center gap-1.5">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>

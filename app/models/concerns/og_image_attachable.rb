@@ -20,7 +20,8 @@
 #   development   -> :amazon_public_dev   (turf-monster-dev) when AWS creds are
 #                    present, else :local (Disk) for a keyless local checkout
 module OgImageAttachable
-  extend ActiveSupport::Concern
+  # Bare value module (just the constant below) — no `included do`, so it needs
+  # no ActiveSupport::Concern. Models read OgImageAttachable::PUBLIC_OG_SERVICE.
 
   PUBLIC_OG_SERVICE =
     if Rails.env.test?
