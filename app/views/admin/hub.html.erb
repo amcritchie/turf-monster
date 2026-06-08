@@ -33,7 +33,8 @@
       <%= render "hub_tile", name: "Faucet",     url: faucet_path %>
     <% end %>
     <%= render "hub_tile", name: "Geo Settings", url: admin_geo_path, status: :reviewed %>
-    <%= render "hub_tile", name: "Error Logs",   url: error_logs_path, status: :reviewed %>
+    <%= render "hub_tile", name: "Error Logs",   url: admin_error_logs_path, status: :reviewed,
+          note: "Incident triage — class facets, target filter, deep-links" %>
   <% end %>
 
   <%= render layout: "hub_section", locals: { title: "Hub" } do %>
