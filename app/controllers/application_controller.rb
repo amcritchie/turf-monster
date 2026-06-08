@@ -13,10 +13,13 @@ class ApplicationController < ActionController::Base
   before_action :verify_session_token  # OPSEC-045
   before_action :set_current_context
   before_action :capture_reference
+  # Stamp activity right after auth resolves, BEFORE the geo/profile redirects —
+  # an after_action is skipped when those before_actions halt the chain, so a
+  # genuinely-active but redirected user would never get stamped.
+  before_action :touch_last_seen
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
-  after_action :touch_last_seen
   helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
@@ -370,6 +373,9 @@ class ApplicationController < ActionController::Base
     end
     unless seeds.nil?
       Rails.cache.write(seeds_cache_key(user), seeds_payload(seeds), expires_in: 60.seconds)
+      # Sync the denormalized seeds/level cache on the users row (admin list
+      # display + sort) from this fresh on-chain read — write-on-change only.
+      user.update_level_from_seeds!(seeds)
     end
 
     {

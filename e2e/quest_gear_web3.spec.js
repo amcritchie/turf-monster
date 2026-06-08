@@ -31,7 +31,7 @@ async function openGear(page) {
   await page.locator('button[title="Settings"]:visible').first().click();
 }
 
-test("gear 'Next: Change username' opens the username modal", async ({ page }) => {
+test("gear 'Pick a username' opens the username modal", async ({ page }) => {
   await setupPhantomMock(page, { seedByte: 2 });
   await loginViaPhantom(page);
   // With an entry, next_quest advances from :join to :username (fresh user).
@@ -39,14 +39,14 @@ test("gear 'Next: Change username' opens the username modal", async ({ page }) =
   await page.goto("/account");
 
   await openGear(page);
-  await page.locator('button:has-text("Next: Change username"):visible').first().click();
+  await page.locator('button:has-text("Pick a username"):visible').first().click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Change Username")).toBeVisible();
   await expect(dialog.getByPlaceholder("username")).toBeVisible();
 });
 
-test("gear 'Next: Join the newsletter' opens the newsletter modal with the add-email field", async ({ page }) => {
+test("gear 'Join newsletter' opens the newsletter modal with the add-email field", async ({ page }) => {
   await setupPhantomMock(page, { seedByte: 2 });
   await loginViaPhantom(page);
   await createActiveEntry(page, CONTEST_SLUG);
@@ -57,7 +57,7 @@ test("gear 'Next: Join the newsletter' opens the newsletter modal with the add-e
   await page.goto("/account");
 
   await openGear(page);
-  await page.locator('button:has-text("Next: Join the newsletter"):visible').first().click();
+  await page.locator('button:has-text("Join newsletter"):visible').first().click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Join the Newsletter")).toBeVisible();

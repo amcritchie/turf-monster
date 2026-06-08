@@ -413,12 +413,20 @@ class User < ApplicationRecord
   end
 
   def update_level_from_seeds!(seeds_total)
+    return nil if seeds_total.nil?
+
     computed_level = self.class.level_for(seeds_total)
     leveled_up = computed_level != level
-    # Always cache the seed total (admin list display + sort); bump level only on
-    # a level change. Returns the new level on a level-up, else nil (callers use
-    # this to fire the level-up UI).
-    update!(leveled_up ? { level: computed_level, seeds: seeds_total } : { seeds: seeds_total })
+    # Cache the seed total (admin list display + sort) and bump level on a level
+    # change. Write ONLY on change, via update_column(s) — this is a denormalized
+    # mirror of on-chain state, so it skips validations/callbacks/updated_at
+    # (avoids RecordInvalid on legacy rows + write churn on every award).
+    if leveled_up
+      update_columns(seeds: seeds_total, level: computed_level)
+    elsif seeds != seeds_total
+      update_column(:seeds, seeds_total)
+    end
+    # Returns the new level on a level-up, else nil (callers fire the level-up UI).
     leveled_up ? computed_level : nil
   end
 

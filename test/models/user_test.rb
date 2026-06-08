@@ -249,6 +249,32 @@ class UserTest < ActiveSupport::TestCase
     assert_equal 1, user.reload.level
   end
 
+  test "update_level_from_seeds! caches the seed total even within a level" do
+    user = users(:alex)
+    user.update_level_from_seeds!(50)            # still level 1
+    assert_equal 50, user.reload.seeds
+    assert_equal 1, user.level
+    user.update_level_from_seeds!(250)           # crosses to level 3
+    assert_equal 250, user.reload.seeds
+    assert_equal 3, user.level
+  end
+
+  test "update_level_from_seeds! ignores a nil total (cold on-chain read)" do
+    user = users(:alex)
+    user.update_column(:seeds, 75)
+    assert_nil user.update_level_from_seeds!(nil)
+    assert_equal 75, user.reload.seeds           # unchanged, no write
+  end
+
+  test "update_level_from_seeds! cache write does not bump updated_at" do
+    user = users(:alex)
+    user.update_column(:seeds, 0)
+    before = user.reload.updated_at
+    travel_to(1.hour.from_now) { user.update_level_from_seeds!(50) }
+    assert_equal 50, user.reload.seeds
+    assert_equal before.to_i, user.updated_at.to_i, "cache write should skip updated_at"
+  end
+
   # --- can_change_username? gate ---
 
   test "can_change_username? false when not solana_connected" do

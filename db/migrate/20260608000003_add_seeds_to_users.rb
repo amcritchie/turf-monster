@@ -5,9 +5,9 @@ class AddSeedsToUsers < ActiveRecord::Migration[7.2]
     # so admin lists can show + sort by seeds without an RPC per user.
     add_column :users, :seeds, :integer, default: 0, null: false
     add_index :users, :seeds
-    # Backfill the floor for each user's current level (level = seeds/100 + 1)
-    # so the cache isn't all-zero until each user's next on-chain award refreshes it.
-    execute "UPDATE users SET seeds = (level - 1) * 100"
+    # No backfill: `level` isn't maintained historically (it would floor to 0
+    # anyway), and seeds is synced from the user's next on-chain navbar read
+    # (ApplicationController#preload_navbar_solana_data → update_level_from_seeds!).
   end
 
   def down

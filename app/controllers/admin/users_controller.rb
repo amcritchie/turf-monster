@@ -19,7 +19,7 @@ module Admin
       @users =
         case @sort
         when "active"
-          base.order(Arel.sql("users.last_seen_at DESC NULLS LAST, users.created_at DESC"))
+          base.by_recent_session
         when "seeds"
           base.order(seeds: :desc, created_at: :desc)
         when "name"

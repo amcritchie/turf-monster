@@ -13,7 +13,13 @@ class SiteSetting < ApplicationRecord
   has_one_attached :default_og_image, service: OgImageAttachable::PUBLIC_OG_SERVICE
 
   def self.instance
+    # Runs on every page render (og:image defaults). find_or_create_by is a bare
+    # SELECT once the row exists; the rescue only fires on the cold-start race —
+    # two concurrent first requests both INSERT and the unique slug index makes
+    # the loser raise RecordNotUnique (which would otherwise 500 a public page).
     find_or_create_by(slug: "site-setting")
+  rescue ActiveRecord::RecordNotUnique
+    find_by!(slug: "site-setting")
   end
 
   private
