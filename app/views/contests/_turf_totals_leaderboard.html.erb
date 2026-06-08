@@ -8,6 +8,21 @@
   entries         = local_assigns.fetch(:entries, @entries)
   matchups        = local_assigns.fetch(:matchups, @matchups)
   onchain_contest = local_assigns.fetch(:onchain_contest, @onchain_contest)
+
+  # "Everyone equal" = an unsettled contest where every entry shares the same
+  # score (e.g. pre-kickoff, all 0). There's no real ranking yet, so float the
+  # logged-in viewer's own entries to the top to make them easy to find, and
+  # suppress the (unearned) first-place crown below. The viewer is passed in by
+  # the request-context callers (show / live / leaderboard_poll); the
+  # Contest::LiveBroadcast path omits it (one HTML for all subscribers, no
+  # per-viewer float) — same locals-shim convention as the ivars above.
+  viewer = local_assigns.fetch(:viewer, nil)
+  everyone_equal = !contest.settled? && entries.size > 1 &&
+                   entries.map { |e| e.score.to_i }.uniq.size <= 1
+  if everyone_equal && viewer
+    mine, others = entries.partition { |e| e.user_id == viewer.id }
+    entries = mine + others
+  end
 %>
 <% unless local_assigns[:compact] %>
 <!-- Contest Details -->
@@ -139,9 +154,11 @@
           paid = contest.settled? && entry.payout_cents.to_i > 0
           display_rank = contest.settled? && entry.rank ? entry.rank : i + 1
           dimmed = contest.settled? && !paid
-          first_place = display_rank == 1
+          # No crown while everyone is tied — nobody has won yet.
+          first_place = display_rank == 1 && !everyone_equal
+          is_viewer = viewer && entry.user_id == viewer.id
         %>
-        <div <% if collapse && lb_row >= 8 %>x-show="expanded" x-cloak <% end %>class="card overflow-hidden <%= paid ? 'ring-1 ring-primary/40' : '' %> <%= first_place ? 'border-primary/40' : '' %>"
+        <div <% if collapse && lb_row >= 8 %>x-show="expanded" x-cloak <% end %>class="card overflow-hidden <%= paid ? 'ring-1 ring-primary/40' : '' %> <%= first_place ? 'border-primary/40' : '' %> <%= everyone_equal && is_viewer ? 'ring-1 ring-secondary/40' : '' %>"
              style="<%= first_place ? 'background: linear-gradient(90deg, rgba(75,175,80,0.08) 0%, transparent 40%)' : '' %>">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
             <%# Rank %>
