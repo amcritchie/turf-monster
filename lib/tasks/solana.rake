@@ -429,10 +429,10 @@ namespace :solana do
       puts "  · EXPECTED_IDL_HASH is unset (OK in dev; required in production)"
     else
       committed = Solana::Config.idl_hash
-      if committed == Solana::Config::EXPECTED_IDL_HASH
-        pass.("Committed IDL matches EXPECTED_IDL_HASH")
+      if Solana::Config.idl_hash_acceptable?(committed)
+        pass.("Committed IDL is in the accepted EXPECTED_IDL_HASH set")
       else
-        fail.("Committed IDL hash (#{committed}) ≠ EXPECTED_IDL_HASH (#{Solana::Config::EXPECTED_IDL_HASH})")
+        fail.("Committed IDL hash (#{committed}) not in EXPECTED_IDL_HASH set (#{Solana::Config.expected_idl_hashes.join(', ')})")
       end
     end
 

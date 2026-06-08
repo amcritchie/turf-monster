@@ -86,7 +86,8 @@ module Solana
     # pins its own EXPECTED_IDL_HASH per Heroku app. Selection is by NETWORK so
     # a single source tree boots correctly on either cluster:
     #   - mainnet-beta -> config/turf_vault.mainnet.idl.json (address DaFv…, e13ffd11…)
-    #   - anything else (devnet/localnet) -> config/turf_vault.idl.json (address EQGF…, 99d551…)
+    #   - anything else (devnet/localnet) -> config/turf_vault.idl.json (address EQGF…, c2acccaa…)
+    # (hashes churn per turf-vault rev — `bin/rails solana:idl_hash` for the live value)
     # The devnet branch is byte-identical to the prior unconditional path, so
     # the live devnet-prod app's verify_idl!/precompile behavior is unchanged.
     IDL_PATH = if NETWORK == "mainnet-beta"
@@ -95,8 +96,12 @@ module Solana
       Rails.root.join("config", "turf_vault.idl.json")
     end
 
-    # Set after each turf_vault deploy. Empty string = skip verification (dev
-    # default; set in production env or here after pinning).
+    # Accepted IDL hash allow-list (audit OPSEC-014), comma-separated. A deploy
+    # that bumps the IDL widens this to "<old>,<new>" so BOTH the outgoing and
+    # incoming slugs verify across the release boundary, then tightens back to
+    # "<new>" — no unverified window (bin/deploy automates this). A single hash
+    # is just a one-element set. Empty string = unset (dev default; required in
+    # production). Parse via expected_idl_hashes / idl_hash_acceptable?.
     EXPECTED_IDL_HASH = ENV.fetch("EXPECTED_IDL_HASH", "")
 
     def self.devnet?
@@ -120,6 +125,23 @@ module Solana
     def self.idl_hash
       return nil unless File.exist?(IDL_PATH)
       Digest::SHA256.hexdigest(File.read(IDL_PATH))
+    end
+
+    # Parsed EXPECTED_IDL_HASH allow-list: comma-split, trimmed, blanks dropped.
+    # "<a>, <b> ,," => ["<a>", "<b>"]; "" => []. Takes the raw string (defaults
+    # to the env-backed constant) so the parsing is unit-testable without ENV
+    # mutation.
+    def self.expected_idl_hashes(raw = EXPECTED_IDL_HASH)
+      raw.to_s.split(",").map(&:strip).reject(&:blank?)
+    end
+
+    # True when `hash` is a member of the accepted set. The single comparison
+    # primitive shared by verify_idl!, the solana:health / solana:preflight
+    # rakes, and (mirrored in bash) bin/deploy's pre-flight — so the allow-list
+    # semantics live in exactly one place.
+    def self.idl_hash_acceptable?(hash)
+      return false if hash.blank?
+      expected_idl_hashes.include?(hash)
     end
 
     # Version string from the committed IDL's metadata (e.g. "0.19.0") — the
@@ -154,7 +176,7 @@ module Solana
         return
       end
 
-      if EXPECTED_IDL_HASH.blank?
+      if expected_idl_hashes.empty?
         raise IdlMismatchError, "EXPECTED_IDL_HASH required in production (see OPSEC-014)" if Rails.env.production?
         return
       end
@@ -165,12 +187,12 @@ module Solana
         return
       end
 
-      return if actual == EXPECTED_IDL_HASH
+      return if idl_hash_acceptable?(actual)
 
       raise IdlMismatchError, <<~MSG
-        IDL hash mismatch — refusing to boot.
+        IDL hash not in the accepted set — refusing to boot.
 
-        Expected: #{EXPECTED_IDL_HASH}
+        Accepted: #{expected_idl_hashes.join(", ")}
         Got:      #{actual}
 
         Either #{IDL_PATH} drifted from the deployed program, or someone
@@ -179,10 +201,11 @@ module Solana
             > #{IDL_PATH}
           bin/rails solana:idl_hash  # then set EXPECTED_IDL_HASH
 
-        To bypass during a deploy (production): `heroku config:set
-        BYPASS_IDL_CHECK=true`, deploy, then `heroku config:set
-        EXPECTED_IDL_HASH=<new>` + `heroku config:unset BYPASS_IDL_CHECK`
-        to restore verified state. Don't leave BYPASS on.
+        Normal IDL bumps are automated by `bin/deploy` — it widens
+        EXPECTED_IDL_HASH to "<old>,<new>" across the release, then tightens to
+        "<new>", so there's no unverified window. Manual break-glass: `heroku
+        config:set BYPASS_IDL_CHECK=true`, deploy, set EXPECTED_IDL_HASH, then
+        `heroku config:unset BYPASS_IDL_CHECK`. Don't leave BYPASS on.
         In dev/test: `unset EXPECTED_IDL_HASH`. Don't ship to prod without a pin.
       MSG
     end

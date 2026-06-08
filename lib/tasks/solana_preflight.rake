@@ -68,10 +68,10 @@ namespace :solana do
       fail.("EXPECTED_IDL_HASH is blank — no pin to verify against")
     elsif committed_hash.nil?
       fail.("committed IDL not found at #{Solana::Config::IDL_PATH}")
-    elsif committed_hash == expected_hash
-      pass.("committed IDL (#{Solana::Config::IDL_PATH.basename}) matches EXPECTED_IDL_HASH")
+    elsif Solana::Config.idl_hash_acceptable?(committed_hash)
+      pass.("committed IDL (#{Solana::Config::IDL_PATH.basename}) is in the EXPECTED_IDL_HASH set")
     else
-      fail.("committed IDL hash #{committed_hash} ≠ EXPECTED_IDL_HASH #{expected_hash}")
+      fail.("committed IDL hash #{committed_hash} not in EXPECTED_IDL_HASH set #{Solana::Config.expected_idl_hashes.join(', ')}")
     end
     puts
 
