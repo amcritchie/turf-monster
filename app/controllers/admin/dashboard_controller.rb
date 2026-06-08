@@ -1,5 +1,5 @@
 module Admin
-  class SiteConfigsController < ApplicationController
+  class DashboardController < ApplicationController
     before_action :require_admin
 
     def show
@@ -22,20 +22,20 @@ module Admin
         raw = params[:main_contest_id].to_s
         id  = raw.empty? ? nil : raw.to_i
         SeasonConfig.set_main_contest!(id)
-        redirect_to admin_site_config_path, notice: "Main contest updated."
+        redirect_to admin_dashboard_path, notice: "Main contest updated."
       end
     rescue StandardError => e
-      redirect_to admin_site_config_path, alert: "Failed to update: #{e.message}"
+      redirect_to admin_dashboard_path, alert: "Failed to update: #{e.message}"
     end
 
     # Default og:image title + description (SiteSetting singleton).
     def update_link_preview
       rescue_and_log(target: SiteSetting.instance) do
         SiteSetting.instance.update!(link_preview_params)
-        redirect_to admin_site_config_path, notice: "Link-preview defaults updated."
+        redirect_to admin_dashboard_path, notice: "Link-preview defaults updated."
       end
     rescue StandardError => e
-      redirect_to admin_site_config_path, alert: "Failed to update: #{e.message}"
+      redirect_to admin_dashboard_path, alert: "Failed to update: #{e.message}"
     end
 
     # Immediate cropper save for the default og:image (mirrors the contest
@@ -50,15 +50,15 @@ module Admin
             format.turbo_stream do
               render turbo_stream: turbo_stream.replace(
                 "default-og-image-preview",
-                partial: "admin/site_configs/og_image_preview",
+                partial: "admin/dashboard/og_image_preview",
                 locals: { site_setting: SiteSetting.instance }
               )
             end
-            format.html { redirect_to admin_site_config_path, notice: "Default link-preview image updated." }
+            format.html { redirect_to admin_dashboard_path, notice: "Default link-preview image updated." }
           end
         else
           message = file.blank? ? "Choose an image to upload." : "Use a PNG, JPG, or WebP under 8 MB."
-          redirect_to admin_site_config_path, alert: message, status: :see_other
+          redirect_to admin_dashboard_path, alert: message, status: :see_other
         end
       end
     end

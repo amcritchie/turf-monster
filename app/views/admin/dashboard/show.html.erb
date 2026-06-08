@@ -1,8 +1,8 @@
-<% content_for(:title, "Site Config — Admin") %>
+<% content_for(:title, "Dashboard — Admin") %>
 
 <div class="max-w-2xl mx-auto py-8 px-4 space-y-8">
   <div>
-    <h1 class="text-heading text-2xl font-bold mb-1">Site Config</h1>
+    <h1 class="text-heading text-2xl font-bold mb-1">Dashboard</h1>
     <p class="text-muted text-sm">
       Site-wide singleton settings. Currently: the <strong>main contest</strong> —
       the default contest the app links to when it doesn&rsquo;t otherwise know
@@ -45,7 +45,7 @@
       </p>
     </div>
 
-    <%= form_with url: admin_site_config_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+    <%= form_with url: admin_dashboard_path, method: :patch, html: { class: "space-y-4" } do |f| %>
       <div>
         <label for="main_contest_id" class="block text-sm text-secondary mb-2 font-medium">
           Pick a contest (open + locked only)
@@ -91,20 +91,20 @@
     <div x-data="imageUploadHost({ aspectRatio: <%= 1200.0 / 630 %>, maxWidth: 1200, filename: 'og-image.png', saving: 'Saving image…', success: 'Image updated', successMessage: 'Your new link-preview image is live.', failure: 'Couldn\'t save the image' })"
          @crop-photo-confirmed.window="applyCrop($event.detail.blob)">
       <label class="block text-sm text-secondary mb-2 font-medium">Default image (1200&times;630)</label>
-      <%= render "admin/site_configs/og_image_preview", site_setting: @site_setting %>
+      <%= render "admin/dashboard/og_image_preview", site_setting: @site_setting %>
       <button type="button" @click="open()" class="btn btn-outline btn-sm mt-2 inline-flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
         </svg>
         Edit image
       </button>
-      <%= form_with url: admin_site_config_link_preview_image_path, method: :patch,
+      <%= form_with url: admin_dashboard_link_preview_image_path, method: :patch,
             html: { multipart: true, id: "og-image-form", "x-ref": "form" } do %>
         <%= file_field_tag "site_setting[default_og_image]", class: "hidden", "x-ref": "fileInput" %>
       <% end %>
     </div>
 
-    <%= form_with url: admin_site_config_link_preview_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+    <%= form_with url: admin_dashboard_link_preview_path, method: :patch, html: { class: "space-y-4" } do |f| %>
       <div>
         <label for="default_og_title" class="block text-sm text-secondary mb-2 font-medium">Default title</label>
         <%= text_field_tag "site_setting[default_og_title]", @site_setting.default_og_title,

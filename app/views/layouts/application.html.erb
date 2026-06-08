@@ -14,7 +14,7 @@
     %>
     <%# Title/description/og:image resolve through OgHelper: a page-level
         content_for override wins, then the admin-set SiteSetting defaults
-        (/admin/site_config), then the hardcoded fallbacks below. See OgHelper. %>
+        (/admin/dashboard), then the hardcoded fallbacks below. See OgHelper. %>
     <% page_title = og_title(content_for(:title)) %>
     <% meta_description = og_description(content_for(:meta_description)) %>
     <%# og:image — a page-level content_for(:og_image) override wins; otherwise

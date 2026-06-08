@@ -91,6 +91,7 @@
 
       <div class="border-t border-subtle my-1"></div>
       <div class="<%= header_class %>">Admin</div>
+      <%= link_to "Dashboard", admin_dashboard_path, class: link_class %>
       <% if Admin::VaultInitController.vault_uninitialized? %>
         <%= link_to admin_vault_init_path, class: link_class do %>
           Vault Init

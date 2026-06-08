@@ -312,13 +312,13 @@ Rails.application.routes.draw do
     # Site-wide singleton config — the main_contest pointer (SeasonConfig) plus
     # the link-preview (og:image) defaults (SiteSetting). The canonical home for
     # any global setting that doesn't fit on a per-record edit form.
-    get   "site_config", to: "site_configs#show",   as: :site_config
-    patch "site_config", to: "site_configs#update"
+    get   "dashboard", to: "dashboard#show",   as: :dashboard
+    patch "dashboard", to: "dashboard#update"
     # Link-preview (og:image) defaults — SiteSetting singleton. Text fields
     # save via the normal patch; the image is an immediate cropper save (its
     # own multipart endpoint, mirroring the contest banner flow).
-    patch "site_config/link_preview",       to: "site_configs#update_link_preview",       as: :site_config_link_preview
-    patch "site_config/link_preview_image", to: "site_configs#update_link_preview_image", as: :site_config_link_preview_image
+    patch "dashboard/link_preview",       to: "dashboard#update_link_preview",       as: :dashboard_link_preview
+    patch "dashboard/link_preview_image", to: "dashboard#update_link_preview_image", as: :dashboard_link_preview_image
 
     resources :outbound_requests, only: [:index, :show]
 
