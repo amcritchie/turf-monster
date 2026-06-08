@@ -1387,11 +1387,6 @@ window.selectionBoard = function() {
     matchups_desc = matchups_asc.reverse
   %>
   <section class="mb-8 transition-all" :class="{ 'cart-pushed': cartOpen }">
-    <% unless local_assigns[:compact] || edit_entry %>
-      <div class="mb-6">
-        <%= render "contests/lobby_info_cards" %>
-      </div>
-    <% end %>
     <div class="flex items-center justify-between gap-2 mb-4">
       <div class="flex items-center gap-2">
         <span class="text-sm text-muted font-medium">Sort by</span>

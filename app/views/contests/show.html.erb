@@ -18,9 +18,7 @@
 
 <!-- Section 3: Conditional cards above the board.
      Entered users: seeds + share row.
-     Not-entered users: nothing here — the matchup board partial (Section 4)
-     renders the lobby info cards ("Build Roster" / "Win $X") inline at its
-     top, so rendering them in Section 3 too would double-display. -->
+     Not-entered users: nothing here. -->
 <% if @has_entry %>
   <div class="mb-6">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
