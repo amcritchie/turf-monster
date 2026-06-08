@@ -412,20 +412,20 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, vault.enter_calls.length
   end
 
-  # Incident 2026-06-08 (entry #133): the on-chain consume succeeds (token
-  # spent, Entry PDA created) but the gate-running confirm! raises AFTER the
-  # broadcast — here forced by a past lock time. The entry MUST NOT silently
-  # strand in `cart`: the durable-capture write leaves the consume signature on
-  # the row (recoverable) and a reconcile job is scheduled to converge it.
-  test "enter leaves a recoverable record + schedules reconcile when confirm! fails after a successful token consume" do
+  # Incident 2026-06-08 (entry #133), defense-in-depth half: a TRANSIENT failure
+  # (RPC/DB) inside confirm! AFTER a successful consume must not silently strand
+  # the entry. The validation gates now run PRE-flight (see the two tests above),
+  # so the only way to reach confirm! post-consume is a non-validation fault —
+  # here a forced TransactionLog.record! failure inside confirm!'s transaction.
+  # The durable-capture write leaves the consume signature on the row
+  # (recoverable) and a reconcile job is scheduled to converge it.
+  test "enter leaves a recoverable record + schedules reconcile when confirm! hits a transient failure after a successful token consume" do
     @user.update!(
       web3_solana_address: nil,
       web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
       encrypted_web2_solana_private_key: "ciphertext"
     )
-    # Past lock time → Entry#confirm! raises "Contest has locked" AFTER the
-    # FakeVault consume has already "spent" the token on-chain.
-    @contest.update!(onchain_contest_id: "onchain133", season_id: 1, starts_at: 1.hour.ago)
+    @contest.update!(onchain_contest_id: "onchain133", season_id: 1)
     SeasonConfig.set_current!(1)
 
     log_in_as @user
@@ -433,10 +433,16 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
     vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    # Simulate a transient DB fault inside confirm!'s transaction, AFTER the
+    # FakeVault consume has already "spent" the token on-chain and the durable
+    # capture has committed the signature.
+    boom = ->(*, **) { raise StandardError, "simulated post-broadcast DB failure" }
     Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
       Solana::Vault.stub :new, vault do
-        assert_enqueued_with(job: Entries::OnchainReconcileJob, args: [entry.id]) do
-          post enter_contest_path(@contest), as: :json
+        TransactionLog.stub :record!, boom do
+          assert_enqueued_with(job: Entries::OnchainReconcileJob, args: [entry.id]) do
+            post enter_contest_path(@contest), as: :json
+          end
         end
       end
     end
@@ -451,6 +457,77 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert entry.cart?, "entry stays cart until the reconciler heals it"
     assert entry.onchain_tx_signature.present?, "consume signature must survive the confirm! failure"
     assert entry.onchain_entry_id.present?, "entry PDA must survive the confirm! failure"
+  end
+
+  # validate-before-consume (backend discipline #2). A read-only eligibility
+  # failure (here: too few selections) must raise in the PRE-FLIGHT
+  # assert_enterable! BEFORE vault.enter_contest_with_token — so the token stays
+  # UNCONSUMED, the entry stays `cart`, and NO reconcile is scheduled (there is
+  # nothing to recover; fail loudly). This is the primary fix for incident
+  # 2026-06-08, where the gate ran AFTER the irreversible burn.
+  test "enter validates selection count BEFORE consuming the token (short entry → nothing burned)" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain-preflight-count", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2].each { |m| entry.selections.create!(slate_matchup: m) } # only 2 of 6
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        assert_no_enqueued_jobs only: Entries::OnchainReconcileJob do
+          post enter_contest_path(@contest), as: :json
+        end
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/selections required/i, JSON.parse(response.body)["error"])
+    assert_equal 0, vault.enter_calls.length, "token must NOT be consumed when a gate fails pre-flight"
+    entry.reload
+    assert entry.cart?, "entry must stay cart"
+    assert_nil entry.onchain_tx_signature, "no signature — nothing was broadcast"
+  end
+
+  # Same validate-before-consume guarantee for the sybil / duplicate-exact-combo
+  # gate: a repeat of an existing active combo must be rejected pre-flight, with
+  # the token left unconsumed.
+  test "enter validates the duplicate-combo (sybil) gate BEFORE consuming the token" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain-preflight-sybil", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    # An existing ACTIVE entry with the exact combo the user is about to repeat.
+    existing = @contest.entries.create!(user: @user, status: :active)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| existing.selections.create!(slate_matchup: m) }
+
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        assert_no_enqueued_jobs only: Entries::OnchainReconcileJob do
+          post enter_contest_path(@contest), as: :json
+        end
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/already have an entry/i, JSON.parse(response.body)["error"])
+    assert_equal 0, vault.enter_calls.length, "token must NOT be consumed when the sybil gate fails pre-flight"
+    assert entry.reload.cart?
   end
 
   # --- prepare_entry tests (web3 single-signature flow) ---

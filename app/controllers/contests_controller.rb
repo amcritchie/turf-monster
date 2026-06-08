@@ -485,18 +485,24 @@ class ContestsController < ApplicationController
     onchain_entry_id = nil
 
     rescue_and_log(target: entry, parent: @contest) do
-      # DB-side gates (capacity, season, on-chain backing) + entry-slot
+      # DB-side gates (eligibility, season, on-chain backing) + entry-slot
       # reservation, serialized under the contest row lock. The IRREVERSIBLE
-      # on-chain consume/transfer runs inside this block too, but the
-      # gate-running Entry#confirm! is DELIBERATELY hoisted out below: confirm!
-      # re-checks lock-time / started-games / sybil / per-user-limit and can
-      # raise AFTER the broadcast. Inside this transaction that rollback would
-      # strand the user in `cart` with the token already spent on-chain (the
-      # exact 2026-06-08 incident). Hoisting it out lets the durable-capture
-      # write commit first, so a post-broadcast failure is recoverable.
+      # on-chain consume/transfer runs inside this block too — so EVERY
+      # read-only eligibility gate (selection count, lock time, started games,
+      # sybil, per-user limit, contest-full) MUST run BEFORE it (entry.
+      # assert_enterable! below). Incident 2026-06-08: the consume ran first and
+      # the gate-running confirm! raised AFTER the burn, stranding the user
+      # (paid + entered on-chain, app showed `cart`). A reconciler can't heal a
+      # genuine validation failure — re-running confirm! fails the same gate —
+      # so the only correct fix is to validate BEFORE the irreversible side
+      # effect (backend discipline #2). confirm! (hoisted out below) re-runs the
+      # SAME assert_enterable! as its serialized backstop, and the durable
+      # capture covers a TRANSIENT post-broadcast failure (RPC/DB), which the
+      # reconciler then heals.
       @contest.with_lock do
-        active_count = @contest.entries.where(status: [:active, :complete]).count
-        raise "Contest is full" if @contest.max_entries && active_count >= @contest.max_entries
+        # PRE-FLIGHT: run the read-only eligibility gates BEFORE any consume.
+        # Raises here → token stays unconsumed, entry stays `cart`, fail loudly.
+        entry.assert_enterable!
 
         # On-chain entries require a configured season (seed_schedule lives on its PDA).
         # Catch the missing-season case early with a clear error instead of a cryptic
@@ -843,6 +849,17 @@ class ContestsController < ApplicationController
     rescue_and_log(target: entry, parent: @contest) do
       raise "Wallet not linked" unless current_user.web3_solana_address.present?
       raise "Missing signed transaction" if params[:signed_tx].blank?
+
+      # PRE-FLIGHT (backend discipline #2): run the read-only eligibility gates
+      # BEFORE the irreversible cosign+broadcast below. The broadcast is
+      # server-side here (cosign_and_broadcast_entry), so a gate failure must
+      # raise NOW — nothing signed, nothing broadcast, entry stays `cart`. The
+      # post-broadcast Entry#confirm_onchain! re-runs the SAME assert_enterable!
+      # as its backstop (no drift); without this pre-flight a stale lock-time /
+      # filled-contest / duplicate-combo between #prepare_entry and here would
+      # only surface AFTER the on-chain payment moved (the 2026-06-08 ordering
+      # bug, in the Phantom path).
+      entry.assert_enterable!
 
       vault = Solana::Vault.new
 
