@@ -55,6 +55,7 @@ module Admin
 
         if valid_image?(file)
           SiteSetting.instance.default_og_image.attach(file)
+          SiteSetting.bust_og_defaults_cache! # attach doesn't touch the row → after_commit won't fire
           respond_to do |format|
             format.turbo_stream do
               render turbo_stream: turbo_stream.replace(

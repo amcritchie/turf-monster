@@ -18,45 +18,46 @@ module OgHelper
     "stack Turf Scores, and win prizes settled on-chain.".freeze
 
   def og_image_url(landing_page = nil)
-    attachment = landing_page&.og_image
-    attachment = site_setting.default_og_image unless attachment&.attached?
-    return "#{request.base_url}/og.png" unless attachment&.attached?
+    # Per-funnel override wins (queries the landing page's attachment).
+    lp_image = landing_page&.og_image
+    return absolute_og_url(lp_image) if lp_image&.attached?
 
-    # Public S3 (prod) returns a permanent absolute URL directly — exactly what
-    # an unfurler needs. Disk (dev/test) has no public URL, and `attachment.url`
-    # there raises without ActiveStorage::Current.url_options (unset in
-    # integration tests), so build an absolute URL from a host-relative blob
-    # path instead — no Current dependency, still ends with the filename.
-    if attachment.blob.service.public?
-      attachment.url
-    else
-      "#{request.base_url}#{rails_blob_path(attachment)}"
-    end
+    defaults = SiteSetting.og_defaults
+    # Prod: cached permanent public URL — no query. Dev/test (Disk): the cached
+    # URL is nil, so resolve the attachment live.
+    return defaults[:image_url] if defaults[:image_url]
+    return absolute_og_url(SiteSetting.instance.default_og_image) if defaults[:image_attached]
+
+    "#{request.base_url}/og.png"
   end
 
   # True when neither a landing-page nor a site-default image is attached — the
   # layout uses this to decide whether to emit the fixed 1200x630 dimensions
   # (only valid for the static og.png; uploads may be any size).
   def og_image_default?(landing_page = nil)
-    !(landing_page&.og_image&.attached? || site_setting.default_og_image.attached?)
+    !(landing_page&.og_image&.attached? || SiteSetting.og_defaults[:image_attached])
   end
 
   def og_title(override = nil)
-    override.presence ||
-      site_setting.default_og_title.presence ||
-      DEFAULT_OG_TITLE
+    override.presence || SiteSetting.og_defaults[:title] || DEFAULT_OG_TITLE
   end
 
   def og_description(override = nil)
-    override.presence ||
-      site_setting.default_og_description.presence ||
-      DEFAULT_OG_DESCRIPTION
+    override.presence || SiteSetting.og_defaults[:description] || DEFAULT_OG_DESCRIPTION
   end
 
   private
 
-  # Memoize per request — the layout calls several of these helpers per render.
-  def site_setting
-    @_og_site_setting ||= SiteSetting.instance
+  # Public S3 (prod) returns a permanent absolute URL directly — exactly what an
+  # unfurler needs. Disk (dev/test) has no public URL, and `attachment.url` there
+  # raises without ActiveStorage::Current.url_options (unset in integration
+  # tests), so build an absolute URL from a host-relative blob path instead — no
+  # Current dependency, still ends with the filename.
+  def absolute_og_url(attachment)
+    if attachment.blob.service.public?
+      attachment.url
+    else
+      "#{request.base_url}#{rails_blob_path(attachment)}"
+    end
   end
 end

@@ -30,4 +30,21 @@ class SiteSettingTest < ActiveSupport::TestCase
     # S3 or needs AWS creds.
     assert_equal :test, OgImageAttachable::PUBLIC_OG_SERVICE
   end
+
+  test "og_defaults caches the resolution inputs and bust clears them" do
+    # The suite's cache is a null_store (no caching); swap in a real store to
+    # exercise the cache hit + the bust the og:image admin flow relies on.
+    original = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    SiteSetting.instance.update_column(:default_og_title, "First") # update_column: no callbacks/bust
+    assert_equal "First", SiteSetting.og_defaults[:title]
+
+    SiteSetting.instance.update_column(:default_og_title, "Second")
+    assert_equal "First", SiteSetting.og_defaults[:title], "should still be cached"
+
+    SiteSetting.bust_og_defaults_cache!
+    assert_equal "Second", SiteSetting.og_defaults[:title], "fresh read after bust"
+  ensure
+    Rails.cache = original
+  end
 end
