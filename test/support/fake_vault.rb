@@ -20,7 +20,7 @@ class FakeVault
               :fund_calls, :deposit_calls
 
   def initialize(fail_after: nil, starting_sequence: 0, tokens: [], signature_statuses: {},
-                 usdc_balance: nil, usdc_balance_raises: false, account_infos: {})
+                 usdc_balance: nil, usdc_balance_raises: false, account_infos: {}, signatures: {})
     @fail_after = fail_after
     @starting_sequence = starting_sequence
     @tokens = tokens
@@ -28,6 +28,7 @@ class FakeVault
     @usdc_balance = usdc_balance            # uiAmount dollars to return from get_token_account_balance
     @usdc_balance_raises = usdc_balance_raises
     @account_infos = account_infos          # pda_b58 => {"value" => ...} for get_account_info (PDA-exists check)
+    @signatures = signatures                 # pda_b58 => [{ "signature" =>, "err" => }] for getSignaturesForAddress
     @mint_calls = []
     @transfer_calls = []
     @enter_calls = []
@@ -46,7 +47,8 @@ class FakeVault
     @client ||= FakeSolanaClient.new(@signature_statuses,
                                      usdc_balance: @usdc_balance,
                                      usdc_balance_raises: @usdc_balance_raises,
-                                     account_infos: @account_infos)
+                                     account_infos: @account_infos,
+                                     signatures: @signatures)
   end
 
   # Used by ContestsController#create / #rebuild_create_tx. Returns the same
@@ -390,11 +392,12 @@ end
 # here, so the array has at most one element. An unknown signature
 # returns {"value" => [nil]} per the JSON-RPC spec.
 class FakeSolanaClient
-  def initialize(statuses, usdc_balance: nil, usdc_balance_raises: false, account_infos: {})
+  def initialize(statuses, usdc_balance: nil, usdc_balance_raises: false, account_infos: {}, signatures: {})
     @statuses = statuses || {}
     @usdc_balance = usdc_balance
     @usdc_balance_raises = usdc_balance_raises
     @account_infos = account_infos || {}
+    @signatures = signatures || {}
   end
 
   def confirm_transaction(signature)
@@ -415,5 +418,16 @@ class FakeSolanaClient
   # whether the contest PDA already exists on-chain.
   def get_account_info(pda_b58)
     @account_infos[pda_b58]
+  end
+
+  # Entries::OnchainReconciler#oldest_success_signature reaches the raw JSON-RPC
+  # via `client.send(:call, "getSignaturesForAddress", [pda, {...}])` — the same
+  # private entrypoint Solana::Vault#list_entry_tokens uses. Return the
+  # configured per-PDA signature list (newest-first, like the real RPC).
+  def call(method, params)
+    case method
+    when "getSignaturesForAddress"
+      @signatures[params[0]] || []
+    end
   end
 end
