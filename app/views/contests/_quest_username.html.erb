@@ -1,6 +1,7 @@
 <%# Quest mission 1 of 4 — change username for a one-time 25-seed bonus.
     Layout: Row 1 = "Change Your Username" header + "Quest 1 of 4" badge.
-            Row 2 = description (50%) | "Change Username" CTA (50%, pulses 3s).
+            Row 2 = description | "Change Username" CTA (pulses 3s). Mobile:
+            stacked, arrow points down. sm+: 50/50 side-by-side, arrow points right.
     Opens the existing username modal; on first confirmed change the server
     grants 25 seeds (from Season.quest_seeds) and username_rename_form.js fires
     the tick-up, then advances the quest card in place to mission 2 (chat) — no
@@ -26,9 +27,9 @@
   </div>
 
   <%# Row 2 — description (50%) | CTA (50%) %>
-  <div class="grid grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <p class="text-secondary text-xs leading-relaxed">
-      Your username is <span class="font-mono text-heading">@<%= current_user.username %></span> now. Pick a name that's right for you <span class="text-primary font-semibold">&rarr;</span>
+      Your username is <span class="font-mono text-heading">@<%= current_user.username %></span> now. Pick a name that's right for you <span class="text-primary font-semibold sm:hidden">&darr;</span><span class="text-primary font-semibold hidden sm:inline">&rarr;</span>
     </p>
     <button type="button" @click.stop="$store.modals.open('username')"
             class="btn btn-primary quest-pulse w-full h-full">
