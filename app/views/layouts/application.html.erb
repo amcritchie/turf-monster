@@ -7,20 +7,24 @@
       The engine head already ships viewport, csrf/csp, importmap, --nav-h,
       overflow-anchor, and apple-mobile-web-app-capable — none of which we
       touch here. og:url/og:image are absolute (wallet scanners + link
-      unfurlers require absolute URLs). Default title/description below;
-      a page can override the <title> via content_for(:title) and the
-      description/share image via content_for(:meta_description) /
-      content_for(:og_image).
+      unfurlers require absolute URLs). Title / description / share image
+      resolve through OgHelper: a page-level content_for(:title) /
+      content_for(:meta_description) / content_for(:og_image) override wins,
+      then the admin-set SiteSetting defaults, then the hardcoded fallbacks.
     %>
-    <% page_title = content_for(:title).presence || "Turf Totals — Solana Pick’em Contests" %>
-    <% meta_description = content_for(:meta_description).presence || "Turf Totals: Solana-powered World Cup pick’em contests. Pick 6 matchups, stack Turf Scores, and win prizes settled on-chain." %>
-    <%# og.png (1200x630 landscape, ~53KB) lives in public/ (not the asset
-        pipeline), so build the absolute URL off the request host rather than
-        image_url. The old /logo.png (1.3MB) timed out in iMessage/Twitter
-        unfurlers and blanked the link preview; this dedicated 1.91:1 OG asset
-        is sized + compressed for the unfurl. %>
-    <% og_image_default = content_for(:og_image).blank? %>
-    <% og_image_url = content_for(:og_image).presence || "#{request.base_url}/og.png" %>
+    <%# Title/description/og:image resolve through OgHelper: a page-level
+        content_for override wins, then the admin-set SiteSetting defaults
+        (/admin/site_config), then the hardcoded fallbacks below. See OgHelper. %>
+    <% page_title = og_title(content_for(:title)) %>
+    <% meta_description = og_description(content_for(:meta_description)) %>
+    <%# og:image — a page-level content_for(:og_image) override wins; otherwise
+        the admin-uploaded SiteSetting default, falling back to the static
+        public/og.png (1200x630 landscape, ~53KB — sized + compressed for the
+        unfurl; the old 1.3MB /logo.png timed out and blanked previews). Only
+        the static fallback has known fixed dimensions. %>
+    <% og_override = content_for(:og_image).presence %>
+    <% resolved_og_image = og_override || og_image_url %>
+    <% og_image_is_default = og_override.blank? && og_image_default? %>
     <title><%= page_title %></title>
     <meta name="description" content="<%= meta_description %>">
 
@@ -44,11 +48,11 @@
     <meta property="og:title" content="<%= page_title %>">
     <meta property="og:description" content="<%= meta_description %>">
     <meta property="og:url" content="<%= request.original_url %>">
-    <meta property="og:image" content="<%= og_image_url %>">
+    <meta property="og:image" content="<%= resolved_og_image %>">
     <%# Explicit dimensions let unfurlers reserve the 1.91:1 card without
         fetching the image first. Only emitted for the default landscape og.png
-        — a page-level content_for(:og_image) override may be a different size. %>
-    <% if og_image_default %>
+        — a page-level override or an uploaded image may be a different size. %>
+    <% if og_image_is_default %>
       <meta property="og:image:width" content="1200">
       <meta property="og:image:height" content="630">
       <meta property="og:image:type" content="image/png">
@@ -58,7 +62,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<%= page_title %>">
     <meta name="twitter:description" content="<%= meta_description %>">
-    <meta name="twitter:image" content="<%= og_image_url %>">
+    <meta name="twitter:image" content="<%= resolved_og_image %>">
 
     <%# SRI-pinned (audit H2): exact versions + integrity so a poisoned CDN/package
         can't swap the signing-path crypto. web3.js @1 currently resolves to 1.98.4;

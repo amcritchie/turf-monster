@@ -19,3 +19,32 @@ amazon_dev:
   secret_access_key: <%= ENV["AWS_SECRET_ACCESS_KEY"] %>
   region: us-east-2
   bucket: turf-monster-dev
+
+# Public-read S3 services for og:image (link-preview) assets ONLY.
+#
+# The `amazon`/`amazon_dev` services above are private: their `.url` is a
+# signed, time-expiring URL. og:image URLs are cached by Apple/iMessage/
+# Twitter/Slack unfurlers, so a signed URL breaks the preview the moment the
+# signature expires. These `public: true` services return PERMANENT, absolute
+# object URLs (https://<bucket>.s3.us-east-2.amazonaws.com/<key>) instead, so
+# attach og images here (see OgImageAttachable). All four turf-monster buckets
+# are already public-read at the bucket policy level (see CLAUDE.md § S3).
+#
+# Same prod/dev bucket split as amazon/amazon_dev; the per-env service NAME is
+# chosen in OgImageAttachable::PUBLIC_OG_SERVICE (has_one_attached's `service:`
+# is a literal resolved at class load, so the env switch has to live there).
+amazon_public:
+  service: S3
+  access_key_id: <%= ENV["AWS_ACCESS_KEY_ID"] %>
+  secret_access_key: <%= ENV["AWS_SECRET_ACCESS_KEY"] %>
+  region: us-east-2
+  bucket: turf-monster-production
+  public: true
+
+amazon_public_dev:
+  service: S3
+  access_key_id: <%= ENV["AWS_ACCESS_KEY_ID"] %>
+  secret_access_key: <%= ENV["AWS_SECRET_ACCESS_KEY"] %>
+  region: us-east-2
+  bucket: turf-monster-dev
+  public: true

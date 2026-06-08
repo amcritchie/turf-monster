@@ -69,4 +69,62 @@ class Admin::SiteConfigsControllerTest < ActionDispatch::IntegrationTest
     assert_response :redirect
     assert_nil SeasonConfig.main_contest_explicit
   end
+
+  # --- Link-preview (og:image) defaults ---
+
+  test "show renders the link-preview defaults section" do
+    log_in_as(@admin)
+    get admin_site_config_path
+    assert_response :success
+    assert_select "h2", text: "Link Preview Defaults"
+    assert_select "#default-og-image-preview"
+  end
+
+  test "update_link_preview saves the default title and description" do
+    log_in_as(@admin)
+    patch admin_site_config_link_preview_path, params: {
+      site_setting: { default_og_title: "Custom Title", default_og_description: "Custom Desc" }
+    }
+    assert_redirected_to admin_site_config_path
+    assert_equal "Custom Title", SiteSetting.instance.default_og_title
+    assert_equal "Custom Desc",  SiteSetting.instance.default_og_description
+  end
+
+  test "update_link_preview rejects non-admin" do
+    log_in_as(@user)
+    patch admin_site_config_link_preview_path, params: {
+      site_setting: { default_og_title: "Nope" }
+    }
+    assert_response :redirect
+    assert_nil SiteSetting.instance.default_og_title
+  end
+
+  test "update_link_preview_image attaches the default og image" do
+    log_in_as(@admin)
+    assert_not SiteSetting.instance.default_og_image.attached?
+
+    patch admin_site_config_link_preview_image_path,
+      params: { site_setting: { default_og_image: fixture_file_upload("banner.png", "image/png") } },
+      as: :turbo_stream
+
+    assert_response :success
+    assert SiteSetting.instance.reload.default_og_image.attached?
+    assert_match "default-og-image-preview", response.body
+  end
+
+  test "update_link_preview_image rejects a non-image file" do
+    log_in_as(@admin)
+    patch admin_site_config_link_preview_image_path,
+      params: { site_setting: { default_og_image: fixture_file_upload("not_an_image.txt", "text/plain") } }
+    assert_response :redirect
+    assert_not SiteSetting.instance.reload.default_og_image.attached?
+  end
+
+  test "update_link_preview_image rejects non-admin" do
+    log_in_as(@user)
+    patch admin_site_config_link_preview_image_path,
+      params: { site_setting: { default_og_image: fixture_file_upload("banner.png", "image/png") } }
+    assert_response :redirect
+    assert_not SiteSetting.instance.reload.default_og_image.attached?
+  end
 end

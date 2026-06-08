@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_08_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -320,6 +320,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_07_000002) do
     t.index ["entry_id"], name: "index_selections_on_entry_id"
     t.index ["slate_matchup_id"], name: "index_selections_on_slate_matchup_id"
     t.index ["slug"], name: "index_selections_on_slug", unique: true
+  end
+
+  create_table "site_settings", force: :cascade do |t|
+    t.string "slug", null: false
+    t.string "default_og_title"
+    t.string "default_og_description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_site_settings_on_slug", unique: true
   end
 
   create_table "slate_matchups", force: :cascade do |t|

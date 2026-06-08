@@ -103,4 +103,43 @@ class Admin::LandingPagesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_landing_pages_path
     assert_equal "Beta", LandingPage.find_by(name: "Badged Funnel").badge
   end
+
+  # --- Per-page og:image upload ---
+
+  test "edit shows the link-preview image uploader for a persisted page" do
+    log_in_as(@admin)
+    get edit_admin_landing_page_path(@landing_page)
+    assert_response :success
+    assert_select "#landing-og-image-preview"
+    assert_select "#landing-og-image-form"
+  end
+
+  test "update_og_image attaches the per-page image" do
+    log_in_as(@admin)
+    assert_not @landing_page.og_image.attached?
+
+    patch og_image_admin_landing_page_path(@landing_page),
+      params: { landing_page: { og_image: fixture_file_upload("banner.png", "image/png") } },
+      as: :turbo_stream
+
+    assert_response :success
+    assert @landing_page.reload.og_image.attached?
+    assert_match "landing-og-image-preview", response.body
+  end
+
+  test "update_og_image rejects a non-image file" do
+    log_in_as(@admin)
+    patch og_image_admin_landing_page_path(@landing_page),
+      params: { landing_page: { og_image: fixture_file_upload("not_an_image.txt", "text/plain") } }
+    assert_response :redirect
+    assert_not @landing_page.reload.og_image.attached?
+  end
+
+  test "update_og_image rejects non-admin" do
+    log_in_as(@user)
+    patch og_image_admin_landing_page_path(@landing_page),
+      params: { landing_page: { og_image: fixture_file_upload("banner.png", "image/png") } }
+    assert_response :redirect
+    assert_not @landing_page.reload.og_image.attached?
+  end
 end
