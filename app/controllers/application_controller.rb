@@ -76,7 +76,11 @@ class ApplicationController < ActionController::Base
   # into Messages/Slack/social: the marketing funnel + the public contest reads.
   # The interactive/authenticated app still gets the allow_browser guard.
   def public_preview_request?
-    return false unless request.get?
+    # HEAD is a bodyless GET — link-preview scanners (SafeLinks, iMessage,
+    # Slack/social unfurlers) issue HEAD, so it must clear this guard exactly
+    # like GET or those previews 406. (Brakeman VerbConfusion: request.get?
+    # is false for HEAD even though HEAD routes like GET.)
+    return false unless request.get? || request.head?
     return true if controller_name == "landing_pages"
     controller_name == "contests" && action_name.in?(%w[show world_cup index live])
   end

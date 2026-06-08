@@ -322,6 +322,12 @@ Rails.application.routes.draw do
 
     resources :outbound_requests, only: [:index, :show]
 
+    # Error logs — read-only incident-triage browser over ErrorLog (engine model).
+    # Richer than the engine's /error_logs: class facets, target_type filter,
+    # summary stats, and deep-links to target/parent records. Param is the
+    # error-log-<id> slug (ErrorLog#to_param).
+    resources :error_logs, only: [:index, :show], param: :slug
+
     # Landing pages — funnel page manager (public pages live at /l/:slug)
     resources :landing_pages, only: %i[index new create edit update destroy], param: :slug do
       # Immediate cropper save for the per-page link-preview image (edit only —

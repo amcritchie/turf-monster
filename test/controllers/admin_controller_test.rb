@@ -24,10 +24,10 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get admin_hub_path
     assert_response :success
-    reviewed = [contests_path, admin_users_path, admin_landing_pages_path]
-    flagged  = [admin_formula_slates_path, new_contest_path, formula_report_slates_path, generator_contests_path,
-                admin_pending_transactions_path, admin_transactions_path, admin_seasons_path, slates_path,
-                admin_geo_path, error_logs_path, "/admin/jobs"]
+    reviewed = [admin_users_path, admin_geo_path, admin_error_logs_path, contests_path, admin_landing_pages_path]
+    flagged  = [new_contest_path, admin_seasons_path, admin_pending_transactions_path, "/admin/jobs",
+                slates_path, formula_report_slates_path, admin_formula_slates_path,
+                generator_contests_path, admin_transactions_path]
     reviewed.each { |path| assert_select "a[href=?][data-status=?]", path, "reviewed" }
     flagged.each  { |path| assert_select "a[href=?][data-status=?]", path, "flagged" }
 

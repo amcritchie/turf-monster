@@ -1,0 +1,49 @@
+<div class="max-w-4xl mx-auto px-4">
+  <%= link_to "← Back to error logs", admin_error_logs_path, class: "text-sm text-secondary hover:text-primary" %>
+  <h1 class="text-2xl font-extrabold text-red-400 mt-2 mb-1 break-words"><%= @error_log.message.presence || "(no message)" %></h1>
+  <p class="text-secondary text-sm mb-6">
+    <span class="font-mono"><%= @error_class %></span>
+    · <%= @error_log.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") %>
+    · <span class="font-mono text-muted"><%= @error_log.slug %></span>
+  </p>
+
+  <%# -- Top facts grid -- %>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="card p-4">
+      <p class="label-upper">Class</p>
+      <p class="font-mono text-sm text-heading break-all"><%= @error_class %></p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">When</p>
+      <p class="font-mono text-sm text-heading"><%= time_ago_in_words(@error_log.created_at) %> ago</p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">Target</p>
+      <p class="text-sm"><%= error_record_link(type: @error_log.target_type, id: @error_log.target_id, name: @error_log.target_name) %></p>
+    </div>
+    <div class="card p-4">
+      <p class="label-upper">Parent</p>
+      <p class="text-sm"><%= error_record_link(type: @error_log.parent_type, id: @error_log.parent_id, name: @error_log.parent_name) %></p>
+    </div>
+  </div>
+
+  <%# -- Exception (inspect_field) -- %>
+  <div class="card p-4 mb-6 border border-red-500/30 bg-red-500/5">
+    <p class="label-upper text-red-400 mb-2">Exception</p>
+    <pre class="font-mono text-xs text-red-300 whitespace-pre-wrap break-all"><%= @error_log.inspect_field %></pre>
+  </div>
+
+  <%# -- Backtrace -- %>
+  <div class="card p-4 mb-6">
+    <p class="label-upper mb-2">Backtrace</p>
+    <% if @backtrace.any? %>
+      <div class="bg-inset rounded-lg p-4 overflow-x-auto">
+        <% @backtrace.each_with_index do |frame, i| %>
+          <p class="font-mono text-xs leading-relaxed <%= i.zero? ? 'text-red-300' : 'text-muted' %>"><%= frame %></p>
+        <% end %>
+      </div>
+    <% else %>
+      <p class="text-muted text-sm">No backtrace recorded.</p>
+    <% end %>
+  </div>
+</div>
