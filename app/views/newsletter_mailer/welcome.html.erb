@@ -1,0 +1,20 @@
+<h1>You're in! 🐊</h1>
+
+<p>Hi <%= @user.display_name %>,</p>
+
+<p>Welcome to the Turf Monster newsletter — you'll be first to hear about new contests,
+   new games, and prizes.</p>
+
+<p>🌱 As a thank-you for joining, we dropped <strong>25 seeds</strong> into your account.
+   Put them to work:</p>
+
+<p><%= link_to "Play a contest →", root_url %></p>
+
+<p>See you on the pitch.<br>— Turf Monster</p>
+
+<hr>
+
+<p style="font-size:12px;color:#888888;">
+  You're receiving this because you joined the Turf Monster newsletter.
+  <%= link_to "Manage your email preferences", @account_url %>.
+</p>
