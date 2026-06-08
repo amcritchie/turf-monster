@@ -18,6 +18,10 @@ module Admin
       # (the view shows 5 and reveals the rest via "Show more"); the recently
       # active are the interesting ones, so order by last session.
       @recent_users = User.by_recent_session.limit(25)
+
+      # Recent outbound API calls (Stripe / Solana RPC / MoonPay) for the
+      # Request Logs card — full browser + filters at /admin/outbound_requests.
+      @recent_requests = OutboundRequest.recent.limit(12)
     end
 
     def update
