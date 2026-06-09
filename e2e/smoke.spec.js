@@ -246,11 +246,13 @@ test("user can start a second entry after confirming the first", async ({ page }
 // Contest show page
 // ---------------------------------------------------------------------------
 
-test("contest show page loads with leaderboard section", async ({ page }) => {
-  await page.goto("/");
-  await page.click("text=View Contest Details");
+test("contest show page loads with the matchup board", async ({ page }) => {
+  // Root redirects to the most-recent contest's show page; the seeded contest
+  // is world-cup-2026. (The old "View Contest Details" click was removed when
+  // root became the contest itself — there's no landing CTA to click anymore.)
+  await page.goto("/contests/world-cup-2026");
 
   await expect(page.locator("body")).toContainText("World Cup 2026");
-  // Contest details should be visible
-  await expect(page.locator("body")).toContainText("Entry Fee");
+  // A guest sees the inline matchup board, whose Turf Score column is "Advantage".
+  await expect(page.locator("body")).toContainText("Advantage");
 });
