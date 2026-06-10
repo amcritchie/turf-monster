@@ -20,7 +20,7 @@ class ApplicationController < ActionController::Base
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
+  helper_method :geo_state, :geo_country, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
   # session_token in the cookie. The verify_session_token before_action
@@ -285,6 +285,9 @@ class ApplicationController < ActionController::Base
       result = Geocoder.search(request.remote_ip).first
       raw = result&.try(:state_code).presence || result&.try(:region_code) || result&.try(:region)
       session[:geo_state] = normalize_state_code(raw)
+      # ISO country code from the same lookup — feeds the CDP ramp catalog
+      # gate (country + subdivision). nil when the lookup has no country.
+      session[:geo_country] = result&.try(:country_code).presence&.upcase
       session[:geo_ip] = request.remote_ip
       session[:geo_detected_at] = Time.current.to_s
     end
@@ -295,6 +298,15 @@ class ApplicationController < ActionController::Base
 
   def geo_state
     normalize_state_code(session[:geo_override] || session[:geo_state])
+  end
+
+  # ISO country code from the same Geocoder session as geo_state. Defaults to
+  # "US" when undetected — the product + geo blocklist are US-centric, and the
+  # CDP catalog still fails closed for US without a detected subdivision. The
+  # admin geo_override simulates US states, so it forces "US" too.
+  def geo_country
+    return "US" if session[:geo_override].present?
+    session[:geo_country].presence || "US"
   end
 
   def geo_blocked?

@@ -15,6 +15,12 @@ class CdpRampTransaction < ApplicationRecord
   # partnerUserRef must be < 50 chars in the hosted URLs + status APIs.
   PARTNER_USER_REF_MAX = 49
 
+  # Statuses BEFORE a CDP transaction exists for this session — nothing has
+  # materialized Coinbase-side, so an expired session in one of these is safe
+  # to expire locally (no funds can be in flight).
+  PRE_CDP_STATUSES = %w[initiated token_minted returned].freeze
+  TERMINAL_STATUSES = %w[success failed expired abandoned].freeze
+
   belongs_to :user
 
   # Local lifecycle:
@@ -65,14 +71,71 @@ class CdpRampTransaction < ApplicationRecord
   after_create :assign_partner_user_ref
 
   scope :recent, -> { order(created_at: :desc) }
+  scope :active, -> { where.not(status: TERMINAL_STATUSES) }
 
   def terminal?
-    success? || failed? || expired? || abandoned?
+    TERMINAL_STATUSES.include?(status)
+  end
+
+  def pre_cdp?
+    PRE_CDP_STATUSES.include?(status)
   end
 
   def sell_amount
     return nil if sell_amount_value.nil?
     BigDecimal(sell_amount_value.to_s)
+  end
+
+  # ErrorLog target compatibility — rescue_and_log / the poll jobs set
+  # target_name = target.slug. No slug COLUMN (the correlation key doubles as
+  # the identifier); see the CLAUDE.md model entry.
+  def slug
+    partner_user_ref || "cdp-ramp-#{id}"
+  end
+
+  # ── State transitions — server-side only, never raw status writes ─────────
+  # Each guard makes the transition idempotent and refuses to downgrade a
+  # further-along row (a stale poll/return hit can't rewind the lifecycle).
+  # All return false on a refused transition instead of raising.
+
+  # Session token minted + hosted URL handed to the client.
+  def mark_token_minted!
+    return false unless initiated?
+    update!(status: :token_minted)
+  end
+
+  # Redirect-page hit. UX signal ONLY — never confirmation (the redirect
+  # carries no documented params). Stamps returned_at once; advances status
+  # only when nothing further has already happened.
+  def mark_returned!
+    return false if terminal?
+    attrs = {}
+    attrs[:returned_at] = Time.current if returned_at.blank?
+    attrs[:status] = :returned if initiated? || token_minted?
+    update!(attrs) if attrs.any?
+    true
+  end
+
+  # Offramp: the CDP transaction exists (TRANSACTION_STATUS_CREATED) — gates
+  # our USDC send within the 30-minute cashout window.
+  def mark_cdp_created!
+    return false unless pre_cdp?
+    update!(status: :cdp_created)
+  end
+
+  def mark_success!
+    return false if terminal?
+    update!(status: :success)
+  end
+
+  def mark_failed!
+    return false if terminal?
+    update!(status: :failed)
+  end
+
+  def mark_expired!
+    return false if terminal?
+    update!(status: :expired)
   end
 
   private

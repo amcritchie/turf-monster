@@ -90,4 +90,68 @@ class CdpRampTransactionTest < ActiveSupport::TestCase
     assert build_ramp(wallet_mode: "web2").wallet_web2?
     assert build_ramp(wallet_mode: "web3").wallet_web3?
   end
+
+  test "active scope excludes terminal rows" do
+    live = build_ramp.tap(&:save!)
+    done = build_ramp(status: "success").tap(&:save!)
+    assert_includes CdpRampTransaction.active, live
+    assert_not_includes CdpRampTransaction.active, done
+  end
+
+  test "slug reads partner_user_ref (ErrorLog target compatibility)" do
+    ramp = build_ramp.tap(&:save!)
+    assert_equal ramp.partner_user_ref, ramp.slug
+  end
+
+  # ── State transitions ──────────────────────────────────────────────────────
+
+  test "mark_token_minted! advances only from initiated" do
+    ramp = build_ramp.tap(&:save!)
+    assert ramp.mark_token_minted!
+    assert ramp.token_minted?
+    assert_not ramp.mark_token_minted!, "second call is a refused no-op"
+  end
+
+  test "mark_returned! stamps returned_at once and never rewinds the lifecycle" do
+    ramp = build_ramp(status: "token_minted").tap(&:save!)
+    assert ramp.mark_returned!
+    assert ramp.returned?
+    first_returned_at = ramp.returned_at
+    assert first_returned_at.present?
+
+    travel_to 5.minutes.from_now do
+      assert ramp.mark_returned! # revisit — idempotent
+      assert_equal first_returned_at.to_i, ramp.returned_at.to_i
+    end
+
+    ramp.update!(status: "cdp_created")
+    assert ramp.mark_returned!
+    assert ramp.cdp_created?, "a return hit must not downgrade cdp_created"
+
+    ramp.update!(status: "success")
+    assert_not ramp.mark_returned!, "terminal rows refuse the transition"
+  end
+
+  test "mark_cdp_created! advances only from pre-CDP statuses" do
+    %w[initiated token_minted returned].each do |status|
+      ramp = build_ramp(status: status).tap(&:save!)
+      assert ramp.mark_cdp_created!, "#{status} → cdp_created should be allowed"
+      assert ramp.cdp_created?
+    end
+
+    %w[sending sent success].each do |status|
+      ramp = build_ramp(status: status).tap(&:save!)
+      assert_not ramp.mark_cdp_created!, "#{status} must not rewind to cdp_created"
+      assert_equal status, ramp.status
+    end
+  end
+
+  test "mark_success!/mark_failed!/mark_expired! refuse to flip an already-terminal row" do
+    ramp = build_ramp(status: "sent").tap(&:save!)
+    assert ramp.mark_success!
+    assert ramp.success?
+    assert_not ramp.mark_failed!
+    assert_not ramp.mark_expired!
+    assert ramp.success?, "terminal states never overwrite each other"
+  end
 end

@@ -1,0 +1,44 @@
+<%# CDP ramp return page — PLACEHOLDER markup; the Frontend phase restyles it
+    (shared card_header, countdown for the offramp send window, etc.).
+    The Coinbase redirect carries no query params, so everything keys off our
+    own row via the data attributes below + the /cdp/ramp_status poll. %>
+<div class="max-w-md mx-auto mt-12">
+  <div id="cdp-return"
+       class="card shadow p-8 text-center"
+       data-partner-user-ref="<%= @ramp.partner_user_ref %>"
+       data-direction="<%= @ramp.direction %>"
+       data-status-url="<%= cdp_ramp_status_path(partner_user_ref: @ramp.partner_user_ref) %>">
+    <h1 class="text-xl font-bold mb-2">
+      <%= @ramp.onramp? ? "Confirming your USDC purchase…" : "Confirming your cash-out…" %>
+    </h1>
+    <p class="text-sm text-muted mb-4">
+      Coinbase is processing your <%= @ramp.onramp? ? "purchase" : "cash-out" %>.
+      This page checks the status automatically.
+    </p>
+    <p class="text-xs text-muted">
+      Status: <span data-cdp-status><%= @ramp.status.humanize %></span>
+    </p>
+  </div>
+</div>
+
+<script>
+  // Minimal local-state poller (placeholder — the Frontend phase replaces it).
+  // Polls OUR CdpRampTransaction row, not Coinbase; stops on a terminal state.
+  (function () {
+    var el = document.getElementById("cdp-return");
+    if (!el) return;
+    var statusEl = el.querySelector("[data-cdp-status]");
+    function tick() {
+      fetch(el.dataset.statusUrl, { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data) return setTimeout(tick, 10000);
+          if (statusEl) statusEl.textContent = data.status;
+          console.log("[cdp][return] status", data);
+          if (!data.terminal) setTimeout(tick, 5000);
+        })
+        .catch(function () { setTimeout(tick, 10000); });
+    }
+    setTimeout(tick, 5000);
+  })();
+</script>
