@@ -20,7 +20,7 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
   # path uses below) rather than a hidden field on the page.
   test "magic-link signup persists the reference cookie onto the new user" do
     get faucet_path, params: { reference: "friends-test" }
-    token = MagicLink.generate(email: "ml-ref@mcritchie.studio")
+    token = MagicLink.generate(email: "ml-ref@mcritchie.studio", age_attested: true)
     # Signup happens on the human's POST (the GET is the inert, scanner-safe
     # interstitial); the reference cookie set on the faucet visit rides through.
     assert_difference "User.count", 1 do
@@ -32,7 +32,8 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
   test "email signup persists the reference onto the new user" do
     assert_difference "User.count", 1 do
       post signup_path, params: {
-        user: { email: "newbie@mcritchie.studio", reference: "friends-test" }
+        user: { email: "newbie@mcritchie.studio", reference: "friends-test" },
+        age_attestation: "1"
       }
     end
     assert_equal "friends-test", User.find_by(email: "newbie@mcritchie.studio").reference
@@ -46,7 +47,10 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
     )
     get faucet_path, params: { reference: "friends-test" }
     assert_difference "User.count", 1 do
-      get "/auth/google_oauth2/callback"
+      # The request-phase age_attestation query param reaches the callback via
+      # session["omniauth.params"] (OmniAuth snapshots request.GET).
+      get "/auth/google_oauth2?age_attestation=1"
+      follow_redirect!
     end
     assert_equal "friends-test", User.find_by(email: "googlenewbie@example.com").reference
   end

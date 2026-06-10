@@ -223,10 +223,13 @@
           var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
           var signatureB58 = encodeBase58(signed.signature);
           var verifyUrl = opts.linkMode ? '/account/link_solana' : '/auth/solana/verify';
+          // Legal-age attestation (signup compliance): undefined keys are
+          // dropped by JSON.stringify, so login/link calls stay unchanged.
+          var ageAttestation = (!opts.linkMode && opts.ageAttested) ? '1' : undefined;
           return await (await fetch(verifyUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '' },
-            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
+            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58, age_attestation: ageAttestation })
           })).json();
         };
 
@@ -242,6 +245,9 @@
           body.set('email', email || '');
           if (opts.contest) body.set('contest', opts.contest);
           if (opts.picks)   body.set('picks', opts.picks);
+          // Legal-age attestation — rides in the magic-link row so the
+          // consume side can require it before creating a new account.
+          if (opts.ageAttested) body.set('age_attestation', '1');
           var resp = await fetch('/magic_link', {
             method: 'POST',
             headers: {

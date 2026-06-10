@@ -33,6 +33,15 @@ async function login(page, email, _password) {
 }
 
 /**
+ * Tick the legal-age attestation checkbox (underwriting compliance) on the
+ * current auth surface — /signin card, in-contest auth modal, or the wallet
+ * picker. Every credential CTA is gated on it client-side.
+ */
+async function attestAge(page) {
+  await page.locator("input[data-age-attestation]:visible").first().check();
+}
+
+/**
  * Log in as admin user (alex@mcritchie.studio).
  */
 async function loginAdmin(page) {
@@ -47,6 +56,9 @@ async function loginAdmin(page) {
  */
 async function loginViaPhantom(page) {
   await page.goto("/signin");
+  // Legal-age attestation gates the auth CTAs (underwriting compliance);
+  // checking the card box pre-checks the wallet picker's own checkbox.
+  await attestAge(page);
   await page.locator('button:has-text("Solana")').click();
   // The hub reads walletProvider.available() at click time; wait for the
   // detected-wallet button to appear once the wallet_provider module loads.
@@ -191,4 +203,5 @@ module.exports = {
   MOCK_PUBKEY_B58,
   setupOnchainMocks,
   computeMockTransaction,
+  attestAge,
 };

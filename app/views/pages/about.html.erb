@@ -1,10 +1,10 @@
 <% content_for :title, "About & Contact — Turf Totals" %>
-<% content_for :meta_description, "Turf Totals is a Solana-powered World Cup pick'em game. Learn who builds it, how it works on-chain, and how to reach the team." %>
+<% content_for :meta_description, "Turf Totals is a skill-based World Cup pick'em game with USD prizes. Learn who builds it, how payouts stay transparent, and how to reach the team." %>
 
 <div class="max-w-3xl mx-auto py-10 px-2 space-y-12">
   <header>
     <h1 class="text-4xl font-extrabold text-heading mb-2">About Turf Totals</h1>
-    <p class="text-secondary text-sm">A Solana-powered sports pick&rsquo;em game for the 2026 World Cup.</p>
+    <p class="text-secondary text-sm">A skill-based sports pick&rsquo;em game for the 2026 World Cup.</p>
   </header>
 
   <section class="space-y-4">
@@ -17,8 +17,9 @@
       across all entrants wins the prize pool.
     </p>
     <p class="text-body leading-relaxed">
-      Entry fees and prize pools settle on the <strong>Solana</strong> blockchain in USDC, so payouts
-      are transparent and verifiable on-chain rather than sitting in an opaque custodial balance.
+      Prizes are <strong>denominated in U.S. dollars</strong> and settled in USDC, a fully-reserved
+      U.S. dollar stablecoin, on the Solana blockchain &mdash; so payouts are transparent and
+      verifiable on-chain rather than sitting in an opaque custodial balance.
     </p>
   </section>
 
@@ -74,6 +75,8 @@
           <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>
         </div>
       </div>
+      <%# Mailing-address card returns here once the registered agent / PO
+          box exists (operator decision 2026-06-10). %>
       <div class="flex items-start gap-3">
         <span class="text-2xl">&#9917;</span>
         <div>
@@ -95,8 +98,12 @@
 
   <section class="space-y-3 text-sm text-secondary border-t border-subtle pt-6">
     <p>
-      Turf Totals is a game of skill. Please play responsibly and only in jurisdictions where
-      skill-based contests are permitted. You must be of legal age in your jurisdiction to enter.
+      Turf Totals is a game of skill. Please
+      <%= link_to "play responsibly", responsible_gaming_path, class: "text-primary hover:underline" %>
+      and only in
+      <%= link_to "states where skill-based contests are permitted", state_eligibility_path, class: "text-primary hover:underline" %>.
+      You must be of legal age to participate in skill-based contests in your state (18+ in most
+      states; 19+ in AL/NE; 21+ in IA/MA/VA).
     </p>
   </section>
 </div>

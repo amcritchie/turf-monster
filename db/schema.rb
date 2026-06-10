@@ -264,6 +264,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "consumed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "age_attested", default: false, null: false
     t.index ["expires_at"], name: "index_magic_links_on_expires_at"
     t.index ["token"], name: "index_magic_links_on_token", unique: true
   end
@@ -561,6 +562,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "first_chat_message_at"
     t.datetime "last_seen_at"
     t.integer "seeds", default: 0, null: false
+    t.datetime "age_attested_at"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"

@@ -641,7 +641,7 @@ window.selectionBoard = function() {
     // + picks ride the signed return_to for a different browser/tab), POST the
     // request, then move the wizard to the 'magic-link-sent' confirmation step.
     // Called from the wizard via the 'auth-magic-link-submit' dispatch.
-    async requestMagicLink(email) {
+    async requestMagicLink(email, ageAttested) {
       var p = this._authProps();
       if (!p || p.submitting) return;
       p.formError = '';
@@ -657,7 +657,7 @@ window.selectionBoard = function() {
         this.saveCartForRedirect(true);
         var picks = this.selectionOrder.slice(0, this.picksRequired).map(function (id) { return parseInt(id, 10); });
 
-        var data = await window.postMagicLink(email, { contest: this.contestId, picks: picks.join(',') });
+        var data = await window.postMagicLink(email, { contest: this.contestId, picks: picks.join(','), ageAttested: !!ageAttested });
         if (!data || !data.success) {
           p.formError = (data && data.error) || 'Could not send the link. Try again.';
           p.submitting = null;
@@ -684,26 +684,31 @@ window.selectionBoard = function() {
     // the modal to the "Connect Wallet" picker (modals/_wallet_connect). The
     // picker runs the SIWS connect itself (window.solanaConnectAndVerify) and
     // returns here (returnUrl = this contest) so the saved cart auto-enters.
-    openWalletConnect() {
+    openWalletConnect(ageAttested) {
       this.saveCartForRedirect(true);
-      Alpine.store('modals').swap('wallet-connect', { returnUrl: window.location.href, backTo: 'auth' });
+      // ageAttested pre-checks the picker's own attestation checkbox (the
+      // auth modal already collected it) — see modals/_wallet_connect.
+      Alpine.store('modals').swap('wallet-connect', { returnUrl: window.location.href, backTo: 'auth', ageAttested: !!ageAttested });
     },
 
     // Google sign-in via a popup window so the contest page stays put.
     // The popup hits /auth/google_popup, runs the OAuth round-trip, and
     // the callback renders a closer page that postMessages the result
     // back here and closes itself.
-    loginWithGoogle() {
+    loginWithGoogle(ageAttested) {
       var p = this._authProps();
       if (!p) return;
       p.googleError = '';
+      // Legal-age attestation rides the popup URL → /auth/google_popup
+      // forwards it into OmniAuth's request phase (omniauth.params).
+      var popupUrl = ageAttested ? '/auth/google_popup?age_attestation=1' : '/auth/google_popup';
       // window.open must run synchronously inside the click handler, or the
       // browser blocks it.
-      var popup = window.open('/auth/google_popup', 'tt_google_oauth',
+      var popup = window.open(popupUrl, 'tt_google_oauth',
         'width=500,height=650,menubar=no,toolbar=no,location=no');
       if (!popup) {
         // Popup blocked — fall back to the full-page redirect.
-        this.googleFullPageRedirect();
+        this.googleFullPageRedirect(ageAttested);
         return;
       }
       p.submitting = 'google';
@@ -744,11 +749,13 @@ window.selectionBoard = function() {
 
     // Fallback when the OAuth popup is blocked — full-page redirect. Save the
     // cart first so the entry resumes when the user returns.
-    googleFullPageRedirect() {
+    googleFullPageRedirect(ageAttested) {
       this.saveCartForRedirect(true);
       var form = document.createElement('form');
       form.method = 'POST';
-      form.action = '/auth/google_oauth2';
+      // Attestation must ride the QUERY string — OmniAuth's request phase
+      // snapshots request.GET into omniauth.params, not the POST body.
+      form.action = ageAttested ? '/auth/google_oauth2?age_attestation=1' : '/auth/google_oauth2';
       var csrf = document.createElement('input');
       csrf.type = 'hidden';
       csrf.name = 'authenticity_token';
@@ -1392,9 +1399,9 @@ window.selectionBoard = function() {
 </script>
 
 <div x-data="selectionBoard()" x-cloak
-     @auth-magic-link-submit.window="requestMagicLink($event.detail.email)"
-     @auth-wallet-hub-open.window="openWalletConnect()"
-     @auth-google-click.window="loginWithGoogle()">
+     @auth-magic-link-submit.window="requestMagicLink($event.detail.email, $event.detail.ageAttested)"
+     @auth-wallet-hub-open.window="openWalletConnect($event.detail && $event.detail.ageAttested)"
+     @auth-google-click.window="loginWithGoogle($event.detail && $event.detail.ageAttested)">
 
   <!-- Blur overlay (click to dismiss) -->
   <div x-show="selectionCount === <%= @contest.picks_required %> && !blurDismissed"
