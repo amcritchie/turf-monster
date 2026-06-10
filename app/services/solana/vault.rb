@@ -305,6 +305,66 @@ module Solana
       { signature: signature, amount: amount_lamports, destination: Keypair.encode_base58(to_bytes) }
     end
 
+    # --- Offramp send (Coinbase CDP cash-out — docs/CDP_RAMP_INTEGRATION.md §10) ---
+
+    # Build + SIGN (server-side, both signers) the USDC SPL transfer that
+    # fulfills a managed-wallet offramp: user's USDC ATA → the RESOLVED
+    # Coinbase destination token account (Cdp::OfframpDestination — never the
+    # raw to_address). Authority = the user's managed keypair; admin = fee
+    # payer (managed wallets hold no SOL). Carries the same ComputeBudget
+    # priority-fee pair as the Phantom partial TXs (the mainnet tx-landing fix).
+    #
+    # DOES NOT BROADCAST. Returns { wire_base64:, signature: } so the caller
+    # can durably persist the tx signature BEFORE attempting the broadcast —
+    # the verify-before-retry anchor (Cdp::OfframpSendJob: on any timeout or
+    # ambiguous RPC result, check the signature on-chain; never blind-resend).
+    def build_user_usdc_transfer(user_keypair:, destination_token_account:, amount_lamports:)
+      raise ArgumentError, "user_keypair required" unless user_keypair
+      raise ArgumentError, "amount must be positive" unless amount_lamports.to_i.positive?
+
+      admin = Keypair.admin
+      from_ata, _ = Solana::SplToken.find_associated_token_address(
+        user_keypair.public_key_bytes, Config::USDC_MINT
+      )
+
+      tx = build_tx(admin)
+      tx.add_signer(user_keypair)
+      tx.add_instruction(**compute_unit_price_ix(PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS))
+      tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
+      tx.add_instruction(**Solana::SplToken.transfer_instruction(
+        from: from_ata,
+        to: destination_token_account,
+        authority: user_keypair.public_key_bytes,
+        amount: amount_lamports.to_i
+      ))
+
+      wire = tx.serialize
+      { wire_base64: Base64.strict_encode64(wire), signature: extract_tx_signature(wire) }
+    end
+
+    # Phantom flavor for the offramp send: a fully-UNSIGNED single-signer tx —
+    # the user's wallet is BOTH fee payer and transfer authority. Phantom signs
+    # and the client broadcasts (mirroring the lock_contest sign flow), then
+    # POSTs the signature back to /cdp/offramp/sent for verified recording.
+    def build_user_usdc_transfer_unsigned(wallet_address:, destination_token_account:, amount_lamports:)
+      raise ArgumentError, "amount must be positive" unless amount_lamports.to_i.positive?
+
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+      from_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
+
+      tx = build_tx_unsigned
+      tx.add_instruction(**compute_unit_price_ix(PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS))
+      tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
+      tx.add_instruction(**Solana::SplToken.transfer_instruction(
+        from: from_ata,
+        to: destination_token_account,
+        authority: wallet_bytes,
+        amount: amount_lamports.to_i
+      ))
+
+      { serialized_tx: tx.serialize_partial_base64(additional_signers: [wallet_bytes]) }
+    end
+
     # Fund a user's wallet ATA with USDC.
     # Devnet: mints new tokens (admin holds mint authority on test mints).
     # Mainnet: transfers from admin's treasury ATA.
@@ -2179,6 +2239,15 @@ module Solana
         sleep(tries * 2)
         retry
       end
+    end
+
+    # The cluster's "transaction signature" = the FIRST signature on the wire
+    # (the fee payer's): compact-u16 signature count, then 64-byte sigs.
+    def extract_tx_signature(wire)
+      _count, offset = Transaction.read_compact_u16(wire, 0)
+      sig = wire.byteslice(offset, 64)
+      raise "wire too short to carry a signature" if sig.nil? || sig.bytesize != 64
+      Keypair.encode_base58(sig)
     end
 
     def b(str)

@@ -1,4 +1,20 @@
 module ApplicationHelper
+  # Which funding flow the entry gate offers web2 users: Stripe token packs
+  # while Stripe checkout is enabled (the dormant fallback — flip
+  # STRIPE_CHECKOUT_DISABLED off to restore it wholesale), the Coinbase USDC
+  # ramp when Stripe is off and ENABLE_CDP_RAMP is on, honest offline
+  # otherwise. Routes modals/auth/_tokens vs _usdc_funding in _auth.html.erb
+  # and the /tokens/buy page treatment.
+  def entry_funding_mode
+    if Rails.application.config.x.stripe_enabled
+      :stripe
+    elsif AppFlags.cdp_ramp?
+      :cdp
+    else
+      :none
+    end
+  end
+
   CONTEST_BADGE_STYLES = {
     "open"      => "bg-mint-900/30 text-mint border-mint-700",
     "locked"    => "bg-yellow-900/50 text-yellow-400 border-yellow-700",

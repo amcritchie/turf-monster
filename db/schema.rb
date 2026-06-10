@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -40,6 +40,36 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "cdp_ramp_transactions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "direction", null: false
+    t.string "partner_user_ref"
+    t.string "wallet_address", null: false
+    t.string "wallet_mode", null: false
+    t.string "status", default: "initiated", null: false
+    t.string "cdp_status"
+    t.string "coinbase_transaction_id"
+    t.string "tx_hash"
+    t.string "to_address"
+    t.decimal "sell_amount_value", precision: 30, scale: 12
+    t.string "sell_amount_currency"
+    t.string "asset", default: "USDC", null: false
+    t.string "network", default: "solana", null: false
+    t.string "payment_method"
+    t.jsonb "raw_payload", default: {}
+    t.datetime "returned_at"
+    t.datetime "cashout_deadline_at"
+    t.string "sent_signature"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "confirmed_at"
+    t.datetime "broadcast_at"
+    t.index ["coinbase_transaction_id"], name: "index_cdp_ramp_transactions_on_coinbase_transaction_id", unique: true
+    t.index ["partner_user_ref"], name: "index_cdp_ramp_transactions_on_partner_user_ref", unique: true
+    t.index ["status", "direction"], name: "index_cdp_ramp_transactions_on_status_and_direction"
+    t.index ["user_id"], name: "index_cdp_ramp_transactions_on_user_id"
   end
 
   create_table "contests", force: :cascade do |t|
@@ -74,6 +104,25 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
     t.index ["slug"], name: "index_contests_on_slug", unique: true
     t.index ["status"], name: "index_contests_on_status"
     t.index ["user_id"], name: "index_contests_on_user_id"
+  end
+
+  create_table "email_deliveries", force: :cascade do |t|
+    t.string "email_key", null: false
+    t.string "to"
+    t.string "mailer", null: false
+    t.string "action", null: false
+    t.jsonb "args", default: [], null: false
+    t.jsonb "kwargs", default: {}, null: false
+    t.boolean "sent", default: false, null: false
+    t.datetime "sent_at"
+    t.text "error"
+    t.bigint "user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_email_deliveries_on_created_at"
+    t.index ["email_key"], name: "index_email_deliveries_on_email_key"
+    t.index ["sent"], name: "index_email_deliveries_on_sent"
+    t.index ["user_id"], name: "index_email_deliveries_on_user_id"
   end
 
   create_table "entries", force: :cascade do |t|
@@ -215,7 +264,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
     t.datetime "consumed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.boolean "age_attested", default: false, null: false
     t.index ["expires_at"], name: "index_magic_links_on_expires_at"
     t.index ["token"], name: "index_magic_links_on_token", unique: true
   end
@@ -513,7 +561,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
     t.datetime "first_chat_message_at"
     t.datetime "last_seen_at"
     t.integer "seeds", default: 0, null: false
-    t.datetime "age_attested_at"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
@@ -537,6 +584,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "contests", "slates"
   add_foreign_key "contests", "users"
+  add_foreign_key "email_deliveries", "users"
   add_foreign_key "entries", "contests"
   add_foreign_key "entries", "users"
   add_foreign_key "games", "survivor_rounds"

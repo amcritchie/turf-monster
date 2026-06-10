@@ -20,7 +20,8 @@ class FakeVault
               :fund_calls, :deposit_calls
 
   def initialize(fail_after: nil, starting_sequence: 0, tokens: [], signature_statuses: {},
-                 usdc_balance: nil, usdc_balance_raises: false, account_infos: {}, signatures: {})
+                 usdc_balance: nil, usdc_balance_raises: false, account_infos: {}, signatures: {},
+                 send_raises: nil)
     @fail_after = fail_after
     @starting_sequence = starting_sequence
     @tokens = tokens
@@ -29,6 +30,7 @@ class FakeVault
     @usdc_balance_raises = usdc_balance_raises
     @account_infos = account_infos          # pda_b58 => {"value" => ...} for get_account_info (PDA-exists check)
     @signatures = signatures                 # pda_b58 => [{ "signature" =>, "err" => }] for getSignaturesForAddress
+    @send_raises = send_raises               # send_transaction fault (offramp send tests)
     @mint_calls = []
     @transfer_calls = []
     @enter_calls = []
@@ -48,7 +50,8 @@ class FakeVault
                                      usdc_balance: @usdc_balance,
                                      usdc_balance_raises: @usdc_balance_raises,
                                      account_infos: @account_infos,
-                                     signatures: @signatures)
+                                     signatures: @signatures,
+                                     send_raises: @send_raises)
   end
 
   # Used by ContestsController#create / #rebuild_create_tx. Returns the same
@@ -285,6 +288,49 @@ class FakeVault
     @cancel_calls ||= []
   end
 
+  # --- Offramp USDC send (Cdp::OfframpSendJob / Cdp::OfframpSendsController) ---
+  #
+  # Real Vault#build_user_usdc_transfer returns { wire_base64:, signature: }
+  # WITHOUT broadcasting (the job persists the signature first, then
+  # broadcasts via vault.client.send_transaction). Configure:
+  #   offramp_send_signature: the canned tx signature (default below)
+  #   offramp_build_raises:   message → raise at build time
+
+  attr_writer :offramp_send_signature, :offramp_build_raises
+
+  def build_user_usdc_transfer(user_keypair:, destination_token_account:, amount_lamports:)
+    @offramp_build_calls ||= []
+    @offramp_build_calls << {
+      authority: user_keypair.address,
+      destination: destination_token_account,
+      amount: amount_lamports
+    }
+    raise StandardError, @offramp_build_raises if @offramp_build_raises
+    {
+      wire_base64: "FAKE_WIRE_offramp_#{amount_lamports}",
+      signature: (@offramp_send_signature || "FakeOfframpSendSig")
+    }
+  end
+
+  def offramp_build_calls
+    @offramp_build_calls ||= []
+  end
+
+  # Phantom flavor — unsigned single-signer tx envelope.
+  def build_user_usdc_transfer_unsigned(wallet_address:, destination_token_account:, amount_lamports:)
+    @offramp_unsigned_calls ||= []
+    @offramp_unsigned_calls << {
+      wallet: wallet_address,
+      destination: destination_token_account,
+      amount: amount_lamports
+    }
+    { serialized_tx: "FAKE_TX_offramp_#{wallet_address[0, 4]}_#{amount_lamports}" }
+  end
+
+  def offramp_unsigned_calls
+    @offramp_unsigned_calls ||= []
+  end
+
   # --- Currency registry + sweep (unused-instructions cleanup) ---
 
   def read_vault_state(**_opts)
@@ -392,16 +438,42 @@ end
 # here, so the array has at most one element. An unknown signature
 # returns {"value" => [nil]} per the JSON-RPC spec.
 class FakeSolanaClient
-  def initialize(statuses, usdc_balance: nil, usdc_balance_raises: false, account_infos: {}, signatures: {})
+  def initialize(statuses, usdc_balance: nil, usdc_balance_raises: false, account_infos: {},
+                 signatures: {}, send_raises: nil, transactions: {})
     @statuses = statuses || {}
     @usdc_balance = usdc_balance
     @usdc_balance_raises = usdc_balance_raises
     @account_infos = account_infos || {}
     @signatures = signatures || {}
+    @send_raises = send_raises          # exception (or message) raised by send_transaction
+    @transactions = transactions || {}  # signature => get_transaction payload
   end
 
   def confirm_transaction(signature)
     { "value" => [@statuses[signature]] }
+  end
+
+  # Cdp::OfframpSendJob broadcasts the pre-signed wire here AFTER persisting
+  # the signature. Records every call; @send_raises simulates a broadcast
+  # fault (the verify-before-retry path must own recovery).
+  def send_transaction(wire_base64, **_opts)
+    @sent_transactions ||= []
+    @sent_transactions << wire_base64
+    if @send_raises
+      raise @send_raises if @send_raises.is_a?(Exception) || @send_raises.is_a?(Class)
+      raise Solana::Client::RpcError, @send_raises.to_s
+    end
+    "fake-broadcast-sig"
+  end
+
+  def sent_transactions
+    @sent_transactions ||= []
+  end
+
+  # Cdp::OfframpSendsController#verify_reported_signature! (Phantom sent
+  # report). nil (default) = "not found on-chain".
+  def get_transaction(signature, **_opts)
+    @transactions[signature]
   end
 
   # ContestsController#insufficient_usdc_error reads value/uiAmount. A nil

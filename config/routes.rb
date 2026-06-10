@@ -304,6 +304,28 @@ Rails.application.routes.draw do
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"
 
+  # Coinbase CDP Onramp/Offramp — buy USDC / cash out via the Coinbase-hosted
+  # widget (docs/CDP_RAMP_INTEGRATION.md §8). The routes stay drawn in every
+  # env; Cdp::BaseController 404s everything unless ENABLE_CDP_RAMP is set, so
+  # the env var (not a deploy) is the kill-switch. The session POSTs mint the
+  # single-use widget token; the return GETs are Coinbase's redirectUrl targets
+  # (UX signal only — never confirmation); ramp_status is the local-state poll
+  # for the return page / modal. Phase 2 adds: post "webhooks/cdp".
+  scope :cdp do
+    post "onramp_sessions",  to: "cdp/ramp_sessions#create_onramp",  as: :cdp_onramp_sessions
+    post "offramp_sessions", to: "cdp/ramp_sessions#create_offramp", as: :cdp_offramp_sessions
+    get  "onramp/return",    to: "cdp/returns#onramp",               as: :cdp_onramp_return
+    get  "offramp/return",   to: "cdp/returns#offramp",              as: :cdp_offramp_return
+    get  "ramp_status/:partner_user_ref", to: "cdp/returns#status",  as: :cdp_ramp_status,
+         defaults: { format: :json }
+    # Offramp send path (§10) — managed confirm-then-server-send, and the
+    # Phantom prepare/sign/report loop. All keyed on partner_user_ref in the
+    # body and scoped to the viewer's own offramp rows.
+    post "offramp/confirm_send", to: "cdp/offramp_sends#confirm", as: :cdp_offramp_confirm_send
+    post "offramp/prepare_send", to: "cdp/offramp_sends#prepare", as: :cdp_offramp_prepare_send
+    post "offramp/sent",         to: "cdp/offramp_sends#sent",    as: :cdp_offramp_sent
+  end
+
   post "add_funds", to: "users#add_funds"
 
   # Admin: Treasury (pending multisig transactions)

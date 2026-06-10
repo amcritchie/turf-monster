@@ -897,6 +897,18 @@
         <template x-if="$store.modals.current().id === 'wallet-deposit'">
           <%= render "modals/wallet_deposit" %>
         </template>
+        <%# cdp-ramp — Coinbase buy-USDC / cash-out flow (spec section 14).
+            Flag-gated so the dark feature ships no modal markup while
+            ENABLE_CDP_RAMP is unset (the kill-switch also 404s every /cdp
+            endpoint via Cdp::BaseController; the inert cdpRampFlow factory
+            in shared/_alpine_factories is the only remnant). Opened by the
+            /wallet buttons, the wallet-deposit modal's Coinbase option, and
+            the /cdp return pages' deep-link. %>
+        <% if AppFlags.cdp_ramp? %>
+          <template x-if="$store.modals.current().id === 'cdp-ramp'">
+            <%= render "modals/cdp_ramp" %>
+          </template>
+        <% end %>
       <% end %>
 
 

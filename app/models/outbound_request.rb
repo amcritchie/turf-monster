@@ -1,6 +1,7 @@
 # Audit log of every outbound HTTP / JSON-RPC call to a third-party service.
 # Populated by OutboundRequestLogger via the Stripe instrumentation hook + the
-# Solana::Client prepend in config/initializers/outbound_request_hooks.rb.
+# Solana::Client prepend in config/initializers/outbound_request_hooks.rb, and
+# directly by Cdp::Client (service "cdp").
 #
 # Immutable: created once per call, never updated. The retention sweeper job
 # trims the table on a schedule (90d for success, 180d for errors).
@@ -15,7 +16,7 @@ class OutboundRequest < ApplicationRecord
   belongs_to :user,                       optional: true
   belongs_to :acting_admin, class_name: "User", optional: true
 
-  SERVICES = %w[stripe solana_rpc moonpay].freeze
+  SERVICES = %w[stripe solana_rpc moonpay cdp].freeze
 
   validates :service, presence: true
 

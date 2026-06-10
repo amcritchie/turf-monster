@@ -1,0 +1,80 @@
+#!/bin/zsh
+# bin/setup-cdp-key — install a Coinbase CDP secret API key into turf-monster/.env
+#
+# Two ways to use it:
+#
+#   A) Full key JSON in clipboard (the portal's "Download API key" blob):
+#        {"name": "organizations/.../apiKeys/...", "privateKey": "..."}  or  {"id": "...", "privateKey": "base64..."}
+#      Run:  bin/setup-cdp-key
+#
+#   B) Key ID and secret copied separately (the portal modal's two fields):
+#      Copy JUST the secret (base64 or PEM) to the clipboard, then run:
+#        bin/setup-cdp-key <key-id-uuid>
+#
+# Then restart the dev stack:  bin/tm restart
+#
+# Why this exists:
+#   Pasting multi-line PEM keys directly into a terminal reliably breaks on
+#   macOS (smart quotes, line wrapping splitting the paste). pbpaste sidesteps
+#   shell parsing entirely — same pattern as mcritchie-studio's
+#   bin/setup-1pass-token. The key never appears in shell history or chat.
+#
+# Writes CDP_API_KEY_ID and CDP_API_KEY_SECRET to .env (PEM newlines stored
+# as \n escapes inside double quotes — dotenv unescapes them at load).
+# Re-runs replace any prior values cleanly.
+
+set -e
+cd "$(dirname "$0")/.."
+
+if ! command -v pbpaste >/dev/null 2>&1; then
+  echo "ERROR: pbpaste not found. This script is macOS-only."
+  exit 1
+fi
+
+KEY_ID_ARG="${1:-}"
+
+pbpaste | KEY_ID_ARG="$KEY_ID_ARG" ruby -rjson -rbase64 -e '
+  raw = STDIN.read.strip
+  abort "ERROR: clipboard is empty. Copy the CDP key JSON (or just the secret), then re-run." if raw.empty?
+
+  id = secret = nil
+  begin
+    key = JSON.parse(raw)
+    id     = key["name"] || key["id"]
+    secret = key["privateKey"]
+    abort "ERROR: JSON parsed but is missing name/id or privateKey fields." unless id && secret
+  rescue JSON::ParserError
+    id = ENV["KEY_ID_ARG"].to_s.strip
+    if id.empty?
+      abort "ERROR: clipboard is not the key JSON and no key ID was given.\n" \
+            "       Either copy the FULL downloaded key blob and run bin/setup-cdp-key,\n" \
+            "       or copy JUST the secret and run: bin/setup-cdp-key <key-id-uuid>"
+    end
+    secret = raw
+  end
+
+  # Sanity-check the secret shape: Ed25519 secrets must base64-decode to 64
+  # bytes (32-byte seed + 32-byte pubkey); ECDSA keys arrive as PEM.
+  if secret.include?("BEGIN")
+    kind = "ECDSA PEM"
+  else
+    decoded = Base64.decode64(secret)
+    abort "ERROR: secret base64-decodes to #{decoded.length} bytes; Ed25519 CDP keys must be 64. Wrong field copied?" unless decoded.length == 64
+    kind = "Ed25519 base64 (64-byte check OK)"
+  end
+
+  env_path = ".env"
+  lines = File.exist?(env_path) ? File.read(env_path).lines : []
+  lines = lines.map { |l| l.end_with?("\n") ? l : l + "\n" }
+  lines = lines.reject { |l| l =~ /^CDP_API_KEY_(ID|SECRET)=/ }
+  lines << "CDP_API_KEY_ID=#{id}\n"
+  lines << %Q(CDP_API_KEY_SECRET="#{secret.gsub("\n", "\\n")}"\n)
+  File.write(env_path, lines.join)
+  File.chmod(0600, env_path)
+
+  puts "Installed CDP key into .env"
+  puts "  key id: #{id}"
+  puts "  secret: #{secret.length} chars (#{kind}) — not echoed"
+  puts ""
+  puts "Run bin/tm restart to pick it up."
+'

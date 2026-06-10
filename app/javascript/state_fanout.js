@@ -124,6 +124,51 @@ register("seeds", function (d, source, opts) {
   }, dispatchDelay);
 });
 
+// ── cdp_ramp handler ──────────────────────────────────────────────────────
+// Triggers: the cdp-ramp modal (cdpRampFlow._finish) and the /cdp/*/return
+//   pages when a Coinbase onramp/offramp session reaches a terminal local
+//   status (success / failed / expired / abandoned).
+// Payload: { direction, status, partner_user_ref, tx_hash?, sent_signature? }
+// localStorage: none — the navbar USDC pill is server-cache-backed;
+//   refreshBalance() owns both the pill ([data-balance-display]) and
+//   $store.session.usdcCents, so there is no client cache key to write.
+// Balance refresh: a successful onramp landed USDC in the wallet; a sent
+//   offramp moved USDC out (even a late send that CDP marks failed —
+//   sent_signature present means the transfer happened). The server-side
+//   USDC read is cached for 60s and has no bust hook from this path, so a
+//   second refresh fires after the TTL to converge the navbar to truth.
+// Event dispatched:
+//   cdp-ramp-update — detail { direction, status, partnerUserRef, txHash }
+//   for any long-lived component that wants to react without a reload.
+register("cdp_ramp", function (d, source, opts) {
+  d = d || {};
+  console.log("[state-fanout][cdp_ramp]", {
+    source: source,
+    direction: d.direction,
+    status: d.status,
+    partner_user_ref: d.partner_user_ref,
+    tx_hash: d.tx_hash
+  });
+
+  var movedFunds = d.status === "success" || !!d.sent_signature;
+  if (movedFunds && typeof window.refreshBalance === "function") {
+    window.refreshBalance();
+    setTimeout(function () { window.refreshBalance(); }, 61000); // server cache TTL 60s
+  }
+
+  const dispatchDelay = opts.dispatchDelay !== undefined ? opts.dispatchDelay : 0;
+  setTimeout(function () {
+    window.dispatchEvent(new CustomEvent("cdp-ramp-update", {
+      detail: {
+        direction: d.direction,
+        status: d.status,
+        partnerUserRef: d.partner_user_ref,
+        txHash: d.tx_hash
+      }
+    }));
+  }, dispatchDelay);
+});
+
 // Attached to window so inline x-data callers (selectionBoard etc.) can
 // reach it. Alpine processes x-data before importmap modules load, but the
 // handlers here are only INVOKED from event callbacks (e.g. confirmEntry

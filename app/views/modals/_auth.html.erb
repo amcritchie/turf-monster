@@ -233,8 +233,15 @@
   <%# === TOKENS SUB-FLOW ====================================================
       tokens-picker / -waiting / -confirming / -minted / -submitted / -error
       live in modals/auth/_tokens.html.erb so this partial stays focused on
-      auth credentials + the redirect step. Same x-data scope. %>
-  <%= render 'modals/auth/tokens' %>
+      auth credentials + the redirect step. Same x-data scope.
+      With Stripe checkout off, modals/auth/_usdc_funding.html.erb takes over
+      the same step machine (Coinbase USDC funding, or the offline card) —
+      the tokens partial stays dormant for an easy flip back. %>
+  <% if entry_funding_mode == :stripe %>
+    <%= render 'modals/auth/tokens' %>
+  <% else %>
+    <%= render 'modals/auth/usdc_funding' %>
+  <% end %>
 
   <%# === REDIRECT STEP ======================================================
       Status-template spine: card_header with caller-provided emoji

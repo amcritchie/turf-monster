@@ -1,6 +1,12 @@
 Stripe.api_key = ENV["STRIPE_SECRET_KEY"]
 
-Rails.application.config.x.stripe_enabled = ENV["STRIPE_SECRET_KEY"].present?
+# STRIPE_CHECKOUT_DISABLED is the checkout-only kill-switch: it hides the
+# pack buttons and blocks new checkout sessions WITHOUT removing the API key
+# — the key must stay set so webhooks, refunds, and dispute handling for
+# past purchases keep working (and OPSEC-032 below keeps holding).
+Rails.application.config.x.stripe_enabled =
+  ENV["STRIPE_SECRET_KEY"].present? &&
+  ENV["STRIPE_CHECKOUT_DISABLED"].to_s.strip.downcase != "true"
 
 # OPSEC-032: production boot must hold authoritative Stripe credentials.
 # Refusing to boot is the right failure mode — a silently-started prod app
@@ -19,5 +25,6 @@ if Rails.env.production?
 end
 
 unless Rails.application.config.x.stripe_enabled
-  Rails.logger.warn "[stripe] STRIPE_SECRET_KEY not set — token-pack card checkout is disabled."
+  Rails.logger.warn "[stripe] token-pack card checkout is disabled " \
+    "(#{ENV['STRIPE_SECRET_KEY'].present? ? 'STRIPE_CHECKOUT_DISABLED' : 'STRIPE_SECRET_KEY not set'})."
 end
