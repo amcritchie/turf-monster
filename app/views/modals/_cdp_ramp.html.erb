@@ -62,6 +62,17 @@
         Solana network fee. The exact total shows on Coinbase's order preview
         before you pay.
       </div>
+      <% if Solana::Config.devnet? %>
+        <%# Cluster-mismatch heads-up for non-mainnet environments only:
+            Coinbase has no testnet — it always delivers REAL mainnet USDC,
+            which a devnet-pointed app will never show in the balance. %>
+        <div class="rounded-lg p-3 text-xs mb-4 bg-yellow-500/10 border border-yellow-600/30 text-yellow-300">
+          <span class="font-semibold">Dev environment:</span>
+          Coinbase delivers <span class="font-semibold">real mainnet USDC</span>.
+          This app is reading the devnet cluster, so your in-app balance will
+          NOT reflect this purchase &mdash; verify on Solana Explorer instead.
+        </div>
+      <% end %>
       <button @click="start()" class="btn btn-primary btn-lg w-full">
         Continue to Coinbase
       </button>

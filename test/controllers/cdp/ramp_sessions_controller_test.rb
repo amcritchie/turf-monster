@@ -60,11 +60,26 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
                  encrypted_web2_solana_private_key: "x")
   end
 
-  def post_session(direction, catalog: FakeCatalog.new, service: FakeTokenService.new, params: {})
+  # Balance read for the onramp baseline snapshot — stubbed for every session
+  # POST so no test reaches a real RPC.
+  class FakeBalanceVault
+    def initialize(usdc: 10.0)
+      @usdc = usdc
+    end
+
+    def fetch_wallet_balances(_address)
+      { usdc: @usdc }
+    end
+  end
+
+  def post_session(direction, catalog: FakeCatalog.new, service: FakeTokenService.new,
+                   vault: FakeBalanceVault.new, params: {})
     path = direction == :onramp ? cdp_onramp_sessions_path : cdp_offramp_sessions_path
     Cdp::Catalog.stub :new, catalog do
       Cdp::SessionTokenService.stub :new, service do
-        post path, params: params, as: :json
+        Solana::Vault.stub :new, vault do
+          post path, params: params, as: :json
+        end
       end
     end
   end
@@ -287,6 +302,28 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
       service = FakeTokenService.new(raise_error: Cdp::Client::RateLimitError.new("CDP 429: slow down"))
       post_session(:onramp, service: service)
       assert_response :too_many_requests
+    end
+  end
+
+  test "onramp snapshots the wallet's USDC baseline for balance-anchored confirmation" do
+    with_cdp_ramp do
+      log_in_as @user
+      give_managed_wallet
+      post_session(:onramp, vault: FakeBalanceVault.new(usdc: 7.5))
+      assert_response :success
+      ramp = CdpRampTransaction.order(created_at: :desc).first
+      assert_equal "7.5", ramp.raw_payload["baseline_usdc"]
+    end
+  end
+
+  test "offramp does not snapshot a baseline" do
+    with_cdp_ramp do
+      log_in_as @user
+      give_managed_wallet
+      post_session(:offramp)
+      assert_response :success
+      ramp = CdpRampTransaction.order(created_at: :desc).first
+      assert_nil ramp.raw_payload&.dig("baseline_usdc")
     end
   end
 

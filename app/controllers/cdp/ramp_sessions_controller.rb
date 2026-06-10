@@ -55,6 +55,8 @@ module Cdp
         )
       end
 
+      snapshot_baseline_usdc(ramp) if ramp && direction == :onramp
+
       rescue_and_log(target: ramp, parent: current_user) do
         token = SessionTokenService.new.mint(address: address, client_ip: cdp_client_ip)
         url = build_url(direction, ramp, token)
@@ -111,6 +113,20 @@ module Cdp
       else
         catalog.offramp_available?(country: geo_country, subdivision: geo_state)
       end
+    end
+
+    # Balance-anchored purchase confirmation, half 1: snapshot the destination
+    # wallet's USDC before the buy so the ramp_status poll can recognize
+    # arrival by balance delta. Coinbase's transactions API does not attribute
+    # guest-checkout buys to partnerUserRef (observed 2026-06-10), so the
+    # wallet itself is the signal that always fires. Fail-open: a failed
+    # snapshot only disables balance confirmation for this session.
+    def snapshot_baseline_usdc(ramp)
+      baseline = Solana::Vault.new.fetch_wallet_balances(ramp.wallet_address)[:usdc]
+      return if baseline.nil?
+      ramp.update!(raw_payload: (ramp.raw_payload || {}).merge("baseline_usdc" => baseline.to_s))
+    rescue StandardError => e
+      Rails.logger.warn "[cdp] baseline snapshot failed for #{ramp.partner_user_ref}: #{e.message}"
     end
 
     # Optional widget prefill (e.g. the contest entry fee from the auth

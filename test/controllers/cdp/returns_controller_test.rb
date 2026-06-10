@@ -164,4 +164,85 @@ class Cdp::ReturnsControllerTest < ActionDispatch::IntegrationTest
       assert_response :not_found
     end
   end
+
+  # --- balance-anchored onramp confirmation (guest buys never appear in
+  # --- Coinbase's transactions API, so the wallet delta is the signal) ---
+
+  class FakeBalanceVault
+    attr_reader :calls
+
+    def initialize(usdc: nil)
+      @usdc = usdc
+      @calls = 0
+    end
+
+    def fetch_wallet_balances(_address)
+      @calls += 1
+      { usdc: @usdc }
+    end
+  end
+
+  def get_status(ramp, vault:)
+    Solana::Vault.stub :new, vault do
+      get cdp_ramp_status_path(partner_user_ref: ramp.partner_user_ref)
+    end
+  end
+
+  test "status marks an onramp success when the wallet balance rises past the baseline" do
+    with_cdp_ramp do
+      ramp = create_ramp(status: "returned", raw_payload: { "baseline_usdc" => "5.0" })
+      log_in_as @user
+
+      get_status(ramp, vault: FakeBalanceVault.new(usdc: 24.88))
+      assert_response :success
+      assert_equal "success", JSON.parse(response.body)["status"]
+
+      ramp.reload
+      assert ramp.success?
+      assert_equal "wallet_balance", ramp.raw_payload["confirmed_via"]
+      assert_equal "24.88", ramp.raw_payload["usdc_after"]
+      assert ramp.raw_payload["funds_arrived_at"].present?
+    end
+  end
+
+  test "status leaves the row untouched while the balance has not moved" do
+    with_cdp_ramp do
+      ramp = create_ramp(status: "returned", raw_payload: { "baseline_usdc" => "5.0" })
+      log_in_as @user
+
+      get_status(ramp, vault: FakeBalanceVault.new(usdc: 5.0))
+      assert_response :success
+      assert ramp.reload.returned?
+    end
+  end
+
+  test "status skips the balance read entirely without a baseline or for terminal/offramp rows" do
+    with_cdp_ramp do
+      log_in_as @user
+      no_call = FakeBalanceVault.new
+
+      [ create_ramp(status: "returned"),
+        create_ramp(status: "success", raw_payload: { "baseline_usdc" => "5.0" }),
+        create_ramp(direction: "offramp", status: "returned", raw_payload: { "baseline_usdc" => "5.0" }) ].each do |ramp|
+        get_status(ramp, vault: no_call)
+        assert_response :success
+      end
+      assert_equal 0, no_call.calls
+    end
+  end
+
+  test "status fails open when the balance read raises" do
+    with_cdp_ramp do
+      ramp = create_ramp(status: "returned", raw_payload: { "baseline_usdc" => "5.0" })
+      log_in_as @user
+
+      vault = Object.new
+      def vault.fetch_wallet_balances(_address)
+        raise "rpc down"
+      end
+      get_status(ramp, vault: vault)
+      assert_response :success
+      assert ramp.reload.returned?
+    end
+  end
 end

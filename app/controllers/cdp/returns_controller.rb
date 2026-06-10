@@ -27,10 +27,40 @@ module Cdp
       ramp = current_user.cdp_ramp_transactions.find_by(partner_user_ref: params[:partner_user_ref])
       return render json: { error: "not found" }, status: :not_found unless ramp
 
+      confirm_onramp_by_balance(ramp)
       render json: status_payload(ramp)
     end
 
     private
+
+    # Balance-anchored purchase confirmation, half 2 (the modal's 5s poll
+    # drives this): a buy is done when the destination wallet's USDC exceeds
+    # the at-mint baseline snapshot. Coinbase's transactions API does not
+    # attribute guest-checkout buys to partnerUserRef (observed 2026-06-10),
+    # so the wallet is the signal that always fires; the CDP poll jobs keep
+    # running for audit enrichment. Fresh RPC read per poll, deliberately
+    # uncached — one open modal is one read per 5s and trial mode caps
+    # volume. mark_success! is forward-only, so a racing CDP poll job can
+    # never be downgraded by this path (nor vice versa).
+    def confirm_onramp_by_balance(ramp)
+      return unless ramp.onramp? && !ramp.terminal?
+      baseline = ramp.raw_payload&.dig("baseline_usdc")
+      return if baseline.blank?
+
+      current = Solana::Vault.new.fetch_wallet_balances(ramp.wallet_address)[:usdc]
+      return if current.nil? || BigDecimal(current.to_s) <= BigDecimal(baseline)
+
+      rescue_and_log(target: ramp, parent: current_user) do
+        ramp.update!(raw_payload: ramp.raw_payload.merge(
+          "funds_arrived_at" => Time.current.iso8601,
+          "confirmed_via"    => "wallet_balance",
+          "usdc_after"       => current.to_s
+        ))
+        ramp.mark_success!
+      end
+    rescue StandardError => e
+      Rails.logger.warn "[cdp] balance confirmation failed for #{ramp.partner_user_ref}: #{e.message}"
+    end
 
     def handle_return(direction, job_class)
       @ramp = current_user.cdp_ramp_transactions.active.where(direction: direction).recent.first
