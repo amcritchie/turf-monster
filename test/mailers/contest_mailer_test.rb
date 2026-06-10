@@ -28,7 +28,7 @@ class ContestMailerTest < ActionMailer::TestCase
       assert_match contest_url(@contest), body, "contest link missing from #{part.content_type}"
     end
 
-    assert_match "#1", mail.html_part.body.to_s, "rank missing from html body"
+    assert_match "1st", mail.html_part.body.to_s, "rank missing from html body"
   end
 
   test "winnings formats cents to dollars correctly" do

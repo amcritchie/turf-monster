@@ -1,4 +1,6 @@
 class InviterMailer < ApplicationMailer
+  layout "branded_mailer"
+
   # Sent when an invitee submits their first confirmed contest entry.
   # ReferralProgress.mark_entered! triggers this through
   # InviterNotificationJob, which calls #with(invitee:).friend_joined_contest
@@ -17,6 +19,8 @@ class InviterMailer < ApplicationMailer
     @target              = 2
     @remaining           = [@target - @invitees_in_contest, 0].max
     @account_url         = account_url
+    @banner_url          = email_banner_url("friend-joined-banner.png")
+    @banner_alt          = "Your Friend's In!"
 
     mail(
       to: @inviter.email,

@@ -1,5 +1,6 @@
 class ContestMailer < ApplicationMailer
   include ApplicationHelper
+  layout "branded_mailer"
 
   # Winner-notification email, sent after a contest's on-chain settlement
   # lands (the settle_contest PendingTransaction is confirmed and
@@ -18,6 +19,8 @@ class ContestMailer < ApplicationMailer
     @payout  = dollars(entry.payout_cents / 100.0)
     @rank    = entry.rank
     @contest_url = contest_url(@contest)
+    @banner_url = email_banner_url("winnings-banner.png")
+    @banner_alt = "You Won!"
 
     mail(
       to: @user.email,

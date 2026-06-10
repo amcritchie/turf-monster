@@ -1,20 +1,34 @@
-<h1>You're in! 🐊</h1>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3f4a3c;">Hi <%= @user.display_name %> 👋🏻</p>
 
-<p>Hi <%= @user.display_name %>,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3f4a3c;">
+  Welcome to the Turf Monster newsletter — you'll be first to hear about new contests,
+  new games, and prizes.
+</p>
 
-<p>Welcome to the Turf Monster newsletter — you'll be first to hear about new contests,
-   new games, and prizes.</p>
+<p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#3f4a3c;">
+  🌱 As a thank-you for joining, we dropped <strong style="color:#1f2a1c;">25 seeds</strong>
+  into your account. Put them to work:
+</p>
 
-<p>🌱 As a thank-you for joining, we dropped <strong>25 seeds</strong> into your account.
-   Put them to work:</p>
+<%# Bulletproof green button (matches the Magic Link CTA) %>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr>
+    <td align="center" bgcolor="#4BAF50" style="border-radius:10px;">
+      <a href="<%= @cta_url %>"
+         style="display:inline-block;padding:16px 40px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+        Play a contest →
+      </a>
+    </td>
+  </tr>
+</table>
 
-<p><%= link_to "Play a contest →", root_url %></p>
+<p style="margin:28px 0 0;font-size:14px;line-height:1.5;color:#6b756a;text-align:center;">
+  See you on the pitch. — Turf Monster
+</p>
 
-<p>See you on the pitch.<br>— Turf Monster</p>
+<hr style="border:none;border-top:1px solid #e5e9e3;margin:28px 0 0;">
 
-<hr>
-
-<p style="font-size:12px;color:#888888;">
+<p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#8a948a;text-align:center;">
   You're receiving this because you joined the Turf Monster newsletter.
-  <%= link_to "Manage your email preferences", @account_url %>.
+  <a href="<%= @account_url %>" style="color:#3d8b40;">Manage your email preferences</a>.
 </p>
