@@ -37,7 +37,8 @@ module Cdp
     CONFIRM_WAIT = 15.seconds
     # A legacy-blockhash tx is unlandable well before this; a persisted
     # signature still absent from getSignatureStatuses (with
-    # searchTransactionHistory) this long after confirmation can never land.
+    # searchTransactionHistory) this long after the BROADCAST ATTEMPT
+    # (broadcast_at, stamped by mark_sending!) can never land.
     BLOCKHASH_LAPSE = 5.minutes
     # Stop re-verifying an ambiguous signature this long past the cashout
     # deadline — leave the row in :sending for the phase-2 sweep/operator.
@@ -189,9 +190,18 @@ module Cdp
       end
     end
 
+    # Anchored on broadcast_at — the moment mark_sending! persisted the
+    # signature, immediately before the broadcast attempt. NEVER anchor on
+    # confirmed_at: the broadcast can legally happen up to CONFIRMATION_TTL
+    # after the user's confirmation click (Sidekiq queue latency, retry
+    # backoff), so a confirmed_at anchor can declare a JUST-broadcast tx
+    # verified-dead while it is still inside its blockhash validity — the
+    # reset + rebuild then double-sends USDC from the user's wallet.
+    # No anchor (shouldn't happen — mark_sending! always stamps it) is
+    # AMBIGUOUS, never verified-dead: fall through to the re-verify path,
+    # bounded by verify_window_open?.
     def blockhash_lapsed?(ramp)
-      anchor = ramp.confirmed_at || ramp.updated_at
-      anchor.present? && Time.current > anchor + BLOCKHASH_LAPSE
+      ramp.broadcast_at.present? && Time.current > ramp.broadcast_at + BLOCKHASH_LAPSE
     end
 
     def verify_window_open?(ramp)

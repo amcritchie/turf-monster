@@ -5,10 +5,16 @@ module Cdp
   #   apply(ramp, tx) — direction-specific status handling
   #
   # Cadence: each run re-enqueues ITSELF via set(wait:) on the
-  # 10s → 30s → 1m → 2m → 5m backoff (then 5m repeating), started by
-  # Cdp::ReturnsController on the return-page hit ("avoid polling immediately
-  # after generating the URL" — the first poll waits the first step too).
-  # The loop stops at a terminal local status or at deadline + grace.
+  # 10s → 30s → 1m → 2m → 5m backoff (then 5m repeating). The loop is STARTED
+  # at session-mint time by Cdp::RampSessionsController (schedule_from_mint,
+  # first poll after MINT_POLL_DELAY — "avoid polling immediately after
+  # generating the URL") and (re-)scheduled by Cdp::ReturnsController on the
+  # return-page hit. Reconciliation must never hinge on the redirect alone:
+  # an un-allowlisted domain or a closed Coinbase tab silently drops it while
+  # the transaction still completes (spec Risks — "broken by design"), and
+  # offramp to_address discovery MUST run or the 30-minute cashout window
+  # lapses with no send. The loop stops at a terminal local status or at
+  # deadline + grace.
   #
   # Faults: a Cdp::Client::Error (timeout / 5xx / 429) is captured to ErrorLog
   # and the cadence CONTINUES — a flaky CDP response must not kill the loop;
@@ -29,10 +35,25 @@ module Cdp
     GRACE       = 10.minutes
     # page_size DEFAULTS TO 1 server-side — always pass it (§11).
     PAGE_SIZE   = 50
+    # First poll delay when scheduled at session-mint time: long enough to
+    # satisfy "avoid polling immediately after generating the URL" (the user
+    # is still inside the hosted widget), short enough that offramp
+    # to_address discovery starts well inside the 30-minute cashout window.
+    MINT_POLL_DELAY = 1.minute
 
-    # Entry point used by Cdp::ReturnsController.
+    # Entry point used by Cdp::ReturnsController (return-page hit) and
+    # Cdp::OfframpSendsController (Phantom `sent` nudge).
     def self.schedule_initial(ramp)
       set(wait: POLL_DELAYS.first).perform_later(ramp_id: ramp.id, attempt: 0)
+    end
+
+    # Entry point used by Cdp::RampSessionsController at session-mint time —
+    # the loop must start even if the return redirect never fires (closed
+    # tab, allowlist regression). Idempotent + deadline-bounded, so a later
+    # return-hit schedule_initial converges with this loop instead of
+    # double-applying.
+    def self.schedule_from_mint(ramp)
+      set(wait: MINT_POLL_DELAY).perform_later(ramp_id: ramp.id, attempt: 0)
     end
 
     def perform(ramp_id:, attempt: 0)
@@ -149,16 +170,21 @@ module Cdp
     end
 
     def handle_deadline_lapse(ramp)
-      if ramp.pre_cdp?
+      if ramp.pre_cdp? && ramp.coinbase_transaction_id.blank?
         # Nothing ever materialized at CDP — the hosted session lapsed.
         ramp.mark_expired!
         Rails.logger.info("[cdp][poll] #{ramp.partner_user_ref} deadline+grace passed with no CDP transaction — expired")
       else
-        # cdp_created / sending / sent — funds may be in flight; never
-        # auto-expire a row CDP knows about. Phase-2 webhooks/sweep own late
-        # settlement (a late offramp send goes FAILED on CDP's side, [^11]).
-        Rails.logger.warn("[cdp][poll] #{ramp.partner_user_ref} deadline+grace passed in #{ramp.status} — " \
-                          "stopping poll, leaving status for the sweep")
+        # A CDP transaction exists (or our lifecycle moved past pre-CDP) —
+        # funds may still be in flight. Onramp rows never leave `returned`
+        # (a pre-CDP status) while the buy is IN_PROGRESS, and a slow ACH /
+        # card-review buy can easily outlast the poll window — marking it
+        # expired would render the buy-failed card while the user's USDC is
+        # still on its way. Never auto-expire a row CDP knows about; stop
+        # polling and leave settlement to the phase-2 webhooks/sweep (a late
+        # offramp send goes FAILED on CDP's side, [^11]).
+        Rails.logger.warn("[cdp][poll] #{ramp.partner_user_ref} deadline+grace passed in #{ramp.status} " \
+                          "(cdp tx=#{ramp.coinbase_transaction_id || 'none'}) — stopping poll, leaving status for the sweep")
       end
     end
 

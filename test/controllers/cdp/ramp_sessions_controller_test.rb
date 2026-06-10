@@ -1,6 +1,8 @@
 require "test_helper"
 
 class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
+
   # Available-everywhere catalog stand-in (the controller builds one per
   # request via Cdp::Catalog.new).
   class FakeCatalog
@@ -172,6 +174,46 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
 
       # §8: NO CORS headers, ever — same-origin authedFetch needs none.
       assert_nil response.headers["Access-Control-Allow-Origin"]
+    end
+  end
+
+  test "session mint schedules the poll loop — reconciliation must never hinge on the return redirect" do
+    # The spec's Risks section: an un-allowlisted domain (or a closed
+    # Coinbase tab) silently drops the redirect while the transaction still
+    # completes. Without a mint-time schedule, onramp rows strand at
+    # token_minted and offramp to_address discovery never runs — the
+    # 30-minute cashout window lapses with no send.
+    with_cdp_ramp do
+      give_managed_wallet
+      log_in_as @user
+
+      post_session(:onramp)
+      assert_response :success
+      onramp = CdpRampTransaction.last
+      job = enqueued_jobs.find { |j| j[:job] == Cdp::OnrampPollJob }
+      assert job, "expected Cdp::OnrampPollJob scheduled at mint time"
+      assert_equal onramp.id, job[:args].first["ramp_id"]
+      assert job[:at].present?, "first poll must wait (~60s), never run immediately (§11)"
+      assert_in_delta Cdp::RampPollJob::MINT_POLL_DELAY.from_now.to_f, job[:at], 5
+
+      post_session(:offramp)
+      assert_response :success
+      offramp = CdpRampTransaction.last
+      job = enqueued_jobs.find { |j| j[:job] == Cdp::OfframpPollJob }
+      assert job, "expected Cdp::OfframpPollJob scheduled at mint time"
+      assert_equal offramp.id, job[:args].first["ramp_id"]
+    end
+  end
+
+  test "a failed token mint schedules no poll loop" do
+    with_cdp_ramp do
+      give_managed_wallet
+      log_in_as @user
+      service = FakeTokenService.new(raise_error: Cdp::Client::ApiError.new("CDP 500: boom"))
+      post_session(:onramp, service: service)
+      assert_response :bad_gateway
+      assert_empty enqueued_jobs.select { |j| j[:job] == Cdp::OnrampPollJob },
+                   "no CDP transaction can exist before the token mints — nothing to poll"
     end
   end
 

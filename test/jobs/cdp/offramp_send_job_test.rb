@@ -61,6 +61,8 @@ class Cdp::OfframpSendJobTest < ActiveJob::TestCase
     ramp.reload
     assert ramp.sending?
     assert_equal "FakeOfframpSendSig", ramp.sent_signature
+    assert ramp.broadcast_at.present?, "mark_sending! must stamp the broadcast-attempt time"
+    assert_in_delta Time.current.to_f, ramp.broadcast_at.to_f, 5
     assert_equal 1, vault.offramp_build_calls.length
     assert_equal 19_000_000, vault.offramp_build_calls.first[:amount]
     assert_equal @to_address, vault.offramp_build_calls.first[:destination]
@@ -210,7 +212,7 @@ class Cdp::OfframpSendJobTest < ActiveJob::TestCase
   end
 
   test "verify path: a DEFINITIVE on-chain failure resets for a fresh re-guarded attempt" do
-    ramp = create_ramp(status: "sending", sent_signature: "SigX")
+    ramp = create_ramp(status: "sending", sent_signature: "SigX", broadcast_at: 30.seconds.ago)
     vault = fake_vault(
       signature_statuses: { "SigX" => { "err" => { "InstructionError" => [0, "Custom"] }, "confirmationStatus" => "confirmed" } }
     )
@@ -220,12 +222,14 @@ class Cdp::OfframpSendJobTest < ActiveJob::TestCase
     ramp.reload
     assert ramp.cdp_created?, "verified-failed send rewinds to cdp_created"
     assert_nil ramp.sent_signature
+    assert_nil ramp.broadcast_at, "the dead attempt's broadcast anchor is cleared with it"
     assert_empty vault.client.sent_transactions, "the rerun is a NEW job, re-guarded — nothing sent now"
     assert enqueued_jobs.any? { |j| j[:job] == Cdp::OfframpSendJob }, "fresh attempt enqueued"
   end
 
-  test "verify path: a signature absent past the blockhash window is verified-dead and reset" do
-    ramp = create_ramp(status: "sending", sent_signature: "SigX", confirmed_at: 6.minutes.ago)
+  test "verify path: a signature absent past the blockhash window (anchored on BROADCAST time) is verified-dead and reset" do
+    ramp = create_ramp(status: "sending", sent_signature: "SigX",
+                       confirmed_at: 6.minutes.ago, broadcast_at: 6.minutes.ago)
     vault = fake_vault # signature never appears
 
     perform_with(vault, ramp)
@@ -233,6 +237,38 @@ class Cdp::OfframpSendJobTest < ActiveJob::TestCase
     ramp.reload
     assert ramp.cdp_created?
     assert_nil ramp.sent_signature
+    assert_empty vault.client.sent_transactions
+  end
+
+  test "verify path: an old confirmed_at with a FRESH broadcast is ambiguous — never reset (double-send window)" do
+    # The dangerous case: guard-phase retries / queue latency put the first
+    # broadcast minutes after the confirmation click. 15s later the RPC
+    # hasn't indexed the signature yet — a confirmed_at-anchored lapse check
+    # would declare it verified-dead and rebuild a SECOND tx while the first
+    # is still inside its blockhash validity. Both land = double USDC send.
+    ramp = create_ramp(status: "sending", sent_signature: "SigX",
+                       confirmed_at: 6.minutes.ago, broadcast_at: 15.seconds.ago)
+    vault = fake_vault # status not yet indexed (routine RPC lag)
+
+    perform_with(vault, ramp)
+
+    ramp.reload
+    assert ramp.sending?, "a just-broadcast tx must NOT be declared verified-dead"
+    assert_equal "SigX", ramp.sent_signature
+    assert_empty vault.offramp_build_calls, "must not rebuild"
+    assert_empty vault.client.sent_transactions, "must not re-send"
+    assert enqueued_jobs.any? { |j| j[:job] == Cdp::OfframpSendJob }, "re-verify scheduled"
+  end
+
+  test "verify path: a missing broadcast_at anchor is never verified-dead (fails ambiguous)" do
+    ramp = create_ramp(status: "sending", sent_signature: "SigX", confirmed_at: 6.minutes.ago)
+    vault = fake_vault # signature absent AND no broadcast anchor
+
+    perform_with(vault, ramp)
+
+    ramp.reload
+    assert ramp.sending?, "no anchor = ambiguous, not dead"
+    assert_equal "SigX", ramp.sent_signature
     assert_empty vault.client.sent_transactions
   end
 

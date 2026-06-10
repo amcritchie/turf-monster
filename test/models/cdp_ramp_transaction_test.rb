@@ -160,8 +160,12 @@ class CdpRampTransactionTest < ActiveSupport::TestCase
     assert ramp.mark_sending!("Sig111")
     assert ramp.sending?
     assert_equal "Sig111", ramp.sent_signature
+    assert ramp.broadcast_at.present?, "stamps the broadcast-attempt time (the blockhash-lapse anchor)"
+    assert_in_delta Time.current.to_f, ramp.broadcast_at.to_f, 5
 
+    first_broadcast_at = ramp.broadcast_at
     assert ramp.mark_sending!("Sig111"), "same-signature retry is an idempotent yes"
+    assert_equal first_broadcast_at, ramp.broadcast_at, "an idempotent retry must not move the broadcast anchor"
     assert_not ramp.mark_sending!("Sig222"), "a different signature must not overwrite an in-flight send"
     assert_equal "Sig111", ramp.sent_signature
 
@@ -188,10 +192,12 @@ class CdpRampTransactionTest < ActiveSupport::TestCase
   end
 
   test "reset_failed_send! is the one deliberate rewind — sending only" do
-    ramp = build_ramp(direction: "offramp", status: "sending", sent_signature: "DeadSig").tap(&:save!)
+    ramp = build_ramp(direction: "offramp", status: "sending",
+                      sent_signature: "DeadSig", broadcast_at: 6.minutes.ago).tap(&:save!)
     assert ramp.reset_failed_send!
     assert ramp.cdp_created?
     assert_nil ramp.sent_signature
+    assert_nil ramp.broadcast_at, "the dead attempt's broadcast anchor goes with it"
 
     sent = build_ramp(direction: "offramp", status: "sent", sent_signature: "GoodSig").tap(&:save!)
     assert_not sent.reset_failed_send!, "a confirmed send can never be reset"

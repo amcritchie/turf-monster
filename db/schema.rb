@@ -65,6 +65,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "confirmed_at"
+    t.datetime "broadcast_at"
     t.index ["coinbase_transaction_id"], name: "index_cdp_ramp_transactions_on_coinbase_transaction_id", unique: true
     t.index ["partner_user_ref"], name: "index_cdp_ramp_transactions_on_partner_user_ref", unique: true
     t.index ["status", "direction"], name: "index_cdp_ramp_transactions_on_status_and_direction"

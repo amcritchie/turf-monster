@@ -51,6 +51,29 @@ class Cdp::ClientTest < ActiveSupport::TestCase
     assert_equal "country=US&subdivision=CA&networks=solana", captured_uri.query
   end
 
+  test "JWT uri claim binds the path WITHOUT the query string (official SDKs sign url.pathname)" do
+    # If the query were signed and CDP verifies against path-only, the
+    # failure mode is asymmetric: POST /onramp/v1/token (no query) works and
+    # money moves, while every status poll / catalog GET 401s.
+    signed = []
+    recorder = lambda do |method:, path:|
+      signed << [method, path]
+      "fake-jwt"
+    end
+    captured_uri = nil
+    capture = ->(uri, _req) { captured_uri = uri; FakeResponse.new("200", "{}") }
+
+    Cdp::Auth.stub(:jwt_for, recorder) do
+      @client.stub(:http_execute, capture) do
+        @client.get("/onramp/v1/buy/options", { country: "US", subdivision: "CA", networks: "solana" })
+      end
+    end
+
+    assert_equal [[:get, "/onramp/v1/buy/options"]], signed
+    assert_equal "country=US&subdivision=CA&networks=solana", captured_uri.query,
+                 "the query must stay on the actual request URI"
+  end
+
   test "mints a FRESH JWT per request (never cached)" do
     jwt_calls = 0
     counter = lambda do |method:, path:|

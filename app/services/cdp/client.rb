@@ -59,7 +59,7 @@ module Cdp
       end
       uri = URI("https://#{HOST}#{full_path}")
 
-      req = build_request(method, uri, full_path, body)
+      req = build_request(method, uri, path, body)
       started = Time.current
       response = nil
       error = nil
@@ -76,12 +76,17 @@ module Cdp
       handle_response(response)
     end
 
-    def build_request(method, uri, full_path, body)
+    def build_request(method, uri, path, body)
       klass = method == :post ? Net::HTTP::Post : Net::HTTP::Get
       req = klass.new(uri.request_uri)
-      # Fresh JWT per request — bound to this exact METHOD + host + path
-      # (the path INCLUDING query string, which is what gets requested).
-      req["Authorization"] = "Bearer #{Cdp::Auth.jwt_for(method: method, path: full_path)}"
+      # Fresh JWT per request — bound to this exact METHOD + host + path,
+      # WITHOUT the query string. Every official CDP JWT example signs
+      # url.pathname only (and the Coinbase REST auth docs say not to include
+      # query params in the signed path); signing the query would 401 every
+      # GET-with-params (status polls, catalog) while query-less POSTs kept
+      # working. The query stays on the actual request URI (uri.request_uri).
+      signing_path = path.to_s.split("?").first
+      req["Authorization"] = "Bearer #{Cdp::Auth.jwt_for(method: method, path: signing_path)}"
       req["Content-Type"] = "application/json"
       req.body = body.to_json if body
       req

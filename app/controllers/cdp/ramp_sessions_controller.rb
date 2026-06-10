@@ -59,6 +59,13 @@ module Cdp
         token = SessionTokenService.new.mint(address: address, client_ip: request.remote_ip)
         url = build_url(direction, ramp, token)
         ramp.mark_token_minted!
+        # Start the CDP status poll loop NOW — server-side reconciliation
+        # must never hinge on the return redirect (spec Risks: an
+        # un-allowlisted domain or a closed Coinbase tab silently drops it
+        # while the transaction still completes; offramp to_address discovery
+        # MUST run or the 30-minute cashout window lapses with no send). The
+        # return-page hit just (re-)schedules this same idempotent loop.
+        poll_job_class(direction).schedule_from_mint(ramp)
         # partner_user_ref rides along (additive to the spec's { url: }) so
         # the cdp-ramp modal can poll /cdp/ramp_status/:ref immediately
         # instead of parsing the ref back out of the widget URL.
@@ -109,6 +116,10 @@ module Cdp
     def unavailable_message(direction)
       verb = direction == :onramp ? "Buying USDC" : "Cashing out"
       "#{verb} via Coinbase isn't available in your region yet."
+    end
+
+    def poll_job_class(direction)
+      direction == :onramp ? OnrampPollJob : OfframpPollJob
     end
 
     def build_url(direction, ramp, token)

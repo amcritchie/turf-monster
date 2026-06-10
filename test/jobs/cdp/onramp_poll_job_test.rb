@@ -140,6 +140,26 @@ class Cdp::OnrampPollJobTest < ActiveJob::TestCase
     assert_nil reenqueued_job
   end
 
+  test "deadline + grace with an IN_PROGRESS CDP transaction bound: stop polling, never expire" do
+    # Onramp rows never leave `returned` (a pre-CDP status) while the buy is
+    # in progress — a slow ACH / card-review buy easily outlasts the poll
+    # window. Marking it expired would show the buy-failed card ("no USDC was
+    # delivered") while the user's money is still on its way, with nothing to
+    # ever rewind it. The sweep/webhooks own late settlement.
+    @ramp.update!(returned_at: 2.hours.ago,
+                  coinbase_transaction_id: "cb-tx-slow-ach",
+                  cdp_status: "ONRAMP_TRANSACTION_STATUS_IN_PROGRESS")
+    client = FakeCdpClient.new
+
+    perform_with(client)
+
+    @ramp.reload
+    assert @ramp.returned?, "a buy CDP knows about must NOT be auto-expired"
+    assert_not @ramp.terminal?
+    assert_empty client.calls, "polling stops at deadline+grace"
+    assert_nil reenqueued_job
+  end
+
   test "a CDP API error is captured to ErrorLog and the cadence continues" do
     client = FakeCdpClient.new({}, raise_error: Cdp::Client::ApiError.new("CDP 503: flaky"))
 

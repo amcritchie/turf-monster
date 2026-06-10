@@ -128,11 +128,15 @@ class CdpRampTransaction < ApplicationRecord
   # completes. That is the verify-before-retry anchor: a crash/timeout between
   # broadcast and confirmation leaves the signature on the row so the next run
   # checks it on-chain instead of blind-resending (Cdp::OfframpSendJob).
+  #
+  # broadcast_at records the actual broadcast-attempt time — the send job's
+  # blockhash-lapse verdict anchors HERE, never on confirmed_at (the user's
+  # confirmation click can legally precede the broadcast by minutes).
   def mark_sending!(signature)
     return false if signature.blank?
     return true if sending? && sent_signature == signature
     return false unless cdp_created?
-    update!(status: :sending, sent_signature: signature)
+    update!(status: :sending, sent_signature: signature, broadcast_at: Time.current)
   end
 
   # Offramp send confirmed on-chain (managed mode, from :sending) or a
@@ -151,11 +155,12 @@ class CdpRampTransaction < ApplicationRecord
   # DELIBERATE rewind — the one exception to "never rewind", allowed only
   # after an on-chain verification proved the broadcast definitively failed
   # (getSignatureStatuses returned an err, or the blockhash window lapsed with
-  # the signature never appearing). Clears the dead signature so a fresh,
-  # fully re-guarded attempt can build a new transaction.
+  # the signature never appearing). Clears the dead signature AND its
+  # broadcast_at anchor so a fresh, fully re-guarded attempt can build a new
+  # transaction with its own broadcast timestamp.
   def reset_failed_send!
     return false unless sending?
-    update!(status: :cdp_created, sent_signature: nil)
+    update!(status: :cdp_created, sent_signature: nil, broadcast_at: nil)
   end
 
   def mark_success!
