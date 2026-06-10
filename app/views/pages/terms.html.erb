@@ -1,5 +1,5 @@
 <% content_for :title, "Terms of Service — Turf Totals" %>
-<% content_for :meta_description, "Terms of Service for Turf Totals, the Solana-powered World Cup pick'em game. Eligibility, entries, payments, payouts, and the referral program." %>
+<% content_for :meta_description, "Terms of Service for Turf Totals, the skill-based World Cup pick'em game. Eligibility, state availability, entries, payments, refunds, and the referral program." %>
 
 <div class="max-w-3xl mx-auto py-10 px-2 space-y-12">
   <header>
@@ -18,14 +18,35 @@
   <section class="space-y-4">
     <h2 class="text-2xl font-bold text-heading">Eligibility</h2>
     <ul class="list-disc list-inside text-body space-y-2">
-      <li>You must be of legal age in your jurisdiction to use Turf Totals.</li>
+      <li>
+        You must be of legal age to participate in skill-based contests in your state:
+        <strong>18+</strong> in most states, <strong>19+</strong> in Alabama and Nebraska, and
+        <strong>21+</strong> in Iowa, Massachusetts, and Virginia. You attest to this when you
+        create an account.
+      </li>
       <li>
         Turf Totals is a game of <strong>skill</strong>, not chance. It is available only where
-        skill-based contests are permitted. We use approximate location to enforce this; you may
-        not use a VPN or other means to circumvent geo-eligibility.
+        skill-based contests are permitted — see the state eligibility section below. We use
+        approximate location to enforce this; you may not use a VPN or other means to circumvent
+        geo-eligibility.
       </li>
       <li>One account per person. Operating multiple accounts may result in suspension and forfeiture of entries.</li>
     </ul>
+  </section>
+
+  <section id="state-eligibility" class="space-y-4 scroll-mt-24">
+    <h2 class="text-2xl font-bold text-heading">State eligibility</h2>
+    <p class="text-body leading-relaxed">
+      Paid contest entry is not available in the following U.S. states. This list is rendered
+      from the same setting our IP-geolocation enforcement reads, and it may change as state law
+      and guidance evolve:
+    </p>
+    <%= render "pages/excluded_states_list", excluded_states: @excluded_states %>
+    <p class="text-body leading-relaxed">
+      Eligibility is enforced by IP geolocation when you enter a contest or move funds. See the
+      <%= link_to "State Eligibility page", state_eligibility_path, class: "text-primary hover:underline" %>
+      for details.
+    </p>
   </section>
 
   <section class="space-y-4">
@@ -45,15 +66,20 @@
     <h2 class="text-2xl font-bold text-heading">Payments, entry fees, and payouts</h2>
     <ul class="list-disc list-inside text-body space-y-2">
       <li>
-        Entry fees and prizes are denominated in <strong>USDC</strong> and settle on the
-        <strong>Solana</strong> blockchain. Your USDC remains in your own wallet until you enter a
-        contest; entering transfers exactly the entry fee and nothing more. We do not request
-        token approvals, spending delegation, or custody of an open-ended balance.
+        Entry fees and prizes are <strong>denominated in U.S. dollars</strong> and settled in
+        <strong>USDC</strong>, a fully-reserved U.S. dollar stablecoin, on the Solana blockchain.
+        A $500 prize is $500 &mdash; settlement in USDC determines how it is delivered, not how
+        much it is worth.
       </li>
       <li>
-        Entry tokens may be purchased through <strong>Stripe</strong>. Each token redeems for one
-        contest entry. Card data is handled by Stripe under its own secure systems &mdash; we never
-        see your full card number.
+        If you pay from your own wallet, your funds remain there until you enter a contest;
+        entering transfers exactly the entry fee and nothing more. We do not request token
+        approvals, spending delegation, or custody of an open-ended balance.
+      </li>
+      <li>
+        Contest-entry credits (entry tokens) may be purchased by card. Each credit redeems for
+        one contest entry. Card data is handled by our payment processor under its own secure
+        systems &mdash; we never see your full card number.
       </li>
       <li>
         Prize payouts are released from a per-contest prize-pool account secured by a 2-of-3
@@ -61,7 +87,44 @@
       </li>
       <li>
         All blockchain transactions are final and irreversible once confirmed. Network fees and
-        third-party (e.g. Stripe) fees are non-refundable.
+        third-party payment-processing fees are non-refundable.
+      </li>
+    </ul>
+  </section>
+
+  <section id="refunds" class="space-y-4 scroll-mt-24">
+    <h2 class="text-2xl font-bold text-heading">Refunds and cancellations</h2>
+    <ul class="list-disc list-inside text-body space-y-2">
+      <li>
+        <strong>Cancelled contests.</strong> If a contest is cancelled before it locks, entry
+        fees are refunded &mdash; as entry-token credit or USDC, at your choice &mdash; within
+        <strong>7 days</strong> of cancellation. Contact
+        <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>
+        with your preference and we will process it within that window.
+      </li>
+      <li>
+        <strong>Editing your entry.</strong> While a Turf Totals contest is open you can change
+        the picks on a submitted entry from the contest page (picks whose real-world games have
+        already kicked off cannot be changed, and Survivor entries do not support editing). Once
+        a contest locks, entries are final: fees have entered the prize pool and cannot be
+        withdrawn or refunded.
+      </li>
+      <li>
+        <strong>Unused entry credits.</strong> Purchased entry-token credits that you have not
+        redeemed for a contest entry are refundable on request &mdash; contact support and we
+        will process the refund within 7 days.
+      </li>
+      <li>
+        <strong>On-chain finality.</strong> Confirmed blockchain transactions are final and
+        irreversible; network fees and third-party payment-processing fees are non-refundable in
+        all cases.
+      </li>
+      <li>
+        <strong>Card disputes.</strong> Before disputing a charge with your card issuer, please
+        contact
+        <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>
+        &mdash; nearly every issue is resolved faster by support. Charges appear on your
+        statement under the descriptor <strong>TURF MONSTER</strong>.
       </li>
     </ul>
   </section>
@@ -132,7 +195,9 @@
       Questions? Email
       <a href="mailto:alex@turfmonster.media" class="text-primary hover:underline">alex@turfmonster.media</a>.
       See also our
-      <%= link_to "Privacy Policy", privacy_path, class: "text-primary hover:underline" %>
+      <%= link_to "Privacy Policy", privacy_path, class: "text-primary hover:underline" %>,
+      <%= link_to "Responsible Gaming", responsible_gaming_path, class: "text-primary hover:underline" %>,
+      <%= link_to "State Eligibility", state_eligibility_path, class: "text-primary hover:underline" %>,
       and
       <%= link_to "About page", about_path, class: "text-primary hover:underline" %>.
     </p>

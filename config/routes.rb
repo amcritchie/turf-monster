@@ -69,6 +69,13 @@ Rails.application.routes.draw do
   get "about",   to: "pages#about",   as: :about
   get "contact", to: "pages#contact", as: :contact
 
+  # Underwriting compliance pages (2026-06): responsible-gaming resources +
+  # the published state-eligibility list (rendered live from GeoSetting so it
+  # can never drift from the IP-geolocation enforcement). Linked from the
+  # global footer next to the legal links.
+  get "responsible-gaming", to: "pages#responsible_gaming", as: :responsible_gaming
+  get "state-eligibility",  to: "pages#state_eligibility",  as: :state_eligibility
+
   # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
   # vault USDC token account from the browser via Solana RPC, then displays
   # them next to the Rails-reported figures.
