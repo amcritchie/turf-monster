@@ -26,8 +26,10 @@ class TokensFundingModesTest < ActionDispatch::IntegrationTest
     with_cdp_ramp do
       get contests_path
       assert_response :success
+      assert_includes response.body, "Add USDC to Play"
       assert_includes response.body, "Buy USDC with Coinbase"
       assert_includes response.body, "$store.modals.swap('cdp-ramp'"
+      refute_includes response.body, "Get Entry Tokens"
     end
   end
 
