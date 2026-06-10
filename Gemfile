@@ -97,6 +97,13 @@ gem "sidekiq"
 # Payment processing
 gem "stripe"
 
+# EdDSA (Ed25519) signing for JWTs — required by Cdp::Auth for Coinbase CDP
+# Onramp/Offramp REST auth. jwt 3.x extracted EdDSA support into this gem;
+# vanilla jwt raises JWT::EncodeError ("Unsupported signing method") without it.
+# Pinned: third-party gem (anakinj) sitting on the CDP secret-key signing path.
+# See docs/CDP_RAMP_INTEGRATION.md §1.
+gem "jwt-eddsa", "~> 0.9"
+
 # Transactional email delivery (Resend). Used by UserMailer for OPSEC-005
 # email verification + future transactional sends. Provides an ActionMailer
 # delivery method; configured in config/initializers/resend.rb. Production
