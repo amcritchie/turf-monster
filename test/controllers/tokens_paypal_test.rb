@@ -171,6 +171,43 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
     assert_equal 0, client.captured_orders.length, "must not hit PayPal again"
   end
 
+  # ── rendering (buy page + auth-modal picker branch) ────────────────────
+
+  test "buy renders the PayPal/Venmo purchase UI when the paypal provider is active" do
+    log_in_as @jordan
+    with_paypal_enabled do
+      get tokens_buy_path
+    end
+    assert_response :success
+    # Page flow: SDK loader + factory + the buttons block.
+    assert_match "window.loadPaypalSdk", response.body
+    assert_match "paypalButtons({ flow: 'page'", response.body
+    assert_match 'x-ref="venmoSlot"', response.body
+    # Modal picker branch (layout-level auth modal) swaps to PayPal too.
+    assert_match "paypalButtons({ flow: 'modal'", response.body
+    # The Stripe checkout form is fully replaced on the page.
+    assert_no_match %r{action="/tokens/stripe_checkout}, response.body
+  end
+
+  test "buy page SDK URL carries enable-funding=venmo and sandbox-only buyer-country" do
+    log_in_as @jordan
+    with_paypal_enabled do
+      get tokens_buy_path
+    end
+    assert_match "enable-funding=venmo", response.body
+    # Test env has no PAYPAL_ENV → Paypal::Client.sandbox? → buyer-country
+    # MUST be present (sandbox never shows Venmo without it; live rejects it).
+    assert_match "buyer-country=US", response.body
+  end
+
+  test "buy renders zero PayPal output when provider is stripe (deploy-inert gate)" do
+    log_in_as @jordan
+    get tokens_buy_path
+    assert_response :success
+    assert_no_match(/paypalButtons|loadPaypalSdk|venmoSlot/, response.body)
+    assert_match %r{action="/tokens/stripe_checkout}, response.body
+  end
+
   # ── status (order_id branch) ────────────────────────────────────────────
 
   test "status resolves a PayPal purchase by order_id" do

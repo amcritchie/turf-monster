@@ -6,6 +6,13 @@ class TokensController < ApplicationController
 
   def buy
     @packs = StripePurchase.available_packs
+    if Payments.paypal_checkout?
+      # The PayPal flow finishes on this page (no /tokens/processing redirect),
+      # so its success card needs the same "Enter contest" target processing
+      # resolves. Stripe path skips the queries — rendering there is unchanged.
+      @next_contest = Contest.target ||
+                      Contest.where(status: :open).order(created_at: :desc).first
+    end
   end
 
   def stripe_checkout
@@ -261,7 +268,7 @@ class TokensController < ApplicationController
   # AND configured credentials. Either off → the endpoints refuse, so this
   # branch deploys inert until the operator flips the flag post-approval.
   def paypal_checkout_enabled?
-    Payments.paypal? && Rails.application.config.x.paypal_enabled
+    Payments.paypal_checkout?
   end
 
   def require_login

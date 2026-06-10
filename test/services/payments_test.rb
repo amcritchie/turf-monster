@@ -25,7 +25,25 @@ class PaymentsTest < ActiveSupport::TestCase
     end
   end
 
+  test "paypal_checkout? requires the flag AND credentials" do
+    swap_paypal_enabled(true) do
+      swap_provider("paypal") { assert Payments.paypal_checkout? }
+      swap_provider("stripe") { refute Payments.paypal_checkout? }
+    end
+    swap_paypal_enabled(false) do
+      swap_provider("paypal") { refute Payments.paypal_checkout? }
+    end
+  end
+
   private
+
+  def swap_paypal_enabled(value)
+    original = Rails.application.config.x.paypal_enabled
+    Rails.application.config.x.paypal_enabled = value
+    yield
+  ensure
+    Rails.application.config.x.paypal_enabled = original
+  end
 
   def swap_provider(value)
     original = Rails.application.config.x.payment_provider

@@ -17,12 +17,21 @@
                     state machine when the user clicks a pack).
     disabled      - Optional Bool. Greys the button out and prevents
                     submission when Stripe isn't configured.
+    select_js     - Optional String. SELECT mode (PayPal flow): renders a
+                    plain type=button instead of the checkout form; the
+                    click runs this Alpine expression (e.g.
+                    "selectPack('single')"). Pair with selected_expr.
+    selected_expr - Required with select_js. Alpine expression for "this
+                    pack is the selected one" — drives the selected
+                    border/background state.
 %>
 <%
-  extra_params ||= {}
-  target_blank ||= false
-  on_click_js  ||= nil
-  disabled     ||= false
+  extra_params  ||= {}
+  target_blank  ||= false
+  on_click_js   ||= nil
+  disabled      ||= false
+  select_js     ||= nil
+  selected_expr ||= "false"
 
   format_price = ->(cents) { cents % 100 == 0 ? "$#{cents / 100}" : dollars(cents / 100.0) }
   per_token        = StripePurchase.per_token_cents(pack_id)
@@ -50,8 +59,8 @@
     disabled: disabled,
     class:    "glow-pair-btn glow-brand group block w-full text-left p-6 rounded-xl border-2 border-primary/40 hover:border-primary bg-primary/5 transition"
   }
-%>
-<%= button_to tokens_stripe_checkout_path({ pack: pack_id }.merge(extra_params)), **btn_opts do %>
+
+  inner = capture do %>
   <% clusters.each do |pos| %>
     <span class="orb orb-<%= pos %> orb-small"></span>
     <span class="orb orb-<%= pos %> orb-big"></span>
@@ -69,4 +78,20 @@
       </div>
     </div>
   </div>
+<% end %>
+<% if select_js %>
+  <%# SELECT mode — same orb-glow card, no checkout form. The border/bg pair
+      moves into the :class binding so selected vs rest states swap cleanly
+      (a static border-primary/40 would conflict with the bound border-primary).
+      Hover accent still comes from the .glow-pair-btn:hover CSS rule. %>
+  <button type="button"
+          x-on:click="<%= select_js %>"
+          :class="(<%= selected_expr %>) ? 'border-primary bg-primary/10' : 'border-primary/40 bg-primary/5'"
+          class="glow-pair-btn glow-brand group block w-full text-left p-6 rounded-xl border-2 transition">
+    <%= inner %>
+  </button>
+<% else %>
+  <%= button_to tokens_stripe_checkout_path({ pack: pack_id }.merge(extra_params)), **btn_opts do %>
+    <%= inner %>
+  <% end %>
 <% end %>

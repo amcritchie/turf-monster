@@ -24,6 +24,30 @@ pending). `PAYMENT.CAPTURE.DENIED` → failed. `PAYMENT.CAPTURE.REFUNDED` →
 refunded + account frozen. `CUSTOMER.DISPUTE.CREATED` → payment-risk flag +
 frozen (Stripe OPSEC-036 / B4 parity).
 
+## Architecture (frontend)
+
+All UI is gated on `Payments.paypal_checkout?` (flag AND creds) — with the
+provider on `stripe`, every page renders byte-for-byte without PayPal output.
+
+| Piece | File |
+|---|---|
+| SDK loader + `paypalButtons` Alpine factory | `app/views/tokens/_paypal_sdk.html.erb` — lazy `window.loadPaypalSdk()` injects the JS SDK on first button mount; `&buyer-country=US` appended in sandbox ONLY |
+| Pack select + Venmo/PayPal buttons | `app/views/tokens/_paypal_buttons.html.erb` (`flow: "modal"` in the auth wizard, `flow: "page"` on `/tokens/buy` where it also owns the confirming/minted/errored cards) |
+| Pack card select mode | `tokens/_pack_button` `select_js:`/`selected_expr:` locals (same orb-glow card, no checkout form) |
+| Auth-modal picker branch | `app/views/modals/auth/_tokens.html.erb` (`tokens-picker` step) |
+| Capture → wizard hand-off | `paypal-order-captured` window event → selectionBoard listener (`contests/_turf_totals_board.html.erb`) advances to `tokens-confirming` and runs `pollTokenStatus(orderId, 'order_id')` |
+| CSP | `config/initializers/content_security_policy.rb` adds `*.paypal.com` / `*.venmo.com` frame-src only when `PAYMENT_PROVIDER=paypal` |
+
+Flow: pack card selects → standalone Venmo (primary) / PayPal button →
+`createOrder` POSTs `/tokens/paypal_order` (server derives the amount from the
+pack id) → SDK popup / app-switch / desktop QR → `onApprove` POSTs
+`/tokens/paypal_capture` → modal advances to the existing `tokens-confirming` →
+`tokens-minted` steps (or the on-page status cards on `/tokens/buy`). Cancel and
+error land back on the picker with an inline notice. There is NO new tab and NO
+`/tokens/processing` leg — that page stays Stripe-only. The checkout overlay is
+appended to `document.body` by the SDK, so the modal host (`z-[120]`) never
+clips it.
+
 ## Go-live gate — DO NOT skip
 
 **Real-money gaming requires PayPal's pre-approval.** A PayPal Business

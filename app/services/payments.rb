@@ -23,6 +23,14 @@ module Payments
     provider == "paypal"
   end
 
+  # The render/accept gate for PayPal checkout: operator flag AND credentials.
+  # Views branch on this (pack picker, /tokens/buy, JS SDK include) and the
+  # token endpoints refuse without it, so the UI can never offer buttons the
+  # backend would reject.
+  def self.paypal_checkout?
+    paypal? && Rails.application.config.x.paypal_enabled
+  end
+
   def self.none?
     provider == "none"
   end

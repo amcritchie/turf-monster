@@ -1,0 +1,275 @@
+<%# PayPal JS SDK loader + paypalButtons Alpine factory. Renders NOTHING
+    unless the PayPal onramp is active (Payments.paypal_checkout?), so
+    Stripe-provider pages are byte-identical. Co-located with the tokens
+    flow the same way tokens/_pack_button_styles is: render once per page
+    that hosts the buttons (tokens/buy + modals/auth/_tokens), outside any
+    template the buttons mount in. The whole script is guarded so a double
+    render (buy page + the layout-level auth modal) is a cheap no-op.
+
+    The SDK itself is injected LAZILY by window.loadPaypalSdk() the first
+    time a buttons component mounts. Pages that merely carry the auth modal
+    markup never pay the network cost; the script tag below is a few hundred
+    bytes of inert helper until the picker actually opens. %>
+<% if Payments.paypal_checkout? %>
+  <%
+    # buyer-country is sandbox-ONLY (the live SDK rejects it); without it the
+    # sandbox never shows the Venmo button. See docs/PAYPAL_VENMO.md.
+    sdk_params = {
+      "client-id"      => ENV["PAYPAL_CLIENT_ID"],
+      "enable-funding" => "venmo",
+      "currency"       => "USD",
+      "components"     => "buttons"
+    }
+    sdk_params["buyer-country"] = "US" if Paypal::Client.sandbox?
+    paypal_sdk_url = "https://www.paypal.com/sdk/js?#{sdk_params.to_query}"
+  %>
+  <script>
+    if (!window.loadPaypalSdk) {
+      // Lazy, memoized SDK injector. Resolves with window.paypal once the
+      // <script> loads; a load failure clears the memo so the next mount
+      // retries instead of caching the failure forever.
+      window.loadPaypalSdk = function () {
+        if (window._paypalSdkPromise) return window._paypalSdkPromise;
+        window._paypalSdkPromise = new Promise(function (resolve, reject) {
+          if (window.paypal && window.paypal.Buttons) { resolve(window.paypal); return; }
+          var s = document.createElement('script');
+          s.src = <%== paypal_sdk_url.to_json %>;
+          s.async = true;
+          s.onload = function () {
+            if (window.paypal && window.paypal.Buttons) resolve(window.paypal);
+            else reject(new Error('PayPal SDK loaded without the Buttons component'));
+          };
+          s.onerror = function () {
+            window._paypalSdkPromise = null;
+            reject(new Error('PayPal SDK failed to load'));
+          };
+          document.head.appendChild(s);
+        });
+        return window._paypalSdkPromise;
+      };
+
+      // === paypalButtons — pack picker + standalone Venmo/PayPal buttons ===
+      //
+      // Drives tokens/_paypal_buttons.html.erb in two contexts:
+      //   flow 'modal' — inside the auth wizard's tokens-picker step. On a
+      //     successful capture it dispatches 'paypal-order-captured'; the
+      //     selectionBoard listener advances the wizard to tokens-confirming
+      //     and runs the existing pollTokenStatus loop (order_id param).
+      //   flow 'page'  — /tokens/buy. No board on that page, so the factory
+      //     owns the post-capture lifecycle itself: phase pick → confirming
+      //     (poll /tokens/status) → minted | errored, mirroring the states
+      //     of tokens/processing.html.erb.
+      //
+      // Inline (not importmap) because x-data evaluates before modules load —
+      // see shared/_alpine_factories.html.erb. Lives here rather than there
+      // so Stripe-provider pages ship zero PayPal bytes.
+      window.paypalButtons = function (opts) {
+        opts = opts || {};
+        return {
+          flow: opts.flow || 'modal',
+          contest: opts.contest || '',
+          pack: opts.defaultPack || '',
+          sdkState: 'loading',   // loading | ready | unavailable | failed
+          notice: '',
+          busy: false,           // capture round-trip in flight
+          // page-flow status UI (mirrors tokens/processing.html.erb)
+          phase: 'pick',         // pick | confirming | minted | errored
+          minted: 0,
+          balance: 0,
+          elapsed: 0,
+          _pollTimer: null,
+          _ticker: null,
+
+          selectPack(id) {
+            if (this.busy) return;
+            this.pack = id;
+            this.notice = '';
+          },
+
+          // Render each standalone button into its slot. Re-runs on every
+          // template remount (fresh component instance + fresh slot DOM);
+          // isEligible() gates per funding source, so an ineligible Venmo
+          // quietly leaves just the PayPal button.
+          async mount() {
+            var self = this;
+            var paypal;
+            try {
+              paypal = await window.loadPaypalSdk();
+            } catch (e) {
+              console.error('[tokens] paypal: SDK load failed', e);
+              self.sdkState = 'failed';
+              return;
+            }
+            var rendered = 0;
+            var slots = [
+              { source: paypal.FUNDING.VENMO,  el: self.$refs.venmoSlot,  style: { color: 'blue', height: 48 } },
+              { source: paypal.FUNDING.PAYPAL, el: self.$refs.paypalSlot, style: { color: 'gold', height: 40 } }
+            ];
+            for (var i = 0; i < slots.length; i++) {
+              var slot = slots[i];
+              if (!slot.el || !slot.el.isConnected) continue;
+              var buttons = paypal.Buttons({
+                fundingSource: slot.source,
+                style: slot.style,
+                createOrder: function () { return self.createOrder(); },
+                onApprove:   function (data) { return self.captureOrder(data); },
+                onCancel:    function () { self.handleCancel(); },
+                onError:     function (err) { self.handleError(err); }
+              });
+              if (!buttons.isEligible()) {
+                console.log('[tokens] paypal: funding source ineligible, skipping', slot.source);
+                continue;
+              }
+              try {
+                await buttons.render(slot.el);
+                rendered++;
+              } catch (e) {
+                // Slot unmounted mid-render (modal step changed) — harmless.
+                console.warn('[tokens] paypal: button render bailed', e);
+              }
+            }
+            self.sdkState = rendered > 0 ? 'ready' : 'unavailable';
+            console.log('[tokens] paypal: buttons mounted, state=', self.sdkState);
+          },
+
+          // SDK createOrder callback — the server derives the amount from the
+          // pack id; we only ever name the pack. Must resolve with the PayPal
+          // order id, so failures throw (the SDK routes them to onError).
+          async createOrder() {
+            this.notice = '';
+            if (!this.pack) {
+              this.notice = 'Pick a pack first.';
+              throw new Error('no pack selected');
+            }
+            var body = { pack: this.pack };
+            if (this.contest) body.contest = this.contest;
+            var resp = await window.authedFetch('/tokens/paypal_order', {
+              method: 'POST',
+              headers: this._headers(),
+              body: JSON.stringify(body)
+            });
+            // null → authedFetch already surfaced the login / rate-limit modal.
+            if (!resp) throw new Error('halted by authedFetch interceptor');
+            var d = await resp.json().catch(function () { return {}; });
+            if (!resp.ok || !d.order_id) {
+              this.notice = d.error || 'Could not start checkout — try again in a moment.';
+              throw new Error(this.notice);
+            }
+            console.log('[tokens] paypal.createOrder order=', d.order_id, 'pack=', this.pack);
+            return d.order_id;
+          },
+
+          // SDK onApprove callback — capture server-side, then hand off to the
+          // confirming/polling UI. The webhook covers us if this request dies.
+          async captureOrder(data) {
+            var orderId = data && data.orderID;
+            if (!orderId) {
+              this.notice = 'PayPal did not return an order — try again.';
+              return;
+            }
+            this.busy = true;
+            this.notice = '';
+            try {
+              var resp = await window.authedFetch('/tokens/paypal_capture', {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify({ order_id: orderId })
+              });
+              if (!resp) return; // 401/429 — interceptor surfaced the modal
+              var d = await resp.json().catch(function () { return {}; });
+              if (!resp.ok || (d.status !== 'captured' && d.status !== 'minted')) {
+                console.warn('[tokens] paypal.capture failed', resp.status, d);
+                this.notice = d.error || 'Payment could not be confirmed — try again or contact support.';
+                return;
+              }
+              console.log('[tokens] paypal.captured order=', orderId, 'status=', d.status);
+              this.afterCapture(orderId);
+            } finally {
+              this.busy = false;
+            }
+          },
+
+          afterCapture(orderId) {
+            if (this.flow === 'page') {
+              this.phase = 'confirming';
+              this.startPolling(orderId);
+              return;
+            }
+            // Modal flow — the selectionBoard owns the wizard + polling (same
+            // hand-off shape as the Stripe BroadcastChannel 'returned' signal,
+            // minus the cross-tab leg: the SDK popup kept the buyer on-page).
+            window.dispatchEvent(new CustomEvent('paypal-order-captured', { detail: { orderId: orderId } }));
+          },
+
+          handleCancel() {
+            console.log('[tokens] paypal.onCancel — buyer closed checkout');
+            this.notice = 'Checkout cancelled — nothing was charged.';
+          },
+
+          handleError(err) {
+            console.error('[tokens] paypal.onError', err);
+            // createOrder/captureOrder set a specific message before throwing;
+            // don't clobber it with the generic one.
+            if (!this.notice) this.notice = 'PayPal hit a snag — nothing was charged. Try again.';
+          },
+
+          // Page-flow polling: same cadence/timeout/endpoint as the board's
+          // pollTokenStatus and processing.html.erb, keyed by order_id.
+          startPolling(orderId) {
+            var self = this;
+            self.elapsed = 0;
+            self._ticker = setInterval(function () { self.elapsed += 1; }, 1000);
+            self._pollTimer = setInterval(function () { self.pollStatus(orderId); }, 1500);
+            self.pollStatus(orderId);
+            setTimeout(function () {
+              if (self.phase === 'confirming') {
+                console.error('[tokens] paypal.poll TIMEOUT — flipping to errored');
+                self.stopPolling();
+                self.phase = 'errored';
+              }
+            }, 45000);
+          },
+
+          stopPolling() {
+            if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+            if (this._ticker)    { clearInterval(this._ticker);    this._ticker = null; }
+          },
+
+          async pollStatus(orderId) {
+            try {
+              var r = await fetch('/tokens/status?order_id=' + encodeURIComponent(orderId), {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin'
+              });
+              if (!r.ok) return;
+              var d = await r.json();
+              if (!d.ready || this.phase !== 'confirming') return;
+              this.minted = d.minted;
+              this.balance = d.balance;
+              this.stopPolling();
+              this.phase = 'minted';
+              // Post-mint fanout — same trio the board runs: navbar badge,
+              // $store.session for eligibilityBlocker, celebration.
+              try { if (window.updateNavTokens) window.updateNavTokens(d.balance); } catch (_) {}
+              try {
+                var sess = window.Alpine && Alpine.store && Alpine.store('session');
+                if (sess) sess.tokensAvailable = parseInt(d.balance, 10) || 0;
+              } catch (_) {}
+              try { if (window.animateFreeEntryBadge) setTimeout(window.animateFreeEntryBadge, 60); } catch (_) {}
+              try { if (window.fireConfettiFromBadge) setTimeout(window.fireConfettiFromBadge, 180); } catch (_) {}
+            } catch (e) { /* keep polling */ }
+          },
+
+          destroy() {
+            this.stopPolling();
+          },
+
+          _headers() {
+            var csrf = (document.querySelector("meta[name='csrf-token']") || {}).content || '';
+            return { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Accept': 'application/json' };
+          }
+        };
+      };
+    }
+  </script>
+<% end %>

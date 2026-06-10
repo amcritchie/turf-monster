@@ -16,6 +16,7 @@ Load these when working on specific areas:
 | `docs/UI_PATTERNS.md` | Branding, theme colors, matchup grid, hold button, animations |
 | `docs/world_cup_2026.md` | World Cup format, groups, matchday structure |
 | `docs/RATE_LIMITING.md` | Rate limiting — rack-attack throttles, the two-tier general/auth design, wait modals (design spec, pre-build) |
+| `docs/PAYPAL_VENMO.md` | PayPal/Venmo onramp — flag-gated Stripe replacement (backend + frontend architecture, sandbox setup, go-live runbook with the real-money-gaming approval gate) |
 
 ## Game Rules
 
@@ -190,6 +191,7 @@ Alpine's `defer` script evaluates `x-data` attributes BEFORE importmap modules l
 - `selectionBoard()` — full matchup board component, inline in `_turf_totals_board.html.erb` partial. Reads config from `#board-config` JSON element.
 - `solanaModal` Alpine store — inline in layout, registered on `alpine:init`
 - `walletProvider` stub — minimal stub for `isAvailable()`/`isMobile()`/`detect()`, overwritten by full module on import
+- `paypalButtons()` — PayPal/Venmo pack-purchase component, inline in `tokens/_paypal_sdk.html.erb` (page-scoped rather than `shared/_alpine_factories` so Stripe-provider pages ship zero PayPal bytes; renders nothing unless `Payments.paypal_checkout?`)
 
 ### State fanout pattern
 

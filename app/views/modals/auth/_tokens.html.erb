@@ -5,8 +5,12 @@
   two distinct concerns (auth credentials vs. post-auth token flow).
 
   Steps handled here (state machine on $store.modals.current().props.step):
-    tokens-picker     — wizard template (step 2/3) — Stripe pack picker
+    tokens-picker     — wizard template (step 2/3) — pack picker. Branches on
+                        Payments.paypal_checkout?: Stripe pack-buttons (new-tab
+                        checkout) vs PayPal/Venmo on-page buttons
     tokens-waiting    — status template (loading)  — Stripe checkout open
+                        (Stripe path only; PayPal stays at the picker while
+                        the SDK popup is up, then jumps to tokens-confirming)
     tokens-confirming — status template (loading)  — polling /tokens/status
     tokens-minted     — status template (success)  — hold to confirm entry
     tokens-error      — poll timed out / submission failed (error_card)
@@ -32,6 +36,12 @@
         `if (!window.tokenCheckoutSubmit)` so the remount-on-every-open
         is a cheap no-op after the first run. %>
     <%= render "tokens/pack_button_styles" %>
+    <%# PayPal SDK loader + paypalButtons factory — renders nothing unless the
+        PayPal onramp is active, and defers the actual SDK download until the
+        buttons mount, so carrying it here (the modal ships on every page)
+        costs Stripe-provider pages zero bytes and PayPal pages zero network
+        until the picker opens. %>
+    <%= render "tokens/paypal_sdk" %>
 
     <%# Shared close × — top-right, sits above whichever step is active. %>
     <button @click="$store.modals.close()"
@@ -49,22 +59,31 @@
         <%# Picker is step 2 of the 3-step onboarding journey. %>
         <%= render "modals/blocks/progress_pill", current: 2, total: 3 %>
         <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved &mdash; pick a pack to finish.</p>
-        <div class="space-y-3">
-          <% StripePurchase.available_packs.each do |pack_id, pack| %>
-            <%# Pack click advances to 'tokens-waiting' through the store's
-                advance() so the host card runs its directional slide
-                between picker → waiting. target_blank + data-turbo=false
-                (from the partial) preserve the new-tab Stripe checkout
-                flow — the slide happens alongside the popup open. %>
-            <%= render "tokens/pack_button",
-                pack_id:      pack_id,
-                pack:         pack,
-                extra_params: { contest: @contest&.slug },
-                target_blank: true,
-                on_click_js:  "$store.modals.advance({ step: 'tokens-waiting' })" %>
-          <% end %>
-        </div>
-        <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+        <% if Payments.paypal_checkout? %>
+          <%# PayPal/Venmo path — pack cards select, the standalone buttons
+              pay, everything stays on-page (the SDK drives its own popup or
+              app-switch). On a captured order the selectionBoard's
+              paypal-order-captured listener advances this wizard to
+              tokens-confirming and polls /tokens/status by order_id. %>
+          <%= render "tokens/paypal_buttons", flow: "modal", contest: @contest&.slug %>
+        <% else %>
+          <div class="space-y-3">
+            <% StripePurchase.available_packs.each do |pack_id, pack| %>
+              <%# Pack click advances to 'tokens-waiting' through the store's
+                  advance() so the host card runs its directional slide
+                  between picker → waiting. target_blank + data-turbo=false
+                  (from the partial) preserve the new-tab Stripe checkout
+                  flow — the slide happens alongside the popup open. %>
+              <%= render "tokens/pack_button",
+                  pack_id:      pack_id,
+                  pack:         pack,
+                  extra_params: { contest: @contest&.slug },
+                  target_blank: true,
+                  on_click_js:  "$store.modals.advance({ step: 'tokens-waiting' })" %>
+            <% end %>
+          </div>
+          <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+        <% end %>
       </div>
     </template>
 
