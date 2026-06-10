@@ -113,6 +113,16 @@ module Cdp
       end
     end
 
+    # Optional widget prefill (e.g. the contest entry fee from the auth
+    # modal's picker). Strictly validated; anything off-pattern or out of
+    # range drops the param entirely — the buyer just types an amount.
+    def preset_fiat_param
+      raw = params[:preset_fiat].to_s
+      return nil unless raw.match?(/\A\d{1,3}(\.\d{1,2})?\z/)
+      amount = BigDecimal(raw)
+      amount.between?(2, 500) ? format("%g", amount) : nil
+    end
+
     # Coinbase rejects private/loopback clientIp outright ("private IP
     # addresses are not allowed") — in local dev substitute the machine's
     # real egress IP (what production would see via Heroku's XFF).
@@ -142,7 +152,8 @@ module Cdp
         OnrampUrl.build(
           session_token: token,
           partner_user_ref: ramp.partner_user_ref,
-          redirect_url: cdp_onramp_return_url
+          redirect_url: cdp_onramp_return_url,
+          preset_fiat_amount: preset_fiat_param
         )
       else
         OfframpUrl.build(

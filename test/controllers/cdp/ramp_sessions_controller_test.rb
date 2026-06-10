@@ -60,11 +60,11 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
                  encrypted_web2_solana_private_key: "x")
   end
 
-  def post_session(direction, catalog: FakeCatalog.new, service: FakeTokenService.new)
+  def post_session(direction, catalog: FakeCatalog.new, service: FakeTokenService.new, params: {})
     path = direction == :onramp ? cdp_onramp_sessions_path : cdp_offramp_sessions_path
     Cdp::Catalog.stub :new, catalog do
       Cdp::SessionTokenService.stub :new, service do
-        post path, as: :json
+        post path, params: params, as: :json
       end
     end
   end
@@ -287,6 +287,29 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
       service = FakeTokenService.new(raise_error: Cdp::Client::RateLimitError.new("CDP 429: slow down"))
       post_session(:onramp, service: service)
       assert_response :too_many_requests
+    end
+  end
+
+  test "preset_fiat prefills the widget URL when valid" do
+    with_cdp_ramp do
+      log_in_as @user
+      give_managed_wallet
+      post_session(:onramp, params: { preset_fiat: "19" })
+      assert_response :success
+      assert_includes JSON.parse(response.body)["url"], "presetFiatAmount=19"
+    end
+  end
+
+  test "preset_fiat is dropped when malformed or out of range" do
+    with_cdp_ramp do
+      log_in_as @user
+      give_managed_wallet
+      [ "abc", "1", "9999", "19.999", "-5" ].each do |bad|
+        post_session(:onramp, params: { preset_fiat: bad })
+        assert_response :success
+        refute_includes JSON.parse(response.body)["url"], "presetFiatAmount",
+                        "expected preset #{bad.inspect} to be dropped"
+      end
     end
   end
 end

@@ -21,6 +21,18 @@
   by the selectionBoard's network methods. Same x-data scope as the
   parent partial, so `props` is in scope.
 %>
+<%# Funding mode for the picker step. Stripe wins while it is enabled
+    (current prod behavior, byte-for-byte); with Stripe off the CDP ramp
+    takes over the same step; with both off the picker degrades to an
+    honest "purchases offline" card instead of dead checkout buttons. %>
+<% purchase_mode =
+     if Rails.application.config.x.stripe_enabled
+       :stripe
+     elsif AppFlags.cdp_ramp?
+       :cdp
+     else
+       :none
+     end %>
 <template x-if="props.step && props.step.indexOf('tokens-') === 0">
   <div>
     <%# Orb-glow CSS + tokenCheckoutSubmit helper for the tokens-picker
@@ -31,7 +43,7 @@
         flow makes it self-contained. The inline script is guarded by
         `if (!window.tokenCheckoutSubmit)` so the remount-on-every-open
         is a cheap no-op after the first run. %>
-    <%= render "tokens/pack_button_styles" %>
+    <%= render "tokens/pack_button_styles" if purchase_mode == :stripe %>
 
     <%# Shared close × — top-right, sits above whichever step is active. %>
     <button @click="$store.modals.close()"
@@ -48,23 +60,42 @@
         </div>
         <%# Picker is step 2 of the 3-step onboarding journey. %>
         <%= render "modals/blocks/progress_pill", current: 2, total: 3 %>
-        <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved &mdash; pick a pack to finish.</p>
-        <div class="space-y-3">
-          <% StripePurchase.available_packs.each do |pack_id, pack| %>
-            <%# Pack click advances to 'tokens-waiting' through the store's
-                advance() so the host card runs its directional slide
-                between picker → waiting. target_blank + data-turbo=false
-                (from the partial) preserve the new-tab Stripe checkout
-                flow — the slide happens alongside the popup open. %>
-            <%= render "tokens/pack_button",
-                pack_id:      pack_id,
-                pack:         pack,
-                extra_params: { contest: @contest&.slug },
-                target_blank: true,
-                on_click_js:  "$store.modals.advance({ step: 'tokens-waiting' })" %>
-          <% end %>
-        </div>
-        <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+        <% if purchase_mode == :stripe %>
+          <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved &mdash; pick a pack to finish.</p>
+          <div class="space-y-3">
+            <% StripePurchase.available_packs.each do |pack_id, pack| %>
+              <%# Pack click advances to 'tokens-waiting' through the store's
+                  advance() so the host card runs its directional slide
+                  between picker → waiting. target_blank + data-turbo=false
+                  (from the partial) preserve the new-tab Stripe checkout
+                  flow — the slide happens alongside the popup open. %>
+              <%= render "tokens/pack_button",
+                  pack_id:      pack_id,
+                  pack:         pack,
+                  extra_params: { contest: @contest&.slug },
+                  target_blank: true,
+                  on_click_js:  "$store.modals.advance({ step: 'tokens-waiting' })" %>
+            <% end %>
+          </div>
+          <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+        <% elsif purchase_mode == :cdp %>
+          <% entry_fee_dollars = ((@contest&.entry_fee_cents || 1900) / 100) %>
+          <p class="text-xs text-secondary mb-4 text-center">Entry fee is $<%= entry_fee_dollars %> in USDC. Your lineup is saved &mdash; add USDC to finish.</p>
+          <div class="space-y-3">
+            <%# Cross-modal handoff: swap() (not advance) hands this wizard
+                off to the cdp-ramp modal's buy preflight with the entry fee
+                prefilled. After the buy settles, the board's hold button
+                passes the USDC eligibility gate — no token involved. %>
+            <button @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight', presetFiat: <%= entry_fee_dollars %> })"
+                    class="btn btn-primary btn-lg w-full">Buy USDC with Coinbase</button>
+          </div>
+          <p class="text-center text-xs text-muted mt-4">Pay with debit, Apple Pay, or your Coinbase balance. USDC lands in your wallet &mdash; then hold to confirm your entry.</p>
+        <% else %>
+          <%= render "modals/blocks/card_header",
+                icon: :error,
+                title: "Purchases temporarily offline",
+                subtitle: "Entry purchases are paused while we upgrade checkout. Your picks are saved." %>
+        <% end %>
       </div>
     </template>
 

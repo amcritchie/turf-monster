@@ -687,7 +687,9 @@
         try { popup = window.open("", "_blank"); } catch (e) { popup = null; }
         p.step = "opening"; // direct patch — no slide while the request runs
         try {
-          var data = await this._post(this.isBuy ? "/cdp/onramp_sessions" : "/cdp/offramp_sessions", {});
+          var body = {};
+          if (this.isBuy && p.presetFiat) body.preset_fiat = String(p.presetFiat);
+          var data = await this._post(this.isBuy ? "/cdp/onramp_sessions" : "/cdp/offramp_sessions", body);
           p = this.props;
           if (!data) { // authedFetch handled a 401/429 (its own modal is up)
             p.step = "preflight";
