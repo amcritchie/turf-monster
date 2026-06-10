@@ -97,6 +97,11 @@ class ApplicationController < ActionController::Base
     # is false for HEAD even though HEAD routes like GET.)
     return false unless request.get? || request.head?
     return true if controller_name == "landing_pages"
+    # Static legal/compliance pages (terms, privacy, about, contact,
+    # responsible-gaming, state-eligibility): pasted into emails, merchant
+    # applications, and crawled by underwriters' site scanners — they must
+    # never 406 a preview fetcher or an old browser.
+    return true if controller_name == "pages"
     controller_name == "contests" && action_name.in?(%w[show world_cup index live])
   end
 

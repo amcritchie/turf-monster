@@ -23,6 +23,16 @@ class LinkPreviewBrowserGuardTest < ActionDispatch::IntegrationTest
     assert_match %r{<meta property="og:image"}, response.body
   end
 
+  test "legal and compliance pages serve an old-browser preview fetcher" do
+    # Underwriting compliance: these URLs are pasted into merchant
+    # applications and emails — they must unfurl and never 406 a visitor.
+    ["/terms", "/privacy", "/about", "/contact",
+     "/responsible-gaming", "/state-eligibility"].each do |path|
+      get path, headers: { "HTTP_USER_AGENT" => OLD_SAFARI }
+      assert_response :success, "#{path} should be exempt from the browser guard"
+    end
+  end
+
   test "allow_browser guard still 406s an old browser on a non-preview page" do
     get "/faucet", headers: { "HTTP_USER_AGENT" => OLD_SAFARI }
     assert_response :not_acceptable

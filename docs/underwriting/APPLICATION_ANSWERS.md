@@ -52,7 +52,7 @@ memory.
 | Monthly volume (requested) | [OPERATOR FILL — projection through the World Cup window, with basis] |
 | Sales method | 100% e-commerce (card-not-present), single domain |
 | Recurring billing | None — every purchase is a discrete, user-initiated checkout. No subscriptions, no negative option, no trials |
-| Refund policy | Published at /terms#refunds: cancelled-before-lock contests refunded within 7 days; unused entry credits refundable on request; locked entries final |
+| Refund policy | Published at /terms#refunds: cancelled-before-lock contests refunded within 7 days **in the form paid** (card-purchased credits restored or refunded to the original payment method — never converted to crypto); unused entry credits refundable to the original payment method on request; locked entries final |
 | Chargeback history | Zero chargebacks to date [OPERATOR FILL — verify against Stripe disputes dashboard before signing] |
 
 ## Prior processor / termination disclosure (use verbatim)

@@ -33,8 +33,12 @@ Policy owner: [OPERATOR FILL — name/title]. Last reviewed: 2026-06.
 
 ## Sanctions / OFAC screening
 
-- Geographic scope is U.S.-only by IP geolocation; excluded U.S. states are
-  blocked at entry and fund movement (list published at /state-eligibility).
+- The service is offered to the U.S. market; excluded U.S. states are blocked
+  at contest entry and fund movement by IP geolocation (list published at
+  /state-eligibility).
+  [OPERATOR FILL — enforcement today bans listed U.S. states only; non-U.S.
+  IPs are NOT auto-blocked. Either add a U.S.-only geo gate before filing, or
+  do not represent enforcement as "U.S.-only" on applications.]
 - Intent (pre-payout control): payout wallet addresses are screened against
   OFAC SDN-listed addresses before release
   [OPERATOR FILL — select tooling: Chainalysis Free Sanctions Screening API /
