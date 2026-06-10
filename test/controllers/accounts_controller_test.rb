@@ -256,7 +256,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     current_email = @alex.email
     log_in_as @alex
 
-    assert_enqueued_emails 1 do
+    assert_difference "EmailDelivery.count", 1 do
       patch account_path, params: { user: { email: "newaddr@example.com" } }
     end
     assert_redirected_to account_path
@@ -392,7 +392,9 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   test "apply_email_change enqueues a verification mail for the new address" do
     @alex.update!(email_verified_at: Time.current)
     token = email_change_token(@alex, "verifyme@example.com", @alex.email)
-    assert_enqueued_emails 1 do
+    # apply now sends TWO: the OPSEC heads-up to the old address + the
+    # verification link to the new one.
+    assert_difference "EmailDelivery.count", 2 do
       post apply_email_change_path(token: token)
     end
   end

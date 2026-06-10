@@ -25,7 +25,7 @@ class MagicLinksController < ApplicationController
     email = params[:email].to_s.strip.downcase
     if User.valid_email?(email)
       token = MagicLink.generate(email: email, return_to: resolved_return_to)
-      UserMailer.magic_link(email, token, contest: @magic_contest).deliver_later
+      EmailDelivery.deliver(UserMailer, :magic_link, email, token, to: email, contest: @magic_contest)
     end
     respond_to do |format|
       format.json { render json: { success: true } }

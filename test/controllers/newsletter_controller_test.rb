@@ -117,12 +117,13 @@ class NewsletterControllerTest < ActionDispatch::IntegrationTest
     log_in_as @wallet_user
     fake = FakeVault.new
     Solana::Vault.stub :new, fake do
-      assert_enqueued_email_with(NewsletterMailer, :welcome, args: [@wallet_user]) do
+      assert_difference "EmailDelivery.count", 1 do
         post newsletter_subscribe_path, as: :json
       end
+      assert_equal "NewsletterMailer#welcome", EmailDelivery.order(:created_at).last.email_key
 
       post newsletter_unsubscribe_path, as: :json
-      assert_no_enqueued_emails do
+      assert_no_difference "EmailDelivery.count" do
         post newsletter_subscribe_path, as: :json # rejoin → no welcome
       end
     end
