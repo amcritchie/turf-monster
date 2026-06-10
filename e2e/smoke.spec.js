@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { login } = require("./helpers");
+const { login, attestAge } = require("./helpers");
 
 // ---------------------------------------------------------------------------
 // Index page
@@ -51,6 +51,7 @@ test("requesting a magic link confirms the email was sent", async ({ page }) => 
   // modal in place (staying on /signin).
   await page.goto("/signin");
   await page.fill('input[name="email"]', "someone@example.com");
+  await attestAge(page);
   await page.getByRole("button", { name: "Email Link" }).click();
   await page.waitForURL((url) => url.pathname.startsWith("/signin"));
   await expect(page.locator("body")).toContainText(/inbox|sign-in link/i);

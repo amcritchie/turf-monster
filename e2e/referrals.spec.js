@@ -136,8 +136,10 @@ test("ref → Google signup → entry credits the inviter", async ({ page }) => 
   await seedRef(page, INVITER_FOR_GOOGLE);
 
   // OmniAuth test_mode short-circuits /auth/:provider straight to the callback,
-  // which creates the user + signs them in + redirects to /.
-  await page.goto("/auth/google_oauth2");
+  // which creates the user + signs them in + redirects to /. The legal-age
+  // attestation rides the request phase as a query param (what the real
+  // /signin Google form sends) — a NEW signup is refused without it.
+  await page.goto("/auth/google_oauth2?age_attestation=1");
   await page.waitForURL((url) => !url.pathname.startsWith("/auth/"));
 
   const entry = await waitForSetInviterAndCreateEntry(page, CONTEST_SLUG);

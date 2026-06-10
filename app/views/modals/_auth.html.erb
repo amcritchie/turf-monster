@@ -34,6 +34,16 @@
     <template x-if>/<template x-for> also has exactly one root child. %>
 <div x-data="{
        email: '',
+       // Legal-age attestation (underwriting compliance) — gates all three
+       // credential CTAs; the value rides each dispatch so the board can
+       // forward it to the server (which enforces it for NEW accounts).
+       ageAttested: false,
+       ageError: false,
+       attested() {
+         if (this.ageAttested) { this.ageError = false; return true; }
+         this.ageError = true;
+         return false;
+       },
        // Hardened against a transient null current() during modal open/close
        // transitions — Alpine catches exceptions in x-if expressions and
        // treats them as falsy. Returning {} keeps every binding evaluating
@@ -85,7 +95,12 @@
          p.resent = false;
          p.submitting = 'magic-link';
          try {
-           var data = await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks });
+           // ageAttested: true is safe by construction — this step is only
+           // reachable after the original request passed the legal-age gate
+           // (auth card + auth modal both block the first send without it).
+           // Without it a brand-new email resend would mint an unattested
+           // link row, and consume would refuse the account.
+           var data = await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks, ageAttested: true });
            if (data && data.success) {
              // Swap to the dedicated success step — the directional slide IS
              // the visual confirmation. Re-advancing on each resend re-runs the
@@ -119,8 +134,13 @@
       <%= render "modals/blocks/progress_pill", current: 1, total: 3 %>
       <p class="text-xs text-secondary mb-4 text-center">Your 6 picks are saved — sign in to submit your lineup.</p>
 
+      <%# Legal-age attestation — gates Google / Solana / email below. %>
+      <div class="mb-4">
+        <%= render "shared/age_attestation" %>
+      </div>
+
       <!-- 1. Google OAuth — opens a popup; the closer page postMessages the result -->
-      <button @click="$dispatch('auth-google-click')"
+      <button @click="if (attested()) $dispatch('auth-google-click', { ageAttested: true })"
               :disabled="props.submitting"
               class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
         <span x-show="props.submitting !== 'google'" class="inline-flex"><%= render "components/google_logo" %></span>
@@ -134,7 +154,7 @@
       <!-- 2. Solana — progresses to the Connect Wallet picker modal. The board
            saves the cart + passes returnUrl so the lineup survives (see
            selectionBoard#openWalletConnect). -->
-      <button @click="$dispatch('auth-wallet-hub-open')" :disabled="props.submitting"
+      <button @click="if (attested()) $dispatch('auth-wallet-hub-open', { ageAttested: true })" :disabled="props.submitting"
               class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
         <img src="/solana-mark.svg" alt="" class="w-5 h-5" x-show="props.submitting !== 'wallet'">
         <span x-show="props.submitting === 'wallet'" class="cta-spinner" aria-hidden="true"></span>
@@ -151,7 +171,7 @@
 
       <!-- 3. Email magic link — no password. Dispatches the request; the board
            emails a one-tap link and advances to the 'magic-link-sent' step. -->
-      <form @submit.prevent="$dispatch('auth-magic-link-submit', { email: email })" novalidate>
+      <form @submit.prevent="if (attested()) $dispatch('auth-magic-link-submit', { email: email, ageAttested: true })" novalidate>
         <div class="mb-3">
           <label class="block text-xs text-secondary mb-1 font-medium">Email</label>
           <%# Live client-side validity decorator (UX only — never blocks

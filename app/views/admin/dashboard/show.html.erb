@@ -185,15 +185,17 @@
         <%= form_with url: admin_dashboard_link_preview_path, method: :patch, html: { class: "space-y-4" } do |f| %>
           <div>
             <label for="default_og_title" class="block text-sm text-secondary mb-2 font-medium">Default title</label>
+            <%# Placeholders render the live OgHelper fallbacks so the admin
+                sees exactly what ships when the field is left blank. %>
             <%= text_field_tag "site_setting[default_og_title]", @site_setting.default_og_title,
                   id: "default_og_title", class: "input-field",
-                  placeholder: "Turf Totals — Solana Pick’em Contests" %>
+                  placeholder: OgHelper::DEFAULT_OG_TITLE %>
           </div>
           <div>
             <label for="default_og_description" class="block text-sm text-secondary mb-2 font-medium">Default description</label>
             <%= text_area_tag "site_setting[default_og_description]", @site_setting.default_og_description,
                   id: "default_og_description", rows: 3, class: "input-field",
-                  placeholder: "Solana-powered World Cup pick’em contests…" %>
+                  placeholder: OgHelper::DEFAULT_OG_DESCRIPTION %>
           </div>
           <button type="submit" class="btn btn-primary">Save text</button>
         <% end %>

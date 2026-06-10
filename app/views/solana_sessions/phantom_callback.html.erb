@@ -91,7 +91,7 @@
 
   var ALL_KEYS = [
     'phantom_dl_secret', 'phantom_dl_pubkey', 'phantom_dl_nonce', 'phantom_dl_nonce_at',
-    'phantom_dl_step', 'phantom_dl_link_mode', 'phantom_dl_cluster'
+    'phantom_dl_step', 'phantom_dl_link_mode', 'phantom_dl_cluster', 'phantom_dl_age_attested'
   ];
 
   function cleanup() {
@@ -270,7 +270,10 @@
       body: JSON.stringify({
         message: message,
         signature: signatureB58,
-        pubkey: walletPubkey
+        pubkey: walletPubkey,
+        // Legal-age attestation, stashed by the Connect Wallet picker before
+        // the deep-link round trip (undefined is dropped by JSON.stringify).
+        age_attestation: (!linkMode && localStorage.getItem('phantom_dl_age_attested') === '1') ? '1' : undefined
       })
     })
     .then(function(r) {

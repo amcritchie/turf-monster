@@ -24,7 +24,11 @@ class MagicLinksController < ApplicationController
   def create
     email = params[:email].to_s.strip.downcase
     if User.valid_email?(email)
-      token = MagicLink.generate(email: email, return_to: resolved_return_to)
+      # The legal-age checkbox is checked at request time; the attestation
+      # rides in the link row because the ACCOUNT is created at consume time
+      # (possibly in a different browser). sign_up_new enforces it.
+      token = MagicLink.generate(email: email, return_to: resolved_return_to,
+                                 age_attested: age_attestation_given?)
       UserMailer.magic_link(email, token, contest: @magic_contest).deliver_later
     end
     respond_to do |format|
@@ -113,8 +117,18 @@ class MagicLinksController < ApplicationController
   # the entry-tokens upsell. There is no password — email auth is magic-link
   # only across the whole app (the password_digest column is dormant).
   def sign_up_new(result)
+    # Underwriting compliance: a brand-new account requires the legal-age
+    # attestation that rode in with the link request. Without it the account
+    # is NOT created — the user re-requests a link with the box checked.
+    # (Existing users take sign_in_existing above and never hit this.)
+    unless result.age_attested
+      return redirect_to signin_path, alert: AGE_ATTESTATION_ERROR
+    end
+
     reset_prior_session!
-    user = User.new(email: result.email, reference: cookies[:reference].presence&.to_s&.first(64))
+    user = User.new(email: result.email,
+                    age_attested_at: Time.current,
+                    reference: cookies[:reference].presence&.to_s&.first(64))
     Studio.configure_new_user.call(user)
     rescue_and_log(target: user) do
       user.save!

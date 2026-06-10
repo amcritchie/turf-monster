@@ -11,11 +11,13 @@
 # passes the current @landing_page so an operator can override per funnel page.
 module OgHelper
   # Fallbacks baked into the layouts before this helper existed; kept here as
-  # the last resort when SiteSetting has no admin-set default.
-  DEFAULT_OG_TITLE = "Turf Totals — Solana Pick’em Contests".freeze
+  # the last resort when SiteSetting has no admin-set default. Skill-contest
+  # framing first (underwriting compliance) — blockchain transparency is the
+  # secondary note, with /transparency as the deep-dive hub.
+  DEFAULT_OG_TITLE = "Turf Totals — Skill-Based World Cup Pick’em Contests".freeze
   DEFAULT_OG_DESCRIPTION =
-    "Turf Totals: Solana-powered World Cup pick’em contests. Pick 6 matchups, " \
-    "stack Turf Scores, and win prizes settled on-chain.".freeze
+    "Turf Totals: skill-based World Cup pick’em contests. Pick 6 matchups, " \
+    "stack Turf Scores, and win cash prizes with transparent, verifiable payouts.".freeze
 
   def og_image_url(landing_page = nil)
     # Per-funnel override wins (queries the landing page's attachment).
