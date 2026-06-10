@@ -154,4 +154,47 @@ class CdpRampTransactionTest < ActiveSupport::TestCase
     assert_not ramp.mark_expired!
     assert ramp.success?, "terminal states never overwrite each other"
   end
+
+  test "mark_sending! persists the signature with the status flip, only from cdp_created" do
+    ramp = build_ramp(direction: "offramp", status: "cdp_created").tap(&:save!)
+    assert ramp.mark_sending!("Sig111")
+    assert ramp.sending?
+    assert_equal "Sig111", ramp.sent_signature
+
+    assert ramp.mark_sending!("Sig111"), "same-signature retry is an idempotent yes"
+    assert_not ramp.mark_sending!("Sig222"), "a different signature must not overwrite an in-flight send"
+    assert_equal "Sig111", ramp.sent_signature
+
+    fresh = build_ramp(direction: "offramp", status: "returned").tap(&:save!)
+    assert_not fresh.mark_sending!("SigX"), "no send before cdp_created"
+    assert_not fresh.mark_sending!(nil), "blank signature refused"
+  end
+
+  test "mark_sent! advances from sending or cdp_created and protects the recorded signature" do
+    managed = build_ramp(direction: "offramp", status: "sending", sent_signature: "Sig111").tap(&:save!)
+    assert managed.mark_sent!
+    assert managed.sent?
+    assert_equal "Sig111", managed.sent_signature
+    assert managed.mark_sent!, "idempotent"
+    assert_not managed.mark_sent!("Other"), "refuses to overwrite a different signature"
+
+    phantom = build_ramp(direction: "offramp", status: "cdp_created").tap(&:save!)
+    assert phantom.mark_sent!("ClientSig"), "Phantom mode reports straight from cdp_created"
+    assert phantom.sent?
+    assert_equal "ClientSig", phantom.sent_signature
+
+    early = build_ramp(direction: "offramp", status: "returned").tap(&:save!)
+    assert_not early.mark_sent!("SigX")
+  end
+
+  test "reset_failed_send! is the one deliberate rewind — sending only" do
+    ramp = build_ramp(direction: "offramp", status: "sending", sent_signature: "DeadSig").tap(&:save!)
+    assert ramp.reset_failed_send!
+    assert ramp.cdp_created?
+    assert_nil ramp.sent_signature
+
+    sent = build_ramp(direction: "offramp", status: "sent", sent_signature: "GoodSig").tap(&:save!)
+    assert_not sent.reset_failed_send!, "a confirmed send can never be reset"
+    assert sent.sent?
+  end
 end

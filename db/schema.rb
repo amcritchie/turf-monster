@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -64,6 +64,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
     t.string "sent_signature"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "confirmed_at"
     t.index ["coinbase_transaction_id"], name: "index_cdp_ramp_transactions_on_coinbase_transaction_id", unique: true
     t.index ["partner_user_ref"], name: "index_cdp_ramp_transactions_on_partner_user_ref", unique: true
     t.index ["status", "direction"], name: "index_cdp_ramp_transactions_on_status_and_direction"
@@ -102,6 +103,25 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
     t.index ["slug"], name: "index_contests_on_slug", unique: true
     t.index ["status"], name: "index_contests_on_status"
     t.index ["user_id"], name: "index_contests_on_user_id"
+  end
+
+  create_table "email_deliveries", force: :cascade do |t|
+    t.string "email_key", null: false
+    t.string "to"
+    t.string "mailer", null: false
+    t.string "action", null: false
+    t.jsonb "args", default: [], null: false
+    t.jsonb "kwargs", default: {}, null: false
+    t.boolean "sent", default: false, null: false
+    t.datetime "sent_at"
+    t.text "error"
+    t.bigint "user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_email_deliveries_on_created_at"
+    t.index ["email_key"], name: "index_email_deliveries_on_email_key"
+    t.index ["sent"], name: "index_email_deliveries_on_sent"
+    t.index ["user_id"], name: "index_email_deliveries_on_user_id"
   end
 
   create_table "entries", force: :cascade do |t|
@@ -563,6 +583,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "contests", "slates"
   add_foreign_key "contests", "users"
+  add_foreign_key "email_deliveries", "users"
   add_foreign_key "entries", "contests"
   add_foreign_key "entries", "users"
   add_foreign_key "games", "survivor_rounds"

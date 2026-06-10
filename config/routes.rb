@@ -311,6 +311,12 @@ Rails.application.routes.draw do
     get  "offramp/return",   to: "cdp/returns#offramp",              as: :cdp_offramp_return
     get  "ramp_status/:partner_user_ref", to: "cdp/returns#status",  as: :cdp_ramp_status,
          defaults: { format: :json }
+    # Offramp send path (§10) — managed confirm-then-server-send, and the
+    # Phantom prepare/sign/report loop. All keyed on partner_user_ref in the
+    # body and scoped to the viewer's own offramp rows.
+    post "offramp/confirm_send", to: "cdp/offramp_sends#confirm", as: :cdp_offramp_confirm_send
+    post "offramp/prepare_send", to: "cdp/offramp_sends#prepare", as: :cdp_offramp_prepare_send
+    post "offramp/sent",         to: "cdp/offramp_sends#sent",    as: :cdp_offramp_sent
   end
 
   post "add_funds", to: "users#add_funds"

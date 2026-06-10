@@ -123,6 +123,41 @@ class CdpRampTransaction < ApplicationRecord
     update!(status: :cdp_created)
   end
 
+  # Offramp send (managed mode): the signature is persisted in the SAME write
+  # that flips the status — i.e. durably recorded BEFORE any broadcast attempt
+  # completes. That is the verify-before-retry anchor: a crash/timeout between
+  # broadcast and confirmation leaves the signature on the row so the next run
+  # checks it on-chain instead of blind-resending (Cdp::OfframpSendJob).
+  def mark_sending!(signature)
+    return false if signature.blank?
+    return true if sending? && sent_signature == signature
+    return false unless cdp_created?
+    update!(status: :sending, sent_signature: signature)
+  end
+
+  # Offramp send confirmed on-chain (managed mode, from :sending) or a
+  # client-reported + server-verified Phantom send (from :cdp_created — the
+  # client broadcast, so there is no local :sending step). Refuses to
+  # overwrite a DIFFERENT already-recorded signature.
+  def mark_sent!(signature = nil)
+    return true if sent? && (signature.blank? || sent_signature == signature)
+    return false unless cdp_created? || sending?
+    return false if signature.present? && sent_signature.present? && sent_signature != signature
+    attrs = { status: :sent }
+    attrs[:sent_signature] = signature if signature.present?
+    update!(attrs)
+  end
+
+  # DELIBERATE rewind — the one exception to "never rewind", allowed only
+  # after an on-chain verification proved the broadcast definitively failed
+  # (getSignatureStatuses returned an err, or the blockhash window lapsed with
+  # the signature never appearing). Clears the dead signature so a fresh,
+  # fully re-guarded attempt can build a new transaction.
+  def reset_failed_send!
+    return false unless sending?
+    update!(status: :cdp_created, sent_signature: nil)
+  end
+
   def mark_success!
     return false if terminal?
     update!(status: :success)
