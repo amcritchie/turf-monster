@@ -56,7 +56,7 @@ module Cdp
       end
 
       rescue_and_log(target: ramp, parent: current_user) do
-        token = SessionTokenService.new.mint(address: address, client_ip: request.remote_ip)
+        token = SessionTokenService.new.mint(address: address, client_ip: cdp_client_ip)
         url = build_url(direction, ramp, token)
         ramp.mark_token_minted!
         # Start the CDP status poll loop NOW — server-side reconciliation
@@ -111,6 +111,21 @@ module Cdp
       else
         catalog.offramp_available?(country: geo_country, subdivision: geo_state)
       end
+    end
+
+    # Coinbase rejects private/loopback clientIp outright ("private IP
+    # addresses are not allowed") — in local dev substitute the machine's
+    # real egress IP (what production would see via Heroku's XFF).
+    def cdp_client_ip
+      ip = request.remote_ip
+      addr = IPAddr.new(ip)
+      return ip unless Rails.env.development? && (addr.loopback? || addr.private?)
+      self.class.dev_public_ip
+    end
+
+    def self.dev_public_ip
+      @dev_public_ip ||= ENV["DEV_CLIENT_IP"].presence ||
+        Net::HTTP.get(URI("https://checkip.amazonaws.com")).strip
     end
 
     def unavailable_message(direction)

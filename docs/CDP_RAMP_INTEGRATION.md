@@ -200,7 +200,7 @@ Event types: `onramp.transaction.{created,updated,success,failed}` and `offramp.
 4. No verbatim session-token example with blockchains:["solana"] exists in docs — verify the token mints and the widget shows USDC-on-Solana on the first real call.
 5. What (if anything) is appended to redirectUrl on completion — verify empirically; until then return pages key everything off partner_user_ref polling.
 6. Can localhost be added to the Onramp/Offramp domain allowlist? Operator to test in the portal (step 5).
-7. Trial-mode numeric limits + full-access review timeline — capture during operator onboarding.
+7. Trial-mode numeric limits + full-access review timeline — capture during operator onboarding. **PARTIALLY ANSWERED (2026-06-10, empirical):** trial mode caps GUEST checkout at **$5/week** (widget copy: "Buy up to $5/week or create a Coinbase account for higher limits") — below a single $19 entry, so full access is a launch blocker for wallet-less buyers. Normal (non-trial) guest cap is $500/week. Coinbase-account buys have higher limits even in trial (per the widget's own upsell). Full-access review timeline still unknown.
 8. Network slug naming in config/options responses ("solana" vs "solana-mainnet") and whether buy-config nests under a "data" key — verify against live GET /onramp/v1/buy/options?country=US&networks=solana before wiring Cdp::Catalog parsing.
 9. defaultPaymentMethod accepted string set and defaultAsset format (ticker "USDC" vs Coinbase asset UUID) — test with ticker first.
 10. Whether POST /onramp/v1/token shares the quote APIs' 10 req/s throttle; exact error shape for a reused/expired session token; whether the 5-minute TTL runs creation→URL-open or longer.

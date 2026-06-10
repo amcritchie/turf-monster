@@ -288,6 +288,12 @@ class ApplicationController < ActionController::Base
       # ISO country code from the same lookup — feeds the CDP ramp catalog
       # gate (country + subdivision). nil when the lookup has no country.
       session[:geo_country] = result&.try(:country_code).presence&.upcase
+      # Loopback IPs never geocode, so dev sessions have no state/country and
+      # every geo-gated feature (CDP catalog, entry gate) fails closed locally.
+      if Rails.env.development? && session[:geo_state].blank? && request.local?
+        session[:geo_state] = normalize_state_code(ENV.fetch("DEV_GEO_STATE", "CO"))
+        session[:geo_country] = "US"
+      end
       session[:geo_ip] = request.remote_ip
       session[:geo_detected_at] = Time.current.to_s
     end
