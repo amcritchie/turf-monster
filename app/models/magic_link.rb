@@ -10,35 +10,39 @@
 # cache (the prod redis-TLS lockout footgun).
 #
 # API preserved for MagicLinksController + test helpers:
-#   MagicLink.generate(email:, return_to: nil) -> token String
-#   MagicLink.consume(token)                   -> Result(email, return_to)  (raises InvalidToken)
+#   MagicLink.generate(email:, return_to: nil, age_attested: false) -> token String
+#   MagicLink.consume(token) -> Result(email, return_to, age_attested)  (raises InvalidToken)
 #   MagicLink::InvalidToken, MagicLink::TTL
 class MagicLink < ApplicationRecord
   TTL = 15.minutes
 
   class InvalidToken < StandardError; end
 
-  Result = Struct.new(:email, :return_to, keyword_init: true)
+  Result = Struct.new(:email, :return_to, :age_attested, keyword_init: true)
 
   class << self
     # Creates a single-use link row and returns its opaque URL token. The token
     # is URL-safe base64 (no "/", "+", "="), so it satisfies the %r{[^/]+} route
     # constraint and survives URL generation without extra encoding.
-    def generate(email:, return_to: nil)
+    #
+    # age_attested: the legal-age checkbox state at REQUEST time. It rides in
+    # the row (not the URL) so the CONSUME side can require it before creating
+    # a brand-new account — see MagicLinksController#sign_up_new.
+    def generate(email:, return_to: nil, age_attested: false)
       email      = normalize_email(email)
       return_to  = sanitize_path(return_to)
+      attrs      = { email: email, return_to: return_to,
+                     age_attested: !!age_attested, expires_at: TTL.from_now }
       # 96 bits of randomness — collision is astronomically unlikely, but retry a
       # few times on the off chance the unique index rejects a dupe. The final
       # attempt is outside the rescue so a persistent failure raises cleanly
       # rather than returning a nil row.
       2.times do
-        return create!(token: SecureRandom.urlsafe_base64(12), email: email,
-                       return_to: return_to, expires_at: TTL.from_now).token
+        return create!(token: SecureRandom.urlsafe_base64(12), **attrs).token
       rescue ActiveRecord::RecordNotUnique
         next
       end
-      create!(token: SecureRandom.urlsafe_base64(12), email: email,
-              return_to: return_to, expires_at: TTL.from_now).token
+      create!(token: SecureRandom.urlsafe_base64(12), **attrs).token
     end
 
     # Authoritative consume: validates existence + not-expired + not-yet-used,
@@ -53,7 +57,8 @@ class MagicLink < ApplicationRecord
                .update_all(consumed_at: Time.current)
       raise InvalidToken, "link already used or expired" if burned.zero?
 
-      Result.new(email: link.email, return_to: sanitize_path(link.return_to))
+      Result.new(email: link.email, return_to: sanitize_path(link.return_to),
+                 age_attested: link.age_attested?)
     end
 
     private

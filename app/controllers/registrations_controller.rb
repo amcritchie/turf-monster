@@ -13,6 +13,16 @@ class RegistrationsController < ApplicationController
 
   def create
     @user = User.new(user_params)
+    # Underwriting compliance: account creation requires the legal-age
+    # attestation, same as every other signup flow (magic link / Google /
+    # wallet). This POST has no live UI (GET /signup redirects to /signin),
+    # but the engine still draws the endpoint — keep the boundary enforced.
+    unless age_attestation_given?
+      flash.now[:alert] = AGE_ATTESTATION_ERROR
+      return render :new, status: :unprocessable_entity
+    end
+
+    @user.age_attested_at = Time.current
     Studio.configure_new_user.call(@user)
     rescue_and_log(target: @user) do
       @user.save!

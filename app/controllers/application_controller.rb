@@ -69,7 +69,22 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  # ── Age attestation (underwriting compliance, 2026-06) ────────────────────
+  # Every account-creation flow (magic link, Google OAuth, Solana wallet,
+  # legacy POST /signup) must carry an affirmative legal-age attestation
+  # before a User row is created. Existing users grandfather (login paths
+  # never check). Shown to the user when a signup arrives without it.
+  AGE_ATTESTATION_ERROR = "Please confirm you are of legal age to play " \
+                          "skill-based contests in your state before creating an account.".freeze
+
   private
+
+  # True only for an affirmative checkbox value ("1", "true", true). Each
+  # signup controller reads its own source (params, omniauth.params, or the
+  # MagicLink row) and funnels through this single truthiness rule.
+  def age_attestation_given?(value = params[:age_attestation])
+    ActiveModel::Type::Boolean.new.cast(value) == true
+  end
 
   # Public, crawlable GET pages that must unfurl in link previews (and never
   # 406 a visitor). These carry og/twitter tags and are the URLs people paste

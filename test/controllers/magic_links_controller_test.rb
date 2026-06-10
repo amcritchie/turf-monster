@@ -82,12 +82,13 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   # the modal auto-redirects to the entry-tokens upsell client-side. It does NOT
   # redirect straight to tokens_buy_path nor set a :notice toast anymore.
   test "consume creates a passwordless, email-verified account and shows the welcome modal" do
-    token = MagicLink.generate(email: "brand-new@example.com")
+    token = MagicLink.generate(email: "brand-new@example.com", age_attested: true)
     assert_difference "User.count", 1 do
       post magic_link_consume_path(token: token)
     end
     user = User.find_by(email: "brand-new@example.com")
     assert user.email_verified_at.present?, "new user should be email-verified by clicking the link"
+    assert user.age_attested_at.present?, "new user should carry the legal-age attestation timestamp"
     # No contest return_to → a NEW generic signup lands on the live featured
     # contest (resolved at click) and gets the celebratory welcome modal.
     assert_redirected_to contest_path(contests(:one))
@@ -105,7 +106,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "consume lands a new signup on the contest return_to with an auth toast + tokens picker" do
-    token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3")
+    token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3", age_attested: true)
     post magic_link_consume_path(token: token)
     assert_redirected_to "/contests/the-cup?picks=1,2,3"
     # New user on a SPECIFIC contest: a toast confirms auth; the board opens the
@@ -178,10 +179,10 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     # consume runs (the real detect_geo_state path). A prior consume establishes
     # + rotates a real session so the next consume runs with session writes
     # already present in the jar.
-    post magic_link_consume_path(token: MagicLink.generate(email: "warmup@example.com"))
+    post magic_link_consume_path(token: MagicLink.generate(email: "warmup@example.com", age_attested: true))
     # Now a genuinely new email; the jar already holds a rotated session.
     assert_difference "User.count", 1 do
-      post magic_link_consume_path(token: MagicLink.generate(email: "fresh-browser@example.com"))
+      post magic_link_consume_path(token: MagicLink.generate(email: "fresh-browser@example.com", age_attested: true))
     end
     user = User.find_by(email: "fresh-browser@example.com")
     assert_equal user.id, session[Studio.session_key], "new user must be logged in after reset_session"
@@ -198,7 +199,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     log_in_as(prior)
     assert_equal prior.id, session[Studio.session_key], "precondition: logged in as the prior user"
 
-    token = MagicLink.generate(email: "switcheroo@example.com")
+    token = MagicLink.generate(email: "switcheroo@example.com", age_attested: true)
     assert_difference "User.count", 1 do
       post magic_link_consume_path(token: token)
     end
@@ -217,5 +218,38 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     post magic_link_consume_path(token: token)
     # The evil path is dropped to nil → falls back to the safe featured contest.
     assert_redirected_to contest_path(contests(:one))
+  end
+
+  # ── legal-age attestation (underwriting compliance) ───────────────────────
+  # A brand-new account may only be created when the link request carried the
+  # legal-age attestation (the checkbox on the auth card / auth modal). The
+  # attestation rides in the magic-link row; consume is the enforcement point.
+  test "consume REFUSES to create an account without the legal-age attestation" do
+    token = MagicLink.generate(email: "underage-unknown@example.com")
+    assert_no_difference "User.count" do
+      post magic_link_consume_path(token: token)
+    end
+    assert_redirected_to signin_path
+    assert_match(/legal age/i, flash[:alert])
+    assert_nil session[Studio.session_key], "no session may be established"
+  end
+
+  test "create threads the age_attestation param into the magic-link row" do
+    post magic_link_request_path, params: { email: "attest@example.com", age_attestation: "1" }
+    assert MagicLink.find_by(email: "attest@example.com").age_attested?,
+           "the request checkbox must persist onto the link row"
+
+    post magic_link_request_path, params: { email: "no-attest@example.com" }
+    assert_not MagicLink.find_by(email: "no-attest@example.com").age_attested?,
+               "absent checkbox must not be treated as attested"
+  end
+
+  test "existing users still log in via links that carry no attestation (grandfathered)" do
+    existing = users(:alex)
+    assert_nil existing.age_attested_at
+    token = MagicLink.generate(email: existing.email)
+    post magic_link_consume_path(token: token)
+    assert_equal existing.id, session[Studio.session_key],
+                 "login is unaffected — attestation gates account CREATION only"
   end
 end
