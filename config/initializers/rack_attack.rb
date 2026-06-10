@@ -56,6 +56,10 @@ class Rack::Attack
     req.ip if req.post? && req.path == "/webhooks/stripe"
   end
 
+  throttle("webhooks/paypal", limit: 100, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/webhooks/paypal"
+  end
+
   ### Throttle: devnet faucet / airdrop — money-cost endpoints
   # Faucet is already prod-disabled per OPSEC-020 but rate-limited on devnet
   # too because admin SOL gets burned via mint_spl + ATA creation.
@@ -91,6 +95,11 @@ class Rack::Attack
       user_id = session[Studio.session_key.to_s] || session[Studio.session_key]
       (user_id || req.ip).to_s
     end
+  end
+
+  ### Throttle: PayPal order/capture creation — fee bleed parity with stripe_checkout
+  throttle("paypal_checkout/ip", limit: 10, period: 1.minute) do |req|
+    req.ip if req.post? && (req.path == "/tokens/paypal_order" || req.path == "/tokens/paypal_capture")
   end
 
   ### Throttle: email verification — outbound spam prevention

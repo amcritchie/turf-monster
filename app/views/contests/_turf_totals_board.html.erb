@@ -229,6 +229,41 @@ window.selectionBoard = function() {
         console.error('[tokens] board: BroadcastChannel listener attach failed', e);
       }
 
+      // PayPal/Venmo hand-off (provider=paypal). The paypalButtons factory
+      // (tokens/_paypal_sdk.html.erb) dispatches this after a successful
+      // server-side capture — same shape as the Stripe 'returned' signal
+      // above, minus the cross-tab leg (the SDK popup keeps the buyer on
+      // this page). Advance the wizard to tokens-confirming and poll
+      // /tokens/status by order_id; everything downstream (minted state,
+      // nav fanout, hold-to-confirm) is the shared path.
+      window.addEventListener('paypal-order-captured', function (e) {
+        var orderId = e.detail && e.detail.orderId;
+        if (!orderId) return;
+        var modals = Alpine.store('modals');
+        var cur = modals.current();
+        var curStep = (cur && cur.id === 'auth') ? cur.props.step : null;
+        console.log('[tokens] board ← paypal-order-captured order=', orderId, 'curStep=', curStep);
+        if (curStep === 'tokens-confirming' || curStep === 'tokens-minted') return;
+        board._confirmingHold = window.StudioModals.holdAtLeast(1500);
+        var freshProps = {
+          step:          'tokens-confirming',
+          errorText:     '',
+          mintedCount:   0,
+          mintedBalance: 0,
+          redirectUrl:   '',
+          txSignature:   ''
+        };
+        if (cur && cur.id === 'auth') {
+          // advance() (not Object.assign) so the picker → confirming
+          // transition runs the host's directional slide — the buyer just
+          // acted in the popup, the slide reads as forward progress.
+          modals.advance(freshProps);
+        } else {
+          modals.open('auth', freshProps);
+        }
+        board.pollTokenStatus(orderId, 'order_id');
+      });
+
       // Hold-to-Confirm dispatch listener — the shared hold_button
       // partial fires this window event regardless of which DOM scope
       // it lives in. The auth-modal version of the button can't reach
@@ -824,23 +859,25 @@ window.selectionBoard = function() {
     },
 
 
-    // Poll /tokens/status until the Stripe webhook + TokenPurchaseJob
+    // Poll /tokens/status until the payment webhook + TokenPurchaseJob
     // finish minting. Drives the wizard through tokens-confirming →
     // tokens-minted. Called from the BroadcastChannel / window message
-    // listener when the new tab hands the session_id back. Mutates the
-    // auth wizard's props on the store; safely no-ops if the modal was
-    // closed mid-poll.
-    pollTokenStatus(sessionId) {
+    // listener when the Stripe tab hands the session_id back (refParam
+    // omitted → 'session_id'), and from the paypal-order-captured
+    // listener with refParam 'order_id'. Mutates the auth wizard's props
+    // on the store; safely no-ops if the modal was closed mid-poll.
+    pollTokenStatus(ref, refParam) {
       var self = this;
+      var param = refParam || 'session_id';
       var elapsedMs = 0;
       var intervalMs = 1500;
       var timeoutMs = 45000;
       var attempt = 0;
-      console.log('[tokens] pollTokenStatus.start sessionId=', sessionId, 'intervalMs=', intervalMs, 'timeoutMs=', timeoutMs);
+      console.log('[tokens] pollTokenStatus.start ' + param + '=', ref, 'intervalMs=', intervalMs, 'timeoutMs=', timeoutMs);
       var tick = async function () {
         attempt++;
         try {
-          var r = await fetch('/tokens/status?session_id=' + encodeURIComponent(sessionId), {
+          var r = await fetch('/tokens/status?' + param + '=' + encodeURIComponent(ref), {
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin'
           });
