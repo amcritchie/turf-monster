@@ -183,4 +183,96 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     end
     assert_nil StripePurchase.for_session(@sid).first
   end
+
+  # ── PayPal (purchase_type: "paypal") ────────────────────────────────────
+
+  test "paypal: mints all N tokens against a captured PaypalPurchase" do
+    purchase = create_paypal_purchase(order_id: "ORDER_JOB", pack_id: "trio", quantity: 3, price_cents: 49_00)
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet,
+                                   purchase_type: "paypal", paypal_order_id: "ORDER_JOB")
+    end
+
+    purchase.reload
+    assert_equal "minted", purchase.status
+    assert_equal 3, purchase.tx_signatures.length
+    # source_ref parity with stripe: "<provider>:<purchase_id>:<i>" — short,
+    # distinct per token, fits the on-chain [u8;64].
+    assert vault.mint_calls.all? { |r| r.start_with?("paypal:#{purchase.id}:") }, "ref keyed on provider + purchase id"
+    assert_equal 3, vault.mint_calls.uniq.length
+    assert vault.mint_calls.all? { |r| r.bytesize <= 64 }
+    assert TransactionLog.where("metadata @> ?", { paypal_order_id: "ORDER_JOB" }.to_json).exists?
+  end
+
+  test "paypal: skips when no PaypalPurchase row exists — never creates one" do
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet,
+                                   purchase_type: "paypal", paypal_order_id: "ORDER_MISSING")
+    end
+    assert_equal 0, vault.mint_calls.length
+    assert_nil PaypalPurchase.for_order("ORDER_MISSING").first
+  end
+
+  test "paypal: already-minted purchase no-ops (OPSEC-009)" do
+    purchase = create_paypal_purchase(order_id: "ORDER_NOOP")
+    purchase.mark_minted!(["sig_a"])
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet,
+                                   purchase_type: "paypal", paypal_order_id: "ORDER_NOOP")
+    end
+    assert_equal 0, vault.mint_calls.length
+    assert_equal ["sig_a"], purchase.reload.tx_signatures
+  end
+
+  test "paypal: mid-loop failure persists signatures; retry resumes and re-marks captured" do
+    purchase = create_paypal_purchase(order_id: "ORDER_RESUME", pack_id: "trio", quantity: 3, price_cents: 49_00)
+    crashing_vault = FakeVault.new(fail_after: 2)
+    Solana::Vault.stub :new, crashing_vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet,
+                                   purchase_type: "paypal", paypal_order_id: "ORDER_RESUME") rescue nil
+    end
+    purchase.reload
+    assert_equal "failed", purchase.status
+    assert_equal 2, purchase.tx_signatures.length
+
+    retry_vault = FakeVault.new(starting_sequence: 2)
+    Solana::Vault.stub :new, retry_vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "trio", wallet_address: @wallet,
+                                   purchase_type: "paypal", paypal_order_id: "ORDER_RESUME")
+    end
+    purchase.reload
+    assert_equal "minted", purchase.status
+    assert_equal 3, purchase.tx_signatures.length
+    assert_equal 1, retry_vault.mint_calls.length
+    assert_equal "paypal:#{purchase.id}:2", retry_vault.mint_calls.first
+  end
+
+  test "stripe default: omitting purchase_type keeps the existing stripe behavior" do
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet, stripe_session_id: @sid)
+    end
+    purchase = StripePurchase.for_session(@sid).first
+    assert_equal "minted", purchase.status
+    assert_equal "stripe:#{purchase.id}:0", vault.mint_calls.first
+  end
+
+  private
+
+  def create_paypal_purchase(order_id:, pack_id: "single", quantity: 1, price_cents: 19_00)
+    PaypalPurchase.create!(
+      user: @user,
+      paypal_order_id: order_id,
+      pack_id: pack_id,
+      quantity: quantity,
+      price_cents: price_cents,
+      wallet_address: @wallet,
+      status: "captured",
+      capture_id: "CAP_#{SecureRandom.hex(3)}",
+      captured_at: Time.current
+    )
+  end
 end

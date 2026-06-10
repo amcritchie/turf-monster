@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -255,6 +255,30 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
     t.index ["service", "created_at"], name: "index_outbound_requests_on_service_and_created_at"
     t.index ["source_type", "source_id"], name: "index_outbound_requests_on_source_type_and_source_id"
     t.index ["user_id"], name: "index_outbound_requests_on_user_id", where: "(user_id IS NOT NULL)"
+  end
+
+  create_table "paypal_purchases", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "paypal_order_id"
+    t.string "capture_id"
+    t.string "pack_id", null: false
+    t.integer "quantity", default: 1, null: false
+    t.integer "price_cents", null: false
+    t.string "wallet_address"
+    t.string "contest_slug"
+    t.string "status", default: "pending", null: false
+    t.text "mint_tx_signatures"
+    t.datetime "captured_at"
+    t.datetime "minted_at"
+    t.datetime "refunded_at"
+    t.string "refund_reason"
+    t.string "slug", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["capture_id"], name: "index_paypal_purchases_on_capture_id"
+    t.index ["paypal_order_id"], name: "index_paypal_purchases_on_paypal_order_id", unique: true
+    t.index ["slug"], name: "index_paypal_purchases_on_slug", unique: true
+    t.index ["user_id"], name: "index_paypal_purchases_on_user_id"
   end
 
   create_table "pending_transactions", force: :cascade do |t|
@@ -541,6 +565,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
   add_foreign_key "landing_pages", "contests", on_delete: :nullify
   add_foreign_key "messages", "contests"
   add_foreign_key "messages", "users"
+  add_foreign_key "paypal_purchases", "users"
   add_foreign_key "reactions", "messages"
   add_foreign_key "reactions", "users"
   add_foreign_key "season_configs", "contests", column: "main_contest_id", on_delete: :nullify

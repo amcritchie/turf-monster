@@ -300,7 +300,8 @@ Shared code from [studio engine](https://github.com/amcritchie/studio-engine). C
 
 ### Web2 commerce + funnel
 
-- **StripePurchase** — `Sluggable` (randomized slug). `stripe_session_id` (unique), `quantity`, `price_cents`, `status` (enum: pending/minted/refunded/failed), `mint_tx_signatures` (JSON array — incremental persistence for crash recovery), `minted_at`, `refunded_at`, `refund_reason`, `pack_id`. `belongs_to :user`. `PACKS` constant: `single` (1 token, $19), `trio` (3 tokens, $49), `test_trio` (3 tokens, $5 — scaffold-gated by `ENABLE_TEST_SCAFFOLDING`). Methods: `mark_minted!(signatures)`, `mark_refunded!(reason:)`, `tx_signatures`, `StripePurchase.available_packs`. Audit log for Stripe token purchases — on-chain tokens themselves live as `EntryTokenAccount` PDAs in turf-vault.
+- **StripePurchase** — `Sluggable` (randomized slug) + `MintablePurchase` (shared `mark_minted!(signatures)` / `mark_refunded!(reason:)` / `mark_failed_unless_minted!` / `tx_signatures`). `stripe_session_id` (unique), `quantity`, `price_cents`, `status` (pending/minted/refunded/failed), `mint_tx_signatures` (JSON array — incremental persistence for crash recovery), `minted_at`, `refunded_at`, `refund_reason`. `belongs_to :user`. `PACKS` constant: `single` (1 token, $19), `trio` (3 tokens, $49), `test_trio` (3 tokens, $5 — scaffold-gated by `ENABLE_TEST_SCAFFOLDING`) — the single source of truth for BOTH fiat providers. Methods: `StripePurchase.pack`, `.available_packs`. Audit log for Stripe token purchases — on-chain tokens themselves live as `EntryTokenAccount` PDAs in turf-vault.
+- **PaypalPurchase** — `Sluggable` + `MintablePurchase`; the PayPal/Venmo sibling of StripePurchase (flag-gated onramp, see `docs/PAYPAL_VENMO.md`). `paypal_order_id` (unique, null until the order exists), `capture_id`, `pack_id`, `quantity`, `price_cents`, `wallet_address`, `contest_slug`, `status` (pending/captured/minted/refunded/failed). `begin_fulfillment!(capture_id:)` is the atomic pending→captured CAS that makes capture-endpoint vs webhook fulfillment exactly-once; `capture_matches?(capture)` validates COMPLETED/USD/exact-pack-amount. Active provider picked by `Payments.provider` (`PAYMENT_PROVIDER` env, default `stripe`).
 - **LandingPage** — `Sluggable` (`before_validation :set_slug`). `slug` (unique), `name`, `active` (boolean), `background_style` (enum: gradient/blobs/circles), `cta_label`, `contest_id` (FK, optional). `belongs_to :contest` (optional). Scope: `active`. Methods: `cta_label_display`, `background_partial`, `signup_count` (counts users via `?ref=` attribution). Marketing funnel splash pages with animated backgrounds; slug can be explicit (stable across name edits) or derived from name.
 
 ### Real-time + game-day state
@@ -358,7 +359,7 @@ Every write action MUST use `rescue_and_log` with target/parent context. See top
 - `/account` — profile, password, Google link/unlink. See `docs/AUTH.md`.
 - `/auth/solana/nonce`, `/auth/solana/verify` — Phantom wallet auth
 - `/wallet` — balance, deposit (quick/Stripe/MoonPay), withdraw, sync
-- `/webhooks/stripe`, `/webhooks/moonpay` — payment webhooks (skip CSRF/auth)
+- `/webhooks/stripe`, `/webhooks/paypal`, `/webhooks/moonpay` — payment webhooks (skip CSRF/auth)
 
 ### Admin
 - `/slates/*` — formula editor. See `docs/FORMULAS.md`.

@@ -1,0 +1,229 @@
+require "test_helper"
+require "minitest/mock"
+
+# PayPal-rails onramp: TokensController#paypal_order / #paypal_capture and the
+# order_id branch of #status. Mirrors the stripe_checkout coverage in
+# tokens_controller_test.rb.
+class TokensPaypalTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
+
+  setup do
+    @alex = users(:alex)
+    @jordan = users(:jordan)
+  end
+
+  # ── paypal_order ────────────────────────────────────────────────────────
+
+  test "paypal_order requires login" do
+    post tokens_paypal_order_path, params: { pack: "single" }, as: :json
+    assert_response :unauthorized
+  end
+
+  test "paypal_order rejects an unknown pack" do
+    log_in_as_with_wallet @jordan
+    post tokens_paypal_order_path, params: { pack: "bogus" }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/Unknown or unavailable/, JSON.parse(response.body)["error"])
+  end
+
+  test "paypal_order requires connected wallet" do
+    log_in_as @jordan
+    with_paypal_enabled do
+      post tokens_paypal_order_path, params: { pack: "single" }, as: :json
+    end
+    assert_response :unprocessable_entity
+    assert_match(/Connect a wallet/, JSON.parse(response.body)["error"])
+  end
+
+  test "paypal_order refuses when provider flag is not paypal (deploy-inert gate)" do
+    log_in_as_with_wallet @jordan
+    # Test env default: PAYMENT_PROVIDER unset → provider "stripe".
+    post tokens_paypal_order_path, params: { pack: "single" }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/isn't enabled/, JSON.parse(response.body)["error"])
+    assert_equal 0, PaypalPurchase.count
+  end
+
+  test "paypal_order blocks a payment-risk-flagged user (OPSEC-036)" do
+    log_in_as_with_wallet @jordan
+    @jordan.update!(payment_risk_flag: true)
+    with_paypal_enabled do
+      post tokens_paypal_order_path, params: { pack: "single" }, as: :json
+    end
+    assert_response :forbidden
+    assert_equal 0, PaypalPurchase.count
+  end
+
+  test "paypal_order creates a pending purchase with SERVER-derived amount and returns the order id" do
+    log_in_as_with_wallet @jordan
+    client = FakePaypalClient.new(order_id: "ORDER_HAPPY")
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        post tokens_paypal_order_path, params: { pack: "trio", price_cents: 1 }, as: :json
+      end
+    end
+    assert_response :success
+    assert_equal "ORDER_HAPPY", JSON.parse(response.body)["order_id"]
+
+    purchase = PaypalPurchase.for_order("ORDER_HAPPY").first
+    assert_equal @jordan.id, purchase.user_id
+    assert_equal "trio", purchase.pack_id
+    assert_equal 3, purchase.quantity
+    assert_equal 49_00, purchase.price_cents, "amount must come from the pack, never the client"
+    assert_equal "pending", purchase.status
+    assert_equal @jordan.solana_address, purchase.wallet_address
+    assert_equal 1, client.created_orders.length
+  end
+
+  test "paypal_order records the contest context when given" do
+    log_in_as_with_wallet @jordan
+    contest = contests(:one)
+    with_paypal_enabled do
+      Paypal::Client.stub :new, FakePaypalClient.new(order_id: "ORDER_CTX") do
+        post tokens_paypal_order_path, params: { pack: "single", contest: contest.slug }, as: :json
+      end
+    end
+    assert_equal contest.slug, PaypalPurchase.for_order("ORDER_CTX").first.contest_slug
+  end
+
+  test "paypal_order marks the purchase failed when the PayPal call raises" do
+    log_in_as_with_wallet @jordan
+    raising_client = Object.new
+    def raising_client.create_order(**)
+      raise Paypal::Client::Error, "PayPal down"
+    end
+    with_paypal_enabled do
+      Paypal::Client.stub :new, raising_client do
+        post tokens_paypal_order_path, params: { pack: "single" }, as: :json
+      end
+    end
+    assert_response :unprocessable_entity
+    assert_equal "failed", PaypalPurchase.last.status
+  end
+
+  # ── paypal_capture ──────────────────────────────────────────────────────
+
+  test "paypal_capture 404s an order that is not the current user's" do
+    create_pending_purchase(user: @alex, order_id: "ORDER_ALEX")
+    log_in_as_with_wallet @jordan
+    with_paypal_enabled do
+      post tokens_paypal_capture_path, params: { order_id: "ORDER_ALEX" }, as: :json
+    end
+    assert_response :not_found
+  end
+
+  test "paypal_capture validates, marks captured, and enqueues the mint job" do
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_CAP", pack_id: "trio", quantity: 3, price_cents: 49_00)
+    log_in_as_with_wallet @jordan
+    client = FakePaypalClient.new(
+      capture_response: FakePaypalClient.completed_capture_response(
+        order_id: "ORDER_CAP", amount: "49.00", capture_id: "CAP_OK"
+      )
+    )
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        assert_enqueued_with(job: TokenPurchaseJob, args: [{
+          user_id: @jordan.id, pack_id: "trio", wallet_address: purchase.wallet_address,
+          purchase_type: "paypal", paypal_order_id: "ORDER_CAP"
+        }]) do
+          post tokens_paypal_capture_path, params: { order_id: "ORDER_CAP" }, as: :json
+        end
+      end
+    end
+    assert_response :success
+    assert_equal "captured", JSON.parse(response.body)["status"]
+    purchase.reload
+    assert_equal "captured", purchase.status
+    assert_equal "CAP_OK", purchase.capture_id
+  end
+
+  test "paypal_capture rejects an amount mismatch — no status change, no job" do
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_BAD", pack_id: "trio", quantity: 3, price_cents: 49_00)
+    log_in_as_with_wallet @jordan
+    client = FakePaypalClient.new(
+      capture_response: FakePaypalClient.completed_capture_response(order_id: "ORDER_BAD", amount: "5.00")
+    )
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        assert_no_enqueued_jobs only: TokenPurchaseJob do
+          post tokens_paypal_capture_path, params: { order_id: "ORDER_BAD" }, as: :json
+        end
+      end
+    end
+    assert_response :unprocessable_entity
+    assert_equal "pending", purchase.reload.status
+  end
+
+  test "paypal_capture is idempotent — non-pending purchase returns status without re-capturing" do
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_DUP")
+    purchase.begin_fulfillment!(capture_id: "CAP_FIRST")
+    log_in_as_with_wallet @jordan
+    client = FakePaypalClient.new
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        assert_no_enqueued_jobs only: TokenPurchaseJob do
+          post tokens_paypal_capture_path, params: { order_id: "ORDER_DUP" }, as: :json
+        end
+      end
+    end
+    assert_response :success
+    assert_equal "captured", JSON.parse(response.body)["status"]
+    assert_equal 0, client.captured_orders.length, "must not hit PayPal again"
+  end
+
+  # ── status (order_id branch) ────────────────────────────────────────────
+
+  test "status resolves a PayPal purchase by order_id" do
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_STATUS")
+    purchase.update!(status: "minted", mint_tx_signatures: ["sig_0"].to_json)
+    log_in_as @jordan
+    get tokens_status_path, params: { order_id: "ORDER_STATUS" }
+    json = JSON.parse(response.body)
+    assert json["ready"]
+    assert_equal 1, json["minted"]
+  end
+
+  test "status scopes order_id to current_user" do
+    purchase = create_pending_purchase(user: @alex, order_id: "ORDER_XUSER")
+    purchase.update!(status: "minted", mint_tx_signatures: ["sig"].to_json)
+    log_in_as @jordan
+    get tokens_status_path, params: { order_id: "ORDER_XUSER" }
+    refute JSON.parse(response.body)["ready"]
+  end
+
+  test "status without session_id or order_id is a bad request" do
+    log_in_as @jordan
+    get tokens_status_path
+    assert_response :bad_request
+  end
+
+  private
+
+  def log_in_as_with_wallet(user)
+    user.update!(web2_solana_address: "TestWalletAddr#{SecureRandom.hex(3)}", encrypted_web2_solana_private_key: "x")
+    log_in_as user
+  end
+
+  def create_pending_purchase(user:, order_id:, pack_id: "single", quantity: 1, price_cents: 19_00)
+    PaypalPurchase.create!(
+      user: user,
+      paypal_order_id: order_id,
+      pack_id: pack_id,
+      quantity: quantity,
+      price_cents: price_cents,
+      wallet_address: "TestWalletAddr#{SecureRandom.hex(3)}",
+      status: "pending"
+    )
+  end
+
+  def with_paypal_enabled
+    original_provider = Rails.application.config.x.payment_provider
+    original_enabled  = Rails.application.config.x.paypal_enabled
+    Rails.application.config.x.payment_provider = "paypal"
+    Rails.application.config.x.paypal_enabled   = true
+    yield
+  ensure
+    Rails.application.config.x.payment_provider = original_provider
+    Rails.application.config.x.paypal_enabled   = original_enabled
+  end
+end
