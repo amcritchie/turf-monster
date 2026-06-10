@@ -63,13 +63,68 @@
   </div>
 
   <%# -- Get USDC -- %>
+  <%# Buy USDC (Coinbase CDP onramp) — flag-gated; geo-blocked states get a
+      disabled button + explainer instead of a dead end. The active button
+      opens the cdp-ramp modal at its buy preflight (fee copy lives there). %>
   <div class="card shadow p-6 mb-6">
     <h2 class="text-lg font-bold text-heading mb-2">Get USDC</h2>
     <p class="text-xs text-muted mb-4">Get USDC into your wallet to enter contests.</p>
     <div class="flex flex-wrap gap-3">
-      <%= link_to "Faucet Page", faucet_path, class: "btn btn-primary" %>
+      <% if AppFlags.cdp_ramp? && @user.solana_connected? %>
+        <% if geo_blocked? %>
+          <button type="button" disabled data-cdp-buy-button
+                  class="btn btn-primary opacity-50 cursor-not-allowed">Buy USDC</button>
+        <% else %>
+          <button type="button" data-cdp-buy-button
+                  @click="$store.modals.open('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+                  class="btn btn-primary">Buy USDC</button>
+        <% end %>
+      <% end %>
+      <%= link_to "Faucet Page", faucet_path,
+            class: (AppFlags.cdp_ramp? && @user.solana_connected?) ? "btn btn-outline" : "btn btn-primary" %>
     </div>
+    <% if AppFlags.cdp_ramp? && @user.solana_connected? && geo_blocked? %>
+      <p class="text-xs text-muted mt-2" data-cdp-geo-note>
+        Buying USDC with Coinbase isn't available in your state (<%= geo_state %>).
+      </p>
+    <% end %>
   </div>
+
+  <%# -- Cash out with Coinbase (CDP offramp) -- %>
+  <%# Both wallet modes can use it (managed = server signs the send, Phantom
+      = the user signs). Balance gate is client-side on $store.session
+      .usdcCents: definitively 0 disables with an explainer; null (RPC flake,
+      unknown) fails OPEN — the server-side send path enforces the real
+      balance. Geo-blocked renders the disabled+explainer state. %>
+  <% if AppFlags.cdp_ramp? && @user.solana_connected? %>
+    <div class="card shadow p-6 mb-6">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-heading mb-1">Cash out with Coinbase</h2>
+          <p class="text-sm text-muted">Sell USDC from your wallet and withdraw to your bank or PayPal.</p>
+        </div>
+        <% if geo_blocked? %>
+          <button type="button" disabled data-cdp-cashout-button
+                  class="btn btn-outline opacity-50 cursor-not-allowed shrink-0">Cash out</button>
+        <% else %>
+          <button type="button" data-cdp-cashout-button
+                  :disabled="$store.session.usdcCents === 0"
+                  :class="$store.session.usdcCents === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                  @click="$store.modals.open('cdp-ramp', { flow: 'sell', step: 'preflight' })"
+                  class="btn btn-outline shrink-0">Cash out</button>
+        <% end %>
+      </div>
+      <% if geo_blocked? %>
+        <p class="text-xs text-muted mt-2" data-cdp-geo-note>
+          Cashing out with Coinbase isn't available in your state (<%= geo_state %>).
+        </p>
+      <% else %>
+        <p class="text-xs text-muted mt-2" x-show="$store.session.usdcCents === 0" x-cloak>
+          You don't have any USDC to cash out yet.
+        </p>
+      <% end %>
+    </div>
+  <% end %>
 
   <%# -- Cash out (web2 managed-wallet users only) -- %>
   <% if @user.can_use_managed_withdraw? %>

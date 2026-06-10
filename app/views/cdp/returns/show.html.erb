@@ -1,0 +1,100 @@
+<%# CDP ramp return page — the Coinbase redirectUrl target (UX signal only;
+    the redirect carries no query params, so everything keys off OUR row).
+    The page deep-links straight back into the cdp-ramp modal at the step the
+    row is actually at — the modal owns the live UI (countdown, send buttons,
+    polling). The SSR card below is the no-JS / pre-Alpine fallback and keeps
+    a manual "Open status" affordance + the data attributes the controller
+    tests assert on. %>
+<%
+  modal_step =
+    if @ramp.success?
+      "done"
+    elsif @ramp.failed? || @ramp.expired? || @ramp.abandoned?
+      "failed"
+    elsif @ramp.onramp?
+      "waiting"
+    elsif @ramp.sending? || @ramp.sent?
+      "settling"
+    elsif @ramp.to_address.present?
+      "send"
+    else
+      "awaiting-cdp"
+    end
+%>
+<div class="max-w-md mx-auto mt-12">
+  <div id="cdp-return"
+       class="card shadow p-8 text-center"
+       data-partner-user-ref="<%= @ramp.partner_user_ref %>"
+       data-direction="<%= @ramp.direction %>"
+       data-status-url="<%= cdp_ramp_status_path(partner_user_ref: @ramp.partner_user_ref) %>">
+    <h1 class="text-xl font-bold text-heading mb-2">
+      <%= @ramp.onramp? ? "Welcome back from Coinbase" : "Welcome back — almost done" %>
+    </h1>
+    <p class="text-sm text-muted mb-4">
+      <% if @ramp.onramp? %>
+        We're confirming your USDC purchase with Coinbase.
+      <% else %>
+        We're picking up your cash-out where you left off.
+      <% end %>
+    </p>
+    <p class="text-xs text-muted mb-5">
+      Status: <span data-cdp-status class="font-mono"><%= @ramp.status.humanize %></span>
+    </p>
+    <button type="button" data-cdp-return-open
+            @click="$store.modals.open('cdp-ramp', JSON.parse(document.getElementById('cdp-return-config').textContent))"
+            class="btn btn-primary w-full">
+      Open status
+    </button>
+    <%= link_to "Back to wallet", wallet_path,
+          class: "block mx-auto mt-3 text-sm text-secondary hover:text-heading transition" %>
+  </div>
+</div>
+
+<%# ERB→JS config (house JSON-config pattern) — the exact props the cdp-ramp
+    modal resumes from. Mirrors Cdp::ReturnsController#status_payload naming
+    on the camelCase side of the cdpRampFlow props contract. %>
+<script type="application/json" id="cdp-return-config">
+<%= {
+  flow:           @ramp.onramp? ? "buy" : "sell",
+  step:           modal_step,
+  partnerUserRef: @ramp.partner_user_ref,
+  walletMode:     @ramp.wallet_mode,
+  toAddress:      @ramp.to_address,
+  deadlineAt:     @ramp.cashout_deadline_at&.iso8601,
+  sellAmount:     @ramp.sell_amount&.to_s("F"),
+  sellCurrency:   @ramp.sell_amount_currency,
+  txHash:         @ramp.tx_hash,
+  localStatus:    @ramp.status
+}.to_json.html_safe %>
+</script>
+
+<script>
+  // Auto-open the cdp-ramp modal at the row's current step. Same wiring as
+  // the layout's magic-link-welcome auto-open: bind to turbo:load AND the
+  // cold-load path, one-shot guard, and poll briefly for the modals store in
+  // case this script wins the race against Alpine boot. The modal's
+  // cdpRampFlow factory resumes polling/countdown from the props.
+  (function () {
+    var fired = false;
+    function openCdpRampModal() {
+      if (fired) return;
+      var el = document.getElementById("cdp-return-config");
+      if (!el) return;
+      var props;
+      try { props = JSON.parse(el.textContent); } catch (e) { return; }
+      var attempts = 0;
+      (function tryOpen() {
+        var m = (window.Alpine && Alpine.store) ? Alpine.store("modals") : null;
+        if (m && typeof m.open === "function") {
+          fired = true;
+          if (!m.isOpen("cdp-ramp")) m.open("cdp-ramp", props);
+          return;
+        }
+        if (attempts++ < 50) setTimeout(tryOpen, 50); // up to ~2.5s for Alpine boot
+      })();
+    }
+    document.addEventListener("turbo:load", openCdpRampModal);
+    if (document.readyState !== "loading") openCdpRampModal();
+    else document.addEventListener("DOMContentLoaded", openCdpRampModal);
+  })();
+</script>

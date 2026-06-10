@@ -11,8 +11,10 @@
     - User-change localStorage cleanup
     - The max-w-7xl content wrapper (we yield directly under body)
 
-  Result: each preview iframe loads ~70% less JS/DOM than the full
-  layout, and the console doesn't spam TensorFlow.js kernel warnings.
+  Result: each preview iframe loads roughly 70 pct less JS/DOM than the
+  full layout, and the console doesn't spam TensorFlow.js kernel warnings.
+  (Spelled "pct" on purpose: ERB comment bodies must contain zero percent
+  characters — see the Alpine + ERB constraints section in CLAUDE.md.)
 %>
 <!DOCTYPE html>
 <html>
@@ -122,6 +124,13 @@
   </head>
 
   <body x-data class="bg-page text-body" data-logged-in="<%= logged_in? %>" data-user-id="<%= current_user&.id %>" data-solana-cluster="<%= Solana::Config.devnet? ? 'devnet' : 'mainnet-beta' %>" data-solana-rpc-url="<%= Solana::Config::RPC_URL %>">
+    <%# Inline x-data factories (cdpRampFlow, emailValidator, …). The app
+        layout renders these for every page; the preview iframes need them
+        too or any modal whose x-data references a factory mounts as a
+        silent no-op (the username preview only worked because its modal
+        mounts after the importmap duplicate loads — cdpRampFlow has no
+        module duplicate). %>
+    <%= render "shared/alpine_factories" %>
     <%= yield %>
     <%= render "studio/modals/host" do %>
       <template x-if="$store.modals.current().id === 'auth'">
@@ -138,6 +147,13 @@
       </template>
       <template x-if="$store.modals.current().id === 'wallet-connect'">
         <%= render "modals/wallet_connect" %>
+      </template>
+      <%# cdp-ramp — NOT flag-gated here (unlike the app layout): the gallery
+          is the admin dev tool and should preview the Coinbase flow even
+          while ENABLE_CDP_RAMP is unset. The modal alone makes no requests
+          until a CTA is clicked. %>
+      <template x-if="$store.modals.current().id === 'cdp-ramp'">
+        <%= render "modals/cdp_ramp" %>
       </template>
       <% if logged_in? %>
         <template x-if="$store.modals.current().id === 'username'">

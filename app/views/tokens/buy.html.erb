@@ -12,11 +12,21 @@
     </div>
   <% end %>
 
-  <div class="space-y-3 mb-8">
-    <% @packs.each do |pack_id, pack| %>
-      <%= render "tokens/pack_button", pack_id: pack_id, pack: pack, disabled: !stripe_on %>
-    <% end %>
-  </div>
+  <% cdp_funding = !stripe_on && AppFlags.cdp_ramp? %>
+  <% if cdp_funding %>
+    <div class="card shadow p-5 mb-8">
+      <h2 class="text-lg font-bold text-heading mb-1">Buy USDC with Coinbase</h2>
+      <p class="text-xs text-secondary mb-4">Pay with debit, Apple Pay, or your Coinbase balance. USDC lands in your wallet and covers the entry fee shown on each contest.</p>
+      <button type="button" @click="$store.modals.open('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+              class="btn btn-primary">Buy USDC</button>
+    </div>
+  <% else %>
+    <div class="space-y-3 mb-8">
+      <% @packs.each do |pack_id, pack| %>
+        <%= render "tokens/pack_button", pack_id: pack_id, pack: pack, disabled: !stripe_on %>
+      <% end %>
+    </div>
+  <% end %>
 
   <%# Lazarus audit #21: dev/test-only. The free-mint route is not drawn in
       production, so this affordance (and its tokens_dev_mint_path helper) must

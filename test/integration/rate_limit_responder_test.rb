@@ -33,6 +33,12 @@ class RateLimitResponderTest < ActiveSupport::TestCase
     assert_equal "general", JSON.parse(body.first)["tier"]
   end
 
+  test "the cdp_sessions/user throttle is tagged general (wait modal, not inline auth UX)" do
+    _, headers, body = call_responder(matched: "cdp_sessions/user", period: 60)
+    assert_equal "general", headers["X-RateLimit-Tier"]
+    assert_equal "general", JSON.parse(body.first)["tier"]
+  end
+
   test "an auth-surface throttle tags the 429 auth so the wait modal stays out of it" do
     _, headers, body = call_responder(matched: "magic_link/email", period: 3600)
     assert_equal "auth", headers["X-RateLimit-Tier"]
