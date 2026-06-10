@@ -219,6 +219,8 @@
       the tokens partial stays dormant for an easy flip back. %>
   <% if entry_funding_mode == :stripe %>
     <%= render 'modals/auth/tokens' %>
+  <% elsif entry_funding_mode == :paypal %>
+    <%= render 'modals/auth/paypal_tokens' %>
   <% else %>
     <%= render 'modals/auth/usdc_funding' %>
   <% end %>

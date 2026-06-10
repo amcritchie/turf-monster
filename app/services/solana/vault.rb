@@ -1533,7 +1533,11 @@ module Solana
     # ── Entry tokens (turf-vault v0.9.0+) ───────────────────────────────────
     # On-chain EntryTokenAccount PDAs per token. Source enum: 0=operator, 1=stripe, 2=moonpay.
 
-    ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2 }.freeze
+    # paypal (3) is Rails-side only for now — the deployed program stores the
+    # source byte unvalidated (turf-vault mint_entry_token.rs assigns it raw),
+    # so no program upgrade is needed; mirror it into state.rs's
+    # entry_token_source mod on the next turf-vault release.
+    ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2, paypal: 3 }.freeze
     ENTRY_TOKEN_LEN = 124 # bytes — 8 disc + 32 owner + 1 source + 64 source_ref + 1 consumed + 9 consumed_at + 8 created_at + 1 bump
 
     def mint_entry_token(wallet_address:, source:, source_ref:)

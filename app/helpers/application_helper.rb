@@ -6,7 +6,9 @@ module ApplicationHelper
   # otherwise. Routes modals/auth/_tokens vs _usdc_funding in _auth.html.erb
   # and the /tokens/buy page treatment.
   def entry_funding_mode
-    if Rails.application.config.x.stripe_enabled
+    if Payments.paypal_checkout?
+      :paypal
+    elsif Payments.stripe?
       :stripe
     elsif AppFlags.cdp_ramp?
       :cdp
