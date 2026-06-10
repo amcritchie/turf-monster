@@ -160,11 +160,15 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
       # the real catalog fails closed on that — the fake just records it).
       assert_equal [:onramp, "US", nil], catalog.checks.first
 
-      url = JSON.parse(response.body)["url"]
+      body = JSON.parse(response.body)
+      url = body["url"]
       assert url.start_with?("https://pay.coinbase.com/buy/select-asset?")
       assert_includes url, "sessionToken=tok-abc"
       assert_includes url, "partnerUserRef=#{ramp.partner_user_ref}"
       assert_includes url, CGI.escape(cdp_onramp_return_url)
+      # The ref rides along so the cdp-ramp modal can poll /cdp/ramp_status
+      # immediately (additive to the spec's { url: }).
+      assert_equal ramp.partner_user_ref, body["partner_user_ref"]
 
       # §8: NO CORS headers, ever — same-origin authedFetch needs none.
       assert_nil response.headers["Access-Control-Allow-Origin"]

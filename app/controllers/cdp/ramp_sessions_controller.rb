@@ -59,7 +59,10 @@ module Cdp
         token = SessionTokenService.new.mint(address: address, client_ip: request.remote_ip)
         url = build_url(direction, ramp, token)
         ramp.mark_token_minted!
-        render json: { url: url }
+        # partner_user_ref rides along (additive to the spec's { url: }) so
+        # the cdp-ramp modal can poll /cdp/ramp_status/:ref immediately
+        # instead of parsing the ref back out of the widget URL.
+        render json: { url: url, partner_user_ref: ramp.partner_user_ref }
       end
     rescue Cdp::Client::RateLimitError
       render json: { error: "Coinbase is busy right now — please try again in a moment." },

@@ -56,9 +56,16 @@ class Cdp::ReturnsControllerTest < ActionDispatch::IntegrationTest
       assert_equal ramp.id, job[:args].first["ramp_id"]
       assert job[:at].present?, "first poll must be delayed (never poll immediately)"
 
-      # The placeholder page carries the data attributes the poller keys off.
+      # The page carries the data attributes + the JSON config that deep-links
+      # the viewer back into the cdp-ramp modal at the row's current step.
       assert_select "#cdp-return[data-partner-user-ref=?]", ramp.partner_user_ref
       assert_select "#cdp-return[data-direction=?]", "onramp"
+      assert_select "script#cdp-return-config", count: 1
+      config = JSON.parse(css_select("script#cdp-return-config").first.text)
+      assert_equal "buy", config["flow"]
+      assert_equal "waiting", config["step"]
+      assert_equal ramp.partner_user_ref, config["partnerUserRef"]
+      assert_equal "web2", config["walletMode"]
     end
   end
 
@@ -131,6 +138,7 @@ class Cdp::ReturnsControllerTest < ActionDispatch::IntegrationTest
       json = JSON.parse(response.body)
       assert_equal ramp.partner_user_ref, json["partner_user_ref"]
       assert_equal "offramp", json["direction"]
+      assert_equal "web2", json["wallet_mode"]
       assert_equal "cdp_created", json["status"]
       assert_equal false, json["terminal"]
       assert_equal "CoinbaseAddr111", json["to_address"]

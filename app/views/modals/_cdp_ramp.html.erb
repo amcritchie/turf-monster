@@ -1,0 +1,276 @@
+<%#
+  Coinbase CDP ramp modal (docs/CDP_RAMP_INTEGRATION.md spec section 14).
+  One modal id ('cdp-ramp'), internal step machine on
+  $store.modals.current().props — same pattern as modals/_auth.html.erb.
+
+  Open with:
+    $store.modals.open('cdp-ramp', { flow: 'buy',  step: 'preflight' })
+    $store.modals.open('cdp-ramp', { flow: 'sell', step: 'preflight' })
+  or deep-link mid-flow from the /cdp return pages (cdp/returns/show passes
+  partnerUserRef + walletMode + toAddress + deadlineAt + step).
+
+  Steps (props.step):
+    preflight    | flow-branched copy + the Continue CTA. Buy states the
+                 | Coinbase-login expectation + fee transparency (spread +
+                 | Coinbase fee, about 2.5 pct card / 0.5 pct ACH, network
+                 | fee; NO zero-fee promises). Sell states the Coinbase
+                 | account + linked payout method requirement and the
+                 | 30-minute send window.
+    opening      | minting the session token server-side
+    waiting      | (buy) Coinbase tab open; polling our local row
+    awaiting-cdp | (sell) Coinbase tab open; polling until to_address lands
+    send         | (sell) countdown + the send action. Managed (web2) =
+                 | explicit Confirm and send POST; Phantom (web3) = the
+                 | buildAndSendOfframpUsdcTransfer helper.
+    settling     | (sell) transfer broadcast; polling until terminal
+    done         | terminal success (flow-branched copy)
+    failed       | terminal failure; sell copy covers the late-send rule
+                 | (funds land in the Coinbase balance, the sell fails)
+    error        | a request in this flow errored (props.errorText)
+
+  All behavior lives in the cdpRampFlow() factory in
+  shared/_alpine_factories.html.erb (inline — Alpine evaluates x-data before
+  importmap modules load). The Coinbase widget ALWAYS opens via window.open
+  in a new tab; never an iframe (explicitly unsupported).
+%>
+<%# CRITICAL: rendered inside <template x-if> in the modal host — single root
+    element, and every inner <template x-if> also has exactly ONE root child.
+    x-data is a double-quoted attribute: single-quote everything inside
+    Alpine expressions below. %>
+<div x-data="cdpRampFlow()" class="relative">
+
+  <%# Top-right close. The flow is recoverable by design (return page +
+      wallet page re-enter it), so closing mid-flight is safe. %>
+  <button @click="$store.modals.close()"
+          class="absolute top-0 right-0 -mt-2 -mr-2 text-secondary hover:text-heading text-xl leading-none z-10"
+          aria-label="Close">&times;</button>
+
+  <%# === PREFLIGHT (BUY) ================================================== %>
+  <template x-if="props.step === 'preflight' && isBuy">
+    <div>
+      <div class="text-center pt-1 mb-3">
+        <h3 class="text-heading font-bold text-lg leading-tight">Buy USDC with Coinbase</h3>
+      </div>
+      <p class="text-xs text-secondary mb-3 text-center">
+        You'll sign in to Coinbase (or create an account) to complete your
+        purchase. Your USDC lands straight in your Turf Monster wallet.
+      </p>
+      <div class="bg-inset rounded-lg p-3 text-xs text-secondary mb-4">
+        <span class="font-semibold text-heading">Fees:</span>
+        Coinbase charges a spread plus a processing fee &mdash; about 2.5&#37;
+        for debit cards or 0.5&#37; for ACH bank transfers &mdash; and a small
+        Solana network fee. The exact total shows on Coinbase's order preview
+        before you pay.
+      </div>
+      <button @click="start()" class="btn btn-primary btn-lg w-full">
+        Continue to Coinbase
+      </button>
+      <button @click="$store.modals.close()"
+              class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+        Cancel
+      </button>
+    </div>
+  </template>
+
+  <%# === PREFLIGHT (SELL) ================================================= %>
+  <template x-if="props.step === 'preflight' && !isBuy">
+    <div>
+      <div class="text-center pt-1 mb-3">
+        <h3 class="text-heading font-bold text-lg leading-tight">Cash out with Coinbase</h3>
+      </div>
+      <p class="text-xs text-secondary mb-3 text-center">
+        Sell USDC from your wallet and withdraw to your bank or PayPal
+        through Coinbase.
+      </p>
+      <div class="bg-inset rounded-lg p-3 text-xs text-secondary mb-3">
+        <span class="font-semibold text-heading">You'll need a Coinbase account</span>
+        with a linked payout method (bank account or PayPal). Guest checkout
+        can't withdraw to cash.
+      </div>
+      <div class="bg-yellow-500/10 border border-yellow-600/30 rounded-lg p-3 text-xs text-yellow-400 mb-4">
+        <span class="font-semibold">Heads up:</span> after you confirm the
+        cash-out on Coinbase, you have <span class="font-semibold">30 minutes</span>
+        to send your USDC. We'll bring you right back here to do it.
+      </div>
+      <button @click="start()" class="btn btn-primary btn-lg w-full">
+        Continue to Coinbase
+      </button>
+      <button @click="$store.modals.close()"
+              class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+        Cancel
+      </button>
+    </div>
+  </template>
+
+  <%# === OPENING — minting the single-use session token =================== %>
+  <template x-if="props.step === 'opening'">
+    <%= render "modals/blocks/card_header",
+          spinner: true,
+          title: "Connecting to Coinbase…",
+          subtitle: "Setting up your secure Coinbase session." %>
+  </template>
+
+  <%# === WAITING (BUY) — Coinbase tab open, polling our local row ========= %>
+  <template x-if="props.step === 'waiting'">
+    <div>
+      <%= render "modals/blocks/card_header",
+            icon: :external_tab,
+            title: "Finish your purchase in the Coinbase tab",
+            subtitle: "We'll update here automatically once your USDC lands in your wallet." %>
+      <a x-show="props.coinbaseUrl" :href="props.coinbaseUrl" target="_blank" rel="noopener"
+         class="block mx-auto mt-1 text-sm text-center text-secondary hover:text-heading transition">
+        Reopen the Coinbase tab &nearr;
+      </a>
+    </div>
+  </template>
+
+  <%# === AWAITING-CDP (SELL) — polling until CDP reports the sell ========= %>
+  <template x-if="props.step === 'awaiting-cdp'">
+    <div>
+      <%= render "modals/blocks/card_header",
+            icon: :external_tab,
+            title: "Finish setting up in the Coinbase tab",
+            subtitle: "Pick your amount and payout method, then choose Cash out now. We'll take it from there." %>
+      <a x-show="props.coinbaseUrl" :href="props.coinbaseUrl" target="_blank" rel="noopener"
+         class="block mx-auto mt-1 text-sm text-center text-secondary hover:text-heading transition">
+        Reopen the Coinbase tab &nearr;
+      </a>
+    </div>
+  </template>
+
+  <%# === SEND (SELL) — the 30-minute window =============================== %>
+  <template x-if="props.step === 'send'">
+    <div>
+      <div class="text-center pt-1 mb-3">
+        <h3 class="text-heading font-bold text-lg leading-tight">Send your USDC to Coinbase</h3>
+      </div>
+      <p class="text-xs text-secondary text-center mb-3">
+        Coinbase is ready to receive
+        <span class="font-mono font-bold text-heading"
+              x-text="props.sellAmount ? props.sellAmount + ' ' + (props.sellCurrency || 'USDC') : 'your USDC'"></span>.
+        This is the last step of your cash-out.
+      </p>
+
+      <div class="bg-inset rounded-lg p-4 text-center mb-4" x-show="!windowExpired">
+        <div class="text-xs text-secondary mb-1">Time left to send</div>
+        <div class="text-3xl font-bold font-mono"
+             :class="remainingMs !== null && remainingMs < 300000 ? 'text-red-400' : 'text-primary'"
+             x-text="remainingLabel"></div>
+      </div>
+
+      <%# Late-send rule (spec section 10): funds sent after the window still
+          land in the user's Coinbase crypto balance, but the sell is marked
+          failed and never auto-completes. %>
+      <div class="bg-red-500/10 border border-red-600/30 rounded-lg p-3 text-xs text-red-400 mb-4"
+           x-show="windowExpired" x-cloak>
+        The 30-minute window has passed. USDC sent now still lands in your
+        Coinbase crypto balance, but Coinbase marks this cash-out failed and
+        won't pay it out automatically.
+      </div>
+
+      <%# Managed (web2): a fresh, explicit confirmation click is REQUIRED
+          before the server moves user funds. %>
+      <template x-if="!walletWeb3">
+        <div>
+          <button @click="confirmSend()" :disabled="sendBusy || windowExpired"
+                  class="btn btn-primary btn-lg w-full gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <span x-show="sendBusy" class="cta-spinner" aria-hidden="true"></span>
+            <span x-text="sendBusy ? 'Sending…' : 'Confirm & send'"></span>
+          </button>
+          <p class="text-xs text-muted text-center mt-2">
+            We'll send the USDC from your Turf Monster wallet to Coinbase.
+          </p>
+        </div>
+      </template>
+
+      <%# Phantom (web3): server builds the transfer, Phantom signs, the
+          helper broadcasts + reports the signature back. %>
+      <template x-if="walletWeb3">
+        <div>
+          <button @click="phantomSend()" :disabled="sendBusy || windowExpired"
+                  class="btn btn-primary btn-lg w-full gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <span x-show="sendBusy" class="cta-spinner" aria-hidden="true"></span>
+            <span x-text="sendBusy ? 'Waiting for wallet…' : 'Send with Phantom'"></span>
+          </button>
+          <p class="text-xs text-muted text-center mt-2"
+             x-text="sendStatus || 'Phantom will ask you to approve the transfer.'"></p>
+        </div>
+      </template>
+
+      <template x-if="props.sendError">
+        <p class="text-red-400 text-xs text-center mt-3" x-text="props.sendError"></p>
+      </template>
+    </div>
+  </template>
+
+  <%# === SETTLING (SELL) — broadcast done, waiting on confirmation ======== %>
+  <template x-if="props.step === 'settling'">
+    <%= render "modals/blocks/card_header",
+          spinner: true,
+          title: "Finishing your cash-out…",
+          subtitle: "Your USDC is on its way to Coinbase. This usually takes under a minute." %>
+  </template>
+
+  <%# === DONE ============================================================= %>
+  <template x-if="props.step === 'done' && isBuy">
+    <div>
+      <%= render "modals/blocks/card_header", size: :lg,
+            icon_color: 'primary',
+            title: "USDC purchased!",
+            subtitle: "Your USDC has landed in your wallet. Your balance updates in a moment." %>
+      <button @click="$store.modals.close()" class="btn btn-primary btn-lg w-full">Done</button>
+    </div>
+  </template>
+  <template x-if="props.step === 'done' && !isBuy">
+    <div>
+      <%= render "modals/blocks/card_header", size: :lg,
+            icon_color: 'primary',
+            title: "Cash-out complete!",
+            subtitle: "Coinbase received your USDC. Your payout is on its way to your linked account — bank transfers can take a few business days." %>
+      <button @click="$store.modals.close()" class="btn btn-primary btn-lg w-full">Done</button>
+    </div>
+  </template>
+
+  <%# === FAILED =========================================================== %>
+  <template x-if="props.step === 'failed' && isBuy">
+    <div>
+      <%= render "modals/blocks/card_header",
+            icon: :error,
+            title: "Purchase didn't complete",
+            subtitle: "Coinbase marked this purchase failed and no USDC was delivered. Check your Coinbase account for details." %>
+      <button @click="$store.modals.close()" class="btn btn-primary btn-lg w-full">Close</button>
+    </div>
+  </template>
+  <template x-if="props.step === 'failed' && !isBuy">
+    <div>
+      <%= render "modals/blocks/card_header",
+            icon: :error,
+            title: "Cash-out not completed" do %>
+        Coinbase marked this cash-out failed. If your USDC was sent after the
+        30-minute window, it's safe in your
+        <span class="text-heading font-medium">Coinbase crypto balance</span>
+        &mdash; it just won't pay out automatically. You can cash out directly
+        from Coinbase, or start a new cash-out here.
+      <% end %>
+      <button @click="$store.modals.close()" class="btn btn-primary btn-lg w-full">Close</button>
+    </div>
+  </template>
+
+  <%# === ERROR — a request in this flow errored =========================== %>
+  <template x-if="props.step === 'error'">
+    <div>
+      <%= render "modals/blocks/card_header",
+            icon: :error,
+            title: "Something went wrong",
+            subtitle_key: "props.errorText || 'Could not reach Coinbase. Please try again.'" %>
+      <button @click="$store.modals.advance({ step: 'preflight' }, { direction: 'back' })"
+              class="btn btn-primary btn-lg w-full">
+        Try again
+      </button>
+      <button @click="$store.modals.close()"
+              class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+        Dismiss
+      </button>
+    </div>
+  </template>
+</div>

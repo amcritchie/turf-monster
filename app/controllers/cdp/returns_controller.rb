@@ -55,6 +55,7 @@ module Cdp
       {
         partner_user_ref:     ramp.partner_user_ref,
         direction:            ramp.direction,
+        wallet_mode:          ramp.wallet_mode,
         status:               ramp.status,
         cdp_status:           ramp.cdp_status,
         terminal:             ramp.terminal?,
