@@ -54,6 +54,16 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
     assert_equal 0, PaypalPurchase.count
   end
 
+  test "paypal_order blocks a frozen account (B4 / OPSEC-048)" do
+    log_in_as_with_wallet @jordan
+    @jordan.freeze_for_payment_risk!(reason: "test freeze")
+    with_paypal_enabled do
+      post tokens_paypal_order_path, params: { pack: "single" }, as: :json
+    end
+    assert_response :forbidden
+    assert_equal 0, PaypalPurchase.count
+  end
+
   test "paypal_order creates a pending purchase with SERVER-derived amount and returns the order id" do
     log_in_as_with_wallet @jordan
     client = FakePaypalClient.new(order_id: "ORDER_HAPPY")
@@ -103,6 +113,14 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
 
   # ── paypal_capture ──────────────────────────────────────────────────────
 
+  test "paypal_capture without an order_id is a bad request" do
+    log_in_as_with_wallet @jordan
+    with_paypal_enabled do
+      post tokens_paypal_capture_path, as: :json
+    end
+    assert_response :bad_request
+  end
+
   test "paypal_capture 404s an order that is not the current user's" do
     create_pending_purchase(user: @alex, order_id: "ORDER_ALEX")
     log_in_as_with_wallet @jordan
@@ -147,6 +165,23 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
       Paypal::Client.stub :new, client do
         assert_no_enqueued_jobs only: TokenPurchaseJob do
           post tokens_paypal_capture_path, params: { order_id: "ORDER_BAD" }, as: :json
+        end
+      end
+    end
+    assert_response :unprocessable_entity
+    assert_equal "pending", purchase.reload.status
+  end
+
+  test "paypal_capture rejects a currency mismatch — no status change, no job" do
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_EUR")
+    log_in_as_with_wallet @jordan
+    client = FakePaypalClient.new(
+      capture_response: FakePaypalClient.completed_capture_response(order_id: "ORDER_EUR", amount: "19.00", currency: "EUR")
+    )
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        assert_no_enqueued_jobs only: TokenPurchaseJob do
+          post tokens_paypal_capture_path, params: { order_id: "ORDER_EUR" }, as: :json
         end
       end
     end

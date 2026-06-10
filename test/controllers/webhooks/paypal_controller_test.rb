@@ -138,6 +138,31 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
     assert_equal "minted", purchase.reload.status
   end
 
+  test "exactly-once across both paths: capture endpoint + webhook double-enqueue still mints exactly the pack quantity" do
+    purchase = create_purchase(order_id: "ORDER_BOTH", pack_id: "trio", quantity: 3, price_cents: 49_00)
+
+    assert_enqueued_jobs 2, only: TokenPurchaseJob do
+      # The client's paypal_capture path wins the CAS and enqueues first…
+      assert Paypal::Fulfillment.enqueue_mint!(purchase, capture_id: "CAP_BOTH")
+      # …then PAYMENT.CAPTURE.COMPLETED lands before the job has run
+      # (captured, zero signatures) — the webhook re-enqueues as stranded-row
+      # insurance; the job's OPSEC-009 idempotency makes the duplicate a no-op.
+      Paypal::Client.stub :new, FakePaypalClient.new do
+        post_webhook(capture_completed_event(purchase: purchase, capture_id: "CAP_BOTH"))
+      end
+    end
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      perform_enqueued_jobs only: TokenPurchaseJob
+    end
+    assert_equal 3, vault.mint_calls.length, "double-enqueue must mint exactly quantity tokens, not 2x"
+    assert_equal 3, vault.mint_calls.uniq.length
+    purchase.reload
+    assert_equal "minted", purchase.status
+    assert_equal 3, purchase.tx_signatures.length
+  end
+
   # ── CHECKOUT.ORDER.APPROVED (client-died fallback) ─────────────────────
 
   test "order approved captures server-side when the purchase is still pending" do
