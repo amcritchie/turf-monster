@@ -236,6 +236,19 @@ class Paypal::ClientTest < ActiveSupport::TestCase
     assert get_row.successful?
   end
 
+  test "webhook verification audit row redacts webhook_id and transmission_sig" do
+    http = FakeHttp.new([oauth_response, ok_response("verification_status" => "SUCCESS")])
+    with_env("PAYPAL_WEBHOOK_ID" => "WHID") do
+      Net::HTTP.stub(:new, http) { @client.verify_webhook_signature(headers: VERIFY_HEADERS, raw_body: "{}") }
+    end
+
+    row = OutboundRequest.where(service: "paypal", endpoint: "/v1/notifications/verify-webhook-signature").order(:id).last
+    assert_equal "[REDACTED]", row.request_body["webhook_id"],
+                 "PAYPAL_WEBHOOK_ID is an operator credential — it must not sit cleartext in a 90/180-day audit table"
+    assert_equal "[REDACTED]", row.request_body["transmission_sig"]
+    assert_equal "[REDACTED]", row.request_body["auth_algo"], "pre-existing 'auth' substring rule"
+  end
+
   test "a failed call records the error on its OutboundRequest row" do
     http = FakeHttp.new([
       oauth_response,

@@ -40,15 +40,25 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, client.verify_calls.length
   end
 
-  test "verification receives the RAW request body" do
+  test "verification receives the RAW request body and the PAYPAL-* headers" do
     client = FakePaypalClient.new
     event = { "id" => "WH-raw", "event_type" => "UNKNOWN.EVENT", "resource" => {} }
     raw = event.to_json
     Paypal::Client.stub :new, client do
-      post "/webhooks/paypal", params: raw, headers: { "Content-Type" => "application/json" }
+      post_webhook_raw(raw)
     end
     assert_response :ok
     assert_equal raw, client.verify_calls.first[:raw_body]
+    # The controller→client header handoff is the seam a header-name typo
+    # breaks: verify_webhook_signature fails closed on any blank field, so a
+    # regression here would 400 EVERY production webhook while a fake that
+    # ignores headers stays green. Assert the values actually arrive.
+    headers = client.verify_calls.first[:headers]
+    assert_equal "SHA256withRSA", headers["PAYPAL-AUTH-ALGO"]
+    assert_equal "sig", headers["PAYPAL-TRANSMISSION-SIG"]
+    Webhooks::PaypalController::VERIFICATION_HEADERS.each do |name|
+      assert headers[name].present?, "#{name} must reach verification non-blank"
+    end
   end
 
   # ── OPSEC-033 parity: refuse sandbox events in production ──────────────
@@ -67,20 +77,28 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "production refuses an event self-referencing the sandbox API host" do
-    purchase = create_purchase
-    event = capture_completed_event(purchase: purchase)
-    event["links"] = [{ "href" => "https://api.sandbox.paypal.com/v1/notifications/webhooks-events/WH-1", "rel" => "self" }]
-    Rails.env.stub :production?, true do
-      Paypal::Client.stub :env, "live" do
-        Paypal::Client.stub :new, FakePaypalClient.new do
-          assert_no_enqueued_jobs do
-            post_webhook(event)
+    # Both sandbox host spellings — PayPal links use api.sandbox.paypal.com
+    # AND api-m.sandbox.paypal.com (the client's own SANDBOX_BASE); the
+    # original api-only literal let api-m events slip the tell.
+    %w[
+      https://api.sandbox.paypal.com/v1/notifications/webhooks-events/WH-1
+      https://api-m.sandbox.paypal.com/v1/notifications/webhooks-events/WH-1
+    ].each do |href|
+      purchase = create_purchase
+      event = capture_completed_event(purchase: purchase)
+      event["links"] = [{ "href" => href, "rel" => "self" }]
+      Rails.env.stub :production?, true do
+        Paypal::Client.stub :env, "live" do
+          Paypal::Client.stub :new, FakePaypalClient.new do
+            assert_no_enqueued_jobs do
+              post_webhook(event)
+            end
           end
         end
       end
+      assert_response :ok
+      assert_equal "pending", purchase.reload.status, "sandbox event (#{href}) must not fulfill in production"
     end
-    assert_response :ok
-    assert_equal "pending", purchase.reload.status
   end
 
   # ── PAYMENT.CAPTURE.COMPLETED ──────────────────────────────────────────
@@ -119,10 +137,23 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
     assert_response :ok
   end
 
-  test "capture completed redelivery after fulfillment re-enqueues only when unminted" do
+  test "capture completed redelivery re-enqueues only a STALE captured row, never a fresh one" do
     purchase = create_purchase
     purchase.begin_fulfillment!(capture_id: "CAP_X")
-    # Stranded captured-but-unminted → safe re-enqueue (job is idempotent).
+
+    # FRESH captured row → the winner's job is presumed still minting (a trio
+    # is several Solana confirms); an immediate re-enqueue would run two
+    # concurrent jobs racing the same source_refs (PDA init collision, 0x0,
+    # transient captured→failed flip). Redelivery must be a no-op.
+    Paypal::Client.stub :new, FakePaypalClient.new do
+      assert_no_enqueued_jobs do
+        post_webhook(capture_completed_event(purchase: purchase, capture_id: "CAP_X"))
+      end
+    end
+
+    # STRANDED: captured past STRANDED_AFTER and still unminted → the original
+    # job died; the redelivery is the crash-recovery path and must re-enqueue.
+    purchase.update!(captured_at: (Paypal::Fulfillment::STRANDED_AFTER + 1.minute).ago)
     Paypal::Client.stub :new, FakePaypalClient.new do
       assert_enqueued_with(job: TokenPurchaseJob) do
         post_webhook(capture_completed_event(purchase: purchase, capture_id: "CAP_X"))
@@ -144,9 +175,11 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
     assert_enqueued_jobs 2, only: TokenPurchaseJob do
       # The client's paypal_capture path wins the CAS and enqueues first…
       assert Paypal::Fulfillment.enqueue_mint!(purchase, capture_id: "CAP_BOTH")
-      # …then PAYMENT.CAPTURE.COMPLETED lands before the job has run
-      # (captured, zero signatures) — the webhook re-enqueues as stranded-row
-      # insurance; the job's OPSEC-009 idempotency makes the duplicate a no-op.
+      # …then that job dies before minting anything: the row outlives the
+      # STRANDED_AFTER window still unminted, and PayPal redelivers the
+      # webhook — the stranded-row branch re-enqueues; the job's OPSEC-009
+      # idempotency makes the duplicate a no-op.
+      purchase.update!(captured_at: (Paypal::Fulfillment::STRANDED_AFTER + 1.minute).ago)
       Paypal::Client.stub :new, FakePaypalClient.new do
         post_webhook(capture_completed_event(purchase: purchase, capture_id: "CAP_BOTH"))
       end
@@ -161,6 +194,75 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
     purchase.reload
     assert_equal "minted", purchase.status
     assert_equal 3, purchase.tx_signatures.length
+  end
+
+  test "capture completed for a FROZEN account records the capture but does NOT mint (B4/OPSEC-048)" do
+    purchase = create_purchase
+    @user.freeze_for_payment_risk!(reason: "prior dispute")
+    Paypal::Client.stub :new, FakePaypalClient.new do
+      assert_no_enqueued_jobs do
+        post_webhook(capture_completed_event(purchase: purchase, capture_id: "CAP_FRZ"))
+      end
+    end
+    assert_response :ok
+    purchase.reload
+    assert_equal "captured", purchase.status, "money moved — forensics keep the capture"
+    assert_equal "CAP_FRZ", purchase.capture_id
+    assert_equal 0, purchase.tx_signatures.length
+  end
+
+  test "capture completed for a payment-risk-flagged account does NOT mint (OPSEC-036)" do
+    purchase = create_purchase
+    @user.update!(payment_risk_flag: true)
+    Paypal::Client.stub :new, FakePaypalClient.new do
+      assert_no_enqueued_jobs do
+        post_webhook(capture_completed_event(purchase: purchase))
+      end
+    end
+    assert_response :ok
+    assert_equal "captured", purchase.reload.status
+  end
+
+  # ── purchase_for_capture resolution tiers (each exercised ALONE) ───────
+
+  test "capture resolution tier 2: supplementary order_id alone, no custom_id" do
+    purchase = create_purchase(order_id: "ORDER_T2")
+    event = {
+      "id" => "WH-t2", "event_type" => "PAYMENT.CAPTURE.COMPLETED",
+      "resource" => {
+        "id" => "CAP_T2", "status" => "COMPLETED",
+        "amount" => { "currency_code" => "USD", "value" => "19.00" },
+        "supplementary_data" => { "related_ids" => { "order_id" => "ORDER_T2" } }
+      }
+    }
+    Paypal::Client.stub :new, FakePaypalClient.new do
+      assert_enqueued_with(job: TokenPurchaseJob) { post_webhook(event) }
+    end
+    assert_equal "captured", purchase.reload.status
+  end
+
+  test "capture resolution tier 3: CREATE-time invoice_id alone, after later saves" do
+    purchase = create_purchase(order_id: "ORDER_T3")
+    create_time_slug = purchase.slug
+    # PayPal echoes the create-time invoice_id forever, while the row gets
+    # saved again in the meantime (paypal_order's update!, mark_minted!, …).
+    # Regression: Sluggable's per-save re-derive used to drift the slug on
+    # every save, making this tier dead code in production.
+    purchase.update!(contest_slug: "some-contest")
+    assert_equal create_time_slug, purchase.reload.slug, "slug must be immutable after create"
+
+    event = {
+      "id" => "WH-t3", "event_type" => "PAYMENT.CAPTURE.COMPLETED",
+      "resource" => {
+        "id" => "CAP_T3", "status" => "COMPLETED",
+        "amount" => { "currency_code" => "USD", "value" => "19.00" },
+        "invoice_id" => create_time_slug
+      }
+    }
+    Paypal::Client.stub :new, FakePaypalClient.new do
+      assert_enqueued_with(job: TokenPurchaseJob) { post_webhook(event) }
+    end
+    assert_equal "captured", purchase.reload.status
   end
 
   # ── CHECKOUT.ORDER.APPROVED (client-died fallback) ─────────────────────
@@ -195,6 +297,34 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
     end
     assert_response :ok
     assert_equal 0, client.captured_orders.length
+  end
+
+  test "order approved does NOT capture for a FROZEN account (B4/OPSEC-048 client-gate parity)" do
+    purchase = create_purchase(order_id: "ORDER_FROZEN")
+    @user.freeze_for_payment_risk!(reason: "prior dispute")
+    client = FakePaypalClient.new
+    Paypal::Client.stub :new, client do
+      assert_no_enqueued_jobs do
+        post_webhook(order_approved_event(order_id: "ORDER_FROZEN"))
+      end
+    end
+    assert_response :ok
+    assert_equal 0, client.captured_orders.length, "server must not initiate a capture for a frozen account"
+    assert_equal "pending", purchase.reload.status
+  end
+
+  test "order approved does NOT capture for a payment-risk-flagged account (OPSEC-036)" do
+    purchase = create_purchase(order_id: "ORDER_FLAGGED")
+    @user.update!(payment_risk_flag: true)
+    client = FakePaypalClient.new
+    Paypal::Client.stub :new, client do
+      assert_no_enqueued_jobs do
+        post_webhook(order_approved_event(order_id: "ORDER_FLAGGED"))
+      end
+    end
+    assert_response :ok
+    assert_equal 0, client.captured_orders.length
+    assert_equal "pending", purchase.reload.status
   end
 
   test "order approved survives an ORDER_ALREADY_CAPTURED race with a 200" do
@@ -271,7 +401,11 @@ class Webhooks::PaypalControllerTest < ActionDispatch::IntegrationTest
   private
 
   def post_webhook(event)
-    post "/webhooks/paypal", params: event.to_json, headers: {
+    post_webhook_raw(event.to_json)
+  end
+
+  def post_webhook_raw(raw)
+    post "/webhooks/paypal", params: raw, headers: {
       "Content-Type" => "application/json",
       "PAYPAL-AUTH-ALGO" => "SHA256withRSA",
       "PAYPAL-CERT-URL" => "https://api.paypal.com/cert",

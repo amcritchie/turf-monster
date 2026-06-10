@@ -215,6 +215,24 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     assert_nil PaypalPurchase.for_order("ORDER_MISSING").first
   end
 
+  test "paypal: refunded purchase short-circuits — never mints over refunded money" do
+    # A PAYMENT.CAPTURE.REFUNDED processed while this job sat in the queue /
+    # retry window leaves the row "refunded" at perform time. The job must
+    # treat it as terminal like "minted" — minting here would hand on-chain
+    # tokens to an account whose money already went back.
+    purchase = create_paypal_purchase(order_id: "ORDER_REFUNDED")
+    purchase.begin_fulfillment!(capture_id: "CAP_R")
+    purchase.mark_refunded!(reason: "refund while queued")
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet,
+                                   purchase_type: "paypal", paypal_order_id: "ORDER_REFUNDED")
+    end
+    assert_equal 0, vault.mint_calls.length
+    assert_equal "refunded", purchase.reload.status, "refund is the authoritative terminal state"
+  end
+
   test "paypal: already-minted purchase no-ops (OPSEC-009)" do
     purchase = create_paypal_purchase(order_id: "ORDER_NOOP")
     purchase.mark_minted!(["sig_a"])

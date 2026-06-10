@@ -24,9 +24,11 @@ module Payments
   end
 
   # The render/accept gate for PayPal checkout: operator flag AND credentials.
-  # Views branch on this (pack picker, /tokens/buy, JS SDK include) and the
-  # token endpoints refuse without it, so the UI can never offer buttons the
-  # backend would reject.
+  # Views branch on this (pack picker, /tokens/buy, JS SDK include) and
+  # paypal_order (order CREATION) refuses without it, so the UI can never
+  # offer buttons the backend would reject. paypal_capture and the webhook
+  # are deliberately NOT gated on it — rolling back to stripe must still
+  # drain in-flight approved orders (see docs/PAYPAL_VENMO.md "Heroku flip").
   def self.paypal_checkout?
     paypal? && Rails.application.config.x.paypal_enabled
   end

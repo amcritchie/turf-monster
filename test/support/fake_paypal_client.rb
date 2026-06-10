@@ -42,7 +42,10 @@ class FakePaypalClient
 
   # POST /v2/checkout/orders/{id}/capture response, reduced to the fields the
   # app reads (order status + first purchase_unit's first capture).
-  def self.completed_capture_response(order_id:, amount: "19.00", currency: "USD", capture_id: nil, status: "COMPLETED")
+  # capture_status diverges from the order status for eCheck/review holds:
+  # order COMPLETED with capture PENDING.
+  def self.completed_capture_response(order_id:, amount: "19.00", currency: "USD", capture_id: nil,
+                                      status: "COMPLETED", capture_status: nil)
     {
       "id" => order_id,
       "status" => status,
@@ -50,7 +53,7 @@ class FakePaypalClient
         "payments" => {
           "captures" => [{
             "id" => capture_id || "CAP#{SecureRandom.hex(4).upcase}",
-            "status" => status,
+            "status" => capture_status || status,
             "amount" => { "currency_code" => currency, "value" => amount }
           }]
         }

@@ -189,6 +189,50 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
     assert_equal "pending", purchase.reload.status
   end
 
+  test "paypal_capture blocks a payment-risk-flagged user before any money moves (OPSEC-036)" do
+    # The flag can flip between order creation and capture — the capture leg
+    # must re-check it (paypal_order/stripe_checkout gate parity).
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_FLAG")
+    log_in_as_with_wallet @jordan
+    @jordan.update!(payment_risk_flag: true)
+    client = FakePaypalClient.new
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        assert_no_enqueued_jobs only: TokenPurchaseJob do
+          post tokens_paypal_capture_path, params: { order_id: "ORDER_FLAG" }, as: :json
+        end
+      end
+    end
+    assert_response :forbidden
+    assert_equal 0, client.captured_orders.length, "must not hit PayPal for a flagged account"
+    assert_equal "pending", purchase.reload.status
+  end
+
+  test "paypal_capture treats a PENDING capture (eCheck/review hold) as processing, never a failure" do
+    purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_HOLD")
+    log_in_as_with_wallet @jordan
+    client = FakePaypalClient.new(
+      capture_response: FakePaypalClient.completed_capture_response(
+        order_id: "ORDER_HOLD", amount: "19.00", capture_status: "PENDING"
+      )
+    )
+    with_paypal_enabled do
+      Paypal::Client.stub :new, client do
+        assert_no_enqueued_jobs only: TokenPurchaseJob do
+          post tokens_paypal_capture_path, params: { order_id: "ORDER_HOLD" }, as: :json
+        end
+      end
+    end
+    # 200 + "processing" — a 422 here told the (already charged) buyer to
+    # "try again", and the retry created a second order = real double charge.
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert_equal "processing", json["status"]
+    assert_nil json["error"], "a hold is not an error — no retry invitation"
+    assert_equal "pending", purchase.reload.status,
+                 "row stays pending so PAYMENT.CAPTURE.COMPLETED wins the CAS when the hold clears"
+  end
+
   test "paypal_capture is idempotent — non-pending purchase returns status without re-capturing" do
     purchase = create_pending_purchase(user: @jordan, order_id: "ORDER_DUP")
     purchase.begin_fulfillment!(capture_id: "CAP_FIRST")
@@ -235,12 +279,73 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
     assert_match "buyer-country=US", response.body
   end
 
+  test "buy page SDK URL omits buyer-country in the live env (the live SDK rejects it)" do
+    log_in_as @jordan
+    with_paypal_enabled do
+      Paypal::Client.stub :env, "live" do
+        get tokens_buy_path
+      end
+    end
+    assert_match "enable-funding=venmo", response.body
+    # Dropping the sandbox? conditional in _paypal_sdk.html.erb would break
+    # live checkout at SDK load on day one of the flip — guard the absence.
+    assert_no_match(/buyer-country/, response.body)
+  end
+
   test "buy renders zero PayPal output when provider is stripe (deploy-inert gate)" do
     log_in_as @jordan
     get tokens_buy_path
     assert_response :success
     assert_no_match(/paypalButtons|loadPaypalSdk|venmoSlot/, response.body)
     assert_match %r{action="/tokens/stripe_checkout}, response.body
+  end
+
+  test "stripe pack buttons are disabled everywhere when the provider is none (no dead checkout)" do
+    log_in_as @jordan
+    with_provider("none") do
+      get tokens_buy_path
+    end
+    assert_response :success
+    # Both the buy page AND the layout-level auth-modal picker render the
+    # Stripe branch; with provider=none every pack button must be inert —
+    # Payments documents "none — token purchases hidden", and the endpoint
+    # refuses (see the stripe_checkout gate test below).
+    assert_select "form[action^='/tokens/stripe_checkout'] button:not([disabled])", count: 0
+  end
+
+  # ── stripe_checkout provider gate (the flag retires the endpoint) ───────
+
+  test "stripe_checkout refuses when the active provider is not stripe" do
+    log_in_as_with_wallet @jordan
+    original_enabled = Rails.application.config.x.stripe_enabled
+    Rails.application.config.x.stripe_enabled = true
+    begin
+      with_paypal_enabled do
+        post tokens_stripe_checkout_path, params: { pack: "single" }
+      end
+    ensure
+      Rails.application.config.x.stripe_enabled = original_enabled
+    end
+    # Stale tabs / scripted clients must not create sessions against the
+    # blocked Stripe account after the flip.
+    assert_redirected_to tokens_buy_path
+    assert_match(/currently disabled/, flash[:alert])
+  end
+
+  # ── routing: format suffix must not sidestep the rack-attack throttles ──
+
+  test "paypal endpoints reject a format suffix (throttles match exact paths)" do
+    assert_equal "paypal_order",
+                 Rails.application.routes.recognize_path("/tokens/paypal_order", method: :post)[:action]
+    assert_raises(ActionController::RoutingError) do
+      Rails.application.routes.recognize_path("/tokens/paypal_order.json", method: :post)
+    end
+    assert_raises(ActionController::RoutingError) do
+      Rails.application.routes.recognize_path("/tokens/paypal_capture.json", method: :post)
+    end
+    assert_raises(ActionController::RoutingError) do
+      Rails.application.routes.recognize_path("/webhooks/paypal.json", method: :post)
+    end
   end
 
   # ── status (order_id branch) ────────────────────────────────────────────
@@ -289,13 +394,18 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
   end
 
   def with_paypal_enabled
-    original_provider = Rails.application.config.x.payment_provider
-    original_enabled  = Rails.application.config.x.paypal_enabled
-    Rails.application.config.x.payment_provider = "paypal"
-    Rails.application.config.x.paypal_enabled   = true
+    original_enabled = Rails.application.config.x.paypal_enabled
+    Rails.application.config.x.paypal_enabled = true
+    with_provider("paypal") { yield }
+  ensure
+    Rails.application.config.x.paypal_enabled = original_enabled
+  end
+
+  def with_provider(provider)
+    original = Rails.application.config.x.payment_provider
+    Rails.application.config.x.payment_provider = provider
     yield
   ensure
-    Rails.application.config.x.payment_provider = original_provider
-    Rails.application.config.x.paypal_enabled   = original_enabled
+    Rails.application.config.x.payment_provider = original
   end
 end

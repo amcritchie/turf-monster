@@ -65,9 +65,29 @@
           Venmo / PayPal aren't available right now &mdash; refresh to try again, or check back shortly.
         </p>
       </template>
+      <%# Yellow container (buy-page precedent): bare text-yellow-300 on the
+          light theme's white card is near-invisible — a buyer whose payment
+          failed saw nothing. %>
       <template x-if="notice">
-        <p class="text-yellow-300 text-xs text-center mt-3" x-text="notice"></p>
+        <div class="bg-yellow-500/10 border border-yellow-600/30 rounded-lg p-3 mt-3">
+          <p class="text-yellow-300 text-xs text-center" x-text="notice"></p>
+        </div>
       </template>
+    </div>
+  </template>
+
+  <%# Capture returned PENDING (eCheck / Venmo review hold) — the buyer HAS
+      paid; PAYMENT.CAPTURE.COMPLETED mints when it clears (days for eCheck).
+      Rendered for BOTH flows (phase leaves 'pick', so the buttons unmount):
+      deliberately NO retry affordance — a second order would double-charge. %>
+  <template x-if="phase === 'hold'">
+    <div class="bg-yellow-500/10 border border-yellow-600/30 rounded-lg p-4 text-center mt-2">
+      <p class="text-sm font-semibold text-heading mb-1">Payment received &mdash; processing</p>
+      <p class="text-xs text-secondary">
+        PayPal is finishing your payment (eCheck and some Venmo payments take
+        a little longer to clear). Your entry tokens will be delivered
+        automatically once it does &mdash; <span class="font-semibold">no need to buy again</span>.
+      </p>
     </div>
   </template>
 

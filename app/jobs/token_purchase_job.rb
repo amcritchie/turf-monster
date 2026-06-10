@@ -23,8 +23,10 @@
 #     and continue to `quantity`. The DB row is the source of truth for
 #     resume — the on-chain PDA `init` constraint is a backstop that would
 #     catch any over-mint via Anchor error.
-#   - Only `status == "minted"` short-circuits the job. "pending" / "captured"
-#     / "failed" rows are mid-recovery and must run through the loop to resume.
+#   - Only the terminal states short-circuit the job: "minted" (work is done)
+#     and "refunded" (the money came back — never mint over it). "pending" /
+#     "captured" / "failed" rows are mid-recovery and must run through the
+#     loop to resume.
 class TokenPurchaseJob < ApplicationJob
   queue_as :default
 
@@ -45,8 +47,11 @@ class TokenPurchaseJob < ApplicationJob
 
     purchase = paypal ? PaypalPurchase.for_order(paypal_order_id).first
                       : StripePurchase.for_session(stripe_session_id).first
-    if purchase&.status == "minted"
-      Rails.logger.info "[tokens] job.skip already_minted ref=#{ref_short}..."
+    # Terminal short-circuits: "minted" is the OPSEC-009 idempotency stop;
+    # "refunded" means a refund webhook landed while this job sat in the
+    # queue/retry window — never mint on-chain tokens over refunded money.
+    if %w[minted refunded].include?(purchase&.status)
+      Rails.logger.info "[tokens] job.skip status=#{purchase.status} ref=#{ref_short}..."
       return
     end
 

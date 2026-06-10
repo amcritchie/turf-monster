@@ -57,6 +57,57 @@ class PaypalPurchaseTest < ActiveSupport::TestCase
     refute purchase.capture_matches?(good.merge("amount" => { "currency_code" => "USD", "value" => "19.00" }))
   end
 
+  test "capture_pending? recognizes an eCheck/review hold — PENDING + USD + exact amount only" do
+    purchase = build_purchase(pack_id: "trio", quantity: 3, price_cents: 49_00)
+
+    hold = { "status" => "PENDING", "amount" => { "currency_code" => "USD", "value" => "49.00" } }
+    assert purchase.capture_pending?(hold)
+
+    refute purchase.capture_pending?(nil)
+    refute purchase.capture_pending?(hold.merge("status" => "COMPLETED")), "completed is capture_matches? territory"
+    refute purchase.capture_pending?(hold.merge("status" => "DECLINED"))
+    refute purchase.capture_pending?(hold.merge("amount" => { "currency_code" => "USD", "value" => "5.00" }))
+    refute purchase.capture_pending?(hold.merge("amount" => { "currency_code" => "EUR", "value" => "49.00" }))
+  end
+
+  test "slug is immutable after create — it is the invoice_id PayPal echoes back forever" do
+    purchase = build_purchase(paypal_order_id: nil)
+    purchase.save!
+    create_time_slug = purchase.slug
+    assert create_time_slug.present?
+
+    # The exact production sequence: create → send slug to PayPal as
+    # invoice_id → update!(paypal_order_id:) in the same request. Sluggable's
+    # per-save re-derive used to regenerate the (pure-entropy) slug here,
+    # orphaning the invoice_id and killing webhook tier-3 resolution +
+    # PayPal-invoice ↔ DB reconciliation.
+    purchase.update!(paypal_order_id: "ORDER_SLUG_STABLE")
+    assert_equal create_time_slug, purchase.reload.slug
+
+    purchase.begin_fulfillment!(capture_id: "CAP_S")
+    purchase.mark_minted!(["sig_0"])
+    assert_equal create_time_slug, purchase.reload.slug
+
+    assert_equal purchase, PaypalPurchase.find_by(slug: create_time_slug)
+  end
+
+  test "mark_minted! never overwrites the refunded terminal (refund-during-mint race)" do
+    purchase = build_purchase
+    purchase.save!
+    purchase.begin_fulfillment!(capture_id: "CAP_RM")
+    purchase.mark_refunded!(reason: "mid-mint refund")
+
+    # The mint job finishing after the refund webhook must not flip the
+    # authoritative refund record back to "minted" — but the on-chain mints
+    # DID happen, so the signatures still land for forensics.
+    purchase.mark_minted!(%w[sig_a])
+    purchase.reload
+    assert_equal "refunded", purchase.status
+    assert_equal %w[sig_a], purchase.tx_signatures
+    assert purchase.minted_at.present?
+    assert purchase.refunded_at.present?
+  end
+
   test "MintablePurchase parity: mark_minted!, tx_signatures, H8 no-downgrade" do
     purchase = build_purchase
     purchase.save!

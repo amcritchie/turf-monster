@@ -72,8 +72,9 @@
           sdkState: 'loading',   // loading | ready | unavailable | failed
           notice: '',
           busy: false,           // capture round-trip in flight
-          // page-flow status UI (mirrors tokens/processing.html.erb)
-          phase: 'pick',         // pick | confirming | minted | errored
+          // page-flow status UI (mirrors tokens/processing.html.erb);
+          // 'hold' (both flows) = capture came back PENDING (eCheck/review)
+          phase: 'pick',         // pick | hold | confirming | minted | errored
           minted: 0,
           balance: 0,
           elapsed: 0,
@@ -177,6 +178,14 @@
               });
               if (!resp) return; // 401/429 — interceptor surfaced the modal
               var d = await resp.json().catch(function () { return {}; });
+              if (resp.ok && d.status === 'processing') {
+                // Capture is PENDING (eCheck / Venmo review hold): the buyer
+                // HAS paid — the COMPLETED webhook mints when it clears. Hard
+                // rule: no retry UI here, a second order would double-charge.
+                console.warn('[tokens] paypal.capture pending-hold order=', orderId);
+                this.phase = 'hold';
+                return;
+              }
               if (!resp.ok || (d.status !== 'captured' && d.status !== 'minted')) {
                 console.warn('[tokens] paypal.capture failed', resp.status, d);
                 this.notice = d.error || 'Payment could not be confirmed — try again or contact support.';

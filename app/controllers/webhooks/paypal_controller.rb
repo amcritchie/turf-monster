@@ -74,7 +74,11 @@ module Webhooks
 
     def sandbox_event?(event)
       links = [event["links"], event.dig("resource", "links")].flatten.compact
-      links.any? { |link| link.is_a?(Hash) && link["href"].to_s.include?("api.sandbox.paypal.com") }
+      # Match the bare host suffix: PayPal HATEOAS links use BOTH
+      # api.sandbox.paypal.com and api-m.sandbox.paypal.com (the client's own
+      # SANDBOX_BASE is the api-m form); matching the api-only literal missed
+      # the api-m hosts. The live host (api-m.paypal.com) can't match this.
+      links.any? { |link| link.is_a?(Hash) && link["href"].to_s.include?(".sandbox.paypal.com") }
     end
 
     # resource = the capture object. Signature verification proves authenticity;
@@ -122,6 +126,18 @@ module Webhooks
         return
       end
       return unless purchase.status == "pending"
+
+      # B4 / OPSEC-036/048: the client capture leg enforces these gates in
+      # TokensController (require_unfrozen_account + the risk-flag check);
+      # this server-initiated fallback must too, or a buyer approving a
+      # leftover pending order post-freeze would have US capture the money
+      # and mint for exactly the account the freeze exists to stop.
+      if purchase.user.frozen? || purchase.user.payment_risk_flag
+        Rails.logger.warn "[tokens] paypal.webhook.order_approved_blocked purchase=#{purchase.id} " \
+                          "user=#{purchase.user_id} frozen=#{purchase.user.frozen?} " \
+                          "risk_flag=#{purchase.user.payment_risk_flag} — capture skipped"
+        return
+      end
 
       Current.outbound_source = purchase
       Current.user            = purchase.user

@@ -67,6 +67,12 @@
               tokens-confirming and polls /tokens/status by order_id. %>
           <%= render "tokens/paypal_buttons", flow: "modal", contest: @contest&.slug %>
         <% else %>
+          <%# Same gate as tokens/buy.html.erb: with the provider on "none"
+              (or paypal without creds) the Stripe endpoint refuses, so the
+              buttons must grey out instead of posting into a dead checkout.
+              Inert on the default deploy — provider "stripe" + key present
+              renders exactly as before (disabled: false). %>
+          <% stripe_on = Payments.stripe? && Rails.application.config.x.stripe_enabled %>
           <div class="space-y-3">
             <% StripePurchase.available_packs.each do |pack_id, pack| %>
               <%# Pack click advances to 'tokens-waiting' through the store's
@@ -79,10 +85,17 @@
                   pack:         pack,
                   extra_params: { contest: @contest&.slug },
                   target_blank: true,
+                  disabled:     !stripe_on,
                   on_click_js:  "$store.modals.advance({ step: 'tokens-waiting' })" %>
             <% end %>
           </div>
-          <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+          <p class="text-center text-xs text-muted mt-4">
+            <% if stripe_on %>
+              Secure checkout opens in a new tab.
+            <% else %>
+              Purchases are temporarily unavailable &mdash; check back shortly.
+            <% end %>
+          </p>
         <% end %>
       </div>
     </template>

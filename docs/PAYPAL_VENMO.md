@@ -24,10 +24,40 @@ pending). `PAYMENT.CAPTURE.DENIED` → failed. `PAYMENT.CAPTURE.REFUNDED` →
 refunded + account frozen. `CUSTOMER.DISPUTE.CREATED` → payment-risk flag +
 frozen (Stripe OPSEC-036 / B4 parity).
 
+Operational notes:
+
+- **Webhook redeliveries don't double-mint-race**: `Paypal::Fulfillment` only
+  re-enqueues a captured-but-unminted row once it's been stranded longer than
+  `STRANDED_AFTER` (5 min) — a redelivery landing while the winner's job is
+  still minting is a no-op, so the happy path never runs two concurrent jobs
+  racing the same source_refs.
+- **Frozen / risk-flagged accounts**: the client endpoints 403; the
+  `CHECKOUT.ORDER.APPROVED` fallback refuses to capture; and a
+  `PAYMENT.CAPTURE.COMPLETED` for a frozen/flagged account records the capture
+  (the money moved — forensics keep the trail) but does NOT mint —
+  `[tokens] paypal.mint_blocked` flags it for manual review. After
+  unfreezing, re-enqueue via console or a dashboard webhook resend (the
+  stranded-row branch picks it up).
+- **PENDING captures (eCheck / Venmo review holds)**: `paypal_capture` answers
+  `{status: "processing"}` and the UI shows a do-not-retry hold card — the
+  buyer HAS paid; the row stays `pending` until `PAYMENT.CAPTURE.COMPLETED`
+  clears the hold and mints (days for eCheck). Never treat it as a failure:
+  a "try again" retry creates a second order = a real double charge.
+- **`status=pending` rows accumulate by design**: a row is created at
+  button-click, BEFORE the buyer approves (for `Current.outbound_source`
+  attribution), so every cancelled popup / abandoned checkout leaves a
+  permanent pending row. Pending ≠ money owed — only `captured`/`minted`
+  rows have a PayPal capture behind them.
+
 ## Architecture (frontend)
 
 All UI is gated on `Payments.paypal_checkout?` (flag AND creds) — with the
-provider on `stripe`, every page renders byte-for-byte without PayPal output.
+provider on `stripe`, pages render without PayPal buttons/SDK output. One
+deliberate exception: `contests/_turf_totals_board.html.erb` ships its
+`paypal-order-captured` listener + the `pollTokenStatus(ref, refParam)`
+generalization on every provider (inert on stripe — the event is only ever
+dispatched from the flag-gated SDK partial), so an HTML diff against
+pre-PayPal main will flag contest pages even with the flag off.
 
 | Piece | File |
 |---|---|
@@ -80,13 +110,27 @@ heroku config:set -a turf-monster-mainnet \
   PAYPAL_CLIENT_ID=… \
   PAYPAL_CLIENT_SECRET=… \
   PAYPAL_WEBHOOK_ID=…
-# the actual switch — until this, everything above is inert:
+# the actual switch — until this, no buttons render and no NEW orders can be
+# created. (Note: from the moment PAYPAL_WEBHOOK_ID is set above, the webhook
+# endpoint will verify + ack deliveries — that's deliberate, so PayPal's
+# endpoint health check passes before the flip.)
 heroku config:set -a turf-monster-mainnet PAYMENT_PROVIDER=paypal
 ```
 
 Boot guards (initializer): when `PAYMENT_PROVIDER=paypal` in production,
 `PAYPAL_ENV` must be `live` and all three creds present or the app refuses to
-boot. Roll back instantly with `PAYMENT_PROVIDER=stripe` (or unset).
+boot.
+
+**Rollback semantics — read before flipping back.** `PAYMENT_PROVIDER=stripe`
+(or unset) stops **new orders only**: `paypal_order` 422s, the buttons stop
+rendering. `paypal_capture` and the webhook handlers deliberately stay live so
+the in-flight pipeline drains — orders the buyer already approved still
+capture + mint, and refunds/disputes keep processing. If the rollback is
+because **fulfillment itself is broken** (money moving through a bad path),
+the hard kill is removing the creds: unset `PAYPAL_CLIENT_ID` /
+`PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID` — capture calls then fail and
+webhook verification fails closed (400), and you reconcile stranded
+purchases manually afterwards.
 
 ## Post-flip smoke test
 
@@ -117,10 +161,19 @@ boot. Roll back instantly with `PAYMENT_PROVIDER=stripe` (or unset).
 
 ## Production guards summary
 
-- `Payments.paypal?` && creds present gate both token endpoints (else 422).
+- `Payments.paypal?` && creds present gate **order creation** (`paypal_order`,
+  else 422). `paypal_capture` + the webhook are deliberately NOT
+  provider-gated (rollback drains in-flight orders — see above); with the
+  flag never flipped, capture 404s anyway (no pending rows can exist) and the
+  webhook fails closed without `PAYPAL_WEBHOOK_ID`.
 - Webhook signature verified via PayPal's verify-webhook-signature API with
   the RAW request body (fails closed when `PAYPAL_WEBHOOK_ID` unset).
 - Sandbox events rejected in production (OPSEC-033 parity).
 - Amounts validated server-side against `StripePurchase::PACKS` — capture must
-  be `COMPLETED`, `USD`, exact pack amount, or no mint.
-- Rate limits: 10/min/IP on order+capture, 100/min/IP on the webhook.
+  be `COMPLETED`, `USD`, exact pack amount, or no mint (`PENDING` + exact
+  amount = processing hold, see operational notes).
+- Frozen / payment-risk-flagged accounts can't order, capture, or be minted
+  for — including via the webhook fallback (`Paypal::Fulfillment` gate).
+- Rate limits: 10/min/IP on order+capture, 100/min/IP on the webhook (the
+  routes are drawn `format: false` so a `.json` suffix can't sidestep the
+  exact-path throttle matchers).

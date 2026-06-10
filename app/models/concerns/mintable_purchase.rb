@@ -5,7 +5,16 @@
 module MintablePurchase
   extend ActiveSupport::Concern
 
+  # "refunded" is terminal (H8 sibling, review 2026-06): a refund webhook
+  # landing while the mint job is mid-flight must not be clobbered to
+  # "minted" — the refund is the authoritative forensics record. Persist the
+  # signatures (the on-chain mints DID happen) but keep the refunded status.
   def mark_minted!(signatures)
+    reload
+    if status == "refunded"
+      update!(mint_tx_signatures: signatures.to_json, minted_at: Time.current)
+      return
+    end
     update!(
       status: "minted",
       mint_tx_signatures: signatures.to_json,

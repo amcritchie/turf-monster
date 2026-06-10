@@ -23,6 +23,12 @@ class TokensController < ApplicationController
     unless current_user.solana_connected?
       return redirect_to tokens_buy_path, alert: "Connect a wallet first."
     end
+    # The PAYMENT_PROVIDER flag retired this endpoint when not on stripe —
+    # keep stale tabs / scripted clients off the blocked Stripe account
+    # (parity with paypal_order's paypal_checkout_enabled? gate).
+    unless Payments.stripe?
+      return redirect_to tokens_buy_path, alert: "Card checkout is currently disabled."
+    end
     unless Rails.application.config.x.stripe_enabled
       return redirect_to tokens_buy_path, alert: "Card checkout isn't configured yet. Set STRIPE_SECRET_KEY and restart."
     end
@@ -155,6 +161,13 @@ class TokensController < ApplicationController
     # a duplicate click) — report current status, never re-capture.
     return render json: { status: purchase.status } unless purchase.status == "pending"
 
+    # OPSEC-036: the flag can flip between order creation and capture (e.g. an
+    # operator console flag without a freeze) — re-check before the money
+    # moves, exactly as paypal_order/stripe_checkout gate at their entry.
+    if current_user.payment_risk_flag
+      return render json: { error: "Purchases are disabled on this account. Please contact support." }, status: :forbidden
+    end
+
     rescue_and_log(target: current_user) do
       Current.outbound_source = purchase
       response = Paypal::Client.new.capture_order(order_id)
@@ -168,6 +181,17 @@ class TokensController < ApplicationController
       })
 
       unless response["status"] == "COMPLETED" && purchase.capture_matches?(capture)
+        # eCheck / Venmo-review holds come back capture status PENDING with the
+        # buyer's money already initiated — NOT a failure. Treating it as one
+        # invited a "try again" retry that created a second order = a real
+        # double charge. Report a processing hold instead; the row stays
+        # pending so PAYMENT.CAPTURE.COMPLETED wins the CAS and mints when the
+        # hold clears (days for eCheck).
+        if purchase.capture_pending?(capture)
+          Rails.logger.warn "[tokens] paypal.capture_pending_hold purchase=#{purchase.id} order=#{order_id} " \
+                            "capture=#{capture['id']} — payment initiated, awaiting PAYMENT.CAPTURE.COMPLETED"
+          return render json: { status: "processing" }
+        end
         Rails.logger.warn "[tokens] paypal.capture_invalid purchase=#{purchase.id} order=#{order_id} " \
                           "order_status=#{response['status']} capture_status=#{capture&.dig('status')} " \
                           "amount=#{capture&.dig('amount', 'value')} expected=#{purchase.expected_amount_value}"
@@ -264,9 +288,13 @@ class TokensController < ApplicationController
 
   private
 
-  # PayPal endpoints are double-gated: the operator flag (PAYMENT_PROVIDER)
-  # AND configured credentials. Either off → the endpoints refuse, so this
-  # branch deploys inert until the operator flips the flag post-approval.
+  # Order CREATION is double-gated: the operator flag (PAYMENT_PROVIDER) AND
+  # configured credentials. Either off → paypal_order refuses, so this branch
+  # deploys inert until the operator flips the flag post-approval (no
+  # PaypalPurchase row can exist without it, so paypal_capture 404s too).
+  # paypal_capture and the webhook are deliberately NOT flag-gated: after a
+  # rollback to stripe, in-flight approved orders must still drain — see
+  # docs/PAYPAL_VENMO.md "Heroku flip".
   def paypal_checkout_enabled?
     Payments.paypal_checkout?
   end

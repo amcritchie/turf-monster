@@ -56,6 +56,18 @@ class PaypalPurchase < ApplicationRecord
       capture.dig("amount", "value") == expected_amount_value
   end
 
+  # eCheck-funded / risk-review captures come back status PENDING
+  # (status_details.reason ECHECK / PENDING_REVIEW): the buyer HAS paid, the
+  # money is in flight, and PAYMENT.CAPTURE.COMPLETED arrives when it clears.
+  # Same amount discipline as capture_matches? — a pending capture for the
+  # wrong amount/currency is NOT a hold we honor.
+  def capture_pending?(capture)
+    capture.present? &&
+      capture["status"] == "PENDING" &&
+      capture.dig("amount", "currency_code") == "USD" &&
+      capture.dig("amount", "value") == expected_amount_value
+  end
+
   # PayPal Orders v2 amounts are decimal strings ("49.00").
   def expected_amount_value
     format("%.2f", price_cents / 100.0)
@@ -68,5 +80,17 @@ class PaypalPurchase < ApplicationRecord
     # the row exists), so the slug is pure entropy. Doubles as the order's
     # invoice_id — see Paypal::Client#create_order.
     "paypal_#{SecureRandom.hex(6)}"
+  end
+
+  # NEUTRALIZE Sluggable's per-save re-derive (same trap Contest#set_slug
+  # documents): the engine's `before_save :set_slug` reassigns `slug =
+  # name_slug` on EVERY save, and name_slug here is fresh entropy each call —
+  # without this override the slug drifted on the very next update!
+  # (paypal_order's `update!(paypal_order_id:)`), so the invoice_id PayPal
+  # echoes back forever never matched the DB again, killing the webhook's
+  # invoice_id resolution tier and PayPal-invoice ↔ DB reconciliation.
+  # Set once at create, then immutable.
+  def set_slug
+    self.slug = name_slug if slug.blank?
   end
 end

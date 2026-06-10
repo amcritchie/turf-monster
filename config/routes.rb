@@ -285,8 +285,11 @@ Rails.application.routes.draw do
   # Entry tokens (web2 contest-entry currency)
   get  "tokens/buy",             to: "tokens#buy",             as: :tokens_buy
   post "tokens/stripe_checkout", to: "tokens#stripe_checkout", as: :tokens_stripe_checkout
-  post "tokens/paypal_order",    to: "tokens#paypal_order",    as: :tokens_paypal_order
-  post "tokens/paypal_capture",  to: "tokens#paypal_capture",  as: :tokens_paypal_capture
+  # format: false — the rack-attack throttles match these paths EXACTLY;
+  # without it, POST /tokens/paypal_order.json routes to the same action but
+  # skips the 10/min fee-bleed throttle (and 100/min on the webhook below).
+  post "tokens/paypal_order",    to: "tokens#paypal_order",    as: :tokens_paypal_order,   format: false
+  post "tokens/paypal_capture",  to: "tokens#paypal_capture",  as: :tokens_paypal_capture, format: false
   get  "tokens/processing",      to: "tokens#processing",      as: :tokens_processing
   get  "tokens/status",          to: "tokens#status",          as: :tokens_status
   # Lazarus audit #21: dev/test-only free-mint endpoint — not drawn in
@@ -298,7 +301,7 @@ Rails.application.routes.draw do
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"
-  post "webhooks/paypal", to: "webhooks/paypal#create"
+  post "webhooks/paypal", to: "webhooks/paypal#create", format: false
 
   post "add_funds", to: "users#add_funds"
 

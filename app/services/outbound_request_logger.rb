@@ -15,6 +15,7 @@ module OutboundRequestLogger
     private_key privatekey
     customer_email receipt_email email
     ssn tax_id
+    webhook_id transmission_sig
   ].freeze
   REDACTED = "[REDACTED]".freeze
   MAX_BODY_BYTES = 16_384
