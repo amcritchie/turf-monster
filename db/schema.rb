@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_09_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -40,6 +40,34 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_08_000003) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "cdp_ramp_transactions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "direction", null: false
+    t.string "partner_user_ref"
+    t.string "wallet_address", null: false
+    t.string "wallet_mode", null: false
+    t.string "status", default: "initiated", null: false
+    t.string "cdp_status"
+    t.string "coinbase_transaction_id"
+    t.string "tx_hash"
+    t.string "to_address"
+    t.decimal "sell_amount_value", precision: 30, scale: 12
+    t.string "sell_amount_currency"
+    t.string "asset", default: "USDC", null: false
+    t.string "network", default: "solana", null: false
+    t.string "payment_method"
+    t.jsonb "raw_payload", default: {}
+    t.datetime "returned_at"
+    t.datetime "cashout_deadline_at"
+    t.string "sent_signature"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["coinbase_transaction_id"], name: "index_cdp_ramp_transactions_on_coinbase_transaction_id", unique: true
+    t.index ["partner_user_ref"], name: "index_cdp_ramp_transactions_on_partner_user_ref", unique: true
+    t.index ["status", "direction"], name: "index_cdp_ramp_transactions_on_status_and_direction"
+    t.index ["user_id"], name: "index_cdp_ramp_transactions_on_user_id"
   end
 
   create_table "contests", force: :cascade do |t|
