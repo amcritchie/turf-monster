@@ -51,6 +51,18 @@ class TokensFundingModesTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "STRIPE_CHECKOUT_DISABLED flips stripe_enabled off without unsetting the key" do
+    original_key = ENV["STRIPE_SECRET_KEY"]
+    ENV["STRIPE_SECRET_KEY"] = "sk_test_x" if original_key.blank?
+    ENV["STRIPE_CHECKOUT_DISABLED"] = "true"
+    load Rails.root.join("config/initializers/stripe.rb")
+    refute Rails.application.config.x.stripe_enabled
+  ensure
+    ENV.delete("STRIPE_CHECKOUT_DISABLED")
+    original_key.blank? ? ENV.delete("STRIPE_SECRET_KEY") : ENV["STRIPE_SECRET_KEY"] = original_key
+    load Rails.root.join("config/initializers/stripe.rb")
+  end
+
   test "/tokens/buy swaps dead packs for the CDP card when stripe is off and the ramp is on" do
     Rails.application.config.x.stripe_enabled = false
     with_cdp_ramp do
