@@ -23,14 +23,14 @@ class TokensController < ApplicationController
     unless current_user.solana_connected?
       return redirect_to tokens_buy_path, alert: "Connect a wallet first."
     end
-    # The PAYMENT_PROVIDER flag retired this endpoint when not on stripe —
-    # keep stale tabs / scripted clients off the blocked Stripe account
-    # (parity with paypal_order's paypal_checkout_enabled? gate).
-    unless Payments.stripe?
-      return redirect_to tokens_buy_path, alert: "Card checkout is currently disabled."
-    end
+    # Distinct messages, one truth: missing/kill-switched Stripe config reads
+    # as unconfigured; a different active provider reads as disabled. Both
+    # keep stale tabs / scripted clients off the blocked Stripe account.
     unless Rails.application.config.x.stripe_enabled
       return redirect_to tokens_buy_path, alert: "Card checkout isn't configured yet. Set STRIPE_SECRET_KEY and restart."
+    end
+    unless Payments.stripe?
+      return redirect_to tokens_buy_path, alert: "Card checkout is currently disabled."
     end
     # OPSEC-036: a prior chargeback flagged this account — block further card
     # purchases so a stolen-card buyer can't keep racking up disputes.
