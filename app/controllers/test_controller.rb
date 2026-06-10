@@ -253,7 +253,9 @@ class TestController < ApplicationController
       picks = ids & contest.matchups.where(id: ids).pluck(:id)
       return_to = "#{return_to}?picks=#{picks.join(',')}" if picks.present?
     end
-    token = MagicLink.generate(email: params[:email].to_s, return_to: return_to)
+    # age_attested: the e2e login backdoor models a user who checked the
+    # legal-age box on the auth card (consume refuses NEW accounts without it).
+    token = MagicLink.generate(email: params[:email].to_s, return_to: return_to, age_attested: true)
     render json: { ok: true, token: token, url: magic_link_path(token: token) }
   end
 

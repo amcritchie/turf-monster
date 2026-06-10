@@ -95,7 +95,12 @@
          p.resent = false;
          p.submitting = 'magic-link';
          try {
-           var data = await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks });
+           // ageAttested: true is safe by construction — this step is only
+           // reachable after the original request passed the legal-age gate
+           // (auth card + auth modal both block the first send without it).
+           // Without it a brand-new email resend would mint an unattested
+           // link row, and consume would refuse the account.
+           var data = await window.postMagicLink(p.sentEmail, { contest: p.sentContest, picks: p.sentPicks, ageAttested: true });
            if (data && data.success) {
              // Swap to the dedicated success step — the directional slide IS
              // the visual confirmation. Re-advancing on each resend re-runs the

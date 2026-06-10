@@ -12,7 +12,10 @@
 %>
 <div>
   <label class="flex items-start gap-2.5 text-xs text-secondary leading-snug cursor-pointer select-none">
+    <%# data-age-attestation is the stable hook for Playwright (e2e/helpers.js
+        attestAge) — keep it if the markup changes. %>
     <input type="checkbox" x-model="<%= x_model %>" @change="<%= error_model %> = false"
+           data-age-attestation
            class="mt-0.5 w-4 h-4 shrink-0 rounded accent-primary cursor-pointer">
     <span>
       I confirm I am of legal age to participate in skill-based contests in my
