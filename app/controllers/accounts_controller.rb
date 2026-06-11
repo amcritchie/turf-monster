@@ -24,10 +24,12 @@ class AccountsController < ApplicationController
 
   def show
     @user = current_user
-    # All on-chain data (@wallet_balances, @user_seeds, the User's
-    # @entry_token_balance memo, Current.vault_state) is prefetched by
-    # ApplicationController#preload_navbar_solana_data — no per-action fetch
-    # needed here.
+    # No server-side balance fetch: the render path is RPC-free by design
+    # (perform_solana_preload no longer pulls wallet balances), so
+    # @wallet_balances is nil here and the balance tiles render "—"
+    # placeholders. The walletRefresh Alpine component on the page calls
+    # refreshSession() (-> #session_refresh) on load + on the Refresh Wallet
+    # button, which hydrates the tiles, navbar, and $store.session from chain.
     #
     # Referral widget — share URL points at the canonical main contest
     # (admin-set via /admin/dashboard). SeasonConfig.main_contest masks

@@ -221,6 +221,35 @@
     };
   };
 
+  // === walletRefresh — /account "Refresh Wallet" + on-load hydrate. =======
+  //     refresh() runs window.refreshSession(), which pulls every on-chain
+  //     value (USDC/USDT/SOL/tokens/seeds) from /account/session_refresh in
+  //     one call and fans it out to ALL subscribed UI: the data-wallet-tile
+  //     spans, the navbar balance pill + 🎟️ badge, $store.session cents, and
+  //     the seeds bar/tile (navbar-seeds-update). init() fires one refresh on
+  //     page load so the server's cache-first "—" placeholders converge to
+  //     chain truth without a click. window.refreshSession is an importmap
+  //     module export and Alpine inits BEFORE modules load, so init polls
+  //     briefly until it's attached.
+  window.walletRefresh = function () {
+    return {
+      refreshing: false,
+      init() {
+        var self = this, tries = 0;
+        (function wait() {
+          if (window.refreshSession) { self.refresh(); return; }
+          if (++tries < 40) setTimeout(wait, 150);
+        })();
+      },
+      refresh() {
+        if (this.refreshing || !window.refreshSession) return;
+        var self = this;
+        this.refreshing = true;
+        window.refreshSession().finally(function () { self.refreshing = false; });
+      }
+    };
+  };
+
   // === entryTokenBadge — navbar 🎟️ pill + popover ==================
   window.entryTokenBadge = function (opts) {
     opts = opts || {};

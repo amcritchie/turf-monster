@@ -249,6 +249,26 @@ export function refreshSession() {
         }));
       } catch (_) {}
 
+      // Wallet tiles — generic fanout so any page can subscribe a balance
+      // readout to this refresh by tagging an element with
+      // data-wallet-tile="usdc|usdt|sol|tokens" (/account's Identities row).
+      // null (flaked RPC) leaves the prior render in place — server-side
+      // "—" or the last live value — never overwrites with 0.
+      try {
+        var tiles = {
+          usdc:   data.usdc   != null ? '$' + parseFloat(data.usdc).toFixed(2) : null,
+          usdt:   data.usdt   != null ? parseFloat(data.usdt).toFixed(2)       : null,
+          sol:    data.sol    != null ? parseFloat(data.sol).toFixed(2)        : null,
+          tokens: data.tokens != null ? String(parseInt(data.tokens, 10) || 0) : null
+        };
+        Object.keys(tiles).forEach(function(key) {
+          if (tiles[key] == null) return;
+          document.querySelectorAll('[data-wallet-tile="' + key + '"]').forEach(function(el) {
+            el.textContent = tiles[key];
+          });
+        });
+      } catch (_) {}
+
       return data;
     })
     .catch(function() { return null; });
