@@ -309,11 +309,16 @@ class AdminController < ApplicationController
 
     hydrate = fetch_navbar_hydrate(current_user)
     seeds   = hydrate[:seeds]
-    balance = hydrate[:usdc] || 0
 
     render json: {
-      balance:     balance,                 # back-compat (refreshBalance reads this)
-      usdc:        balance,
+      # Combined USDC + USDT (the navbar pill shows total spendable dollars —
+      # see display_balance). null when BOTH reads flaked, so the client
+      # leaves the prior pill value instead of painting a false $0.
+      balance:     combined_balance(hydrate[:usdc], hydrate[:usdt]),
+      # Per-currency values — feed $store.session.usdcCents/usdtCents and the
+      # /account data-wallet-tile spans. null = unknown (RPC flake), the
+      # client null-guards each field.
+      usdc:        hydrate[:usdc],
       usdt:        hydrate[:usdt],
       seeds:       seeds,
       level:       (User.level_for(seeds) if seeds),

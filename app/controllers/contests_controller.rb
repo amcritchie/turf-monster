@@ -323,7 +323,10 @@ class ContestsController < ApplicationController
 
       @contest.update!(
         onchain_contest_id: derived_pda_b58,
-        onchain_tx_signature: params[:tx_signature]
+        onchain_tx_signature: params[:tx_signature],
+        # prepare_onchain_contest built the TX from onchain_params — the USDT
+        # fee (entry_fee_by_currency slot 1) is funded on-chain.
+        accepts_usdt: true
       )
 
       invalidate_usdc_cache if logged_in?
@@ -650,6 +653,24 @@ class ContestsController < ApplicationController
     # entry flow.
     return render json: { success: false, error: "Phantom session required" }, status: :forbidden unless onchain_session?
 
+    # Currency selection (2026-06-10): "usdc" (default, currency_idx 0) or
+    # "usdt" (currency_idx 1). Strict allow-list — anything else is a client
+    # bug. USDT only works on contests whose on-chain entry_fee_by_currency
+    # funded slot 1 at creation (accepts_usdt) — older contests have an
+    # immutable zero there and the program would reject with EntryFeeNotSet
+    # (6027), so refuse up front with a clear error instead.
+    currency = (params[:currency].presence || "usdc").to_s.downcase
+    unless %w[usdc usdt].include?(currency)
+      return render json: { success: false, error: "Unsupported currency #{params[:currency].to_s.inspect} — use \"usdc\" or \"usdt\"." },
+                    status: :unprocessable_entity
+    end
+    if currency == "usdt" && !@contest.accepts_usdt?
+      return render json: { success: false, error: "This contest doesn't accept USDT — enter with USDC instead." },
+                    status: :unprocessable_entity
+    end
+    currency_idx = currency == "usdt" ? 1 : 0
+    entry_mint   = currency_idx == 1 ? Solana::Config::USDT_MINT : Solana::Config::USDC_MINT
+
     rescue_and_log(target: entry, parent: @contest) do
       raise "Contest is not onchain" unless @contest.onchain?
       raise "Phantom wallet required" unless current_user.phantom_wallet?
@@ -675,18 +696,20 @@ class ContestsController < ApplicationController
       # v0.16: username is required at PDA creation (validate_username on chain
       # enforces >= 3 chars). Pass current_user.username through.
       vault.ensure_user_account(current_user.web3_solana_address, username: current_user.username)
-      # v0.16: user's USDC ATA must exist before they can transfer from it.
-      # init_if_needed isn't used in the instruction so we create it here.
-      vault.ensure_ata(current_user.web3_solana_address, mint: Solana::Config::USDC_MINT)
+      # v0.16: the user's ATA for the SELECTED currency must exist before they
+      # can transfer from it. init_if_needed isn't used in the instruction so
+      # we create it here (USDC for currency_idx 0, USDT for 1).
+      vault.ensure_ata(current_user.web3_solana_address, mint: entry_mint)
 
       # v0.16 collapsed `enter_contest` + `enter_contest_direct` into a
-      # single unified `enter_contest` instruction. currency_idx 0 = USDC
-      # (only currency surfaced in the UI for Phase 1).
+      # single unified `enter_contest` instruction. currency_idx selects the
+      # vault's accepted_currencies slot (0 = USDC, 1 = USDT) — validated
+      # against @contest.accepts_usdt above.
       result = vault.build_enter_contest(
         current_user.web3_solana_address,
         @contest.slug,
         entry.entry_number,
-        currency_idx: 0,
+        currency_idx: currency_idx,
         season_id: @contest.season_id
       )
 
@@ -702,7 +725,7 @@ class ContestsController < ApplicationController
         status: "pending",
         target: entry,
         initiator_address: current_user.web3_solana_address,
-        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug, currency_idx: 0 }.to_json
+        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug, currency_idx: currency_idx }.to_json
       )
 
       render json: {
@@ -1479,7 +1502,10 @@ class ContestsController < ApplicationController
       status:                     :open,
       user:                       current_user,
       onchain_contest_id:         derived_pda_b58,
-      onchain_tx_signature:       tx_signature
+      onchain_tx_signature:       tx_signature,
+      # The create_contest TX just verified was built from onchain_params,
+      # which funds entry_fee_by_currency slot 1 (USDT) alongside slot 0.
+      accepts_usdt:               true
     ).tap { |c| c.skip_onchain_callback = true }
   end
 
