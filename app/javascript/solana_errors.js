@@ -48,6 +48,18 @@ window.parseSolanaError = function(msg) {
   if (/0x177b/.test(msg)) return 'Account is already migrated.';
   if (/0x177c/.test(msg)) return 'Invalid account data.';
 
+  // Username validation (6020-6022, turf-vault v0.15.1 set_username.rs).
+  // Server-side mirror: Solana::ErrorInterpreter (same messages).
+  if (/0x1784/.test(msg) || /UsernameReserved/i.test(msg)) {
+    return "Your username can't be registered on-chain — it starts with a reserved word. Change it on your account page (/account) and try again.";
+  }
+  if (/0x1785/.test(msg) || /UsernameInvalidChars/i.test(msg)) {
+    return "Your username contains unsupported characters and can't be registered on-chain. Change it on your account page (/account) and try again.";
+  }
+  if (/0x1786/.test(msg) || /UsernameTooShort/i.test(msg)) {
+    return "Your username is too short to register on-chain (3 characters minimum). Change it on your account page (/account) and try again.";
+  }
+
   // Rails / database errors
   if (/duplicate key|UniqueViolation|already exists/i.test(msg)) {
     return 'A record with this name already exists. Try a different name.';
