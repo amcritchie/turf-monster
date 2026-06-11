@@ -1,4 +1,4 @@
 one:
   name: Test Slate
   slug: test-slate
-  starts_at: 2026-06-11 16:00:00
+  starts_at: <%= 30.days.from_now.utc.iso8601 %> # dynamic — a literal date here became a calendar time bomb on 2026-06-11
