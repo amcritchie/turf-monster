@@ -1185,11 +1185,21 @@ module Solana
         season_pda:         s_pda
       )
 
-      # Anchor the entry tx on the durable nonce when one is configured (opt-in
-      # via SOLANA_DURABLE_NONCE_PUBKEY) so it survives a slow/flagged-dApp
-      # signing window (the mainnet BlockhashNotFound class of failure). Unset =
-      # recent blockhash, unchanged.
-      dn = durable_nonce_config
+      # ENTRY TXS DO NOT USE THE DURABLE NONCE (mainnet incident 2026-06-11).
+      # Two reasons, both fatal:
+      #   1. A durable-nonce tx is only recognized when advanceNonceAccount is
+      #      instruction 0 — and Phantom INJECTS Lighthouse guard instructions
+      #      at signing time at positions we don't control. When the injection
+      #      lands before the advance, validators treat the nonce value as a
+      #      plain (unknown) blockhash and reject with BlockhashNotFound at
+      #      sendTransaction preflight.
+      #   2. One nonce account anchors ONE in-flight tx at a time — a shared
+      #      operator nonce under concurrent user entries is a contention bug.
+      # Entries re-prepare seconds before signing, so a fresh recent blockhash
+      # (~60-90s validity) comfortably covers the Phantom signing window. The
+      # durable nonce remains for OPERATOR flows (lock-time etc. via
+      # build_partial_signed), where a slow human cosign is the actual problem.
+      dn = nil
 
       serialized =
         if admin_signs
