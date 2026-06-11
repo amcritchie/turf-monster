@@ -1967,7 +1967,15 @@ module Solana
 
       # Server-side pre-flight. sig_verify:false — both sigs are present now but we
       # don't need the RPC to re-verify; we want program-error + log surfacing.
-      sim = client.simulate_transaction(patched_b64, sig_verify: false)
+      # replace_recent_blockhash:true — entry txs are anchored on the DURABLE
+      # NONCE when SOLANA_DURABLE_NONCE_PUBKEY is set (prod is), and a nonce
+      # value is never in the recent-blockhash queue, so a default simulation
+      # rejects every nonce-anchored tx with "BlockhashNotFound" (prod,
+      # 2026-06-11; devnet has no nonce configured, so staging never saw it).
+      # The RPC requires sigVerify=false alongside replaceRecentBlockhash —
+      # already our setting; the real broadcast still enforces signatures.
+      sim = client.simulate_transaction(patched_b64, sig_verify: false,
+                                        replace_recent_blockhash: true)
       if sim && sim["err"]
         logs = Array(sim["logs"]).last(6).join("\n")
         raise "Entry pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
