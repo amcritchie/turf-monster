@@ -125,7 +125,7 @@ Extracted to `_geo_badge.html.erb` partial — shared by desktop nav and mobile 
 - **Row 1 (Div 1)**: balance, gear + theme toggle morph (left of username, `hidden md:flex`), username. On mobile, gear + morph shown in sub-navbar instead. `padding-right: 6px` via inline style.
 - **Row 2 (Div 2)**: 5-section seeds progress bar via `render "components/seeds_bar", compact: true` (turf-vault v0.9.0+ refactor — replaced the old `.seeds-bar`/`.seeds-fill`/`.seeds-text` classes). The partial uses the `.seeds-bar-continuous` class + CSS-registered `--bar-progress` custom property so all 5 segment widths interpolate from a single transition (one ease curve, not 5 chained). Per-section shimmer overlays positioned in bar coordinates (`left: -(i-1)*100%, width: 500%`) keep the wave continuous across segments. Wallet address (left) + Level X (right) overlaid via two-layer clip-path text technique (muted underneath, white on top revealed by `clip-path: inset(0 (100-displaySeeds)% 0 0)`). Level-up: `bar → 100% → bump level (.nav-level-pop) → drain → refill`. Listens for `navbar-replay-level` and `navbar-seeds-update` window events.
 - **Avatar**: `_avatar.html.erb` partial (size "nav" = `w-8 h-8`), outside the two-row block. Links to `/account`.
-- Balance shows whole dollars only (no cents) — JS `refreshBalance` uses `Math.floor`, ERB uses `.to_i`.
+- Balance shows whole dollars only (no cents) — JS hydrate (`refreshSession`/`refreshBalance`) uses `Math.floor`, ERB uses `.to_i`. The pill is **USDC + USDT combined** (`display_balance`); per-currency readouts live on `/account`'s `data-wallet-tile` tiles. The link hides while the cache is cold ("loading") and when the combined balance is $0 with free-entry tokens present (the 🎟️ badge covers that state).
 - Username and balance link to `/account` and `/wallet` respectively. Both use `transition-all duration-300` for smooth scroll-responsive font-size changes.
 - **Username overflow fade**: `.username-cap` class sets responsive `max-width` (5rem tiny, 6rem small, 7rem desktop). When text overflows, Alpine applies a CSS `mask-image` gradient to fade the trailing edge. Overflow is recalculated when the navbar review page's username input changes.
 - User nav column has `pl-0 pr-4 md:px-4` — no left padding on mobile.
@@ -143,7 +143,7 @@ Extracted to `_geo_badge.html.erb` partial — shared by desktop nav and mobile 
 
 **Global JS** (in engine `_head.html.erb`): `showNavSpinner()` records `Date.now()`, `hideNavSpinner()` calculates remaining time from the 2.5s minimum and uses `setTimeout` to delay the hide. Both target `.nav-toggle-icon` and `.nav-spinner-icon` class elements.
 
-**Usage**: Gear dropdown "Refresh Balance" calls `showNavSpinner(); refreshBalance().finally(function() { hideNavSpinner(); })`. Auto-refresh on devnet uses the same pattern.
+**Usage**: Gear dropdown "Refresh Balance" calls `showNavSpinner(); refreshSession().finally(function() { hideNavSpinner(); })` (refreshSession is the full navbar hydrate — balance + tokens + seeds + wallet tiles). Auto-refresh on devnet uses the same pattern.
 
 ## Leaderboard (Contest Show)
 Selection badges are fixed-width (`w-28`), sorted by game kickoff time, showing turf score (e.g., `x3`) before game completes and points (goals x turf score) after. Badges float right with score rightmost (`min-width: 4.5rem`). Non-integer values show decimal portion in smaller font. Payout label (`$40.00`) appears on left (after player name) only before settling. Admin payout button says "Payout $X". After settling — paid rows get primary ring, divider line after last paid position, unpaid rows dimmed. Rank column shows actual rank (from entry.rank) when settled.
@@ -244,7 +244,7 @@ Entry tokens are on-chain `EntryTokenAccount` PDAs minted via Stripe Checkout. T
 
 **Job idempotency**: `TokenPurchaseJob` short-circuits if `status == "minted"` (already done). On retry it calculates `already_minted` from the persisted signature count and loops from there — exactly-once per token even with mid-job crashes.
 
-**Navbar badge**: `display_balance` helper checks `user.entry_token_balance`. When USDC is 0 but tokens > 0, the nav shows "🎟 N" (token count) instead of "$X". Flags that the user has entry-currency but no spending USDC.
+**Navbar badge**: free-entry tokens are surfaced by the 🎟️ badge in `_user_nav` (`[data-free-entry-badge]`, count in `data-token-count`, toggled by `updateNavTokens`). When the combined USDC+USDT balance is $0 AND the user has tokens, the `$X` balance link HIDES entirely (`_navbar.html.erb` `hide_balance` rule, re-applied live by `refreshSession`/`refreshBalance`) — the badge alone signals the next-step affordance; there is no token-count-in-place-of-dollars display anymore.
 
 ## $store.session — wallet-mode pattern
 
