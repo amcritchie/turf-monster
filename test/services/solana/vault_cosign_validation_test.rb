@@ -73,6 +73,38 @@ class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
     end
   end
 
+  test "a Phantom-injected Lighthouse assertion alongside enter_contest passes" do
+    vault = Solana::Vault.new(client: fake_client)
+    admin = Solana::Keypair.admin
+    entry_pda_bytes = vault.entry_pda(SLUG, WALLET, 0).first
+
+    # Mimic Phantom transaction protection on mainnet: the tx we prepared
+    # (enter_contest) PLUS a Lighthouse post-state assertion injected at sign
+    # time. Without the allowlist case this rejected with disallowed_program
+    # and blocked every protected Phantom entry (prod, 2026-06-11).
+    tx = Solana::Transaction.new
+    tx.set_recent_blockhash(Solana::Keypair.generate.to_base58)
+    tx.add_signer(admin)
+    accounts = Array.new(Solana::Vault::ENTER_CONTEST_ENTRY_PDA_POSITION) do
+      { pubkey: Solana::Keypair.generate.public_key_bytes, is_signer: false, is_writable: false }
+    end
+    accounts << { pubkey: entry_pda_bytes, is_signer: false, is_writable: true }
+    tx.add_instruction(
+      program_id: Solana::Keypair.decode_base58(Solana::Config::PROGRAM_ID),
+      accounts: accounts,
+      data: Solana::Transaction.anchor_discriminator("enter_contest") + ("\x00".b * 8)
+    )
+    tx.add_instruction(
+      program_id: Solana::Vault::LIGHTHOUSE_PROGRAM_ID,
+      accounts: [{ pubkey: Solana::Keypair.decode_base58(WALLET), is_signer: false, is_writable: false }],
+      data: "\x02\x00\x01".b # opaque assertion payload — contents are not inspected
+    )
+
+    assert vault.assert_entry_cosign_safe!(tx.serialize_base64,
+                                           entry: entry_for(entry_number: 0),
+                                           wallet_address: WALLET)
+  end
+
   # --- malicious / mismatched wires REJECT ------------------------------------
 
   test "admin-fee-payer SystemProgram.transfer is rejected (the C1 attack)" do

@@ -32,6 +32,15 @@ module Solana
     # ComputeBudget program id (deterministic).
     COMPUTE_BUDGET_PROGRAM_ID = Keypair.decode_base58("ComputeBudget111111111111111111111111111111")
 
+    # Lighthouse — Phantom's transaction-protection program. On MAINNET (not
+    # devnet, which is why staging never sees it) Phantom may INJECT Lighthouse
+    # assertion instructions into the tx at signing time. Lighthouse
+    # instructions are pure post-state assertions: they can only make the tx
+    # FAIL, never move funds or delegate authority, so allowing them preserves
+    # the C1 cosign-safety model. Without this every protected Phantom signer
+    # is cosign-rejected with "disallowed_program" (hit in prod 2026-06-11).
+    LIGHTHOUSE_PROGRAM_ID = Keypair.decode_base58("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95")
+
     # Priority fee for the Phantom-signed partial TXs (create_contest,
     # enter_contest, set_contest_lock_time/conclusion_time, cancel_contest —
     # everything that routes through `build_partial_signed`).
@@ -1889,6 +1898,7 @@ module Solana
       turf_vault       = @program_id.b
       system_program   = Transaction::SYSTEM_PROGRAM_ID.b   # 32 zero bytes
       compute_budget   = COMPUTE_BUDGET_PROGRAM_ID.b
+      lighthouse       = LIGHTHOUSE_PROGRAM_ID.b
       dn               = durable_nonce_config
       configured_nonce = dn && Keypair.decode_base58(dn.fetch(:pubkey)).b
 
@@ -1930,8 +1940,13 @@ module Solana
           end
         when compute_budget
           # (4) Priority-fee / CU-limit hints — allowed, carry no authority risk.
+        when lighthouse
+          # (5) Phantom-injected Lighthouse protection assertions — allowed.
+          # Pure post-state asserts (the worst they can do is fail the tx);
+          # they cannot transfer funds or grant authority, so they pose no
+          # risk to the admin cosign. See LIGHTHOUSE_PROGRAM_ID.
         else
-          # (5) Anything else — reject.
+          # (6) Anything else — reject.
           cosign_reject!(entry, wallet_address, "disallowed_program: ix #{i} program=#{b58(program_id)}")
         end
       end
