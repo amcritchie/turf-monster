@@ -89,6 +89,26 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
     end
   end
 
+  test "username codes 6020-6022 set log:true with a friendly /account message" do
+    [
+      ["0x1784", /reserved word/i],             # 6020 UsernameReserved
+      ["0x1785", /unsupported characters/i],    # 6021 UsernameInvalidChars
+      ["0x1786", /too short/i]                  # 6022 UsernameTooShort
+    ].each do |code, msg_pattern|
+      r = interp("custom program error: #{code}")
+      assert_nil r[:blocker], "#{code} should not have a blocker"
+      assert r[:log], "#{code} should set log:true (Rails mirror drift signal)"
+      assert_match msg_pattern, r[:message], "#{code} message: #{r[:message]}"
+      assert_match %r{/account}, r[:message], "#{code} should point the user at /account"
+    end
+  end
+
+  test "username codes match decimal and Anchor-name forms too" do
+    assert_match(/reserved word/i,          interp("AnchorError ... Error Code: UsernameReserved. Error Number: 6020.")[:message])
+    assert_match(/unsupported characters/i, interp("Error: UsernameInvalidChars")[:message])
+    assert_match(/too short/i,              interp("custom program error 6022")[:message])
+  end
+
   test "unknown errors pass through the message with no blocker" do
     r = interp("Something unrecognized")
     assert_equal "Something unrecognized", r[:message]
