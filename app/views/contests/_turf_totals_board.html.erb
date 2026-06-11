@@ -387,8 +387,12 @@ window.selectionBoard = function() {
       // contest — i.e. they signed an entry TX last session, refreshed
       // mid-flight, and we need to either auto-promote (TX landed) or
       // release (TX failed) the stranded entry.
+      // Capture `this` HERE — the earlier `var self = this` lives inside the
+      // saved-picks restore branch, so with nothing to restore `self` is
+      // hoisted-but-undefined and this timeout threw (prod 2026-06-11).
       if (cfg.pendingRecoveryPtxSlug) {
-        setTimeout(function () { self.recoverPendingEntry(cfg.pendingRecoveryPtxSlug); }, 200);
+        var board = this;
+        setTimeout(function () { board.recoverPendingEntry(cfg.pendingRecoveryPtxSlug); }, 200);
       }
     },
 
