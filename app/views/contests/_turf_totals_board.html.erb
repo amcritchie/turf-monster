@@ -82,6 +82,7 @@
   contestSlug: @contest&.slug,
   entryFeeCents: @contest.entry_fee_cents || 0,
   contestOnchain: @contest.onchain?,
+  acceptsUsdt: @contest.accepts_usdt?,
   contestName: @contest.name,
   picksRequired: @contest.picks_required,
   firstMatchupIds: game_pairs.first(2).flatten.map { |m| m.id.to_s },
@@ -125,6 +126,10 @@ window.selectionBoard = function() {
     entryFeeCents: cfg.entryFeeCents,
     userEmail: cfg.userEmail || '',
     contestOnchain: cfg.contestOnchain,
+    // True iff this contest's on-chain entry_fee_by_currency funded slot 1
+    // (USDT) at creation — pre-2026-06-10 contests are USDC-only forever
+    // (the fee array is immutable after create_contest).
+    acceptsUsdt: !!cfg.acceptsUsdt,
     contestName: cfg.contestName,
     picksRequired: cfg.picksRequired,
     sortMode: 'game',
@@ -972,7 +977,7 @@ window.selectionBoard = function() {
         await new Promise(function (resolve) { setTimeout(resolve, 25); });
       }
       var blocker = (typeof window.eligibilityBlocker === 'function')
-        ? window.eligibilityBlocker(sess, this.entryFeeCents)
+        ? window.eligibilityBlocker(sess, this.entryFeeCents, { acceptsUsdt: this.acceptsUsdt })
         : null;
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
@@ -1061,13 +1066,28 @@ window.selectionBoard = function() {
       // 98% case (out of tokens, empty wallet) before the user finishes the
       // hold. The server-side enter still validates as the source of truth
       // for the 2% where running state is stale.
-      var blocker = window.eligibilityBlocker(Alpine.store('session'), this.entryFeeCents);
+      var blocker = window.eligibilityBlocker(Alpine.store('session'), this.entryFeeCents, { acceptsUsdt: this.acceptsUsdt });
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
         return false;
       }
 
       return true;
+    },
+
+    // Which currency the on-chain entry should spend, from live $store.session
+    // cents: USDC when it covers the fee, else USDT — but USDT only on
+    // contests that funded entry_fee_by_currency slot 1 (acceptsUsdt).
+    // Unknown balances (null — RPC flake) default to USDC; the server +
+    // program stay authoritative either way.
+    entryCurrency() {
+      if (!this.acceptsUsdt) return 'usdc';
+      var sess = Alpine.store('session');
+      if (!sess) return 'usdc';
+      var fee = this.entryFeeCents | 0;
+      if (sess.usdcCents != null && (sess.usdcCents | 0) >= fee) return 'usdc';
+      if (sess.usdtCents != null && (sess.usdtCents | 0) >= fee) return 'usdt';
+      return 'usdc';
     },
 
     async confirmEntry() {
@@ -1088,7 +1108,7 @@ window.selectionBoard = function() {
       // Mirror the hold-time eligibility check at submit-time — the user
       // may have entered via auto-submit (e.g. post-login cart replay) or
       // their balance / token count may have changed since the hold check.
-      var blocker = window.eligibilityBlocker(sess, this.entryFeeCents);
+      var blocker = window.eligibilityBlocker(sess, this.entryFeeCents, { acceptsUsdt: this.acceptsUsdt });
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
         return;
@@ -1129,16 +1149,21 @@ window.selectionBoard = function() {
           // integrity (current_user comes from the session cookie set at
           // login via the same SIWS flow). Removed 2026-05-24.
 
+          // Currency pick (2026-06-10): USDC when it covers the fee, else USDT
+          // on accepts-USDT contests. Decided once here so the prepare POST,
+          // the Phantom prompt copy, and the user's mental model all agree.
+          var entryCurrency = this.entryCurrency();
+
           // prepare_entry is just-in-time: the server rebuilds the UNSIGNED entry
           // TX (build_enter_contest → build_partial_unsigned) which RE-FETCHES
           // get_latest_blockhash AND prepends the ComputeBudget priority-fee +
           // CU-limit ixs. We call it immediately before signing so the blockhash
           // is maximally fresh (mirrors create's rebuild_create_tx).
-          console.log('[contest-entry] POST prepare_entry (fresh blockhash + priority fee)…');
+          console.log('[contest-entry] POST prepare_entry (fresh blockhash + priority fee), currency=' + entryCurrency);
           var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify({ currency: entryCurrency })
           });
           if (!prepareResp) return; // 401 — authedFetch surfaced the login modal
           var prepareData = await prepareResp.json();
@@ -1149,7 +1174,9 @@ window.selectionBoard = function() {
             throw new Error(prepareData.error || 'Failed to prepare entry');
           }
 
-          Alpine.store('solanaModal').show('Sign Transaction', 'Approve the USDC transfer in your wallet...');
+          // Surface WHICH currency this entry spends (small label — the modal
+          // copy is the natural spot; no redesign).
+          Alpine.store('solanaModal').show('Sign Transaction', 'Approve the ' + entryCurrency.toUpperCase() + ' transfer in your wallet...');
           var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
           var tx = solanaWeb3.Transaction.from(txBytes);
           try {
