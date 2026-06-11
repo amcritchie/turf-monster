@@ -932,20 +932,20 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
   # linkage for the four scope cases — present, wrong user, wrong contest,
   # non-pending status.
 
-  def stranded_ptx_for(user:, contest:, status: "pending")
+  def stranded_ptx_for(user:, contest:, status: "pending", tx_signature: nil)
     entry = contest.entries.find_or_create_by!(user: user, status: :cart)
     PendingTransaction.create!(
       tx_type: "enter_contest", serialized_tx: "stx",
-      status: status, target: entry,
+      status: status, target: entry, tx_signature: tx_signature,
       initiator_address: user.web3_solana_address
     )
   end
 
-  test "contest show exposes pendingRecoveryPtxSlug when the current user has a pending PT here" do
+  test "contest show exposes pendingRecoveryPtxSlug for a BROADCAST (signed) pending PT here" do
     @user.update!(web3_solana_address: "Web3Show#{SecureRandom.hex(4)}")
     @contest.update!(onchain_contest_id: "onchain_show")
     log_in_as_onchain(@user)
-    ptx = stranded_ptx_for(user: @user, contest: @contest)
+    ptx = stranded_ptx_for(user: @user, contest: @contest, tx_signature: "sig-broadcast")
 
     get contest_path(@contest)
     assert_response :success
@@ -959,7 +959,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     other.update!(web3_solana_address: "Web3Theirs#{SecureRandom.hex(4)}")
     @contest.update!(onchain_contest_id: "onchain_x")
     log_in_as_onchain(@user)
-    stranded_ptx_for(user: other, contest: @contest)
+    stranded_ptx_for(user: other, contest: @contest, tx_signature: "sig-theirs")
 
     get contest_path(@contest)
     assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
@@ -974,7 +974,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
       status: :open, onchain_contest_id: "onchain_b"
     )
     log_in_as_onchain(@user)
-    stranded_ptx_for(user: @user, contest: other_contest)
+    stranded_ptx_for(user: @user, contest: other_contest, tx_signature: "sig-elsewhere")
 
     get contest_path(@contest)
     assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
@@ -991,6 +991,46 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     get contest_path(@contest)
     assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
                  "only pending/submitted PTs are eligible for client-side recovery")
+  end
+
+  # --- broadcast-only recovery policy (operator call, 2026-06-11) ---
+  # "If it fails, it fails": only a PT that actually broadcast (carries a
+  # tx_signature — real money may have moved) triggers the recovery modal.
+  # Never-broadcast PTs surface nothing; stale ones are quietly retired.
+
+  test "a signatureless pending PT is NOT surfaced for recovery (nothing was broadcast)" do
+    @user.update!(web3_solana_address: "Web3NoSig#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_nosig")
+    log_in_as_onchain(@user)
+    stranded_ptx_for(user: @user, contest: @contest) # no tx_signature
+
+    get contest_path(@contest)
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
+                 "a PT that never broadcast must not trigger the recovery modal")
+  end
+
+  test "a STALE signatureless pending PT is quietly retired on page load" do
+    @user.update!(web3_solana_address: "Web3Stale#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_stale")
+    log_in_as_onchain(@user)
+    ptx = stranded_ptx_for(user: @user, contest: @contest)
+    ptx.update_columns(created_at: 11.minutes.ago)
+
+    get contest_path(@contest)
+    assert_equal "expired", ptx.reload.status,
+                 "stale never-broadcast PTs are retired, not recovered"
+  end
+
+  test "a FRESH signatureless pending PT is left alone (a tab may be mid-confirm)" do
+    @user.update!(web3_solana_address: "Web3Fresh#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_fresh")
+    log_in_as_onchain(@user)
+    ptx = stranded_ptx_for(user: @user, contest: @contest)
+
+    get contest_path(@contest)
+    assert_equal "pending", ptx.reload.status,
+                 "a <10min signatureless PT must not be retired out from under a mid-confirm tab"
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body)
   end
 
   # --- recover_pending_entry tests ---

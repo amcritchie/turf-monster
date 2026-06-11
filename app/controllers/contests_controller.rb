@@ -1758,11 +1758,24 @@ class ContestsController < ApplicationController
   # where no PT is stranded.
   def find_pending_recovery_ptx
     return nil unless current_user&.web3_solana_address.present? && @contest.onchain?
-    PendingTransaction.where(status: %w[pending submitted],
-                             initiator_address: current_user.web3_solana_address,
-                             target_type: "Entry")
-                      .where(target_id: @contest.entries.where(user_id: current_user.id).select(:id))
-                      .order(created_at: :desc).first
+    stranded = PendingTransaction.where(status: %w[pending submitted],
+                                        initiator_address: current_user.web3_solana_address,
+                                        target_type: "Entry")
+                                 .where(target_id: @contest.entries.where(user_id: current_user.id).select(:id))
+
+    # Operator call (2026-06-11): recovery is ONLY for a PT that actually
+    # BROADCAST (carries a tx_signature) — real money may have moved, so the
+    # "Checking Your Last Entry" flow must resolve it. A signatureless PT
+    # means nothing ever left the building (prepare_entry ran, confirm never
+    # broadcast): no modal, no recovery — "if it fails, it fails". Quietly
+    # retire the stale ones; the >10min guard leaves a tab that's mid-confirm
+    # alone (confirm stamps the signature within seconds of broadcasting,
+    # and it looks the PT up by the same pending/submitted scope).
+    stranded.where(tx_signature: nil)
+            .where(created_at: ..10.minutes.ago)
+            .update_all(status: "expired", updated_at: Time.current)
+
+    stranded.where.not(tx_signature: nil).order(created_at: :desc).first
   end
 
   # Pre-rendered seeds payload used by the contest show page's slate
