@@ -59,17 +59,25 @@ class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
     assert vault.assert_entry_cosign_safe!(out[:serialized_tx], entry: entry_for(entry_number: 0), wallet_address: WALLET)
   end
 
-  test "a legit enter_contest anchored on the durable nonce passes" do
+  test "build_enter_contest IGNORES the durable nonce config (entries use a fresh blockhash)" do
     authority = Solana::Keypair.admin.address
     nonce_val = Solana::Keypair.generate.to_base58
     buf   = nonce_buffer(authority_b58: authority, nonce_b58: nonce_val)
     vault = Solana::Vault.new(client: fake_client(nonce_b64: Base64.strict_encode64(buf)))
 
-    # The advance ix targets the configured SOLANA_DURABLE_NONCE_PUBKEY — the
-    # validator reads the SAME env var, so build + assert must share the block.
+    # 2026-06-11: entry txs deliberately do NOT anchor on the operator's
+    # durable nonce even when SOLANA_DURABLE_NONCE_PUBKEY is set — Phantom
+    # injects guard ixs at uncontrolled positions (breaking nonce detection)
+    # and a single nonce can't serve concurrent entrants. The built wire must
+    # still pass the cosign guard (and contain no advanceNonceAccount ix).
     with_durable_nonce_env(Solana::Keypair.generate.to_base58) do
       out = vault.build_enter_contest(WALLET, SLUG, 0, currency_idx: 0, season_id: 1)
       assert vault.assert_entry_cosign_safe!(out[:serialized_tx], entry: entry_for(entry_number: 0), wallet_address: WALLET)
+
+      decoded = Base64.strict_decode64(out[:serialized_tx])
+      advance = Solana::Vault::SYSTEM_ADVANCE_NONCE_DATA
+      refute decoded.include?(advance),
+             "entry wire must not carry an advanceNonceAccount ix"
     end
   end
 
@@ -180,20 +188,23 @@ class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
   end
 
   test "an advanceNonceAccount with NO durable nonce configured is rejected" do
-    # Build WITH the nonce env so the advance ix is present, then validate with it
-    # UNSET — mirrors a stale/misconfigured server that must not blind-cosign.
-    authority = Solana::Keypair.admin.address
-    nonce_val = Solana::Keypair.generate.to_base58
-    buf   = nonce_buffer(authority_b58: authority, nonce_b58: nonce_val)
-    vault = Solana::Vault.new(client: fake_client(nonce_b64: Base64.strict_encode64(buf)))
+    # Hand-build a wire carrying an advance ix (build_enter_contest no longer
+    # emits one — entries use a fresh blockhash since 2026-06-11), validated
+    # with the env UNSET — a wire smuggling a nonce advance the server never
+    # configured must not be blind-cosigned.
+    vault = Solana::Vault.new(client: fake_client)
+    admin = Solana::Keypair.admin
 
-    out = with_durable_nonce_env(Solana::Keypair.generate.to_base58) do
-      vault.build_enter_contest(WALLET, SLUG, 0, currency_idx: 0, season_id: 1)
-    end
+    tx = Solana::Transaction.new
+    tx.set_recent_blockhash(Solana::Keypair.generate.to_base58)
+    tx.add_signer(admin)
+    adv = Solana::SystemProgram.advance_nonce_account(
+      nonce: Solana::Keypair.generate.to_base58, authority: admin.address
+    )
+    tx.add_instruction(program_id: adv[:program_id], accounts: adv[:accounts], data: adv[:data])
 
-    # env now unset (teardown baseline) → advance ix present but unconfigured.
     err = assert_raises(Solana::Vault::UnsafeCosignError) do
-      vault.assert_entry_cosign_safe!(out[:serialized_tx], entry: entry_for(entry_number: 0), wallet_address: WALLET)
+      vault.assert_entry_cosign_safe!(tx.serialize_base64, entry: entry_for(entry_number: 0), wallet_address: WALLET)
     end
     assert_match(/advance_without_config/, err.message)
   end

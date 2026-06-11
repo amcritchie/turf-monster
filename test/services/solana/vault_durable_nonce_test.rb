@@ -66,7 +66,12 @@ class Solana::VaultDurableNonceTest < ActiveSupport::TestCase
   # Alex Bot wallet is 8K81w4e6…aRYd.)
   WALLET = "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR".freeze
 
-  test "build_enter_contest anchors on the durable nonce when the env var is set" do
+  test "build_enter_contest IGNORES the durable nonce env (entries use a fresh blockhash)" do
+    # 2026-06-11 mainnet incident: entries deliberately do NOT anchor on the
+    # operator nonce even when SOLANA_DURABLE_NONCE_PUBKEY is set — Phantom's
+    # injected guard ixs break nonce-first detection (BlockhashNotFound at
+    # preflight), and one nonce can't serve concurrent entrants. The nonce
+    # stays for operator flows (build_partial_signed callers below).
     authority = Solana::Keypair.admin.address
     nonce_val = Solana::Keypair.generate.to_base58
     buf   = nonce_buffer(authority_b58: authority, nonce_b58: nonce_val)
@@ -78,10 +83,8 @@ class Solana::VaultDurableNonceTest < ActiveSupport::TestCase
     end
 
     raw = Base64.strict_decode64(out[:serialized_tx]).b
-    # System program (32 zero bytes) is referenced only by the prepended advance ix.
-    assert raw.include?("\x00".b * 32), "expected the System advance instruction in the entry tx"
-    # The nonce value is baked in as the recentBlockhash.
-    assert raw.include?(Solana::Keypair.decode_base58(nonce_val)), "expected the nonce value as recentBlockhash"
+    refute raw.include?(Solana::Keypair.decode_base58(nonce_val)),
+           "the nonce value must NOT be the entry tx's recentBlockhash"
     assert out[:entry_pda].present?
   end
 
