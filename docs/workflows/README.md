@@ -13,6 +13,7 @@ What a player or operator-as-user does end-to-end.
 
 | Workflow | Entrypoint | One-liner |
 |---|---|---|
+| [submit-entry-decision-tree](submit-entry-decision-tree.md) | Hold to Confirm | THE entry map: web2/web3 × token/USDC/USDT branches, every failure point, funds-stuck inventory, recovery channels + their triggers, mainnet-only gotchas. |
 | [web3-landing-to-entry](web3-landing-to-entry.md) | `GET /l/:slug` | Funnel → Phantom signup → on-chain direct entry (USDC). |
 | [referral-google-tokens-to-chat](referral-google-tokens-to-chat.md) | `GET /l/:slug` + `?reference=` | Funnel → Google signup → buy 3 tokens → enter → first chat msg. |
 | [email-signup-token-to-chat](email-signup-token-to-chat.md) | `GET /` | Root → email signup → buy 1 token → enter main contest → chat. |
