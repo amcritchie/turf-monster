@@ -60,6 +60,14 @@ window.parseSolanaError = function(msg) {
     return "Your username is too short to register on-chain (3 characters minimum). Change it on your account page (/account) and try again.";
   }
 
+  // EntryFeeNotSet (6027, turf-vault v0.16 enter_contest) — the contest's
+  // entry_fee_by_currency slot for the selected currency_idx is zero (e.g.
+  // a USDT entry against a pre-2026-06-10 contest, which only funded the
+  // USDC slot). Server-side mirror: Solana::ErrorInterpreter (same message).
+  if (/0x178b/.test(msg) || /\b6027\b/.test(msg) || /EntryFeeNotSet/i.test(msg)) {
+    return "This contest doesn't accept that currency — try USDC.";
+  }
+
   // Rails / database errors
   if (/duplicate key|UniqueViolation|already exists/i.test(msg)) {
     return 'A record with this name already exists. Try a different name.';

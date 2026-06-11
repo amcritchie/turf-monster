@@ -127,11 +127,13 @@ module Solana
         )
       end
 
-      # EntryFeeNotSet (6027 / 0x178b) — this contest doesn't accept the
-      # selected currency. Effectively wrong-currency-picked.
+      # EntryFeeNotSet (6027 / 0x178b) — this contest's entry_fee_by_currency
+      # has a zero in the selected slot (e.g. a USDT entry against a contest
+      # created before slot 1 was funded — see Contest#accepts_usdt).
+      # Effectively wrong-currency-picked. JS mirror: solana_errors.js.
       if stripped.match?(/0x178b|\b6027\b|entryfeenotset/i)
         return ok(
-          message: "This contest doesn't accept the selected currency.",
+          message: "This contest doesn't accept that currency — try USDC.",
           blocker: { reason: "currency_unavailable", mode: nil, data: {} }
         )
       end

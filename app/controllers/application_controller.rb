@@ -353,13 +353,17 @@ class ApplicationController < ActionController::Base
     session[:geo_override].present?
   end
 
-  # Navbar balance — always on-chain USDC for connected wallets.
+  # Navbar balance — on-chain USDC + USDT COMBINED for connected wallets
+  # (operator request 2026-06-10: the pill shows total spendable dollars; the
+  # /account tiles stay per-currency).
   # NON-BLOCKING + cache-first: the render path NEVER issues a Solana RPC.
   # Returns:
-  #   - the preloaded @wallet_balances[:usdc] when a specific page populated
-  #     it explicitly (e.g. /wallet)
-  #   - the cached USDC number (warm cache, written by the hydrate endpoint
-  #     or a prior request) — Rails.cache.read, no fetch-on-miss
+  #   - the SUM of the preloaded @wallet_balances[:usdc] + [:usdt] when a
+  #     specific page populated them explicitly (e.g. /wallet)
+  #   - the SUM of the cached USDC + USDT numbers (warm cache, written by the
+  #     hydrate endpoint or a prior request) — Rails.cache.read, no
+  #     fetch-on-miss. A nil side counts as 0 in the sum; nil only when BOTH
+  #     are nil so the "loading" state is preserved.
   #   - nil when the cache is cold ("loading" — the client-side refreshBalance
   #     fills the [data-balance-display] pill once it lands)
   #   - 0 for guests / non-wallet users (definitive)
@@ -371,14 +375,23 @@ class ApplicationController < ActionController::Base
 
     @display_balance =
       if @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:usdc)
-        @wallet_balances[:usdc] || 0
+        combined_balance(@wallet_balances[:usdc], @wallet_balances[:usdt]) || 0
       elsif current_user&.solana_connected?
         # Cache-only read: warm → number, cold → nil ("loading"). Never a
         # blocking RPC on the render path.
-        Rails.cache.read(usdc_cache_key)
+        combined_balance(Rails.cache.read(usdc_cache_key), Rails.cache.read(usdt_cache_key))
       else
         0
       end
+  end
+
+  # USDC + USDT in dollars: nil treated as 0 in the sum, but nil when BOTH
+  # are nil — so an unknown-balances state stays distinguishable ("loading")
+  # from a definitive $0. Shared by display_balance and the
+  # /admin/usdc_balance hydrate endpoint's combined `balance` field.
+  def combined_balance(usdc, usdt)
+    return nil if usdc.nil? && usdt.nil?
+    usdc.to_f + usdt.to_f
   end
 
   # Fresh onchain USDC balance from logged-in user's wallet

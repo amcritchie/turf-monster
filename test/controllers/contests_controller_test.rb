@@ -616,6 +616,91 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/Exactly .* selections/, JSON.parse(response.body)["error"])
   end
 
+  # --- prepare_entry currency selection (USDT entries, 2026-06-10) ---
+
+  test "prepare_entry currency=usdt on an accepts_usdt contest builds with currency_idx 1 + the USDT ATA" do
+    @user.update!(web3_solana_address: "Web3UsdtHappy#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_usdt_ok", season_id: 1, accepts_usdt: true)
+    SeasonConfig.set_current!(1)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    assert_difference "PendingTransaction.count", 1 do
+      Solana::Vault.stub :new, vault do
+        post prepare_entry_contest_path(@contest), params: { currency: "usdt" }, as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["success"]
+
+    build = vault.enter_calls.last
+    assert_equal :build_enter_contest, build[:method]
+    assert_equal 1, build[:currency_idx]
+
+    # The pre-entry ATA bootstrap must target the USDT mint, not USDC.
+    assert_equal [Solana::Config::USDT_MINT], vault.ensure_ata_calls.map { |c| c[:mint] }
+
+    ptx = PendingTransaction.find_by(slug: body["ptx_slug"])
+    assert_equal 1, JSON.parse(ptx.metadata)["currency_idx"]
+  end
+
+  test "prepare_entry defaults to USDC: currency_idx 0, USDC ATA, metadata 0" do
+    @user.update!(web3_solana_address: "Web3UsdcDef#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_usdc_def", season_id: 1, accepts_usdt: true)
+    SeasonConfig.set_current!(1)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      post prepare_entry_contest_path(@contest), as: :json
+    end
+
+    assert_response :success
+    assert_equal 0, vault.enter_calls.last[:currency_idx]
+    assert_equal [Solana::Config::USDC_MINT], vault.ensure_ata_calls.map { |c| c[:mint] }
+
+    ptx = PendingTransaction.find_by(slug: JSON.parse(response.body)["ptx_slug"])
+    assert_equal 0, JSON.parse(ptx.metadata)["currency_idx"]
+  end
+
+  test "prepare_entry rejects currency=usdt when the contest does not accept USDT" do
+    @user.update!(web3_solana_address: "Web3UsdtNo#{SecureRandom.hex(4)}")
+    # accepts_usdt stays false — e.g. any contest created before 2026-06-10
+    # (its on-chain entry_fee_by_currency slot 1 is an immutable zero).
+    @contest.update!(onchain_contest_id: "onchain_usdt_no", season_id: 1)
+    log_in_as_onchain(@user)
+    @contest.entries.create!(user: @user, status: :cart)
+
+    assert_no_difference "PendingTransaction.count" do
+      post prepare_entry_contest_path(@contest), params: { currency: "usdt" }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/doesn't accept USDT/, JSON.parse(response.body)["error"])
+  end
+
+  test "prepare_entry rejects an unknown currency outright" do
+    @user.update!(web3_solana_address: "Web3BadCur#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_bad_cur", season_id: 1, accepts_usdt: true)
+    log_in_as_onchain(@user)
+    @contest.entries.create!(user: @user, status: :cart)
+
+    assert_no_difference "PendingTransaction.count" do
+      post prepare_entry_contest_path(@contest), params: { currency: "doge" }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/Unsupported currency/, JSON.parse(response.body)["error"])
+  end
+
   # --- confirm_onchain_entry tests ---
 
   test "confirm_onchain_entry promotes entry to active + marks PT confirmed" do

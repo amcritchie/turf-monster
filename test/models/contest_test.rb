@@ -329,6 +329,46 @@ class ContestTest < ActiveSupport::TestCase
     assert @contest.onchain_params.key?(:season_id)
   end
 
+  # ── USDT entries (2026-06-10) — entry_fee_by_currency slot 1 + accepts_usdt ──
+
+  test "onchain_params funds USDC slot 0 and USDT slot 1 with the same fee, slots 2-15 zero" do
+    fees = @contest.onchain_params[:entry_fee_by_currency]
+    expected = Solana::Config.dollars_to_lamports(@contest.entry_fee_cents / 100.0)
+
+    assert_equal 16, fees.length
+    assert expected.positive?, "fixture contest must carry a non-zero fee for this test"
+    assert_equal expected, fees[0], "slot 0 (USDC)"
+    assert_equal expected, fees[1], "slot 1 (USDT) — same dollar fee, both mints are 6-decimal"
+    assert fees[2..].all?(&:zero?), "slots 2-15 must stay unfunded"
+  end
+
+  test "accepts_usdt defaults to false (existing contests have an immutable zero USDT fee on-chain)" do
+    assert_not Contest.new.accepts_usdt
+    assert_not @contest.accepts_usdt?
+  end
+
+  test "create_onchain! stamps accepts_usdt true alongside the on-chain ids" do
+    contest = Contest.create!(
+      name: "USDT Onchain Stamp Test", slug: "usdt-onchain-stamp-test",
+      slate: slates(:one), status: :open, contest_type: "small",
+      entry_fee_cents: 19_00, max_entries: 5
+    )
+    assert_not contest.accepts_usdt?
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      contest.create_onchain!
+    end
+
+    contest.reload
+    assert contest.accepts_usdt?
+    assert_equal "cpda-#{contest.slug}", contest.onchain_contest_id
+    # The fee schedule that hit the (fake) chain funded the USDT slot too.
+    fees = vault.server_funded_calls.last[:entry_fee_by_currency]
+    assert_equal fees[0], fees[1]
+    assert fees[1].positive?
+  end
+
   # ── Test-scaffolding "micro" tier ($1 entry) — see AppFlags.test_scaffolding? ──
 
   test "micro tier is $1 entry, 9 max entries, $5/$1/$1 payouts" do

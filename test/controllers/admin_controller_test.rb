@@ -91,4 +91,41 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     get "/admin/jobs"
     assert_not_equal 404, response.status, "a valid admin session must pass the gate"
   end
+
+  # --- usdc_balance hydrate endpoint (combined balance — USDT entries 2026-06-10) ---
+  # `balance` is the USDC + USDT sum the navbar pill paints (refreshBalance
+  # reads data.balance); `usdc`/`usdt` stay per-currency for
+  # $store.session.usdcCents/usdtCents and the /account wallet tiles.
+
+  test "usdc_balance returns combined balance plus per-currency fields" do
+    log_in_as(users(:sam)) # web3 wallet fixture → solana_connected?
+    vault = FakeVault.new
+    vault.wallet_balances = { sol: 0.1, usdc: 5.0, usdt: 3.0 }
+
+    Solana::Vault.stub :new, vault do
+      get admin_usdc_balance_path
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 8.0, body["balance"]
+    assert_equal 5.0, body["usdc"]
+    assert_equal 3.0, body["usdt"]
+  end
+
+  test "usdc_balance emits null balance when both wallet reads flaked (client keeps prior pill)" do
+    log_in_as(users(:sam))
+    vault = FakeVault.new
+    vault.wallet_balances = nil # simulated RPC flake — non-Hash
+
+    Solana::Vault.stub :new, vault do
+      get admin_usdc_balance_path
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_nil body["balance"]
+    assert_nil body["usdc"]
+    assert_nil body["usdt"]
+  end
 end

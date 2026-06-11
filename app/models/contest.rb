@@ -188,7 +188,11 @@ class Contest < ApplicationRecord
     )
     update!(
       onchain_contest_id:   result[:contest_pda],
-      onchain_tx_signature: result[:tx_signature]
+      onchain_tx_signature: result[:tx_signature],
+      # onchain_params funded entry_fee_by_currency slot 1 (USDT) above, so
+      # this contest can take currency_idx 1 entries. See the accepts_usdt
+      # migration note — pre-2026-06-10 contests stay false.
+      accepts_usdt:         true
     )
     result
   end
@@ -422,12 +426,16 @@ class Contest < ApplicationRecord
     guaranteed = guaranteed_prize_cents
     payout_amounts = payouts.values.map { |c| Solana::Config.dollars_to_lamports(c / 100.0) }
 
-    # v0.16: per-currency entry-fee schedule. Index = currency_idx.
-    # Slot 0 = USDC (only currency the UI surfaces in Phase 1). When the
-    # currency-picker ships in Phase 2, replace this with a hash keyed by
-    # currency_idx.
+    # v0.16: per-currency entry-fee schedule. Index = currency_idx into the
+    # vault's accepted_currencies registry: slot 0 = USDC, slot 1 = USDT.
+    # Both are 6-decimal mints, so the same dollar fee is the same lamport
+    # amount in both slots. The array is IMMUTABLE after create_contest —
+    # contests created before slot 1 was populated (2026-06-10) have a zero
+    # USDT fee on-chain forever and stay USDC-only (accepts_usdt: false).
+    fee_lamports = Solana::Config.dollars_to_lamports(fee_cents / 100.0)
     entry_fee_by_currency = Array.new(16, 0)
-    entry_fee_by_currency[0] = Solana::Config.dollars_to_lamports(fee_cents / 100.0)
+    entry_fee_by_currency[0] = fee_lamports # USDC
+    entry_fee_by_currency[1] = fee_lamports # USDT
 
     {
       entry_fee_by_currency: entry_fee_by_currency,

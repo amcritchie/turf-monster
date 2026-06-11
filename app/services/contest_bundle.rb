@@ -107,6 +107,9 @@ module ContestBundle
       apply_contest_attrs(c, spec[:contest], creator)
       c.onchain_contest_id    = contest_pda
       c.onchain_tx_signature  = tx_signature
+      # generate_bundle built the TX from onchain_params — the USDT fee
+      # (entry_fee_by_currency slot 1) is funded on-chain.
+      c.accepts_usdt          = true
       c.skip_onchain_callback = true
     end
     landing = find_or_create_landing_page(spec[:landing_page], contest)
