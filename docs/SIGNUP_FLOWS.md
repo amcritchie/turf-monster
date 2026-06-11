@@ -28,8 +28,8 @@ _Generated 2026-05-20. For auth security internals (nonce replay, host binding, 
   GOOGLE   oauth  button_to POST        →  Google OAuth +       →   OmniAuth middleware  →
                   /auth/google_oauth2      tokeninfo recheck         OmniauthCallbacksController#create
 
-  MANUAL   pwd    form POST /signup     →  (no third party)     →   RegistrationsController#create
-                  email + password
+  MANUAL   email  form POST /signup     →  (no third party)     →   RegistrationsController#create
+                  email only (no pwd)
 
                           ALL THREE CONVERGE ON THE SAME SPINE
                                           │
@@ -62,6 +62,8 @@ Once any of the three controllers has a `User` row, the rest is identical:
 There is no `Session`, `Wallet`, or `Identity` table — everything hangs off `users`.
 
 **Post-signup redirect (all 3 flows)**: lands on `tokens_buy_path` (the entry-tokens upsell modal), not the root. Wired in `registrations_controller.rb:17`, `omniauth_callbacks_controller.rb:104`, and `solana_sessions_controller.rb:52`.
+
+**Age attestation (all 3 flows — flag-gated, parked OFF)**: when `ENABLE_AGE_ATTESTATION=true` (`AppFlags.age_attestation?`), a legal-age checkbox (`shared/_age_attestation`) gates every signup surface, each controller rejects new signups without it (`age_attestation_required? && !age_attestation_given?`), and `age_attested_at` is stamped on the new row. **Currently unset in prod = OFF** (operator call 2026-06-10, re-enabled after the first contest): the checkbox doesn't render, all gates pass, and `age_attested_at` is deliberately NOT stamped. See `docs/AUTH.md` § Legal-Age Attestation.
 
 **Reference attribution (all 3 flows)**: a 30-day `cookies[:reference]` set by `LandingPagesController#show` (`app/controllers/landing_pages_controller.rb:18`) or `ApplicationController#capture_reference` (`application_controller.rb:51-56`) is persisted onto `users.reference` at signup. Phantom captures it inline at user-build (`solana_sessions_controller.rb:37-42`); Google updates the column post-create and deletes the cookie (`omniauth_callbacks_controller.rb:95-98`); Manual carries it through a hidden form field (`registrations/new.html.erb:17`). First-touch wins — the cookie is only set when blank.
 
@@ -165,9 +167,12 @@ sequenceDiagram
 
 ## Flow 3 — Manual (email + password)
 
-**Entry:** `GET /signup` now 301-redirects to the unified `/signin` page (`sessions#new`); the magic-link request is the primary email surface. `POST /signup` (engine, account-from-email) stays as a fallback.
-**Key files:** `registrations/new.html.erb` (view override; the controller `RegistrationsController`
-lives in the **studio-engine gem**), `email_verifications_controller.rb` + `user_mailer.rb` (separate verify flow)
+**Entry:** `GET /signup` now 301-redirects to the unified `/signin` page (`sessions#new`); the magic-link request is the primary email surface. `POST /signup` (account-from-email) stays as a no-live-UI fallback.
+**Key files:** `registrations/new.html.erb` (view override) + `app/controllers/registrations_controller.rb` (**local override** of the engine controller — age-attestation gate when `ENABLE_AGE_ATTESTATION` is on, `tokens_buy_path` redirect), `email_verifications_controller.rb` + `user_mailer.rb` (separate verify flow)
+
+> ⚠️ The diagram below predates the password removal (2026-06-01, PR #18): there are no password
+> fields anymore — `POST /signup` creates the account from email alone (`Studio.registration_params`),
+> and magic link is the only email *login*. The wallet/session spine in the diagram is still accurate.
 
 ```mermaid
 sequenceDiagram

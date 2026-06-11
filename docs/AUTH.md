@@ -14,6 +14,10 @@ All optional — user needs at least one:
 
 **Unified sign-in page (2026-06-02):** login and signup are one create-or-login flow, so there is a single canonical page at `GET /signin` (`sessions#new`). Legacy `/login` + `/signup` 301-redirect to it, preserving the query string. The CTA label is "Sign in" everywhere. See the CLAUDE.md "Unified `/signin`" note for the routing details.
 
+## Legal-Age Attestation (flag-gated, parked OFF)
+
+The underwriting-compliance age checkbox (`shared/_age_attestation`, rendered on the signin card, the in-contest auth modal, and the wallet-connect modal) is gated by `AppFlags.age_attestation?` / `ENABLE_AGE_ATTESTATION` — **unset = off, the current prod state** (operator call 2026-06-10; will be re-enabled after the first contest). When OFF: the partial renders nothing, auth surfaces initialize their `ageAttested` Alpine model to `true` so the CTAs are ungated, the server-side signup gates (`age_attestation_required? && !age_attestation_given?` in `RegistrationsController`, `MagicLinksController`, `SolanaSessionsController`, `OmniauthCallbacksController`) all pass, and `age_attested_at` is **deliberately NOT stamped** — we never record an attestation the user wasn't actually shown. The e2e helper `attestAge()` no-ops when the checkbox isn't rendered.
+
 ## User Model Auth Design
 
 ```ruby
