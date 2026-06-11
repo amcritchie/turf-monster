@@ -2,11 +2,182 @@
   "address": "EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ",
   "metadata": {
     "name": "turf_vault",
-    "version": "0.24.0",
+    "version": "0.25.0",
     "spec": "0.1.0",
     "description": "Solana contest escrow with on-chain currency registry and self-custodial entries"
   },
   "instructions": [
+    {
+      "name": "admin_create_user_account",
+      "docs": [
+        "`create_user_account` with an admin-authorized reserved-prefix waiver",
+        "(v0.25). Permissionless payer + a required 1-of-3 vault-signer",
+        "co-signature (`Unauthorized` 6000 otherwise). Charset + min-length",
+        "are still enforced — only the reserved-prefix branch is waived."
+      ],
+      "discriminator": [
+        214,
+        50,
+        188,
+        37,
+        253,
+        212,
+        39,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "Vault signer (1-of-3) authorizing the reserved-prefix waiver."
+          ],
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "username",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "admin_set_username",
+      "docs": [
+        "`set_username` with an admin-authorized reserved-prefix waiver",
+        "(v0.25). Owner signs (consenting) + a required 1-of-3 vault-signer",
+        "co-signature (`Unauthorized` 6000 otherwise). Charset + min-length",
+        "are still enforced — only the reserved-prefix branch is waived."
+      ],
+      "discriminator": [
+        170,
+        93,
+        237,
+        16,
+        127,
+        222,
+        80,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "signer": true
+        },
+        {
+          "name": "admin",
+          "docs": [
+            "Vault signer (1-of-3) authorizing the reserved-prefix waiver."
+          ],
+          "signer": true
+        },
+        {
+          "name": "vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "username",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
     {
       "name": "cancel_contest",
       "docs": [
