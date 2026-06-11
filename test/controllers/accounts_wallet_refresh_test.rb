@@ -34,9 +34,9 @@ class AccountsWalletRefreshTest < ActionDispatch::IntegrationTest
     get account_path
     assert_response :success
 
-    # @wallet_balances is nil on the render path — the USDC tile must show
-    # the "—" placeholder (refreshSession only overwrites with real numbers,
-    # so a $0.00 here would mean a server-side fabricated zero).
+    # The render path is RPC-free — the USDC tile must ship as the "—"
+    # placeholder (refreshSession only overwrites with real numbers, so a
+    # $0.00 here would mean a server-side fabricated zero).
     usdc_tile = response.body[/data-wallet-tile="usdc"[^>]*>\s*([^<]*)</, 1]
     assert_equal "—", usdc_tile&.strip
   end

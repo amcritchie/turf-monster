@@ -25,11 +25,12 @@ class AccountsController < ApplicationController
   def show
     @user = current_user
     # No server-side balance fetch: the render path is RPC-free by design
-    # (perform_solana_preload no longer pulls wallet balances), so
-    # @wallet_balances is nil here and the balance tiles render "—"
-    # placeholders. The walletRefresh Alpine component on the page calls
-    # refreshSession() (-> #session_refresh) on load + on the Refresh Wallet
-    # button, which hydrates the tiles, navbar, and $store.session from chain.
+    # (perform_solana_preload no longer pulls wallet balances), so the
+    # balance tiles render "—" placeholders. The layout's hydrateNavbar
+    # fires refreshSession() (-> #session_refresh) on every page load —
+    # filling the tiles' data-wallet-tile spans, the navbar, and
+    # $store.session from chain — and the Refresh Wallet button re-pulls
+    # the same endpoint on demand.
     #
     # Referral widget — share URL points at the canonical main contest
     # (admin-set via /admin/dashboard). SeasonConfig.main_contest masks
