@@ -30,7 +30,10 @@
        // create-or-login, so a brand-new wallet creates an account). Linking
        // flows and logged-in users skip it. Server-side enforcement in
        // SolanaSessionsController#verify is the boundary for NEW accounts.
+       // Hard false when the attestation flag is off (checkbox parked) —
+       // attested() then always passes.
        get needsAttestation() {
+         if (!<%= AppFlags.age_attestation? %>) return false;
          var s = Alpine.store('session');
          return !this.props.linkMode && !(s && s.loggedIn);
        },

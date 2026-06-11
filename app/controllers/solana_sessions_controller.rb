@@ -37,14 +37,15 @@ class SolanaSessionsController < ApplicationController
     # Underwriting compliance: a brand-new wallet signup must carry the
     # legal-age attestation (checkbox in the Connect Wallet modal). Existing
     # wallet users are a plain login and skip this.
-    if is_new && !age_attestation_given?
+    # Flag-gated, parked for the first contest — see age_attestation_required?.
+    if is_new && age_attestation_required? && !age_attestation_given?
       return render json: { error: AGE_ATTESTATION_ERROR }, status: :unprocessable_entity
     end
 
     user ||= User.new(
       name: "anon",
       web3_solana_address: pubkey_b58,
-      age_attested_at: Time.current,
+      age_attested_at: (Time.current if age_attestation_required?),
       reference: cookies[:reference].presence&.first(64) # first-touch funnel attribution
     )
 

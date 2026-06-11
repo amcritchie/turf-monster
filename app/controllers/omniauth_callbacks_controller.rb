@@ -84,8 +84,9 @@ class OmniauthCallbacksController < ApplicationController
       # legal-age attestation. It rides the OAuth round-trip as a request-phase
       # query param (see #popup and the /signin Google form), surfaced here via
       # omniauth.params. Returning users are a plain login and skip this.
+      # Flag-gated, parked for the first contest — see age_attestation_required?.
       attestation = request.env["omniauth.params"]&.fetch("age_attestation", nil)
-      if new_signup && !age_attestation_given?(attestation)
+      if new_signup && age_attestation_required? && !age_attestation_given?(attestation)
         return finish_oauth(signin_path, success: false, alert: AGE_ATTESTATION_ERROR)
       end
 
@@ -126,8 +127,10 @@ class OmniauthCallbacksController < ApplicationController
 
       # Stamp the legal-age attestation on the freshly-created account
       # (enforced above; update_column mirrors the attribution stamp — no
-      # callbacks, the row was just created by from_omniauth).
-      if new_signup && result.is_a?(User) && result.age_attested_at.blank?
+      # callbacks, the row was just created by from_omniauth). Skipped when
+      # the gate is flag-off: the user was never shown the checkbox, so
+      # recording an attestation would fabricate it.
+      if new_signup && age_attestation_required? && result.is_a?(User) && result.age_attested_at.blank?
         result.update_column(:age_attested_at, Time.current)
       end
 

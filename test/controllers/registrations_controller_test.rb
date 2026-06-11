@@ -1,6 +1,12 @@
 require "test_helper"
 
 class RegistrationsControllerTest < ActionDispatch::IntegrationTest
+  # These tests exercise the legal-age attestation gate as designed (ON).
+  # The flag is parked off by default for the first contest; the off state
+  # is covered in age_attestation_flag_test.rb.
+  setup    { ENV["ENABLE_AGE_ATTESTATION"] = "true" }
+  teardown { ENV.delete("ENABLE_AGE_ATTESTATION") }
+
   # Unified auth: GET /signup 301-redirects to the canonical /signin page. The
   # engine POST /signup (account-from-email) still hits this controller — see below.
   test "GET /signup redirects to the unified signin page" do

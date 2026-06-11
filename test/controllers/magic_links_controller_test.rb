@@ -1,6 +1,12 @@
 require "test_helper"
 
 class MagicLinksControllerTest < ActionDispatch::IntegrationTest
+  # These tests exercise the legal-age attestation gate as designed (ON).
+  # The flag is parked off by default for the first contest; the off state
+  # is covered in age_attestation_flag_test.rb.
+  setup    { ENV["ENABLE_AGE_ATTESTATION"] = "true" }
+  teardown { ENV.delete("ENABLE_AGE_ATTESTATION") }
+
   # ── request (POST /magic_link) ───────────────────────────────────────────
   test "create sends one magic-link email for a valid address" do
     assert_emails 1 do

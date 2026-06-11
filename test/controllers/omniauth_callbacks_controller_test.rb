@@ -1,6 +1,12 @@
 require "test_helper"
 
 class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
+  # These tests exercise the legal-age attestation gate as designed (ON).
+  # The flag is parked off by default for the first contest; the off state
+  # is covered in age_attestation_flag_test.rb.
+  setup    { ENV["ENABLE_AGE_ATTESTATION"] = "true" }
+  teardown { ENV.delete("ENABLE_AGE_ATTESTATION") }
+
   setup do
     OmniAuth.config.mock_auth[:google_oauth2] = OmniAuth::AuthHash.new(
       provider: "google_oauth2",
