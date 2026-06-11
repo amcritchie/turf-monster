@@ -166,6 +166,9 @@ export function refreshBalance() {
           if (data.usdt != null) sess.usdtCents = Math.round(parseFloat(data.usdt) * 100);
         }
       } catch (_) {}
+
+      // (d) wallet tiles — shared fanout, null-guarded per key.
+      updateWalletTiles(data);
     })
     .catch(function() {});
 }
@@ -216,16 +219,20 @@ export function refreshSession() {
 
       // USDC balance — reuse the same data-balance-display selector +
       // hide-on-$0-with-token rule that refreshBalance applies, so the
-      // two helpers agree on what the navbar shows.
+      // two helpers agree on what the navbar shows. Like refreshBalance,
+      // only paint when the read landed — a null (flaked RPC) leaves the
+      // prior pill value instead of showing a false $0.
       try {
-        var formatted = '$' + Math.floor(parseFloat(data.usdc || 0));
-        var isZero    = formatted === '$0';
-        var hasTokens = (parseInt(data.tokens, 10) || 0) > 0;
-        document.querySelectorAll('[data-balance-display]').forEach(function(el) {
-          el.textContent = formatted;
-          if (isZero && hasTokens) el.classList.add('hidden');
-          else                     el.classList.remove('hidden');
-        });
+        if (data.usdc != null) {
+          var formatted = '$' + Math.floor(parseFloat(data.usdc));
+          var isZero    = formatted === '$0';
+          var hasTokens = (parseInt(data.tokens, 10) || 0) > 0;
+          document.querySelectorAll('[data-balance-display]').forEach(function(el) {
+            el.textContent = formatted;
+            if (isZero && hasTokens) el.classList.add('hidden');
+            else                     el.classList.remove('hidden');
+          });
+        }
       } catch (_) {}
 
       // 🎟️ token badge — reuse updateNavTokens for the visibility
@@ -249,9 +256,38 @@ export function refreshSession() {
         }));
       } catch (_) {}
 
+      updateWalletTiles(data);
+
       return data;
     })
     .catch(function() { return null; });
+}
+
+// Wallet tiles — generic fanout: any page can subscribe a balance readout
+// to the hydrate calls by tagging an element with
+// data-wallet-tile="usdc|usdt|sol|tokens" (/account's Identities row).
+// Called from BOTH refreshBalance and refreshSession so every hydrate path
+// keeps tiles current (refreshBalance's payload lacks sol/tokens — those
+// keys just no-op there). A null field (flaked RPC) leaves the prior render
+// in place — server-side "—" or the last live value — never overwrites
+// with 0. Deliberately NOT a StateFanout handler: tiles are ephemeral DOM
+// (no localStorage state, no event listeners), which is the part of that
+// pattern they'd use — this is just the DOM-fill step.
+function updateWalletTiles(data) {
+  try {
+    var tiles = {
+      usdc:   data.usdc   != null ? '$' + parseFloat(data.usdc).toFixed(2) : null,
+      usdt:   data.usdt   != null ? parseFloat(data.usdt).toFixed(2)       : null,
+      sol:    data.sol    != null ? parseFloat(data.sol).toFixed(2)        : null,
+      tokens: data.tokens != null ? String(parseInt(data.tokens, 10) || 0) : null
+    };
+    Object.keys(tiles).forEach(function(key) {
+      if (tiles[key] == null) return;
+      document.querySelectorAll('[data-wallet-tile="' + key + '"]').forEach(function(el) {
+        el.textContent = tiles[key];
+      });
+    });
+  } catch (_) {}
 }
 
 // Toggle the navbar's 🎟️ free-entry badge based on the new token count.

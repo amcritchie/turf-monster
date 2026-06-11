@@ -221,6 +221,28 @@
     };
   };
 
+  // === walletRefresh — /account "Refresh Wallet" button. =================
+  //     refresh() runs window.refreshSession(), which pulls every on-chain
+  //     value (USDC/USDT/SOL/tokens/seeds) from /account/session_refresh in
+  //     one call and fans it out to ALL subscribed UI: the data-wallet-tile
+  //     spans, the navbar balance pill + 🎟️ badge, $store.session cents, and
+  //     the seeds bar/tile (navbar-seeds-update). No on-load hydrate here —
+  //     the layout's hydrateNavbar already fires refreshSession() on every
+  //     page load, and that same call fills the tiles. By click time the
+  //     importmap module is long since loaded; the guard is just belt and
+  //     braces.
+  window.walletRefresh = function () {
+    return {
+      refreshing: false,
+      refresh() {
+        if (this.refreshing || !window.refreshSession) return;
+        var self = this;
+        this.refreshing = true;
+        window.refreshSession().finally(function () { self.refreshing = false; });
+      }
+    };
+  };
+
   // === entryTokenBadge — navbar 🎟️ pill + popover ==================
   window.entryTokenBadge = function (opts) {
     opts = opts || {};

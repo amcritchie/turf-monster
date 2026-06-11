@@ -130,7 +130,16 @@
         </div>
       </div>
 
-      <%# Balance tiles row — USDC | USDT | Entry Tokens | SOL | Seeds %>
+      <%# Balance tiles row — USDC | USDT | Entry Tokens | SOL | Seeds.
+          Values are ON-CHAIN truth, hydrated client-side: the layout's
+          hydrateNavbar fires refreshSession() on every page load, and the
+          Refresh Wallet button (walletRefresh factory) re-pulls on demand.
+          refreshSession fills the data-wallet-tile spans here PLUS the
+          navbar pill, token badge, $store.session cents, and the seeds bar
+          — one call, every component. The server renders "—" placeholders
+          (the render path is RPC-free by design — see
+          perform_solana_preload). %>
+      <div x-data="walletRefresh()">
       <div class="grid grid-cols-5 gap-2 mb-3">
         <%# All five tiles share an icon row with a fixed 28px height so the
             labels + values line up across emoji icons and the 24px SVGs/PNG. %>
@@ -140,11 +149,7 @@
             <img src="/usdc-mark.svg" alt="USDC" style="width: 24px; height: 24px;">
           </div>
           <span class="text-[10px] uppercase tracking-wide text-muted">USDC</span>
-          <span class="font-mono font-bold text-primary text-sm mt-0.5">
-            <% if @wallet_balances && @wallet_balances[:usdc] %>
-              <%= sprintf('$%.2f', @wallet_balances[:usdc]) %>
-            <% else %>—<% end %>
-          </span>
+          <span class="font-mono font-bold text-primary text-sm mt-0.5" data-wallet-tile="usdc">—</span>
         </div>
 
         <%# USDT %>
@@ -153,11 +158,7 @@
             <%= image_tag "tokens/usdt.png", alt: "USDT", style: "width: 24px; height: 24px;" %>
           </div>
           <span class="text-[10px] uppercase tracking-wide text-muted">USDT</span>
-          <span class="font-mono font-bold text-heading text-sm mt-0.5">
-            <% if @wallet_balances && @wallet_balances[:usdt] %>
-              <%= sprintf('%.2f', @wallet_balances[:usdt]) %>
-            <% else %>—<% end %>
-          </span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5" data-wallet-tile="usdt">—</span>
         </div>
 
         <%# Entry Tokens %>
@@ -166,7 +167,7 @@
             <span style="font-size: 22px; line-height: 1;">🎟️</span>
           </div>
           <span class="text-[10px] uppercase tracking-wide text-muted">Entry Tokens</span>
-          <span class="font-mono font-bold text-heading text-sm mt-0.5"><%= @user.entry_token_balance %></span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5" data-wallet-tile="tokens"><%= @user.entry_token_balance %></span>
         </div>
 
         <%# SOL %>
@@ -175,11 +176,7 @@
             <img src="/solana-mark.svg" alt="SOL" style="width: 24px; height: 24px;">
           </div>
           <span class="text-[10px] uppercase tracking-wide text-muted">SOL</span>
-          <span class="font-mono font-bold text-heading text-sm mt-0.5">
-            <% if @wallet_balances && @wallet_balances[:sol] %>
-              <%= sprintf('%.2f', @wallet_balances[:sol]) %>
-            <% else %>—<% end %>
-          </span>
+          <span class="font-mono font-bold text-heading text-sm mt-0.5" data-wallet-tile="sol">—</span>
         </div>
 
         <%# Seeds — ticks up live on quest completion (navbar-seeds-update);
@@ -197,12 +194,26 @@
         </div>
       </div>
 
-      <%# Wallet actions — Cash out for managed users (the server can sign on
+      <%# Wallet actions — Refresh Wallet re-pulls every on-chain value via
+          refreshSession(); Cash out for managed users (the server can sign on
           their behalf), Manage callout for self-custodied users (server can't
           sign; they cash out from their imported wallet). Phantom-only users
-          see neither — they cash out in their own wallet app. The actual
+          see only Refresh — they cash out in their own wallet app. The actual
           withdraw form lives at /wallet — #cash-out auto-opens it. %>
       <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <button type="button" @click="refresh()" :disabled="refreshing"
+                class="btn btn-outline btn-sm">
+          <span x-show="!refreshing" class="inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+            </svg>
+            Refresh Wallet
+          </span>
+          <span x-show="refreshing" class="inline-flex items-center gap-2" style="display: none;">
+            <span class="cta-spinner" aria-hidden="true"></span>
+            Refreshing…
+          </span>
+        </button>
         <% if @user.can_use_managed_withdraw? %>
           <%= link_to "Cash out", "#{wallet_path}#cash-out", class: "btn btn-outline btn-sm" %>
         <% elsif @user.self_custodied? %>
@@ -215,6 +226,7 @@
           </a>
         <% end %>
       </div>
+      </div><%# /walletRefresh %>
     <% else %>
       <div class="mb-6">
         <%= render "shared/solana_wallet_connect", link_mode: true %>

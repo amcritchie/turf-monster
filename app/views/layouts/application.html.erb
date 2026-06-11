@@ -100,18 +100,20 @@
           // Navbar hydrate. The server NO LONGER blocks the HTML render on the
           // USDC/USDT/seeds RPCs (perf: ~0.3-1s/page) — display_balance /
           // display_seeds_data render cache-first, nil ("loading") when cold.
-          // So this fires refreshBalance() RIGHT AWAY on every load (initial +
-          // every Turbo nav) to fill the pill + seeds bar + $store.session
-          // eligibility cents. The nav spinner spins until it lands. A write
+          // So this fires refreshSession() RIGHT AWAY on every load (initial +
+          // every Turbo nav). It is THE one page-load hydrate: pill + token
+          // badge + seeds bar + $store.session cents + any data-wallet-tile
+          // spans on the page (/account's balance tiles) all converge from
+          // this single call. The nav spinner spins until it lands. A write
           // success path (entry confirm / token consume) still calls
-          // refreshBalance()/refreshSession() directly for its own refresh.
+          // refreshSession() directly for its own refresh.
           (function() {
             var _navHydrating = false;
             function hydrateNavbar() {
               if (_navHydrating) return;             // de-dupe initial + turbo:load
               _navHydrating = true;
               if (window.showNavSpinner) window.showNavSpinner();
-              refreshBalance().finally(function() {
+              refreshSession().finally(function() {
                 if (window.hideNavSpinner) window.hideNavSpinner();
                 _navHydrating = false;
               });
