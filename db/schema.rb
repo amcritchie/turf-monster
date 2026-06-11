@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -98,6 +98,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "concludes_at"
     t.boolean "onchain_closed", default: false, null: false
     t.boolean "onchain_cancelled", default: false, null: false
+    t.boolean "accepts_usdt", default: false, null: false
     t.index ["game_type"], name: "index_contests_on_game_type"
     t.index ["rank"], name: "index_contests_on_rank"
     t.index ["slate_id"], name: "index_contests_on_slate_id"

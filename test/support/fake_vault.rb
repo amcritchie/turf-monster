@@ -66,6 +66,29 @@ class FakeVault
     @create_contest_calls ||= []
   end
 
+  # Used by Contest#create_onchain! (server-funded path; the after_create
+  # callback is skipped in test env, so tests invoke it directly). Records
+  # the kwargs so tests can assert the entry_fee_by_currency schedule that
+  # would hit the chain.
+  def create_contest_server_funded(contest_slug:, **kwargs)
+    @server_funded_calls ||= []
+    @server_funded_calls << { contest_slug: contest_slug, **kwargs }
+    { tx_signature: "fake-create-#{contest_slug}", contest_pda: "cpda-#{contest_slug}" }
+  end
+
+  def server_funded_calls
+    @server_funded_calls ||= []
+  end
+
+  # Used by ApplicationController#fetch_navbar_hydrate (USDC/USDT/SOL read).
+  # Seed via the wallet_balances writer; nil simulates an RPC flake (the
+  # caller treats a non-Hash as unknown and emits nils).
+  attr_writer :wallet_balances
+
+  def fetch_wallet_balances(_wallet_address)
+    defined?(@wallet_balances) ? @wallet_balances : { sol: 0.0, usdc: 0.0, usdt: 0.0 }
+  end
+
   # Recovery flow re-derives the entry PDA server-side before verifying the
   # signature. The real Vault returns [pubkey_bytes, bump]; tests stub
   # Solana::Keypair.encode_base58 to identity, so a deterministic value here
@@ -234,7 +257,15 @@ class FakeVault
   end
 
   def ensure_ata(wallet, mint:)
+    @ensure_ata_calls ||= []
+    @ensure_ata_calls << { wallet: wallet, mint: mint }
     { ata: "fake-ata-#{wallet[0, 4]}-#{mint[0, 4]}", created: false }
+  end
+
+  # Recorded { wallet:, mint: } per ensure_ata call — lets prepare_entry tests
+  # assert the ATA matches the selected currency (USDC vs USDT mint).
+  def ensure_ata_calls
+    @ensure_ata_calls ||= []
   end
 
   # --- Deposit flow (StripeDepositJob) ---
