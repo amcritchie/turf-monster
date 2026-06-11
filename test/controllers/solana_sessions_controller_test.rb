@@ -6,6 +6,12 @@ require "test_helper"
 # plain login and are unaffected. (The existing-user login path itself is
 # exercised constantly via test_helper's log_in_as_onchain.)
 class SolanaSessionsControllerTest < ActionDispatch::IntegrationTest
+  # These tests exercise the legal-age attestation gate as designed (ON).
+  # The flag is parked off by default for the first contest; the off state
+  # is covered in age_attestation_flag_test.rb.
+  setup    { ENV["ENABLE_AGE_ATTESTATION"] = "true" }
+  teardown { ENV.delete("ENABLE_AGE_ATTESTATION") }
+
   # Build a fresh keypair + signed SIWS message for a wallet that has NO user
   # row yet — the signup side of verify (log_in_as_onchain covers login).
   def signed_verify_params

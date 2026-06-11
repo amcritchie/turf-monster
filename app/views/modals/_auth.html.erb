@@ -37,7 +37,9 @@
        // Legal-age attestation (underwriting compliance) — gates all three
        // credential CTAs; the value rides each dispatch so the board can
        // forward it to the server (which enforces it for NEW accounts).
-       ageAttested: false,
+       // Initializes TRUE when the flag is off (checkbox not rendered) so
+       // every attested() gate passes.
+       ageAttested: <%= AppFlags.age_attestation? ? 'false' : 'true' %>,
        ageError: false,
        attested() {
          if (this.ageAttested) { this.ageError = false; return true; }
@@ -135,9 +137,11 @@
       <p class="text-xs text-secondary mb-4 text-center">Your 6 picks are saved — sign in to submit your lineup.</p>
 
       <%# Legal-age attestation — gates Google / Solana / email below. %>
-      <div class="mb-4">
-        <%= render "shared/age_attestation" %>
-      </div>
+      <% if AppFlags.age_attestation? %>
+        <div class="mb-4">
+          <%= render "shared/age_attestation" %>
+        </div>
+      <% end %>
 
       <!-- 1. Google OAuth — opens a popup; the closer page postMessages the result -->
       <button @click="if (attested()) $dispatch('auth-google-click', { ageAttested: true })"

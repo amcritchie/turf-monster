@@ -36,9 +36,18 @@ async function login(page, email, _password) {
  * Tick the legal-age attestation checkbox (underwriting compliance) on the
  * current auth surface — /signin card, in-contest auth modal, or the wallet
  * picker. Every credential CTA is gated on it client-side.
+ *
+ * No-op when the attestation flag is off (ENABLE_AGE_ATTESTATION unset —
+ * the parked default): the checkbox doesn't render and the CTAs are
+ * ungated, so there is nothing to tick.
  */
 async function attestAge(page) {
-  await page.locator("input[data-age-attestation]:visible").first().check();
+  const box = page.locator("input[data-age-attestation]:visible").first();
+  const present = await box
+    .waitFor({ state: "visible", timeout: 1000 })
+    .then(() => true)
+    .catch(() => false);
+  if (present) await box.check();
 }
 
 /**

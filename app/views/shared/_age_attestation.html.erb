@@ -5,7 +5,12 @@
     the caller's Alpine scope; the caller gates its CTAs on that property.
     The SERVER is the real boundary — every signup endpoint rejects new
     account creation without the attestation (see ApplicationController
-    AGE_ATTESTATION_ERROR). %>
+    AGE_ATTESTATION_ERROR).
+
+    SELF-GATING on AppFlags.age_attestation? — when the flag is off this
+    partial renders nothing and the callers initialize their ageAttested
+    Alpine state to true, so every CTA gate passes without a checkbox. %>
+<% if AppFlags.age_attestation? %>
 <%
   x_model     = local_assigns.fetch(:x_model, "ageAttested")
   error_model = local_assigns.fetch(:error_model, "ageError")
@@ -26,3 +31,4 @@
     Please confirm you are of legal age to continue.
   </p>
 </div>
+<% end %>

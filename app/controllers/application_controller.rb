@@ -86,6 +86,16 @@ class ApplicationController < ActionController::Base
     ActiveModel::Type::Boolean.new.cast(value) == true
   end
 
+  # Whether account creation requires the legal-age attestation at all —
+  # flag-gated (parked off for the first contest; see AppFlags). Every
+  # signup-path rejection is `if age_attestation_required? &&
+  # !age_attestation_given?`, and age_attested_at stamping is gated on
+  # required? too, so a flag-off signup never records an attestation the
+  # user wasn't shown.
+  def age_attestation_required?
+    AppFlags.age_attestation?
+  end
+
   # Public, crawlable GET pages that must unfurl in link previews (and never
   # 406 a visitor). These carry og/twitter tags and are the URLs people paste
   # into Messages/Slack/social: the marketing funnel + the public contest reads.

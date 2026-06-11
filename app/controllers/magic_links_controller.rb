@@ -121,13 +121,14 @@ class MagicLinksController < ApplicationController
     # attestation that rode in with the link request. Without it the account
     # is NOT created — the user re-requests a link with the box checked.
     # (Existing users take sign_in_existing above and never hit this.)
-    unless result.age_attested
+    # Flag-gated, parked for the first contest — see age_attestation_required?.
+    if age_attestation_required? && !result.age_attested
       return redirect_to signin_path, alert: AGE_ATTESTATION_ERROR
     end
 
     reset_prior_session!
     user = User.new(email: result.email,
-                    age_attested_at: Time.current,
+                    age_attested_at: (Time.current if age_attestation_required?),
                     reference: cookies[:reference].presence&.to_s&.first(64))
     Studio.configure_new_user.call(user)
     rescue_and_log(target: user) do
