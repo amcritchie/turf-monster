@@ -1140,6 +1140,67 @@ module Solana
       { signature: signature, entry_pda: Keypair.encode_base58(e_pda) }
     end
 
+    # Server-signed managed-wallet (web2) USDC contest entry — the web2 funding
+    # fallback in the unified token -> USDC priority (USDT is intentionally NOT
+    # offered to web2: payouts are USDC, so web2 users won't hold USDT).
+    #
+    # When a managed user has no entry token but enough USDC, the SERVER signs
+    # the EXISTING on-chain `enter_contest` (USDC) instruction on the user's
+    # behalf — it can, because it holds the user's managed keypair
+    # (encrypted_web2_solana_private_key, decrypted via Solana::Keypair). This
+    # is what lets a USDC contest payout fund the next entry: settle pays winners
+    # into their USDC ATA, and this pulls the next entry fee from that same ATA.
+    #
+    # NO turf-vault program change: this delegates to #enter_contest with
+    # currency_idx HARD-PINNED to USDC. The pin (not a caller-supplied index)
+    # makes a USDT leak into the web2 path structurally impossible.
+    #
+    # SIGNER CONSISTENCY (the load-bearing invariant): everything — the on-chain
+    # `user` signer, the USDC ATA owner, and the UserAccount PDA — is derived
+    # from user.web2_solana_address, and the managed keypair we sign with is
+    # asserted to match it. NEVER user.solana_address (which prefers the web3
+    # address): a managed+phantom combo account would otherwise desync the
+    # signer from the ATA/PDA and the tx would fail (or target the wrong account).
+    #
+    # ATOMIC / no-strand: the SPL USDC transfer + entry-PDA init are ONE
+    # instruction, so an underfunded ATA fails the whole tx — nothing is
+    # consumed or created (no strand, no double-charge). Returns
+    # { signature:, entry_pda: } exactly like #enter_contest, so the caller's
+    # durable-capture write (ContestsController#enter) is byte-for-byte identical
+    # to the token path.
+    USDC_CURRENCY_IDX = 0
+
+    def enter_contest_with_usdc(user:, contest:, entry_num:)
+      wallet_address = user.web2_solana_address
+      raise ArgumentError, "enter_contest_with_usdc requires a managed (web2) wallet" if wallet_address.blank?
+
+      user_keypair = user.solana_keypair
+      raise "Managed wallet missing keypair (cannot sign USDC entry)" unless user_keypair
+
+      # LOUD signer guard: the keypair we sign with MUST own web2_solana_address,
+      # or the on-chain `user` signer would not match the ATA/user_pda derived
+      # from that address. Both come from the same `user`, so this only trips on
+      # a corrupted row — fail closed rather than broadcast a doomed/wrong tx.
+      unless user_keypair.public_key_bytes == Keypair.decode_base58(wallet_address)
+        raise "Managed keypair does not own web2_solana_address (signer/ATA desync guard)"
+      end
+
+      # Bootstrap the accounts the irreversible enter_contest spends through, so
+      # a caller can't reach the broadcast with a missing UserAccount PDA or USDC
+      # ATA (would 0xbc4 / AccountNotInitialized).
+      ensure_user_account(wallet_address, username: user.username)
+      ensure_ata(wallet_address, mint: Config::USDC_MINT)
+
+      enter_contest(
+        wallet_address,
+        contest.slug,
+        entry_num,
+        currency_idx: USDC_CURRENCY_IDX,
+        user_keypair: user_keypair,
+        season_id: contest.season_id
+      )
+    end
+
     # Build an enter_contest TX for Phantom co-sign.
     #
     # Phantom-FIRST (default, admin_signs: false): returns a FULLY-UNSIGNED tx —
