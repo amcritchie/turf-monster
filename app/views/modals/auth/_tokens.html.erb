@@ -65,6 +65,14 @@
           <% end %>
         </div>
         <p class="text-center text-xs text-muted mt-4">Secure checkout opens in a new tab.</p>
+        <%# Cross-modal handoff to the Add Funds hub (Coinbase / PayPal /
+            Venmo / Stripe). swap() runs the host directional slide;
+            returnStep returns the buyer to this picker for the Stripe path. %>
+        <button type="button"
+                @click="$store.modals.swap('onramp-hub', { returnStep: 'tokens-picker' })"
+                class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+          More ways to add funds &rarr;
+        </button>
       </div>
     </template>
 

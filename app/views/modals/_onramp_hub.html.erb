@@ -1,0 +1,108 @@
+<%#
+  Add Funds hub — the "more ways to add funds" rail picker reached by swap()
+  from the Get Entry Tokens picker (modals/auth/_tokens + _paypal_tokens).
+  One modal id ('onramp-hub'); no internal step machine.
+
+  Rails, in order: Coinbase (wired to the cdp-ramp buy preflight), PayPal
+  (placeholder), Venmo (placeholder), Stripe single token (wired back to the
+  Get Entry Tokens picker, which IS the Stripe checkout flow).
+
+  Per-rail visibility is gated by onramp_rail_visible? (app/helpers/
+  onramp_helper.rb): every rail shows locally, each gates on its own backend
+  flag in production. props.returnStep carries the picker step the hub was
+  opened from so the back link slides the buyer back there.
+
+  Modeled on modals/_wallet_deposit + modals/_cdp_ramp. CRITICAL: rendered
+  inside a host template x-if, so a SINGLE root element. x-data exposes props
+  the same way _wallet_deposit does; single-quote everything inside the
+  double-quoted x-data / @click attributes.
+%>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }"
+     class="relative">
+
+  <%# Top-right close. Backdrop close still works too. %>
+  <button @click="$store.modals.close()"
+          class="absolute top-0 right-0 -mt-2 -mr-2 text-secondary hover:text-heading text-xl leading-none z-10"
+          aria-label="Close">&times;</button>
+
+  <div class="text-center pt-1 mb-3">
+    <h3 class="text-heading font-bold text-lg leading-tight">Add Funds</h3>
+  </div>
+  <p class="text-xs text-secondary mb-4 text-center">
+    Pick how you'd like to fund your entry. More options are on the way.
+  </p>
+
+  <div class="space-y-3">
+    <% if onramp_rail_visible?(:coinbase) %>
+      <%# Coinbase — wired to the existing cdp-ramp buy preflight, the same
+          handoff the /wallet Buy USDC button and the wallet-deposit modal
+          use. swap() (not open) because we are already inside the host. %>
+      <button type="button" data-onramp-rail="coinbase"
+              @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border border-strong hover:border-primary bg-inset transition text-left">
+        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#0052FF">C</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-heading font-semibold text-sm">Coinbase</span>
+          <span class="block text-xs text-secondary">Buy USDC with a card or bank</span>
+        </span>
+        <svg class="shrink-0 w-4 h-4 text-muted" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+        </svg>
+      </button>
+    <% end %>
+
+    <% if onramp_rail_visible?(:paypal) %>
+      <%# PayPal — placeholder. Visually complete, non-interactive, tagged
+          "Soon". Wire it to the paypal_tokens flow when the rail goes live. %>
+      <div data-onramp-rail="paypal"
+           class="w-full flex items-center gap-4 p-4 rounded-xl border border-subtle bg-inset opacity-60">
+        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#003087">P</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-heading font-semibold text-sm">PayPal</span>
+          <span class="block text-xs text-secondary">Pay with your PayPal balance</span>
+        </span>
+        <span class="shrink-0 text-[10px] uppercase tracking-widest font-bold text-muted bg-surface border border-subtle rounded-full px-2 py-0.5">Soon</span>
+      </div>
+    <% end %>
+
+    <% if onramp_rail_visible?(:venmo) %>
+      <%# Venmo — placeholder, same treatment as PayPal (shares the PayPal
+          backend rail once live). %>
+      <div data-onramp-rail="venmo"
+           class="w-full flex items-center gap-4 p-4 rounded-xl border border-subtle bg-inset opacity-60">
+        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#008CFF">V</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-heading font-semibold text-sm">Venmo</span>
+          <span class="block text-xs text-secondary">Pay from your Venmo balance</span>
+        </span>
+        <span class="shrink-0 text-[10px] uppercase tracking-widest font-bold text-muted bg-surface border border-subtle rounded-full px-2 py-0.5">Soon</span>
+      </div>
+    <% end %>
+
+    <% if onramp_rail_visible?(:stripe) %>
+      <%# Stripe single token — wired back to the Get Entry Tokens picker,
+          which IS the Stripe checkout flow. Mirrors the board showTokensPanel
+          props so the picker mounts clean. %>
+      <button type="button" data-onramp-rail="stripe"
+              @click="$store.modals.swap('auth', { step: 'tokens-picker', mintedCount: 0, mintedBalance: 0, errorText: '', redirectUrl: '', txSignature: '' })"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border border-strong hover:border-primary bg-inset transition text-left">
+        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#635BFF">S</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-heading font-semibold text-sm">Card &middot; $19</span>
+          <span class="block text-xs text-secondary">Buy one entry token with a card</span>
+        </span>
+        <svg class="shrink-0 w-4 h-4 text-muted" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+        </svg>
+      </button>
+    <% end %>
+  </div>
+
+  <%# Back to the entry-tokens picker. props.returnStep is the step the hub
+      was opened from; defaults to the picker. %>
+  <button type="button"
+          @click="$store.modals.swap('auth', { step: (props.returnStep || 'tokens-picker') })"
+          class="block mx-auto mt-4 text-sm text-secondary hover:text-heading transition">
+    &larr; Back
+  </button>
+</div>
