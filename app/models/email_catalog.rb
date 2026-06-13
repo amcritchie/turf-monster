@@ -41,7 +41,7 @@ module EmailCatalog
                }),
       Item.new(key: "contest_winnings", name: "Contest winnings", type: :transactional,
                description: "Payout notification when a user wins a contest.",
-               builder: -> { ContestMailer.winnings(::Entry.where("payout_cents > 0").where.not(rank: nil).first || ::Entry.where.not(rank: nil).first || ::Entry.first) }),
+               builder: -> { ContestMailer.winnings(::Entry.where("payout_cents > 0").where.not(rank: nil).first || ::Entry.where.not(rank: nil).first || ::Entry.first) })
     ]
   end
 
