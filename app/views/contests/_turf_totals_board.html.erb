@@ -285,6 +285,17 @@ window.selectionBoard = function() {
           .catch(function (e) { console.error('[hold-confirm-entry] confirmEntry rejected:', e); });
       });
 
+      // Age gate (ENABLE_AGE_GATE): the DOB modal fired 'age-verified' after a
+      // successful verify (it already flipped $store.session.ageVerified). Pick
+      // the entry back up so the user flows straight to the next gate / entry
+      // without re-holding. confirmEntry re-runs eligibilityBlocker — age now
+      // passes, so it advances to tokens/balance or submits.
+      window.addEventListener('age-verified', function () {
+        Promise.resolve()
+          .then(function () { return board.confirmEntry(); })
+          .catch(function (e) { console.error('[age-verified] confirmEntry rejected:', e); });
+      });
+
       // Reopen the post-signup step after submitProfile()'s reload —
       // Google → buy entry tokens; email → check your email.
       try {
@@ -615,10 +626,21 @@ window.selectionBoard = function() {
       if (!blocker) return;
       switch (blocker.reason) {
         case 'not_logged_in':        this.showLoginModal(); break;
+        case 'age_required':         this.showAgeVerifyModal(); break;
         case 'no_tokens':            this.showTokensPanel(); break;
         case 'insufficient_balance': this.showInsufficientBalanceModal(blocker); break;
         default:                     this.resetHoldButtons();
       }
+    },
+
+    // Age gate (ENABLE_AGE_GATE): open the date-of-birth verification modal.
+    // It fires before the Get Entry Tokens modal (eligibilityBlocker order).
+    // On success the modal sets $store.session.ageVerified and dispatches
+    // 'age-verified' (listener wired in init) → we resume the entry so the
+    // user flows straight through to the next gate (tokens/balance) or entry.
+    showAgeVerifyModal() {
+      this.resetHoldButtons();
+      Alpine.store('modals').open('age-verify', { enterAnim: 'shake' });
     },
 
     // Open the standalone wallet-deposit modal. Hands the blocker's data

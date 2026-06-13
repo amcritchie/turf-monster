@@ -96,6 +96,20 @@ class ApplicationController < ActionController::Base
     AppFlags.age_attestation?
   end
 
+  # Entry-time age gate (ENABLE_AGE_GATE). True when this user must verify their
+  # date of birth before their FIRST contest entry. Once verified
+  # (age_attested_at present), they pass forever. The entry controllers check
+  # this BEFORE any payment; AgeVerificationsController clears it.
+  def age_gate_required?
+    AppFlags.age_gate?
+  end
+
+  # True iff the entry flow should block THIS user pending DOB verification.
+  def age_verification_pending?
+    age_gate_required? && current_user.present? && current_user.age_attested_at.blank?
+  end
+  helper_method :age_gate_required?, :age_verification_pending?
+
   # Public, crawlable GET pages that must unfurl in link previews (and never
   # 406 a visitor). These carry og/twitter tags and are the URLs people paste
   # into Messages/Slack/social: the marketing funnel + the public contest reads.
@@ -280,7 +294,12 @@ class ApplicationController < ActionController::Base
     wallet_context.to_h.merge(
       usdcCents:       wallet_field_cents(:usdc),
       usdtCents:       wallet_field_cents(:usdt),
-      tokensAvailable: (current_user&.entry_token_balance.to_i rescue 0)
+      tokensAvailable: (current_user&.entry_token_balance.to_i rescue 0),
+      # Entry-time age gate (ENABLE_AGE_GATE). eligibilityBlocker reads these
+      # synchronously at hold-time and pops the DOB modal BEFORE the tokens /
+      # balance check when the gate is on and this user hasn't verified yet.
+      ageGateRequired: age_gate_required?,
+      ageVerified:     current_user&.age_attested_at.present? || false
     )
   end
 
