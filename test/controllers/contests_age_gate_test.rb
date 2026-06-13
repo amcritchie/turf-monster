@@ -16,6 +16,18 @@ class ContestsAgeGateTest < ActionDispatch::IntegrationTest
     ENV.delete("ENABLE_AGE_GATE")
   end
 
+  # Symmetric helper for the flag-OFF assertion. Without it the test depends on
+  # the ambient default being unset — which is false whenever the operator
+  # dogfoods with ENABLE_AGE_GATE=true in .env (dotenv loads it into ENV in the
+  # test env too), turning a real local run red while CI (clean env) stays
+  # green. Force it off for the block, then restore whatever was there.
+  def without_age_gate
+    prior = ENV.delete("ENABLE_AGE_GATE")
+    yield
+  ensure
+    ENV["ENABLE_AGE_GATE"] = prior unless prior.nil?
+  end
+
   test "session-context exposes ageGateRequired + ageVerified" do
     @user.update!(web3_solana_address: "Web3Age#{SecureRandom.hex(3)}")
     log_in_as_onchain(@user)
@@ -53,8 +65,10 @@ class ContestsAgeGateTest < ActionDispatch::IntegrationTest
   test "the gate is OFF when ENABLE_AGE_GATE is unset (prod default)" do
     @user.update!(web3_solana_address: "Web3Off#{SecureRandom.hex(3)}", age_attested_at: nil)
     log_in_as_onchain(@user)
-    post prepare_entry_contest_path(@contest), as: :json
-    body = JSON.parse(response.body) rescue {}
-    assert_not body["age_required"], "flag off → no age gate"
+    without_age_gate do
+      post prepare_entry_contest_path(@contest), as: :json
+      body = JSON.parse(response.body) rescue {}
+      assert_not body["age_required"], "flag off → no age gate"
+    end
   end
 end
