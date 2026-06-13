@@ -40,6 +40,36 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
     assert_equal "insufficient_balance", r[:blocker][:reason]
   end
 
+  # Funding-preflight safety net (2026-06-13): the #resolve_web2_entry_funding!
+  # pre-check raise ("Not enough USDC …") maps to the no_funding/web2 blocker so
+  # the board opens the Top Up Wallet instead of attempting a doomed on-chain entry.
+  test "pre-check 'not enough usdc' in a web2 session maps to no_funding/web2 with neededCents" do
+    contest = Struct.new(:entry_fee_cents).new(1900)
+    r = interp("Not enough USDC to enter this contest — top up your wallet and try again.",
+               contest: contest, mode: :web2)
+    assert_equal "no_funding", r[:blocker][:reason]
+    assert_equal "web2",       r[:blocker][:mode]
+    assert_equal 1900,         r[:blocker][:data][:neededCents]
+    assert_match(/USDC/i, r[:message])
+  end
+
+  # Backstop: the raw SPL token-program insufficient-funds error (custom program
+  # error: 0x1) reaching a web2 session also maps to no_funding/web2 — never leak
+  # the cryptic 0x1 sim error to a managed user.
+  test "raw SPL 'custom program error: 0x1' in a web2 session maps to no_funding/web2" do
+    r = interp("Transaction simulation failed: Error processing Instruction 2: custom program error: 0x1",
+               mode: :web2)
+    assert_equal "no_funding", r[:blocker][:reason]
+    assert_equal "web2",       r[:blocker][:mode]
+  end
+
+  # The 0x1 backstop is web2-scoped — a bare 0x1 with no web2 context (web3 /
+  # unknown) must NOT be mapped to a web2 blocker (it falls through unmapped).
+  test "raw 0x1 outside a web2 session does NOT map to the no_funding/web2 backstop" do
+    r = interp("custom program error: 0x1")
+    assert_nil r[:blocker], "a bare 0x1 with no web2 context must not produce a web2 blocker"
+  end
+
   test "0x1773 maps to contest_locked" do
     r = interp("custom program error: 0x1773")
     assert_equal "contest_locked", r[:blocker][:reason]

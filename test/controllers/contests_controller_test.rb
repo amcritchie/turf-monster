@@ -406,6 +406,9 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
     vault = FakeVault.new(tokens: [])
+    # The funding-preflight safety net pre-checks USDC before the on-chain enter,
+    # so a USDC-funded entry needs a wallet that actually covers the $19 fee.
+    vault.wallet_balances = { sol: 0.1, usdc: 25.0, usdt: 0.0 }
     AppFlags.stub :web2_usdc_entry?, true do
       Solana::Vault.stub :new, vault do
         post enter_contest_path(@contest), as: :json
@@ -483,6 +486,8 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
       web3_addr => [{ pda: "tpda_web3", consumed: false }],
       web2_addr => []
     })
+    # Funded enough USDC for the safety-net pre-check to clear → USDC fallback.
+    vault.wallet_balances = { sol: 0.1, usdc: 25.0, usdt: 0.0 }
     AppFlags.stub :web2_usdc_entry?, true do
       Solana::Vault.stub :new, vault do
         post enter_contest_path(@contest), as: :json
@@ -539,6 +544,225 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
                  "the scoped lookup must consume the WEB2-owned token, not the web3 one"
     assert_equal web2_addr, vault.enter_calls.first[:wallet]
     assert entry.reload.active?
+  end
+
+  # SAFETY NET (funding preflight, 2026-06-13). A tokenless managed user with a
+  # $0 USDC balance + the flag ON must be blocked with no_funding BEFORE the
+  # doomed on-chain enter_contest_with_usdc — never the cryptic 0x1 sim error.
+  test "enter pre-checks USDC and blocks a $0 managed wallet with no_funding instead of attempting a doomed on-chain entry" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: []) # default wallet_balances are all 0.0 → $0 USDC
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_equal "no_funding", body.dig("blocker", "reason")
+    assert_equal "web2",       body.dig("blocker", "mode")
+    assert_match(/USDC/i, body["error"])
+    assert entry.reload.cart?, "the entry must stay cart — no doomed on-chain attempt"
+    refute(vault.enter_calls.any? { |c| c[:method] == :enter_contest_with_usdc },
+           "enter_contest_with_usdc must NOT be called for a $0 wallet")
+  end
+
+  # --- check_funding (hold-to-confirm funding pre-check, 2026-06-13) ---
+  #
+  # check_funding is a pure capability check on the contest fee + wallet, so
+  # these tests intentionally create NO cart entry — it's independent of the row.
+
+  test "check_funding requires authentication" do
+    post check_funding_contest_path(@contest), as: :json
+    assert_response :unauthorized
+  end
+
+  test "check_funding reports fundable via token for a managed user holding an entry token" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Vault.stub :new, vault do
+      post check_funding_contest_path(@contest), as: :json
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["fundable"]
+    assert_nil body["reason"]
+    assert_equal "token", body["method"]
+  end
+
+  test "check_funding reports fundable via usdc for a tokenless funded managed user when the flag is on" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances = { sol: 0.1, usdc: 25.0, usdt: 0.0 }
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["fundable"]
+    assert_equal "usdc", body["method"]
+  end
+
+  test "check_funding reports NOT fundable for a fresh $0 managed wallet (the bug case)" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: []) # default balances all 0.0
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    refute body["fundable"]
+    assert_equal "no_funding", body["reason"]
+    assert_nil body["method"]
+  end
+
+  test "check_funding reports NOT fundable for a USDC-funded managed wallet when ENABLE_WEB2_USDC_ENTRY is off" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances = { sol: 0.1, usdc: 25.0, usdt: 0.0 }
+    AppFlags.stub :web2_usdc_entry?, false do
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    body = JSON.parse(response.body)
+    refute body["fundable"], "web2 USDC entry is gated off — a USDC-only wallet is not fundable"
+    assert_equal "no_funding", body["reason"]
+  end
+
+  test "check_funding reports fundable via usdc for a web3 session regardless of the web2 flag" do
+    log_in_as_onchain @user # sets web3 address + onchain session
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances = { sol: 0.1, usdc: 25.0, usdt: 0.0 }
+    AppFlags.stub :web2_usdc_entry?, false do # web2 flag has no bearing on web3
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    body = JSON.parse(response.body)
+    assert body["fundable"]
+    assert_equal "usdc", body["method"]
+  end
+
+  test "check_funding reports fundable via usdt for a web3 session on an accepts_usdt contest" do
+    log_in_as_onchain @user
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1, accepts_usdt: true)
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances = { sol: 0.1, usdc: 0.0, usdt: 25.0 } # USDT only
+    Solana::Vault.stub :new, vault do
+      post check_funding_contest_path(@contest), as: :json
+    end
+
+    body = JSON.parse(response.body)
+    assert body["fundable"]
+    assert_equal "usdt", body["method"]
+  end
+
+  test "check_funding reports NOT fundable via usdt when the contest does not accept it" do
+    log_in_as_onchain @user
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1, accepts_usdt: false)
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances = { sol: 0.1, usdc: 0.0, usdt: 25.0 } # USDT only
+    Solana::Vault.stub :new, vault do
+      post check_funding_contest_path(@contest), as: :json
+    end
+
+    body = JSON.parse(response.body)
+    refute body["fundable"], "a USDT-only wallet can't fund a USDC-only contest"
+    assert_equal "no_funding", body["reason"]
+  end
+
+  test "check_funding reports fundable on a free contest with no wallet funds" do
+    log_in_as @user
+    contest = free_contest
+
+    vault = FakeVault.new(tokens: [])
+    Solana::Vault.stub :new, vault do
+      post check_funding_contest_path(contest), as: :json
+    end
+
+    body = JSON.parse(response.body)
+    assert body["fundable"]
+    assert_nil body["method"], "a free entry needs no funding method"
+  end
+
+  test "check_funding fails CLOSED (not fundable) and records an ErrorLog when the balance read raises" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: [])
+    def vault.fetch_wallet_balances(_addr) = raise("RPC down")
+
+    before = ErrorLog.count
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    refute body["fundable"], "a read failure must fail CLOSED (Top Up Wallet)"
+    assert_equal "no_funding", body["reason"]
+    assert_operator ErrorLog.count, :>, before, "the read failure must be recorded to ErrorLog"
   end
 
   # Incident 2026-06-08 (entry #133), defense-in-depth half: a TRANSIENT failure
