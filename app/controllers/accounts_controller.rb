@@ -152,7 +152,7 @@ class AccountsController < ApplicationController
           { user_id: @user.id, new_email: new_email, current_email: current_email, requested_at: Time.current.to_i },
           expires_in: EMAIL_CHANGE_TOKEN_TTL
         )
-        UserMailer.email_change_confirmation(@user, current_email, new_email, token).deliver_later
+        EmailDelivery.deliver(UserMailer, :email_change_confirmation, @user, current_email, new_email, token, to: current_email, user: @user)
 
         # Signal the email-change-pending modal instead of a flash toast. The
         # /account page reads flash[:email_change_pending] into an inline JSON
@@ -211,11 +211,16 @@ class AccountsController < ApplicationController
     user = User.find(payload[:user_id])
 
     rescue_and_log(target: user) do
+      old_email = user.email
       user.update!(email: payload[:new_email], email_verified_at: nil)
       # OPSEC-045: rotate the session token so any OTHER live session (e.g. a
       # hijacker who initiated the change) loses access the moment the legit
       # owner confirms from their inbox.
       user.regenerate_session_token!
+
+      # OPSEC-046: heads-up to the OLD address that the change just landed — an
+      # out-of-band signal if the change wasn't actually authorized.
+      EmailDelivery.deliver(UserMailer, :email_change_notification, user, old_email, user.email, to: old_email, user: user)
 
       # Reuse the existing email_verification mint + mailer so the user verifies
       # the NEW address through the established flow.
@@ -223,7 +228,7 @@ class AccountsController < ApplicationController
         { user_id: user.id, email: user.email, return_to: nil },
         expires_in: EmailVerificationsController::VERIFY_TOKEN_TTL
       )
-      UserMailer.email_verification(user, verify_token).deliver_later
+      EmailDelivery.deliver(UserMailer, :email_verification, user, verify_token, to: user.email, user: user)
 
       target = logged_in? ? account_path : signin_path
       redirect_to target, notice: "Email changed — verify your new address (link sent to #{user.email})."
@@ -401,7 +406,7 @@ class AccountsController < ApplicationController
       { user_id: current_user.id, email: current_user.email, initiated_at: current_user.export_initiated_at.to_i },
       expires_in: WALLET_EXPORT_TOKEN_TTL
     )
-    UserMailer.wallet_export(current_user, token).deliver_later
+    EmailDelivery.deliver(UserMailer, :wallet_export, current_user, token, to: current_user.email, user: current_user)
 
     Rails.logger.info "[wallet-export] initiated user=#{current_user.id} email=#{current_user.email}"
     render json: { success: true, message: "Magic link sent. Check #{current_user.email}." }

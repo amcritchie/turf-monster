@@ -1,13 +1,22 @@
-<h1>Your Turf Monster email was changed</h1>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3f4a3c;">Hi <%= @user.display_name %> 👋🏻</p>
 
-<p>Hi <%= @user.display_name %>,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3f4a3c;">
+  The email on your Turf Monster account was just changed from
+  <strong style="color:#1f2a1c;"><%= @old_email %></strong> to
+  <strong style="color:#1f2a1c;"><%= @new_email %></strong>.
+</p>
 
-<p>The email address on your Turf Monster account was just changed from <strong><%= @old_email %></strong> to <strong><%= @new_email %></strong>.</p>
+<p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#3f4a3c;">
+  If that was you, you're all set — we sent a verification link to the new address separately.
+  If it <strong>wasn't</strong> you, secure your account right away:
+</p>
 
-<p><strong>Did you do this?</strong></p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+  <tr><td align="center" bgcolor="#4BAF50" style="border-radius:10px;">
+    <a href="<%= @account_url %>" style="display:inline-block;padding:16px 40px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">Secure my account →</a>
+  </td></tr>
+</table>
 
-<p>If yes — nothing to do; we sent a verification link to your new email separately.</p>
-
-<p>If no — your account may be compromised. Reply to this message or contact support immediately. Changing your password now will also boot anyone else who is signed in.</p>
-
-<p>— Turf Monster</p>
+<p style="margin:28px 0 0;font-size:13px;line-height:1.5;color:#6b756a;text-align:center;">
+  Changing your password also signs out anyone else. Reply to this email if you need help.<br>— Turf Monster
+</p>

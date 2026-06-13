@@ -15,7 +15,7 @@ class WinnerNotificationJobTest < ActiveJob::TestCase
   end
 
   test "delivers the winnings email and stamps winner_notified_at" do
-    assert_emails 1 do
+    assert_difference "EmailDelivery.count", 1 do
       WinnerNotificationJob.perform_now(@entry.id)
     end
     assert_not_nil @entry.reload.winner_notified_at
@@ -24,7 +24,7 @@ class WinnerNotificationJobTest < ActiveJob::TestCase
   test "is a no-op when already notified (idempotent)" do
     @entry.update_column(:winner_notified_at, Time.current)
 
-    assert_no_emails do
+    assert_no_difference "EmailDelivery.count" do
       WinnerNotificationJob.perform_now(@entry.id)
     end
   end
@@ -39,7 +39,7 @@ class WinnerNotificationJobTest < ActiveJob::TestCase
       user: wallet_user, status: "complete", rank: 1, payout_cents: 7500, score: 1.0
     )
 
-    assert_no_emails do
+    assert_no_difference "EmailDelivery.count" do
       WinnerNotificationJob.perform_now(entry.id)
     end
     assert_nil entry.reload.winner_notified_at
@@ -48,7 +48,7 @@ class WinnerNotificationJobTest < ActiveJob::TestCase
   test "skips non-winning entries" do
     @entry.update_column(:payout_cents, 0)
 
-    assert_no_emails do
+    assert_no_difference "EmailDelivery.count" do
       WinnerNotificationJob.perform_now(@entry.id)
     end
   end

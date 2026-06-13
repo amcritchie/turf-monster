@@ -15,6 +15,6 @@ class InviterNotificationJob < ApplicationJob
     return unless invitee
     return unless invitee.inviter && invitee.inviter.email.present?
 
-    InviterMailer.friend_joined_contest(invitee: invitee).deliver_now
+    EmailDelivery.deliver(InviterMailer, :friend_joined_contest, to: invitee.inviter.email, user: invitee.inviter, invitee: invitee)
   end
 end

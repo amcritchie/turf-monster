@@ -339,6 +339,12 @@ Rails.application.routes.draw do
     # User browser — refer chain, invitees count, audit columns. Read-only.
     resources :users, only: [:index]
 
+    # Email manager — every email the app sends, typed (transactional/marketing)
+    # with a live preview. See Admin::EmailsController + EmailCatalog.
+    get "emails",          to: "emails#index", as: :emails
+    get "emails/:key/raw", to: "emails#raw",   as: :raw_email
+    get "emails/:key",     to: "emails#show",  as: :email
+
     # OPSEC-046: admin "act as user" impersonation. POST enters (target by
     # slug), DELETE returns to the admin account. See Admin::ImpersonationsController.
     post   "impersonations/:user_slug", to: "impersonations#create",  as: :impersonate

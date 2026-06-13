@@ -54,6 +54,9 @@ Rails.application.configure do
   # links must point here or they 404 against the wrong app. APP_PORT lets a
   # second worktree on another port (e.g. 3002) emit links that point at itself.
   config.action_mailer.default_url_options = { host: "localhost", port: ENV.fetch("APP_PORT", 3001).to_i }
+  # Email banners come from this app's asset pipeline; point at this dev server
+  # (APP_PORT) so previews/sends resolve the image locally.
+  config.action_mailer.asset_host = "http://localhost:#{ENV.fetch('APP_PORT', 3001)}"
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

@@ -1,4 +1,7 @@
 class UserMailer < ApplicationMailer
+  # Branded shell for all UserMailer emails.
+  layout "branded_mailer"
+
   # OPSEC-005: email verification challenge. Token is a signed payload
   # (id + email + expiry) generated via Rails.application.message_verifier.
   # The recipient clicks the link → controller verifies the token → sets
@@ -9,6 +12,8 @@ class UserMailer < ApplicationMailer
     @user = user
     @contest = contest
     @verify_url = email_verifications_verify_url(token: token)
+    @banner_url = email_banner_url("verify-banner.png")
+    @banner_alt = "Verify Your Email"
     mail(to: user.email, subject: "Verify your Turf Monster email")
   end
 
@@ -20,11 +25,8 @@ class UserMailer < ApplicationMailer
     @contest = contest
     @email = email
     @magic_url = magic_link_url(token: token)
-    # Inline the branded header banner (CID attachment — the resend gem forwards
-    # `content_id` for inline parts). Kept JPEG-small (~145KB) since it ships on
-    # every send. Referenced in the view via attachments[...].url.
-    attachments.inline["magic-link-banner.jpg"] =
-      Rails.root.join("app/assets/images/emails/magic-link-banner.jpg").read
+    @banner_url = email_banner_url("magic-link-banner.jpg")
+    @banner_alt = "Your Magic Link"
     mail(to: email, subject: "🐊🪄 Turf Totals Sign-in Link")
   end
 
@@ -35,6 +37,8 @@ class UserMailer < ApplicationMailer
     @user = user
     @export_url = url_for(controller: "wallet_exports", action: "show", token: token, only_path: false)
     @support_email = "alex@turfmonster.media"
+    @banner_url = email_banner_url("wallet-export-banner.png")
+    @banner_alt = "Your Wallet Keys"
     mail(to: user.email, subject: "Your Turf Monster wallet export link")
   end
 
@@ -46,6 +50,9 @@ class UserMailer < ApplicationMailer
     @user = user
     @old_email = old_email
     @new_email = new_email
+    @account_url = account_url
+    @banner_url = email_banner_url("email-change-notify-banner.png")
+    @banner_alt = "Heads Up"
     mail(to: old_email, subject: "Your Turf Monster email was changed")
   end
 
@@ -59,6 +66,8 @@ class UserMailer < ApplicationMailer
     @current_email = current_email
     @new_email = new_email
     @confirm_url = confirm_email_change_url(token)
+    @banner_url = email_banner_url("email-change-confirm-banner.png")
+    @banner_alt = "Confirm Your Email"
     mail(to: current_email, subject: "Confirm your Turf Monster email change")
   end
 end

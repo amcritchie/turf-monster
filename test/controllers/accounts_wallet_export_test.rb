@@ -60,7 +60,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
   # password would have permanently locked these users out of self-custody.
   test "initiate works for a passwordless managed user (no password reauth gate)" do
     log_in_as(@managed)
-    assert_enqueued_emails 1 do
+    assert_difference "EmailDelivery.count", 1 do
       post initiate_wallet_export_account_path
     end
     assert_response :success
@@ -81,7 +81,7 @@ class AccountsWalletExportTest < ActionDispatch::IntegrationTest
     log_in_as(@managed)
     assert_nil @managed.export_initiated_at
 
-    assert_enqueued_emails 1 do
+    assert_difference "EmailDelivery.count", 1 do
       post initiate_wallet_export_account_path
     end
     assert_response :success

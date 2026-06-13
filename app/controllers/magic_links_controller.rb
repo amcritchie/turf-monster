@@ -29,7 +29,7 @@ class MagicLinksController < ApplicationController
       # (possibly in a different browser). sign_up_new enforces it.
       token = MagicLink.generate(email: email, return_to: resolved_return_to,
                                  age_attested: age_attestation_given?)
-      UserMailer.magic_link(email, token, contest: @magic_contest).deliver_later
+      EmailDelivery.deliver(UserMailer, :magic_link, email, token, to: email, contest: @magic_contest)
     end
     respond_to do |format|
       format.json { render json: { success: true } }

@@ -37,7 +37,7 @@ class EmailVerificationsController < ApplicationController
       { user_id: @user.id, email: @user.email, return_to: contest && contest_path(contest) },
       expires_in: VERIFY_TOKEN_TTL
     )
-    UserMailer.email_verification(@user, token, contest: contest).deliver_later
+    EmailDelivery.deliver(UserMailer, :email_verification, @user, token, to: @user.email, user: @user, contest: contest)
 
     render_verification_result(true, "Verification email sent. Check your inbox.", email_verifications_new_path)
   rescue StandardError => e

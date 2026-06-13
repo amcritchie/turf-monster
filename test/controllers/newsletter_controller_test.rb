@@ -9,6 +9,8 @@ require "test_helper"
 # payload from over-claiming seeds on a rejoin). See NewsletterController and
 # its private #grant_newsletter_seeds.
 class NewsletterControllerTest < ActionDispatch::IntegrationTest
+  include ActionMailer::TestHelper
+
   setup do
     # Managed-wallet user: an email signup auto-generates a web2 wallet on
     # create, so grant_newsletter_seeds clears its solana_connected? guard.
@@ -109,5 +111,21 @@ class NewsletterControllerTest < ActionDispatch::IntegrationTest
     post newsletter_subscribe_path, params: { email: "not-an-email" }, as: :json
     assert_response :unprocessable_entity
     assert_nil user.reload.joined_email_list_at
+  end
+
+  test "the FIRST join sends the welcome email; a rejoin does not re-send it" do
+    log_in_as @wallet_user
+    fake = FakeVault.new
+    Solana::Vault.stub :new, fake do
+      assert_difference "EmailDelivery.count", 1 do
+        post newsletter_subscribe_path, as: :json
+      end
+      assert_equal "NewsletterMailer#welcome", EmailDelivery.order(:created_at).last.email_key
+
+      post newsletter_unsubscribe_path, as: :json
+      assert_no_difference "EmailDelivery.count" do
+        post newsletter_subscribe_path, as: :json # rejoin → no welcome
+      end
+    end
   end
 end

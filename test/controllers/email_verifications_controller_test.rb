@@ -14,7 +14,7 @@ class EmailVerificationsControllerTest < ActionDispatch::IntegrationTest
 
   test "create sends verification email" do
     log_in_as @alex
-    assert_emails 1 do
+    assert_difference "EmailDelivery.count", 1 do
       post email_verifications_path
     end
     assert_redirected_to email_verifications_new_path
@@ -23,7 +23,7 @@ class EmailVerificationsControllerTest < ActionDispatch::IntegrationTest
   test "create refuses when email already verified" do
     @alex.update!(email_verified_at: Time.current)
     log_in_as @alex
-    assert_emails 0 do
+    assert_no_difference "EmailDelivery.count" do
       post email_verifications_path
     end
     assert_redirected_to root_path
