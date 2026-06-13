@@ -285,6 +285,10 @@
             usdcCents: 0,
             usdtCents: 0,
             tokensAvailable: 0,
+            // ENABLE_WEB2_USDC_ENTRY kill-switch (default on). When false the
+            // web2 eligibility gate ignores USDC and blocks token-only. Static
+            // per render — set once from #session-context, never refreshed.
+            web2UsdcEntry: true,
             // Entry-time age gate (ENABLE_AGE_GATE). ageGateRequired = feature
             // on; ageVerified = this user already confirmed DOB. eligibilityBlocker
             // pops the DOB modal at hold-time when required && !verified.
@@ -306,6 +310,7 @@
               if (ctx.usdcCents       !== undefined) this.usdcCents       = (ctx.usdcCents       == null) ? null : (ctx.usdcCents       | 0);
               if (ctx.usdtCents       !== undefined) this.usdtCents       = (ctx.usdtCents       == null) ? null : (ctx.usdtCents       | 0);
               if (ctx.tokensAvailable !== undefined) this.tokensAvailable = (ctx.tokensAvailable == null) ? 0    : (ctx.tokensAvailable | 0);
+              if (ctx.web2UsdcEntry   !== undefined) this.web2UsdcEntry   = !!ctx.web2UsdcEntry;
               if (ctx.ageGateRequired !== undefined) this.ageGateRequired = !!ctx.ageGateRequired;
               if (ctx.ageVerified     !== undefined) this.ageVerified     = !!ctx.ageVerified;
             }
@@ -870,8 +875,10 @@
       </template>
       <%# Top Up Wallet — the Coinbase-forward FIRST funds modal at the entry
           blocker (selectionBoard#showWalletTopup), replacing the pack picker at
-          that trigger. Registered ungated alongside onramp-hub (which it links
-          into) for the same reason: it can appear right after an in-session
+          that trigger. Primary CTA buys USDC via cdp-ramp; the web2 kill-switch
+          (ENABLE_WEB2_USDC_ENTRY off) degrades it client-side to the entry-token
+          rail (tokenFallback). Registered ungated alongside onramp-hub (which it
+          links into) for the same reason: it can appear right after an in-session
           signup where the server-rendered logged_in? was still false. The
           Coinbase CTA hands off to cdp-ramp (registered under logged_in? +
           ENABLE_CDP_RAMP below). %>

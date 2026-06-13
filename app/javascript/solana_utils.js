@@ -428,8 +428,19 @@ export function eligibilityBlocker(session, neededCents, opts) {
   if ((neededCents | 0) <= 0) return null;  // free contest
 
   if (session.mode === 'web2') {
+    // Unified web2 funding (operator spec 2026-06-13): ENTRY TOKEN first (incl.
+    // seed-earned free entries — /enter consumes an EntryTokenAccount before any
+    // USDC), then USDC when ENABLE_WEB2_USDC_ENTRY is on (server-signs
+    // enter_contest). USDT is never offered to web2 (payouts are USDC). Block
+    // only when NO enabled method covers the fee.
     if ((session.tokensAvailable | 0) >= 1) return null;
-    return { reason: 'no_tokens', mode: 'web2', data: {} };
+    if (session.web2UsdcEntry) {
+      // Unknown balance (null — cold navbar cache / RPC flake) fails OPEN: the
+      // atomic server-side enter is authoritative and can't strand a user.
+      if (session.usdcCents == null) return null;
+      if ((session.usdcCents | 0) >= neededCents) return null;
+    }
+    return { reason: 'no_funding', mode: 'web2', data: {} };
   }
   if (session.mode === 'web3') {
     // Fail open when balances are unknown — the server-side enter is the

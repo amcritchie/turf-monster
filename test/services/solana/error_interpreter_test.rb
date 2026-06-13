@@ -1,8 +1,8 @@
 require "test_helper"
 
 class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
-  def interp(msg, contest: nil)
-    Solana::ErrorInterpreter.interpret(msg, contest: contest)
+  def interp(msg, contest: nil, mode: nil)
+    Solana::ErrorInterpreter.interpret(msg, contest: contest, mode: mode)
   end
 
   test "user rejection returns toast, no blocker" do
@@ -12,9 +12,9 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
     assert r[:toast]
   end
 
-  test "no entry tokens maps to web2 no_tokens blocker" do
+  test "no entry tokens maps to web2 no_funding blocker" do
     r = interp("No entry tokens. Buy at /tokens/buy")
-    assert_equal "no_tokens", r[:blocker][:reason]
+    assert_equal "no_funding", r[:blocker][:reason]
     assert_equal "web2", r[:blocker][:mode]
   end
 
@@ -24,6 +24,15 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
     assert_equal "insufficient_balance", r[:blocker][:reason]
     assert_equal "web3",                  r[:blocker][:mode]
     assert_equal 1900,                    r[:blocker][:data][:neededCents]
+  end
+
+  test "0x1772 in a web2 session maps to no_funding/web2 (Top Up Wallet), not the web3 deposit modal" do
+    contest = Struct.new(:entry_fee_cents).new(1900)
+    r = interp("custom program error: 0x1772", contest: contest, mode: :web2)
+    assert_equal "no_funding", r[:blocker][:reason]
+    assert_equal "web2",       r[:blocker][:mode]
+    assert_equal 1900,         r[:blocker][:data][:neededCents]
+    assert_match(/USDC/i, r[:message])
   end
 
   test "InsufficientBalance Anchor name also maps to insufficient_balance" do
@@ -117,6 +126,6 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
 
   test "exception instances are accepted" do
     r = interp(StandardError.new("No entry tokens. Buy at /tokens/buy"))
-    assert_equal "no_tokens", r[:blocker][:reason]
+    assert_equal "no_funding", r[:blocker][:reason]
   end
 end

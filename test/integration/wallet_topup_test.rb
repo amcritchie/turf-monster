@@ -1,14 +1,21 @@
 require "test_helper"
 
-# Render-gating coverage for the token-first Top Up Wallet modal
+# Render-gating coverage for the COINBASE-FORWARD Top Up Wallet modal
 # (modals/_wallet_topup), its ungated registration in the application layout,
 # the entry-blocker re-route in contests/_turf_totals_board, and the Add Funds
-# hub's returnModal back-branching. Companion to onramp_hub_test.rb; the
-# client-side JS trigger (showWalletTopup vs showTokensPanel) is asserted at the
-# render level only — the live modal handoff is a tracked Playwright e2e gap
-# (mirrors the on-chain success-modal coverage-gap precedent).
+# hub's returnModal back-branching. Companion to onramp_hub_test.rb.
+#
+# Since unified funding (operator 2026-06-13), a web2/managed USDC entry works
+# (server-signed enter_contest) when ENABLE_WEB2_USDC_ENTRY is on, so USDC is the
+# cash funding rail again: the primary CTA buys USDC with Coinbase and there are
+# NO entry-token links in the default arrangement. The flag-off kill-switch
+# degrades — client-side — to the entry-token rail for web2 viewers who can't pay
+# with USDC. That branching is Alpine-runtime (tokenFallback reads $store.session),
+# so it's asserted at the render level via the gating expressions only; the live
+# modal handoff is a tracked Playwright e2e gap (mirrors the on-chain
+# success-modal coverage-gap precedent).
 class WalletTopupTest < ActionDispatch::IntegrationTest
-  # --- modal registration + content (ungated, like onramp-hub) ---
+  # --- modal registration (ungated, like onramp-hub) ---
 
   test "the wallet-topup modal is registered ungated in the layout for a guest" do
     get contests_path
@@ -26,32 +33,84 @@ class WalletTopupTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Top Up Wallet"
   end
 
-  test "the wallet-topup modal shows the entry-token count from the session payload" do
+  # --- header: USDC balance (the funding currency) ---
+
+  test "the header shows the USDC balance, not a hardcoded token count" do
     get contests_path
     assert_response :success
-    # This trigger fires only for managed (web2) players, who pay by consuming an
-    # entry token — so the header surfaces the token count, not a USDC balance.
-    # Sourced from $store.session.tokensAvailable (coerced to a number, 0 cold).
-    assert_includes response.body, "Entry tokens:"
-    assert_includes response.body, "$store.session.tokensAvailable"
-    # The misleading USDC balance line is gone from this token-buying audience.
-    refute_includes response.body, "$store.session.usdcCents === null"
+    # USDC is the funding currency again, so the default header surfaces the USDC
+    # balance (em-dash when the navbar cache is cold) from $store.session.usdcCents.
+    assert_includes response.body, "USDC balance:"
+    assert_includes response.body, "get usdcDisplay()"
+    assert_includes response.body, "$store.session.usdcCents"
+    # The token-count header survives ONLY as the flag-off (tokenFallback) degrade,
+    # gated behind x-show, not the default line.
+    assert_includes response.body, %(x-show="tokenFallback")
   end
 
-  test "the primary CTA buys entry tokens via the pack picker, not USDC" do
+  # --- primary CTA: Buy USDC with Coinbase (cdp-ramp buy preflight) ---
+
+  test "the primary CTA buys USDC with Coinbase via the cdp-ramp buy preflight" do
     get contests_path
     assert_response :success
-    # Token-first: the bordered primary CTA opens the existing tokens-picker step
-    # of the auth wizard (the same props showTokensPanel uses) via swap().
-    assert_includes response.body, %(data-topup-rail="tokens")
-    assert_includes response.body, "Buy Entry Tokens"
-    assert_includes response.body,
-                     "$store.modals.swap('auth', { step: 'tokens-picker'"
-    # The Coinbase/USDC button must NO LONGER be the primary action here — it is
-    # demoted to the hub's "More ways to add funds" fallback (asserted below).
-    refute_includes response.body, %(data-topup-rail="coinbase"),
-                    "the Coinbase-primary button must be gone from wallet-topup"
+    body = response.body
+    # Coinbase-forward: the bordered primary CTA hands off to the existing
+    # cdp-ramp buy preflight (the same handoff /wallet Buy USDC + the hub use).
+    assert_includes body, %(data-topup-rail="coinbase")
+    assert_includes body, "Buy USDC with Coinbase"
+    assert_includes body,
+                     "$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+    # The Coinbase pitch is hidden for the web2 kill-switch audience that can't
+    # pay with USDC.
+    assert_match(/x-if="!tokenFallback">\s*<button type="button" data-topup-rail="coinbase"/m, body,
+                 "the Coinbase CTA must be gated behind !tokenFallback")
   end
+
+  # --- flag-aware degrade: web2 + ENABLE_WEB2_USDC_ENTRY off -> token rail ---
+
+  test "the token rail is the kill-switch degrade, gated behind tokenFallback" do
+    get contests_path
+    assert_response :success
+    body = response.body
+    # The entry-token CTA exists ONLY inside the tokenFallback branch (web2 +
+    # flag off); it is NOT the default primary action.
+    assert_includes body, %(data-topup-rail="tokens")
+    assert_includes body, "Buy Entry Tokens"
+    assert_match(/x-if="tokenFallback">\s*<button type="button" data-topup-rail="tokens"/m, body,
+                 "the token rail must be gated behind tokenFallback")
+    # tokenFallback fires for web2 viewers ONLY when the web2-USDC kill-switch is
+    # off — web3 and flag-on web2 always see the Coinbase pitch.
+    assert_includes body,
+                    "get tokenFallback() { return $store.session.mode === 'web2' && !$store.session.web2UsdcEntry }"
+  end
+
+  test "ENABLE_WEB2_USDC_ENTRY off emits web2UsdcEntry false so a web2 viewer degrades" do
+    log_in_as users(:jordan)
+    AppFlags.stub :web2_usdc_entry?, false do
+      get contest_path(contests(:one))
+    end
+    assert_response :success
+    body = response.body
+    # The session payload (Carl's wiring) carries the kill-switch state the
+    # modal's tokenFallback getter reads. A logged-in managed user is web2 mode,
+    # so with the flag off this viewer flips to the entry-token rail.
+    assert_includes body, %("web2UsdcEntry":false),
+                    "flag-off must emit web2UsdcEntry:false into #session-context"
+    assert_includes body, %("mode":"web2"),
+                    "a magic-link login is a web2 session"
+  end
+
+  test "ENABLE_WEB2_USDC_ENTRY on (default) emits web2UsdcEntry true" do
+    log_in_as users(:jordan)
+    AppFlags.stub :web2_usdc_entry?, true do
+      get contest_path(contests(:one))
+    end
+    assert_response :success
+    assert_includes response.body, %("web2UsdcEntry":true),
+                    "flag-on must emit web2UsdcEntry:true so web2 sees the Coinbase pitch"
+  end
+
+  # --- quiet secondary: the Add Funds hub ---
 
   test "the quiet link opens the hub flagged as opened-from wallet-topup" do
     get contests_path
@@ -61,7 +120,7 @@ class WalletTopupTest < ActionDispatch::IntegrationTest
                      "$store.modals.swap('onramp-hub', { returnModal: 'wallet-topup' })"
   end
 
-  # --- hub returnModal back-branching ---
+  # --- hub returnModal back-branching (unchanged) ---
 
   test "the hub Back link routes by returnModal, differing for wallet-topup vs the picker" do
     get contests_path
@@ -76,9 +135,6 @@ class WalletTopupTest < ActionDispatch::IntegrationTest
     assert_includes body,
                     "$store.modals.swap('auth', { step: (props.returnStep || 'tokens-picker') })",
                     "hub Back must default to the tokens picker"
-    # The two back targets must be distinct branches of one expression.
-    refute_equal "$store.modals.swap('wallet-topup', {})",
-                 "$store.modals.swap('auth', { step: (props.returnStep || 'tokens-picker') })"
   end
 
   # --- entry-blocker re-route (render level; e2e gap noted above) ---
@@ -89,12 +145,12 @@ class WalletTopupTest < ActionDispatch::IntegrationTest
     body = response.body
     # The showWalletTopup method exists on the board component.
     assert_includes body, "showWalletTopup()"
-    # The 'no_tokens' eligibility-blocker case now opens the Top Up Wallet modal
-    # (was showTokensPanel — the pack picker).
-    assert_match(/case 'no_tokens':\s+this\.showWalletTopup\(\);/, body,
-                 "the no_tokens entry wall must reroute to showWalletTopup")
-    refute_match(/case 'no_tokens':\s+this\.showTokensPanel\(\);/, body,
-                 "the no_tokens entry wall must no longer open the pack picker")
+    # The 'no_funding' eligibility-blocker case (renamed from 'no_tokens' in the
+    # unified-funding refactor) opens the Top Up Wallet modal.
+    assert_match(/case 'no_funding':\s+this\.showWalletTopup\(\);/, body,
+                 "the no_funding entry wall must reroute to showWalletTopup")
+    refute_match(/case 'no_tokens':/, body,
+                 "the legacy no_tokens blocker case must be gone (renamed no_funding)")
   end
 
   test "the board keeps showTokensPanel for the post-signup pack-picker resume" do

@@ -39,7 +39,10 @@ class TokensFundingModesTest < ActionDispatch::IntegrationTest
       get contests_path
       assert_response :success
       assert_includes response.body, "tokens-waiting"
-      refute_includes response.body, "Buy USDC with Coinbase"
+      # Refute the picker's CDP-buy card (auth/_usdc_funding's cdp-on branch) by
+      # its unique copy — "Buy USDC with Coinbase" is no longer picker-specific
+      # (the Coinbase-forward wallet-topup modal renders it ungated on this page).
+      refute_includes response.body, "Pay with debit, Apple Pay"
     end
   end
 
@@ -49,7 +52,10 @@ class TokensFundingModesTest < ActionDispatch::IntegrationTest
       get contests_path
       assert_response :success
       assert_includes response.body, "Purchases temporarily offline"
-      refute_includes response.body, "Buy USDC with Coinbase"
+      # Refute the picker's CDP-buy card by its unique copy (see the stripe-on
+      # test): the wallet-topup modal now renders "Buy USDC with Coinbase"
+      # ungated, so that string no longer proves the picker's mode.
+      refute_includes response.body, "Pay with debit, Apple Pay"
     end
   end
 

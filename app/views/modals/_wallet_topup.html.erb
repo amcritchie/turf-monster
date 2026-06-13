@@ -1,27 +1,40 @@
 <%#
   Top Up Wallet — the FIRST funds modal a logged-in player sees when they try
-  to enter a contest and lack funds. This trigger (the board's no_tokens entry
-  blocker) fires ONLY for managed-wallet (web2) players, and a managed entry is
-  paid by CONSUMING AN ENTRY TOKEN, not USDC. So this modal is TOKEN-FIRST: the
-  primary CTA buys entry tokens (opens the existing pack picker, the tokens-
-  picker step of the auth wizard), and adding USDC is demoted to the quiet
-  "More ways to add funds" link into the Add Funds hub (onramp-hub), where the
-  Coinbase / PayPal / Venmo rails live as the fallback.
+  to enter a contest and lack funds (the board's no_funding entry blocker,
+  selectionBoard#showWalletTopup, plus the chain-layer "no tokens" twin).
+
+  COINBASE-FORWARD (operator 2026-06-13): now that a web2/managed USDC entry
+  works (the server signs the on-chain enter_contest with the user's custodial
+  key when ENABLE_WEB2_USDC_ENTRY is on), USDC is the cash funding rail again.
+  The primary CTA buys USDC with Coinbase (the cdp-ramp buy preflight). There
+  are NO entry-token links in the default arrangement; adding tokens or other
+  cash rails lives behind the quiet "More ways to add funds" hub (onramp-hub).
+
+  FLAG-AWARE SAFETY (degrade): the kill-switch state (a web2 viewer with
+  ENABLE_WEB2_USDC_ENTRY OFF) can NOT pay an entry with USDC, so this modal must
+  not pitch "Buy USDC" as their path. The tokenFallback getter (web2 mode AND
+  the flag off, read from $store.session) flips the modal to the entry-token
+  rail for exactly that audience. web3 and flag-on web2 always see Coinbase.
+
+  The Coinbase rail is server-gated on onramp_rail_visible?(:coinbase) (the same
+  policy the hub uses: ENABLE_CDP_RAMP in production) so a flagged-off ramp never
+  ships a dead button that swaps to an unregistered cdp-ramp modal.
 
   One modal id ('wallet-topup'); no internal step machine. Opened by the board's
-  funds-needed entry blocker (selectionBoard#showWalletTopup) via
-  $store.modals.open('wallet-topup', {}) on a cold board, or swap() mid-flow.
-
-  The token count comes from $store.session.tokensAvailable (the layout session
-  payload, coerced to a number, 0 when cold), so a managed player sees exactly
-  why they are blocked ("Entry tokens: 0") and the primary CTA resolves it.
+  funds-needed blocker via $store.modals.open('wallet-topup', {}) on a cold
+  board, or swap() mid-flow.
 
   Modeled on modals/_onramp_hub + _wallet_deposit. CRITICAL: rendered inside a
   host template x-if, so a SINGLE root element. x-data is a double-quoted
-  attribute, so single-quote everything inside the Alpine expressions (the get
-  props() accessor, the token-count x-text, the @click swaps).
+  attribute, so single-quote everything inside the Alpine expressions (the
+  getters, the x-text balances, the @click swaps). Each inner template x-if also
+  wraps a SINGLE root element.
 %>
-<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }"
+<div x-data="{
+       get props() { return ($store.modals.current() || {}).props || {} },
+       get tokenFallback() { return $store.session.mode === 'web2' && !$store.session.web2UsdcEntry },
+       get usdcDisplay() { var c = $store.session.usdcCents; return (c === null || c === undefined) ? '—' : '$' + (c / 100).toFixed(2) }
+     }"
      class="relative">
 
   <%# Top-right close. Backdrop close still works too. %>
@@ -32,34 +45,63 @@
   <div class="text-center pt-1 mb-2">
     <h3 class="text-heading font-bold text-lg leading-tight">Top Up Wallet</h3>
   </div>
-  <p class="text-xs text-secondary mb-4 text-center">
+
+  <%# Header balance line. Default: the USDC balance (the funding currency),
+      em-dash when the navbar cache is cold. Degrade: the entry-token count for
+      the kill-switch (web2 + flag off) audience, who fund with a token. %>
+  <p x-show="!tokenFallback" class="text-xs text-secondary mb-4 text-center">
+    USDC balance:
+    <span class="font-mono font-semibold text-heading" x-text="usdcDisplay"></span>
+  </p>
+  <p x-show="tokenFallback" class="text-xs text-secondary mb-4 text-center">
     Entry tokens:
     <span class="font-mono font-semibold text-heading"
           x-text="($store.session.tokensAvailable | 0)"></span>
   </p>
 
-  <%# PRIMARY CTA — Buy Entry Tokens. Opens the existing pack picker (the auth
-      wizard's tokens-picker step) with the exact props showTokensPanel uses.
-      swap() (not open) because we're already inside the host, and tokens-picker
-      lives on a different modal id (auth). border-primary (always, not just on
-      hover) marks this as the primary action. %>
-  <button type="button" data-topup-rail="tokens"
-          @click="$store.modals.swap('auth', { step: 'tokens-picker', mintedCount: 0, mintedBalance: 0, errorText: '', redirectUrl: '', txSignature: '' })"
-          class="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-primary bg-inset hover:bg-surface transition text-left">
-    <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xl bg-primary">&#127915;</span>
-    <span class="flex-1 min-w-0">
-      <span class="block text-heading font-semibold text-sm">Buy Entry Tokens</span>
-      <span class="block text-xs text-secondary">1 token = 1 contest entry</span>
-    </span>
-    <svg class="shrink-0 w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-    </svg>
-  </button>
+  <% if onramp_rail_visible?(:coinbase) %>
+    <%# PRIMARY (Coinbase-forward) — Buy USDC with Coinbase. swap() (not open)
+        because we are already inside the host, and cdp-ramp is its own modal id.
+        Hidden for the tokenFallback (web2 kill-switch) audience, where USDC
+        can not fund the entry. border-primary marks it as the primary action. %>
+    <template x-if="!tokenFallback">
+      <button type="button" data-topup-rail="coinbase"
+              @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-primary bg-inset hover:bg-surface transition text-left">
+        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#0052FF">C</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-heading font-semibold text-sm">Buy USDC with Coinbase</span>
+          <span class="block text-xs text-secondary">Card or bank &middot; funds your entry</span>
+        </span>
+        <svg class="shrink-0 w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+        </svg>
+      </button>
+    </template>
+  <% end %>
 
-  <%# Quiet link to the Add Funds hub — the USDC fallback. The hub carries the
-      Coinbase (Buy USDC) rail plus PayPal / Venmo. returnModal: 'wallet-topup'
-      tells the hub's Back link to slide the buyer back HERE rather than to the
-      tokens picker. %>
+  <%# Token-path degrade — reached ONLY by the web2 kill-switch (web2 mode with
+      ENABLE_WEB2_USDC_ENTRY off). USDC can not pay that entry, so the entry
+      token is the funding rail. Opens the existing tokens-picker step of the
+      auth wizard with the props showTokensPanel uses. %>
+  <template x-if="tokenFallback">
+    <button type="button" data-topup-rail="tokens"
+            @click="$store.modals.swap('auth', { step: 'tokens-picker', mintedCount: 0, mintedBalance: 0, errorText: '', redirectUrl: '', txSignature: '' })"
+            class="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-primary bg-inset hover:bg-surface transition text-left">
+      <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xl bg-primary">&#127915;</span>
+      <span class="flex-1 min-w-0">
+        <span class="block text-heading font-semibold text-sm">Buy Entry Tokens</span>
+        <span class="block text-xs text-secondary">1 token = 1 contest entry</span>
+      </span>
+      <svg class="shrink-0 w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+      </svg>
+    </button>
+  </template>
+
+  <%# Quiet link to the Add Funds hub — the other cash rails (PayPal / Venmo /
+      Stripe) plus a repeat Coinbase entry. returnModal: 'wallet-topup' tells the
+      hub's Back link to slide back HERE rather than to the tokens picker. %>
   <button type="button"
           @click="$store.modals.swap('onramp-hub', { returnModal: 'wallet-topup' })"
           class="block mx-auto mt-4 text-sm text-secondary hover:text-heading transition">

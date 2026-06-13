@@ -19,29 +19,43 @@ module Solana
   module ErrorInterpreter
     extend self
 
-    def interpret(err, contest: nil)
+    def interpret(err, contest: nil, mode: nil)
       msg = err.is_a?(Exception) ? err.message.to_s : err.to_s
       stripped = msg.strip
+      mode = mode.to_s
 
       # Phantom — user declined the signature. Not a real failure.
       if stripped.match?(/user rejected|user declined/i)
         return ok(message: "Transaction canceled.", toast: true)
       end
 
-      # web2 — managed wallet ran out of entry tokens (server-side raise
-      # from ContestsController#enter token-path).
+      # web2 — managed wallet can't fund the entry by ANY enabled method
+      # (no entry token, and USDC entry off or insufficient). Server-side raise
+      # from ContestsController#resolve_web2_entry_funding! when the flag is off
+      # / token-only. Maps to the no_funding blocker → board opens Top Up Wallet.
       if stripped.match?(/no entry tokens/i)
         return ok(
           message: stripped,
-          blocker: { reason: "no_tokens", mode: "web2", data: {} }
+          blocker: { reason: "no_funding", mode: "web2", data: {} }
         )
       end
 
-      # InsufficientBalance (6002 / 0x1772). Raised by enter_contest_direct
-      # when the wallet's USDC/USDT ATA can't cover the entry fee. Map to
-      # the same blocker the preflight produces so the wallet-deposit modal
-      # opens with the same shape.
+      # InsufficientBalance (6002 / 0x1772). Raised by enter_contest when the
+      # wallet's USDC/USDT ATA can't cover the entry fee. mode-aware: a web2 /
+      # managed USDC entry that underfunds maps to no_funding/web2 (Top Up
+      # Wallet, Coinbase-forward), NOT the web3 deposit/currency picker. web3
+      # (Phantom) keeps the insufficient_balance/web3 deposit modal.
       if stripped.match?(/0x1772|\b6002\b|insufficientbalance|insufficient (usdc|onchain|balance|funds)/i)
+        if mode == "web2"
+          return ok(
+            message: "Not enough USDC to enter. Top up your wallet and try again.",
+            blocker: {
+              reason: "no_funding",
+              mode: "web2",
+              data: { neededCents: (contest&.entry_fee_cents.to_i || 0) }
+            }
+          )
+        end
         return ok(
           message: "Insufficient balance. Top up your wallet to enter.",
           blocker: {
