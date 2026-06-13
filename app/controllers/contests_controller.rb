@@ -2,7 +2,7 @@ class ContestsController < ApplicationController
   include Solana::SessionAuth
 
   skip_before_action :require_authentication, only: [:index, :show, :my, :world_cup, :leaderboard_poll, :live]
-  before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :close_onchain, :cancel_onchain, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
+  before_action :set_contest, only: [:show, :admin, :edit, :update, :update_banner, :toggle_selection, :enter, :check_funding, :clear_picks, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :close_onchain, :cancel_onchain, :prepare_entry, :stamp_entry_signature, :recover_pending_entry, :confirm_onchain_entry, :prepare_onchain_contest, :confirm_onchain_contest, :leaderboard_poll, :live, :pick, :grade_round]
   before_action :require_admin, only: [:new, :create, :rebuild_create_tx, :finalize, :admin, :edit, :update, :update_banner, :generator, :generate_bundle, :finalize_bundle, :grade, :fill, :lock, :prepare_lock_time, :confirm_lock_time, :prepare_conclusion_time, :confirm_conclusion_time, :jump, :simulate_game, :simulate_batch, :reset, :close_onchain, :cancel_onchain, :prepare_onchain_contest, :confirm_onchain_contest, :grade_round]
   before_action :require_geo_allowed, only: [:toggle_selection, :enter, :prepare_entry]
   # B4 / OPSEC-048: frozen accounts can browse but cannot spend or enter.
@@ -577,6 +577,45 @@ class ContestsController < ApplicationController
     end
   rescue StandardError => e
     render_entry_error(e)
+  end
+
+  # Lightweight funding pre-check for the 2-second "Hold to Confirm" window
+  # (2026-06-13). The client fires this the INSTANT the hold STARTS (without
+  # awaiting) and acts on the resolved result when the hold COMPLETES (~2s
+  # later): not-fundable → show the Top Up Wallet + abort the entry; fundable →
+  # proceed with the existing confirm/entry. It does a FRESH, authoritative
+  # balance read and NEVER touches the chain / enters.
+  #
+  # Why it exists: a fresh web2 (managed) wallet has no USDC ATA yet, so its
+  # balance reads `null` client-side and slips past the hold-time
+  # eligibilityBlocker (which fails OPEN on null) — so a $0 user would submit
+  # and hit a doomed on-chain entry that fails with "custom program error: 0x1"
+  # (SPL insufficient funds), a cryptic sim error instead of the Top Up Wallet.
+  # This endpoint + the #resolve_web2_entry_funding! safety net close that gap.
+  #
+  # JSON contract: { fundable: bool, reason: "no_funding"|null,
+  #                  method: "token"|"usdc"|"usdt"|null }. Fail-CLOSED — any read
+  # failure returns { fundable: false, reason: "no_funding" } so the worst case
+  # the user ever sees is the Top Up Wallet, never the 0x1 sim error.
+  def check_funding
+    # Token presence + balances must be authoritative for THIS check, so drop
+    # the 60s entry-tokens cache first — a just-consumed token must not read as
+    # still-available (#entry_funding_status reads balances fresh off-chain).
+    # CONSCIOUS COUPLING (Avi review 2026-06-13): this also cold-busts the shared
+    # navbar token-badge cache, forcing an extra getProgramAccounts on the next
+    # navbar read. Accepted for authoritative freshness — the buy-flow's own
+    # polling (waits for the token to confirm before returning to the board)
+    # largely closes the Helius post-mint index-lag window; the check_funding/ip
+    # throttle caps the getProgramAccounts amplification.
+    current_user.bust_entry_tokens_cache!
+    fundable, method = entry_funding_status
+    render json: { fundable: fundable, reason: (fundable ? nil : "no_funding"), method: method }
+  rescue StandardError => e
+    # API path discipline: record to ErrorLog (capture_unlogged attaches the
+    # @contest parent context, same as the stamp/recover endpoints), never raise
+    # to the user, and fail CLOSED — the client hold then shows the Top Up Wallet.
+    capture_unlogged(e, parent: @contest)
+    render json: { fundable: false, reason: "no_funding", method: nil }
   end
 
   # Build a partially-signed enter_contest_direct transaction for Phantom users.
@@ -1359,6 +1398,37 @@ class ContestsController < ApplicationController
       current_user.bust_entry_tokens_cache!
       [result[:signature], result[:entry_pda], true]
     elsif AppFlags.web2_usdc_entry?
+      # SAFETY NET (2026-06-13): pre-check the USDC balance BEFORE the
+      # irreversible on-chain enter. A fresh managed wallet with no USDC ATA
+      # reads `null` client-side, slips past the hold-time eligibilityBlocker
+      # (which fails OPEN on null), and would otherwise attempt a doomed SPL
+      # transfer that fails with "custom program error: 0x1" (insufficient
+      # funds) — a cryptic sim error, not the Top Up Wallet. Validate before the
+      # side effect (backend discipline #2): underfunded → raise no_funding
+      # (Solana::ErrorInterpreter maps "not enough usdc" + web2 mode to the
+      # no_funding/web2 blocker → board opens the Top Up Wallet), never broadcast
+      # a doomed entry. FRESH authoritative read — the 60s navbar cache is not
+      # trusted here.
+      #
+      # FAIL-OPEN ON A READ FAILURE (Avi review 2026-06-13): read with
+      # raise_on_read_error so a transient getTokenAccountsByOwner flake RAISES
+      # rather than masquerading as $0 — a confirmed-zero must block, but a
+      # FLAKED read must NOT false-block a funded user (whose atomic SPL transfer
+      # would have succeeded). On a read failure, fall through to the atomic
+      # enter and let it be the authority: it succeeds for a funded wallet, and
+      # fails 0x1 for a genuine $0 — which ErrorInterpreter ALREADY backstops to
+      # no_funding/web2 (Top Up Wallet). Only a CONFIRMED-insufficient balance
+      # raises the pre-check no_funding here.
+      fee_cents = @contest.entry_fee_cents.to_i
+      begin
+        usdc_cents = dollars_to_cents(vault.fetch_wallet_balances(address, raise_on_read_error: true)[:usdc])
+        if usdc_cents < fee_cents
+          raise "Not enough USDC to enter this contest — top up your wallet and try again."
+        end
+      rescue Solana::Client::RpcError
+        # Balance read flaked — defer to the self-protecting atomic enter below.
+      end
+
       # enter_contest_with_usdc encapsulates the web2-address/keypair/username
       # resolution + ensure_user_account + ensure_ata(USDC) preamble, so the
       # signer/ATA-desync footgun can't reach the call site. Atomic SPL transfer
@@ -1370,6 +1440,68 @@ class ContestsController < ApplicationController
     else
       raise "No entry tokens. Buy at /tokens/buy"
     end
+  end
+
+  # Authoritative funding capability for #check_funding — returns
+  # [fundable_bool, method] where method is "token" | "usdc" | "usdt" | nil.
+  # Mirrors the entry funding priority (#resolve_web2_entry_funding! for web2,
+  # #prepare_entry for web3): entry token first, then USDC, then — web3 only —
+  # USDT. Reads BALANCES FRESH off-chain (Solana::Vault#fetch_wallet_balances is
+  # always a live RPC; the 60s navbar cache is deliberately NOT trusted here),
+  # and the token read is fresh too (the caller busts the entry-tokens cache).
+  #   - SIGNER address: web3 (Phantom) session funds from web3_solana_address;
+  #     web2 / managed funds from web2_solana_address (the SAME address the
+  #     server signs the entry with — see #resolve_web2_entry_funding!).
+  #   - USDC: web3 always; web2 only behind the ENABLE_WEB2_USDC_ENTRY flag.
+  #   - USDT: web3 only, and only on an accepts_usdt contest (web2 never holds
+  #     USDT — payouts are USDC).
+  def entry_funding_status
+    fee_cents = @contest.entry_fee_cents.to_i
+    return [true, nil] if fee_cents <= 0 # free contest — nothing to fund
+
+    web3    = onchain_session?
+    address = web3 ? current_user.web3_solana_address : current_user.web2_solana_address
+    return [false, nil] if address.blank?
+
+    # 1. Entry token (incl. seed-earned free entries), scoped to the SIGNER addr.
+    return [true, "token"] if current_user.next_unconsumed_entry_token_for(address).present?
+
+    # USDC is a funding path for web3 always; for web2 only behind the flag.
+    usdc_fundable = web3 || AppFlags.web2_usdc_entry?
+
+    # FRESH authoritative balance read — never the 60s cache. FAIL-OPEN ON A READ
+    # FAILURE (Avi review 2026-06-13): read with raise_on_read_error so a
+    # transient getTokenAccountsByOwner flake RAISES rather than masquerading as
+    # $0. On a read failure, fail OPEN whenever a balance funding path is even
+    # possible — false-blocking a funded user is the regression; the atomic
+    # on-chain enter is the self-protecting authority (it succeeds for a funded
+    # wallet, 0x1-then-Top-Up for a genuine $0). When NO balance path exists
+    # (web2 with the flag off and no token), there is nothing to fail open TO, so
+    # stay not-fundable.
+    begin
+      balances = Solana::Vault.new.fetch_wallet_balances(address, raise_on_read_error: true)
+    rescue Solana::Client::RpcError
+      return [usdc_fundable, nil]
+    end
+    usdc_cents = dollars_to_cents(balances[:usdc])
+    usdt_cents = dollars_to_cents(balances[:usdt])
+
+    # 2. USDC — web3 always; web2 only behind the kill-switch flag.
+    return [true, "usdc"] if usdc_fundable && usdc_cents >= fee_cents
+
+    # 3. USDT — web3 only, contest must accept it on-chain.
+    return [true, "usdt"] if web3 && @contest.accepts_usdt? && usdt_cents >= fee_cents
+
+    [false, nil]
+  end
+
+  # uiAmount dollars (Float | Integer | nil from #fetch_wallet_balances) →
+  # integer cents. BigDecimal so on-chain money is never compared through float
+  # drift; nil (mint unconfigured / no ATA) → 0, and we FLOOR — both fail closed
+  # so a missing or sub-cent balance can never read as enough to fund.
+  def dollars_to_cents(dollars)
+    return 0 if dollars.nil?
+    (BigDecimal(dollars.to_s) * 100).floor
   end
 
   def finalize_managed_entry!(entry, tx_signature:, onchain_entry_id:)

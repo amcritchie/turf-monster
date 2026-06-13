@@ -234,6 +234,10 @@ Rails.application.routes.draw do
       post :toggle_selection
       post :pick
       post :enter
+      # Hold-to-confirm funding pre-check (2026-06-13): fired the instant the 2s
+      # hold STARTS; a fresh authoritative balance read returns whether THIS
+      # entry can be funded (token / USDC / web3 USDT). Read-only — never enters.
+      post :check_funding
       post :prepare_entry
       post :stamp_entry_signature
       post :recover_pending_entry

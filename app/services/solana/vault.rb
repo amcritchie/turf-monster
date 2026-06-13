@@ -1861,7 +1861,16 @@ module Solana
       reward.is_a?(Integer) && reward.positive? ? reward : QUEST_SEED_FALLBACK
     end
 
-    def fetch_wallet_balances(wallet_address)
+    # raise_on_read_error: when true, a getTokenAccountsByOwner RPC failure
+    # RE-RAISES Solana::Client::RpcError instead of being swallowed to an empty
+    # token set. This lets a FUNDING-DECISION caller (ContestsController's entry
+    # pre-check / #entry_funding_status) distinguish a transient read FAILURE
+    # from a confirmed $0 wallet — both otherwise collapse to `usdc: 0` here (a
+    # fresh wallet with no ATA AND a flaked read both yield no USDC entry in
+    # `tokens`), which would FALSE-BLOCK a genuinely funded user during a flake
+    # (Avi review 2026-06-13). The default (false) preserves the navbar-hydrate
+    # behavior: a transient flake just renders a stale/zero pill, never an error.
+    def fetch_wallet_balances(wallet_address, raise_on_read_error: false)
       sol_result = client.get_balance(wallet_address)
       sol_lamports = sol_result.is_a?(Hash) ? sol_result["value"] : sol_result
       sol_balance = sol_lamports.to_f / 1_000_000_000
@@ -1879,6 +1888,7 @@ module Solana
           end
         end
       rescue Solana::Client::RpcError
+        raise if raise_on_read_error
       end
 
       {

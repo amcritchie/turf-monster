@@ -83,9 +83,21 @@ class FakeVault
   # Used by ApplicationController#fetch_navbar_hydrate (USDC/USDT/SOL read).
   # Seed via the wallet_balances writer; nil simulates an RPC flake (the
   # caller treats a non-Hash as unknown and emits nils).
-  attr_writer :wallet_balances
+  #
+  # wallet_balances_raises models a getTokenAccountsByOwner RPC FLAKE the way the
+  # real Solana::Vault does (2026-06-13): the swallowing default path returns
+  # `usdc: 0` (indistinguishable from a genuine empty wallet), but the
+  # funding-decision path (raise_on_read_error: true) RE-RAISES so callers can
+  # fail OPEN instead of false-blocking a funded user. Set it true to exercise
+  # the conflation Avi flagged as previously untested.
+  attr_writer :wallet_balances, :wallet_balances_raises
 
-  def fetch_wallet_balances(_wallet_address)
+  def fetch_wallet_balances(_wallet_address, raise_on_read_error: false)
+    if defined?(@wallet_balances_raises) && @wallet_balances_raises
+      raise Solana::Client::RpcError, "simulated token-accounts RPC flake" if raise_on_read_error
+
+      return { sol: 0.0, usdc: 0, usdt: 0, tokens: {} }
+    end
     defined?(@wallet_balances) ? @wallet_balances : { sol: 0.0, usdc: 0.0, usdt: 0.0 }
   end
 

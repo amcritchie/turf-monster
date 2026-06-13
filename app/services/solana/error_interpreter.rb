@@ -40,6 +40,30 @@ module Solana
         )
       end
 
+      # web2 / managed USDC entry underfunded. Two shapes reach here, both
+      # meaning "the managed wallet can't cover the USDC entry fee → Top Up":
+      #   1. the #resolve_web2_entry_funding! pre-check raise ("Not enough USDC
+      #      …"), which validates the balance BEFORE the irreversible on-chain
+      #      enter (the funding-preflight safety net, 2026-06-13); and
+      #   2. the raw SPL token-program insufficient-funds error ("custom program
+      #      error: 0x1") as a BACKSTOP, on the off chance a $0 entry still
+      #      reaches the chain (race / flag flip).
+      # Map BOTH to no_funding/web2 so the board opens the Top Up Wallet instead
+      # of leaking the cryptic 0x1 sim error. web2-scoped: a raw 0x1 means an SPL
+      # transfer, which only the managed USDC path performs; web3 underfunding
+      # surfaces as Anchor 6002 / 0x1772 (handled below). The 0x1 boundary keeps
+      # 0x1772 (6002) from matching here.
+      if mode == "web2" && stripped.match?(/not enough usdc|custom program error: 0x1\b/i)
+        return ok(
+          message: "Not enough USDC to enter. Top up your wallet and try again.",
+          blocker: {
+            reason: "no_funding",
+            mode: "web2",
+            data: { neededCents: (contest&.entry_fee_cents.to_i || 0) }
+          }
+        )
+      end
+
       # InsufficientBalance (6002 / 0x1772). Raised by enter_contest when the
       # wallet's USDC/USDT ATA can't cover the entry fee. mode-aware: a web2 /
       # managed USDC entry that underfunds maps to no_funding/web2 (Top Up
