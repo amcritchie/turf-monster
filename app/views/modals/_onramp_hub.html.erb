@@ -9,8 +9,15 @@
 
   Per-rail visibility is gated by onramp_rail_visible? (app/helpers/
   onramp_helper.rb): every rail shows locally, each gates on its own backend
-  flag in production. props.returnStep carries the picker step the hub was
-  opened from so the back link slides the buyer back there.
+  flag in production.
+
+  Back-navigation returns to wherever the hub was opened FROM, keyed on the
+  props it was opened with:
+    - props.returnModal === 'wallet-topup'  -> Back swaps to wallet-topup
+      (opened from the Coinbase-forward Top Up Wallet modal).
+    - otherwise (the tokens-picker path)    -> Back swaps to auth at
+      props.returnStep || 'tokens-picker' (the existing _tokens /
+      _paypal_tokens "More ways to add funds" link, unchanged).
 
   Modeled on modals/_wallet_deposit + modals/_cdp_ramp. CRITICAL: rendered
   inside a host template x-if, so a SINGLE root element. x-data exposes props
@@ -98,10 +105,12 @@
     <% end %>
   </div>
 
-  <%# Back to the entry-tokens picker. props.returnStep is the step the hub
-      was opened from; defaults to the picker. %>
+  <%# Back to wherever the hub was opened from. returnModal === 'wallet-topup'
+      slides back to the Top Up Wallet modal; otherwise back to the entry-tokens
+      picker at props.returnStep (defaulting to the picker), the unchanged
+      _tokens / _paypal_tokens path. Single expression keyed on returnModal. %>
   <button type="button"
-          @click="$store.modals.swap('auth', { step: (props.returnStep || 'tokens-picker') })"
+          @click="props.returnModal === 'wallet-topup' ? $store.modals.swap('wallet-topup', {}) : $store.modals.swap('auth', { step: (props.returnStep || 'tokens-picker') })"
           class="block mx-auto mt-4 text-sm text-secondary hover:text-heading transition">
     &larr; Back
   </button>

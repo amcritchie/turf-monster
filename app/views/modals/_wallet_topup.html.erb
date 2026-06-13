@@ -1,0 +1,66 @@
+<%#
+  Top Up Wallet — the FIRST funds modal a logged-in player sees when they try
+  to enter a contest and lack funds (replacing the Get Entry Tokens pack picker
+  at that trigger). Coinbase-forward: a single primary CTA (Buy USDC with
+  Coinbase, the same cdp-ramp buy preflight handoff the hub's Coinbase card and
+  the wallet-deposit modal use) plus a quiet "More ways to add funds" link into
+  the Add Funds hub (onramp-hub), which still carries the Stripe pack picker and
+  the PayPal / Venmo rails.
+
+  One modal id ('wallet-topup'); no internal step machine. Opened by the board's
+  funds-needed entry blocker (selectionBoard#showWalletTopup) via
+  $store.modals.open('wallet-topup', {}) on a cold board, or swap() mid-flow.
+
+  Balance comes from $store.session.usdcCents (the layout session payload, cents
+  to dollars like modals/_wallet_deposit and the navbar). A cold cache emits the
+  field as null, so null / undefined renders a graceful em-dash rather than a
+  false $0.00.
+
+  Modeled on modals/_onramp_hub + _wallet_deposit + _cdp_ramp. CRITICAL:
+  rendered inside a host template x-if, so a SINGLE root element. x-data is a
+  double-quoted attribute, so single-quote everything inside the Alpine
+  expressions (the get props() accessor, the balance x-text, the @click swaps).
+%>
+<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }"
+     class="relative">
+
+  <%# Top-right close. Backdrop close still works too. %>
+  <button @click="$store.modals.close()"
+          class="absolute top-0 right-0 -mt-2 -mr-2 text-secondary hover:text-heading text-xl leading-none z-10"
+          aria-label="Close">&times;</button>
+
+  <div class="text-center pt-1 mb-2">
+    <h3 class="text-heading font-bold text-lg leading-tight">Top Up Wallet</h3>
+  </div>
+  <p class="text-xs text-secondary mb-4 text-center">
+    Balance:
+    <span class="font-mono font-semibold text-heading"
+          x-text="($store.session.usdcCents === null || $store.session.usdcCents === undefined) ? '—' : '$' + ($store.session.usdcCents / 100).toFixed(2) + ' USDC'"></span>
+  </p>
+
+  <%# PRIMARY CTA — Buy USDC with Coinbase. Verbatim the same cdp-ramp buy
+      preflight handoff the hub's Coinbase card and the /wallet button use.
+      swap() (not open) because we're already inside the host. border-primary
+      (always, not just on hover) marks this as the primary action. %>
+  <button type="button" data-topup-rail="coinbase"
+          @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+          class="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-primary bg-inset hover:bg-surface transition text-left">
+    <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#0052FF">C</span>
+    <span class="flex-1 min-w-0">
+      <span class="block text-heading font-semibold text-sm">Buy USDC</span>
+      <span class="block text-xs text-secondary">with Coinbase</span>
+    </span>
+    <svg class="shrink-0 w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+    </svg>
+  </button>
+
+  <%# Quiet link to the Add Funds hub — more rails (Stripe pack / PayPal /
+      Venmo). returnModal: 'wallet-topup' tells the hub's Back link to slide the
+      buyer back HERE rather than to the tokens picker. %>
+  <button type="button"
+          @click="$store.modals.swap('onramp-hub', { returnModal: 'wallet-topup' })"
+          class="block mx-auto mt-4 text-sm text-secondary hover:text-heading transition">
+    More ways to add funds &rarr;
+  </button>
+</div>
