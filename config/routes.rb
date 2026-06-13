@@ -281,6 +281,9 @@ Rails.application.routes.draw do
   resources :players, only: [:index]
   resources :games, only: [:index]
 
+  # Entry-time age gate (ENABLE_AGE_GATE) — DOB verification before first entry.
+  post "/age/verify", to: "age_verifications#create", as: :age_verify
+
   resource :wallet, only: [:show] do
     post :stripe_deposit
     post :withdraw

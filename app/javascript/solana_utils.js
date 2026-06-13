@@ -417,6 +417,14 @@ export function fireConfettiFromModal() {
 export function eligibilityBlocker(session, neededCents, opts) {
   if (!session) return null;            // store missing — let server decide
   if (!session.loggedIn) return { reason: 'not_logged_in', mode: 'guest', data: {} };
+
+  // Age gate (ENABLE_AGE_GATE) — checked BEFORE tokens/balance and even before
+  // the free-contest short-circuit, so the DOB modal fires ahead of the Get
+  // Entry Tokens modal and applies to every contest. Server re-checks.
+  if (session.ageGateRequired && !session.ageVerified) {
+    return { reason: 'age_required', mode: session.mode || 'guest', data: {} };
+  }
+
   if ((neededCents | 0) <= 0) return null;  // free contest
 
   if (session.mode === 'web2') {

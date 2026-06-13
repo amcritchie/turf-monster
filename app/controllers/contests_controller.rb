@@ -444,6 +444,8 @@ class ContestsController < ApplicationController
                     status: :unprocessable_entity
     end
 
+    return if render_age_gate_required
+
     # Self-custody guard (task #11 Stage 3). Runs FIRST so it catches
     # self-custodied users regardless of cart / contest state. The server
     # must not auto-sign for them; route to the Phantom-prepare path.
@@ -635,6 +637,8 @@ class ContestsController < ApplicationController
       return render json: { success: false, error: "This contest was cancelled." },
                     status: :unprocessable_entity
     end
+
+    return if render_age_gate_required
 
     entry = @contest.entries.cart.find_by(user: current_user)
     # Survivor contests have no pick-building phase — see #enter.
@@ -1301,6 +1305,25 @@ class ContestsController < ApplicationController
   end
 
   private
+
+  # Entry-time age gate (ENABLE_AGE_GATE). When the gate is on and this user
+  # hasn't verified their DOB, refuse the entry BEFORE any payment and hand the
+  # client an `age_required` blocker so its hold-to-confirm flow pops the DOB
+  # modal (ahead of the Get Entry Tokens / balance modal). Returns true when it
+  # rendered a block (caller `return if render_age_gate_required`), false to
+  # let the entry proceed. AgeVerificationsController is the only writer; this
+  # is the authoritative server-side guard.
+  def render_age_gate_required
+    return false unless age_verification_pending?
+
+    render json: {
+      success: false,
+      age_required: true,
+      blocker: { reason: "age_required" },
+      error: "Please verify your age before entering."
+    }, status: :unprocessable_entity
+    true
+  end
 
   # Build the post-confirm seeds payload for the entry-confirm JSON responses
   # in #enter (managed wallet) and #confirm_onchain_entry (Phantom direct).

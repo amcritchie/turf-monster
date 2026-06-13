@@ -33,4 +33,16 @@ module AppFlags
   def self.age_attestation?
     ENV["ENABLE_AGE_ATTESTATION"].to_s.strip.downcase == "true"
   end
+
+  # True when the age gate runs at FIRST CONTEST ENTRY (date-of-birth modal in
+  # the hold-to-confirm flow) instead of at signup. The newer, lower-friction
+  # model (2026-06-12): the legal-age requirement is tied to the regulated
+  # action (entering a paid skill contest), collects a real DOB validated
+  # against the user's state minimum age (AgePolicy), stamps age_attested_at +
+  # date_of_birth once, and every later entry passes through. SUPERSEDES the
+  # signup checkbox (age_attestation?) — run one or the other, not both. Off by
+  # default; set ENABLE_AGE_GATE=true.
+  def self.age_gate?
+    ENV["ENABLE_AGE_GATE"].to_s.strip.downcase == "true"
+  end
 end
