@@ -579,6 +579,43 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
            "enter_contest_with_usdc must NOT be called for a $0 wallet")
   end
 
+  # SAFETY-NET regression guard (Avi review 2026-06-13). The pre-check must
+  # distinguish a transient getTokenAccountsByOwner FLAKE from a confirmed $0:
+  # the real Solana::Vault returns usdc:0 on a flake, which would FALSE-BLOCK a
+  # genuinely funded user (their atomic SPL transfer holds the real balance and
+  # would succeed). On a read flake the pre-check must FAIL OPEN — fall through
+  # to the self-protecting atomic enter_contest_with_usdc — never raise
+  # no_funding. (Contrast the $0 test above: a CONFIRMED zero still blocks.)
+  test "enter fails OPEN on a token-accounts RPC flake and proceeds to the atomic USDC enter" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances_raises = true # pre-check getTokenAccountsByOwner flake → RpcError
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert json["success"], "a flaked pre-check must NOT false-block a funded user, got: #{json["error"]}"
+    assert_equal 1, vault.enter_calls.length
+    assert_equal :enter_contest_with_usdc, vault.enter_calls.first[:method],
+                 "a flaked pre-check must defer to the self-protecting atomic enter, not raise no_funding"
+    assert entry.reload.active?
+  end
+
   # --- check_funding (hold-to-confirm funding pre-check, 2026-06-13) ---
   #
   # check_funding is a pure capability check on the contest fee + wallet, so
@@ -739,6 +776,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_nil body["method"], "a free entry needs no funding method"
   end
 
+  # A WHOLESALE read failure (the method itself raises a non-RpcError — e.g.
+  # get_balance down, decode error) stays fail-CLOSED via check_funding's outer
+  # rescue. This is distinct from the targeted token-accounts RPC flake below,
+  # which fails OPEN: only the narrow getTokenAccountsByOwner-flake case is
+  # eligible for fail-open (Avi review 2026-06-13), everything else stays
+  # conservative.
   test "check_funding fails CLOSED (not fundable) and records an ErrorLog when the balance read raises" do
     @user.update!(
       web3_solana_address: nil,
@@ -749,7 +792,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     log_in_as @user
 
     vault = FakeVault.new(tokens: [])
-    def vault.fetch_wallet_balances(_addr) = raise("RPC down")
+    def vault.fetch_wallet_balances(_addr, raise_on_read_error: false) = raise("RPC down")
 
     before = ErrorLog.count
     AppFlags.stub :web2_usdc_entry?, true do
@@ -763,6 +806,62 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     refute body["fundable"], "a read failure must fail CLOSED (Top Up Wallet)"
     assert_equal "no_funding", body["reason"]
     assert_operator ErrorLog.count, :>, before, "the read failure must be recorded to ErrorLog"
+  end
+
+  # A TRANSIENT getTokenAccountsByOwner flake (the narrow case Avi flagged) must
+  # NOT be conflated with a confirmed $0: the real Solana::Vault returns usdc:0
+  # on a flake, which would FALSE-BLOCK a funded web2 user (their atomic SPL
+  # transfer would have succeeded). With raise_on_read_error the flake RAISES
+  # Solana::Client::RpcError and check_funding fails OPEN — the atomic enter is
+  # the self-protecting authority. (FakeVault#wallet_balances_raises models the
+  # conflation the suite previously could not catch.)
+  test "check_funding fails OPEN (fundable) on a token-accounts RPC flake for a managed user when the flag is on" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances_raises = true # getTokenAccountsByOwner flake → RpcError under raise_on_read_error
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["fundable"], "a token-accounts RPC flake must fail OPEN — never false-block a funded user"
+    assert_nil body["reason"]
+  end
+
+  # The fail-open is bounded: when web2 USDC entry is OFF there is NO balance
+  # funding path (token-only), so a token-accounts flake has nothing to fail open
+  # TO and check_funding stays not-fundable.
+  test "check_funding stays NOT fundable on a token-accounts RPC flake when web2 USDC entry is off" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    log_in_as @user
+
+    vault = FakeVault.new(tokens: [])
+    vault.wallet_balances_raises = true
+    AppFlags.stub :web2_usdc_entry?, false do
+      Solana::Vault.stub :new, vault do
+        post check_funding_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    refute body["fundable"], "token-only (flag off) + no token → a balance flake can't grant fundability"
+    assert_equal "no_funding", body["reason"]
   end
 
   # Incident 2026-06-08 (entry #133), defense-in-depth half: a TRANSIENT failure

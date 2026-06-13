@@ -601,6 +601,12 @@ class ContestsController < ApplicationController
     # Token presence + balances must be authoritative for THIS check, so drop
     # the 60s entry-tokens cache first — a just-consumed token must not read as
     # still-available (#entry_funding_status reads balances fresh off-chain).
+    # CONSCIOUS COUPLING (Avi review 2026-06-13): this also cold-busts the shared
+    # navbar token-badge cache, forcing an extra getProgramAccounts on the next
+    # navbar read. Accepted for authoritative freshness — the buy-flow's own
+    # polling (waits for the token to confirm before returning to the board)
+    # largely closes the Helius post-mint index-lag window; the check_funding/ip
+    # throttle caps the getProgramAccounts amplification.
     current_user.bust_entry_tokens_cache!
     fundable, method = entry_funding_status
     render json: { fundable: fundable, reason: (fundable ? nil : "no_funding"), method: method }
@@ -1403,10 +1409,24 @@ class ContestsController < ApplicationController
       # no_funding/web2 blocker → board opens the Top Up Wallet), never broadcast
       # a doomed entry. FRESH authoritative read — the 60s navbar cache is not
       # trusted here.
-      fee_cents  = @contest.entry_fee_cents.to_i
-      usdc_cents = dollars_to_cents(vault.fetch_wallet_balances(address)[:usdc])
-      if usdc_cents < fee_cents
-        raise "Not enough USDC to enter this contest — top up your wallet and try again."
+      #
+      # FAIL-OPEN ON A READ FAILURE (Avi review 2026-06-13): read with
+      # raise_on_read_error so a transient getTokenAccountsByOwner flake RAISES
+      # rather than masquerading as $0 — a confirmed-zero must block, but a
+      # FLAKED read must NOT false-block a funded user (whose atomic SPL transfer
+      # would have succeeded). On a read failure, fall through to the atomic
+      # enter and let it be the authority: it succeeds for a funded wallet, and
+      # fails 0x1 for a genuine $0 — which ErrorInterpreter ALREADY backstops to
+      # no_funding/web2 (Top Up Wallet). Only a CONFIRMED-insufficient balance
+      # raises the pre-check no_funding here.
+      fee_cents = @contest.entry_fee_cents.to_i
+      begin
+        usdc_cents = dollars_to_cents(vault.fetch_wallet_balances(address, raise_on_read_error: true)[:usdc])
+        if usdc_cents < fee_cents
+          raise "Not enough USDC to enter this contest — top up your wallet and try again."
+        end
+      rescue Solana::Client::RpcError
+        # Balance read flaked — defer to the self-protecting atomic enter below.
       end
 
       # enter_contest_with_usdc encapsulates the web2-address/keypair/username
@@ -1446,13 +1466,28 @@ class ContestsController < ApplicationController
     # 1. Entry token (incl. seed-earned free entries), scoped to the SIGNER addr.
     return [true, "token"] if current_user.next_unconsumed_entry_token_for(address).present?
 
-    # FRESH authoritative balance read — never the 60s cache.
-    balances   = Solana::Vault.new.fetch_wallet_balances(address)
+    # USDC is a funding path for web3 always; for web2 only behind the flag.
+    usdc_fundable = web3 || AppFlags.web2_usdc_entry?
+
+    # FRESH authoritative balance read — never the 60s cache. FAIL-OPEN ON A READ
+    # FAILURE (Avi review 2026-06-13): read with raise_on_read_error so a
+    # transient getTokenAccountsByOwner flake RAISES rather than masquerading as
+    # $0. On a read failure, fail OPEN whenever a balance funding path is even
+    # possible — false-blocking a funded user is the regression; the atomic
+    # on-chain enter is the self-protecting authority (it succeeds for a funded
+    # wallet, 0x1-then-Top-Up for a genuine $0). When NO balance path exists
+    # (web2 with the flag off and no token), there is nothing to fail open TO, so
+    # stay not-fundable.
+    begin
+      balances = Solana::Vault.new.fetch_wallet_balances(address, raise_on_read_error: true)
+    rescue Solana::Client::RpcError
+      return [usdc_fundable, nil]
+    end
     usdc_cents = dollars_to_cents(balances[:usdc])
     usdt_cents = dollars_to_cents(balances[:usdt])
 
     # 2. USDC — web3 always; web2 only behind the kill-switch flag.
-    return [true, "usdc"] if (web3 || AppFlags.web2_usdc_entry?) && usdc_cents >= fee_cents
+    return [true, "usdc"] if usdc_fundable && usdc_cents >= fee_cents
 
     # 3. USDT — web3 only, contest must accept it on-chain.
     return [true, "usdt"] if web3 && @contest.accepts_usdt? && usdt_cents >= fee_cents
