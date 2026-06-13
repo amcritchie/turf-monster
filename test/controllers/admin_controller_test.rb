@@ -24,9 +24,10 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get admin_hub_path
     assert_response :success
-    reviewed = [contests_path, admin_seasons_path, slates_path, admin_geo_path, error_logs_path, "/admin/jobs"]
-    flagged  = [admin_formula_slates_path, new_contest_path, formula_report_slates_path, generator_contests_path,
-                admin_pending_transactions_path, admin_transactions_path]
+    reviewed = [admin_users_path, admin_geo_path, admin_error_logs_path, contests_path, admin_landing_pages_path]
+    flagged  = [new_contest_path, admin_seasons_path, admin_pending_transactions_path, "/admin/jobs",
+                slates_path, formula_report_slates_path, admin_formula_slates_path,
+                generator_contests_path, admin_transactions_path]
     reviewed.each { |path| assert_select "a[href=?][data-status=?]", path, "reviewed" }
     flagged.each  { |path| assert_select "a[href=?][data-status=?]", path, "flagged" }
 
@@ -50,12 +51,11 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get faucet_path
     assert_response :success
-    assert_select "a[href=?]", admin_seasons_path  # a curated link inside the gear
-    assert_select "a[href=?]", slates_path         # FIFA: Slate Formula link
-    assert_select "a[href=?]", admin_geo_path      # Admin: Geo Settings link
-    assert_select "a[href=?]", error_logs_path     # Admin: Error Logs link
-    assert_select "a[href=?]", "/admin/jobs"       # Admin: Jobs link
-    assert_select "a[href=?]", admin_hub_path      # full Link Hub link inside the gear
+    # Slim admin shortlist (everything else lives on the Link Hub, reachable
+    # from the dashboard — no longer linked from the gear).
+    assert_select "a[href=?]", admin_dashboard_path     # Admin: Dashboard
+    assert_select "a[href=?]", admin_users_path         # Admin: Users
+    assert_select "a[href=?]", admin_landing_pages_path # Admin: Landing Pages
   end
 
   test "navbar gear dropdown hidden from non-admins" do
@@ -90,5 +90,42 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get "/admin/jobs"
     assert_not_equal 404, response.status, "a valid admin session must pass the gate"
+  end
+
+  # --- usdc_balance hydrate endpoint (combined balance — USDT entries 2026-06-10) ---
+  # `balance` is the USDC + USDT sum the navbar pill paints (refreshBalance
+  # reads data.balance); `usdc`/`usdt` stay per-currency for
+  # $store.session.usdcCents/usdtCents and the /account wallet tiles.
+
+  test "usdc_balance returns combined balance plus per-currency fields" do
+    log_in_as(users(:sam)) # web3 wallet fixture → solana_connected?
+    vault = FakeVault.new
+    vault.wallet_balances = { sol: 0.1, usdc: 5.0, usdt: 3.0 }
+
+    Solana::Vault.stub :new, vault do
+      get admin_usdc_balance_path
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 8.0, body["balance"]
+    assert_equal 5.0, body["usdc"]
+    assert_equal 3.0, body["usdt"]
+  end
+
+  test "usdc_balance emits null balance when both wallet reads flaked (client keeps prior pill)" do
+    log_in_as(users(:sam))
+    vault = FakeVault.new
+    vault.wallet_balances = nil # simulated RPC flake — non-Hash
+
+    Solana::Vault.stub :new, vault do
+      get admin_usdc_balance_path
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_nil body["balance"]
+    assert_nil body["usdc"]
+    assert_nil body["usdt"]
   end
 end

@@ -112,6 +112,71 @@ class AdminController < ApplicationController
       modal_id: "wallet-deposit", file: "app/views/modals/_wallet_deposit.html.erb",
       props: { neededCents: 1900, usdcCents: 300, usdtCents: 0 } },
 
+    # === CDP ramp (Coinbase buy / cash-out) ================================
+    # One modal id ('cdp-ramp'), step machine on props.step + props.flow.
+    # The send-step variants use demoCountdownMinutes — cdpRampFlow's
+    # gallery affordance that synthesizes a live deadlineAt at mount
+    # (MODAL_VARIANTS is a boot-time constant, so it can't carry one).
+    { group: "CDP ramp (Coinbase)",
+      label: "Buy — preflight (fees + Coinbase login)", key: "cdp-buy-preflight",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "buy", step: "preflight" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — preflight (account + 30-min window)", key: "cdp-sell-preflight",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "preflight" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Opening (minting session)", key: "cdp-opening",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "buy", step: "opening" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Buy — waiting (Coinbase tab open)", key: "cdp-buy-waiting",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "buy", step: "waiting", coinbaseUrl: "#" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — awaiting CDP (tab open)", key: "cdp-sell-awaiting",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "awaiting-cdp", coinbaseUrl: "#" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — send (managed, countdown)", key: "cdp-send-managed",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "send", walletMode: "web2",
+               sellAmount: "25.00", sellCurrency: "USDC",
+               demoCountdownMinutes: 27 } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — send (Phantom, countdown)", key: "cdp-send-phantom",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "send", walletMode: "web3",
+               sellAmount: "25.00", sellCurrency: "USDC",
+               demoCountdownMinutes: 12 } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — send (window expired)", key: "cdp-send-expired",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "send", walletMode: "web2",
+               sellAmount: "25.00", sellCurrency: "USDC",
+               demoCountdownMinutes: 0 } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — settling", key: "cdp-settling",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "settling" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Buy — done", key: "cdp-buy-done",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "buy", step: "done" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — done", key: "cdp-sell-done",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "done" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Sell — failed (late-send copy)", key: "cdp-sell-failed",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "sell", step: "failed" } },
+    { group: "CDP ramp (Coinbase)",
+      label: "Error (session mint failed)", key: "cdp-error",
+      modal_id: "cdp-ramp", file: "app/views/modals/_cdp_ramp.html.erb",
+      props: { flow: "buy", step: "error",
+               errorText: "Couldn't start a Coinbase session. Please try again." } },
+
     { group: "Auth — redirect",
       label: "Geo restricted (redirect countdown)", key: "auth-redirect",
       modal_id: "auth", file: "app/views/modals/_auth.html.erb",
@@ -244,11 +309,16 @@ class AdminController < ApplicationController
 
     hydrate = fetch_navbar_hydrate(current_user)
     seeds   = hydrate[:seeds]
-    balance = hydrate[:usdc] || 0
 
     render json: {
-      balance:     balance,                 # back-compat (refreshBalance reads this)
-      usdc:        balance,
+      # Combined USDC + USDT (the navbar pill shows total spendable dollars —
+      # see display_balance). null when BOTH reads flaked, so the client
+      # leaves the prior pill value instead of painting a false $0.
+      balance:     combined_balance(hydrate[:usdc], hydrate[:usdt]),
+      # Per-currency values — feed $store.session.usdcCents/usdtCents and the
+      # /account data-wallet-tile spans. null = unknown (RPC flake), the
+      # client null-guards each field.
+      usdc:        hydrate[:usdc],
       usdt:        hydrate[:usdt],
       seeds:       seeds,
       level:       (User.level_for(seeds) if seeds),

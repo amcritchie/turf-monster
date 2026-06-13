@@ -73,9 +73,22 @@ function registerWalletStore() {
       return !!(s && s.mode === 'web3');
     },
 
-    _reauth: function(pubkeyB58) {
+    _reauthing: false,
+
+    _reauth: function(pubkeyB58, attempt) {
+      attempt = attempt || 1;
+      // Every open tab receives Phantom's accountChanged, but the server
+      // session has a SINGLE nonce slot (delete-before-verify, OPSEC-018) —
+      // concurrent re-auths from multiple tabs overwrite each other's nonce,
+      // so the prompt the user actually signs verifies against a dead nonce
+      // and 401s. Only the VISIBLE tab re-auths; hidden tabs catch up via
+      // the layout's visibilitychange session_state rehydrate on refocus.
+      if (document.visibilityState !== 'visible') return;
+      if (this._reauthing) return; // one prompt at a time in this tab
       var provider = window.walletProvider.detect();
       if (!provider) return;
+      this._reauthing = true;
+      var self = this;
       fetch('/auth/solana/nonce')
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -95,12 +108,41 @@ function registerWalletStore() {
         })
         .then(function(r) { return r.json(); })
         .then(function(result) {
-          if (result.success) {
+          self._reauthing = false;
+          if (result && result.success) {
             window.handleSolanaVerifySuccess(result);
             window.location.reload();
+            return;
           }
+          // Rejected (stale nonce race / expiry). One automatic retry with a
+          // fresh nonce — the in-flight guard above means this tab is alone
+          // now, so the second attempt verifies against its own nonce.
+          console.warn('[wallet-watcher] re-auth rejected (attempt ' + attempt + '):', result && result.error);
+          if (attempt < 2) { self._reauth(pubkeyB58, attempt + 1); return; }
+          self._fallbackToManualConnect();
         })
-        .catch(function(err) { console.warn('Wallet re-auth failed:', err); });
+        .catch(function(err) {
+          self._reauthing = false;
+          // 4001 = the user dismissed the signature prompt — respect that,
+          // no retry, no fallback (they chose to stay on the old session).
+          if (err && err.code === 4001) return;
+          console.warn('[wallet-watcher] re-auth failed:', err);
+          if (attempt < 2) { self._reauth(pubkeyB58, attempt + 1); return; }
+          self._fallbackToManualConnect();
+        });
+    },
+
+    // Silent re-auth failed twice — never strand the user with a navbar that
+    // silently still shows the OLD account. Open the Connect Wallet picker so
+    // they can complete the switch by hand (the path that always works).
+    _fallbackToManualConnect: function() {
+      try {
+        if (window.Alpine && Alpine.store('modals')) {
+          Alpine.store('modals').open('wallet-connect', { linkMode: false, currentUserId: null });
+          return;
+        }
+      } catch (e) { /* fall through */ }
+      window.location.href = '/signin';
     }
   });
 

@@ -7,20 +7,24 @@
       The engine head already ships viewport, csrf/csp, importmap, --nav-h,
       overflow-anchor, and apple-mobile-web-app-capable — none of which we
       touch here. og:url/og:image are absolute (wallet scanners + link
-      unfurlers require absolute URLs). Default title/description below;
-      a page can override the <title> via content_for(:title) and the
-      description/share image via content_for(:meta_description) /
-      content_for(:og_image).
+      unfurlers require absolute URLs). Title / description / share image
+      resolve through OgHelper: a page-level content_for(:title) /
+      content_for(:meta_description) / content_for(:og_image) override wins,
+      then the admin-set SiteSetting defaults, then the hardcoded fallbacks.
     %>
-    <% page_title = content_for(:title).presence || "Turf Totals — Solana Pick’em Contests" %>
-    <% meta_description = content_for(:meta_description).presence || "Turf Totals: Solana-powered World Cup pick’em contests. Pick 6 matchups, stack Turf Scores, and win prizes settled on-chain." %>
-    <%# og.png (1200x630 landscape, ~53KB) lives in public/ (not the asset
-        pipeline), so build the absolute URL off the request host rather than
-        image_url. The old /logo.png (1.3MB) timed out in iMessage/Twitter
-        unfurlers and blanked the link preview; this dedicated 1.91:1 OG asset
-        is sized + compressed for the unfurl. %>
-    <% og_image_default = content_for(:og_image).blank? %>
-    <% og_image_url = content_for(:og_image).presence || "#{request.base_url}/og.png" %>
+    <%# Title/description/og:image resolve through OgHelper: a page-level
+        content_for override wins, then the admin-set SiteSetting defaults
+        (/admin/dashboard), then the hardcoded fallbacks below. See OgHelper. %>
+    <% page_title = og_title(content_for(:title)) %>
+    <% meta_description = og_description(content_for(:meta_description)) %>
+    <%# og:image — a page-level content_for(:og_image) override wins; otherwise
+        the admin-uploaded SiteSetting default, falling back to the static
+        public/og.png (1200x630 landscape, ~53KB — sized + compressed for the
+        unfurl; the old 1.3MB /logo.png timed out and blanked previews). Only
+        the static fallback has known fixed dimensions. %>
+    <% og_override = content_for(:og_image).presence %>
+    <% resolved_og_image = og_override || og_image_url %>
+    <% og_image_is_default = og_override.blank? && og_image_default? %>
     <title><%= page_title %></title>
     <meta name="description" content="<%= meta_description %>">
 
@@ -38,27 +42,9 @@
         (clears the Chrome deprecation warning). Both are intentionally kept. %>
     <meta name="mobile-web-app-capable" content="yes">
 
-    <%# Open Graph (Facebook / iMessage / Discord / Slack unfurls). %>
-    <meta property="og:site_name" content="Turf Totals">
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="<%= page_title %>">
-    <meta property="og:description" content="<%= meta_description %>">
-    <meta property="og:url" content="<%= request.original_url %>">
-    <meta property="og:image" content="<%= og_image_url %>">
-    <%# Explicit dimensions let unfurlers reserve the 1.91:1 card without
-        fetching the image first. Only emitted for the default landscape og.png
-        — a page-level content_for(:og_image) override may be a different size. %>
-    <% if og_image_default %>
-      <meta property="og:image:width" content="1200">
-      <meta property="og:image:height" content="630">
-      <meta property="og:image:type" content="image/png">
-    <% end %>
-
-    <%# Twitter / X card. summary_large_image matches the 1.91:1 og.png. %>
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="<%= page_title %>">
-    <meta name="twitter:description" content="<%= meta_description %>">
-    <meta name="twitter:image" content="<%= og_image_url %>">
+    <%# Open Graph + Twitter unfurl tags (shared with the landing layout). %>
+    <%= render "layouts/link_preview_meta", title: page_title, description: meta_description,
+          image: resolved_og_image, image_default: og_image_is_default %>
 
     <%# SRI-pinned (audit H2): exact versions + integrity so a poisoned CDN/package
         can't swap the signing-path crypto. web3.js @1 currently resolves to 1.98.4;
@@ -114,18 +100,20 @@
           // Navbar hydrate. The server NO LONGER blocks the HTML render on the
           // USDC/USDT/seeds RPCs (perf: ~0.3-1s/page) — display_balance /
           // display_seeds_data render cache-first, nil ("loading") when cold.
-          // So this fires refreshBalance() RIGHT AWAY on every load (initial +
-          // every Turbo nav) to fill the pill + seeds bar + $store.session
-          // eligibility cents. The nav spinner spins until it lands. A write
+          // So this fires refreshSession() RIGHT AWAY on every load (initial +
+          // every Turbo nav). It is THE one page-load hydrate: pill + token
+          // badge + seeds bar + $store.session cents + any data-wallet-tile
+          // spans on the page (/account's balance tiles) all converge from
+          // this single call. The nav spinner spins until it lands. A write
           // success path (entry confirm / token consume) still calls
-          // refreshBalance()/refreshSession() directly for its own refresh.
+          // refreshSession() directly for its own refresh.
           (function() {
             var _navHydrating = false;
             function hydrateNavbar() {
               if (_navHydrating) return;             // de-dupe initial + turbo:load
               _navHydrating = true;
               if (window.showNavSpinner) window.showNavSpinner();
-              refreshBalance().finally(function() {
+              refreshSession().finally(function() {
                 if (window.hideNavSpinner) window.hideNavSpinner();
                 _navHydrating = false;
               });
@@ -237,10 +225,13 @@
           var signed = await provider.signMessage(new TextEncoder().encode(message), 'utf8');
           var signatureB58 = encodeBase58(signed.signature);
           var verifyUrl = opts.linkMode ? '/account/link_solana' : '/auth/solana/verify';
+          // Legal-age attestation (signup compliance): undefined keys are
+          // dropped by JSON.stringify, so login/link calls stay unchanged.
+          var ageAttestation = (!opts.linkMode && opts.ageAttested) ? '1' : undefined;
           return await (await fetch(verifyUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '' },
-            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58 })
+            body: JSON.stringify({ message: message, signature: signatureB58, pubkey: pubkeyB58, age_attestation: ageAttestation })
           })).json();
         };
 
@@ -256,6 +247,9 @@
           body.set('email', email || '');
           if (opts.contest) body.set('contest', opts.contest);
           if (opts.picks)   body.set('picks', opts.picks);
+          // Legal-age attestation — rides in the magic-link row so the
+          // consume side can require it before creating a new account.
+          if (opts.ageAttested) body.set('age_attestation', '1');
           var resp = await fetch('/magic_link', {
             method: 'POST',
             headers: {
@@ -905,6 +899,18 @@
         <template x-if="$store.modals.current().id === 'wallet-deposit'">
           <%= render "modals/wallet_deposit" %>
         </template>
+        <%# cdp-ramp — Coinbase buy-USDC / cash-out flow (spec section 14).
+            Flag-gated so the dark feature ships no modal markup while
+            ENABLE_CDP_RAMP is unset (the kill-switch also 404s every /cdp
+            endpoint via Cdp::BaseController; the inert cdpRampFlow factory
+            in shared/_alpine_factories is the only remnant). Opened by the
+            /wallet buttons, the wallet-deposit modal's Coinbase option, and
+            the /cdp return pages' deep-link. %>
+        <% if AppFlags.cdp_ramp? %>
+          <template x-if="$store.modals.current().id === 'cdp-ramp'">
+            <%= render "modals/cdp_ramp" %>
+          </template>
+        <% end %>
       <% end %>
 
 

@@ -1,0 +1,139 @@
+<%#
+  PayPal/Venmo purchase block — pack selection (orb-glow cards in select
+  mode) + standalone Venmo and PayPal buttons. Drives the paypalButtons
+  Alpine factory (tokens/_paypal_sdk.html.erb — render that partial once
+  on the consuming page, alongside tokens/_pack_button_styles for the
+  card CSS). Renders only when the PayPal onramp is active; callers gate
+  on Payments.paypal_checkout?.
+
+  Locals:
+    flow        - Required. "modal" (auth wizard tokens-picker step: a
+                  successful capture dispatches paypal-order-captured and
+                  the selectionBoard drives the wizard + polling) or
+                  "page" (/tokens/buy: this partial also renders the
+                  confirming / minted / errored status cards and the
+                  factory polls /tokens/status itself).
+    contest     - Optional contest slug for purchase attribution.
+    next_target - Required when flow is "page". Path for the success
+                  card's "Enter contest" CTA.
+
+  Single root element — the modal flow mounts this inside an Alpine
+  <template x-if>, where sibling roots silently no-op.
+%>
+<%
+  contest      = local_assigns[:contest].to_s
+  next_target  = local_assigns[:next_target]
+  default_pack = StripePurchase.available_packs.keys.first.to_s
+%>
+<div x-data="paypalButtons({ flow: '<%= j flow %>', contest: '<%= j contest %>', defaultPack: '<%= j default_pack %>' })"
+     x-init="$nextTick(() => mount())">
+  <template x-if="phase === 'pick'">
+    <div>
+      <div class="space-y-3">
+        <% StripePurchase.available_packs.each do |pack_id, pack| %>
+          <%= render "tokens/pack_button",
+              pack_id:       pack_id,
+              pack:          pack,
+              select_js:     "selectPack('#{pack_id}')",
+              selected_expr: "pack === '#{pack_id}'" %>
+        <% end %>
+      </div>
+
+      <%# Button slots — empty divs the SDK renders its iframes into. Venmo
+          first and taller (visually primary); each only appears if its
+          funding source is eligible. Kept visible while loading so the SDK
+          never renders into a display:none container. %>
+      <div class="mt-4" x-show="!busy">
+        <div x-ref="venmoSlot"></div>
+        <div x-ref="paypalSlot" class="mt-2"></div>
+      </div>
+
+      <template x-if="sdkState === 'loading' && !busy">
+        <div class="flex items-center justify-center gap-2 mt-2 py-2 text-sm text-secondary">
+          <span class="cta-spinner" aria-hidden="true"></span>
+          <span>Loading payment options&hellip;</span>
+        </div>
+      </template>
+      <template x-if="busy">
+        <div class="flex items-center justify-center gap-2 mt-2 py-2 text-sm text-secondary">
+          <span class="cta-spinner" aria-hidden="true"></span>
+          <span>Finishing up&hellip;</span>
+        </div>
+      </template>
+      <template x-if="sdkState === 'failed' || sdkState === 'unavailable'">
+        <p class="text-xs text-secondary text-center mt-3">
+          Venmo / PayPal aren't available right now &mdash; refresh to try again, or check back shortly.
+        </p>
+      </template>
+      <%# Yellow container (buy-page precedent): bare text-yellow-300 on the
+          light theme's white card is near-invisible — a buyer whose payment
+          failed saw nothing. %>
+      <template x-if="notice">
+        <div class="bg-yellow-500/10 border border-yellow-600/30 rounded-lg p-3 mt-3">
+          <p class="text-yellow-300 text-xs text-center" x-text="notice"></p>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <%# Capture returned PENDING (eCheck / Venmo review hold) — the buyer HAS
+      paid; PAYMENT.CAPTURE.COMPLETED mints when it clears (days for eCheck).
+      Rendered for BOTH flows (phase leaves 'pick', so the buttons unmount):
+      deliberately NO retry affordance — a second order would double-charge. %>
+  <template x-if="phase === 'hold'">
+    <div class="bg-yellow-500/10 border border-yellow-600/30 rounded-lg p-4 text-center mt-2">
+      <p class="text-sm font-semibold text-heading mb-1">Payment received &mdash; processing</p>
+      <p class="text-xs text-secondary">
+        PayPal is finishing your payment (eCheck and some Venmo payments take
+        a little longer to clear). Your entry tokens will be delivered
+        automatically once it does &mdash; <span class="font-semibold">no need to buy again</span>.
+      </p>
+    </div>
+  </template>
+
+  <% if flow == "page" %>
+    <%# Standalone status UI — same three states as tokens/processing.html.erb
+        (which stays Stripe-only); the PayPal path never leaves this page. %>
+    <template x-if="phase === 'confirming'">
+      <div class="card shadow p-8 text-center">
+        <%= render "modals/blocks/card_header",
+              spinner: true,
+              title: "Confirming your purchase…",
+              subtitle: "Minting your entry tokens on-chain." %>
+        <p class="text-xs text-muted -mt-2" x-show="elapsed >= 8">
+          Still working&hellip; this can take up to 30 seconds.
+        </p>
+      </div>
+    </template>
+
+    <template x-if="phase === 'minted'">
+      <div class="card shadow p-8 text-center">
+        <div class="mx-auto w-12 h-12 rounded-full bg-primary/15 flex items-center justify-center mb-6">
+          <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold text-heading mb-2">
+          <span x-text="minted"></span> entry token<span x-show="minted !== 1">s</span> added
+        </h2>
+        <p class="text-sm text-secondary mb-6">
+          You now have <span class="font-bold text-primary font-mono" x-text="balance"></span> available.
+        </p>
+        <%= link_to "Enter contest", next_target, class: "btn btn-primary w-full" %>
+      </div>
+    </template>
+
+    <template x-if="phase === 'errored'">
+      <div class="card shadow p-8 text-center">
+        <div class="mx-auto w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center mb-6">
+          <span class="text-2xl">⏳</span>
+        </div>
+        <h2 class="text-xl font-bold text-heading mb-2">Still processing</h2>
+        <p class="text-sm text-secondary mb-6">
+          Your payment went through but we haven't seen the confirmation yet. It usually arrives within a minute &mdash; refresh this page in a bit, or check <%= link_to "your wallet", wallet_path, class: "text-primary underline" %>.
+        </p>
+        <%= link_to "Refresh now", "#", onclick: "window.location.reload(); return false;", class: "btn btn-outline" %>
+      </div>
+    </template>
+  <% end %>
+</div>

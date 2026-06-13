@@ -49,6 +49,18 @@
       </button>
     </form>
 
+    <%# Buy USDC via Coinbase (CDP onramp) — flag-gated; omitted (not
+        disabled) when geo-blocked so this focused picker never shows a
+        dead option. swap() (not open) because we're already inside the
+        modal host — cross-modal handoff runs the directional slide. %>
+    <% if AppFlags.cdp_ramp? && !geo_blocked? %>
+      <button type="button" data-cdp-buy-usdc
+              @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+              class="btn btn-neutral btn-lg w-full">
+        Buy USDC with Coinbase
+      </button>
+    <% end %>
+
     <%# Send-to-address — Phantom users with an existing balance in
         another wallet can self-fund. Address from $store.session.address. %>
     <div class="border-t border-strong pt-3" x-data="{ copied: false }">

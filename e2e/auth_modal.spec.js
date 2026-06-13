@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { reseed } = require("./helpers");
+const { reseed, attestAge } = require("./helpers");
 
 // Auth-modal UI flows driven through the REAL login form — the path the
 // login() test backdoor skips, and exactly where the #30 x-data regression
@@ -18,6 +18,7 @@ test.beforeEach(async ({ request }) => await reseed(request));
 test("requesting a magic link from the login form opens the Check your inbox modal", async ({ page }) => {
   await page.goto("/signin");
   await page.fill('input[name="email"]', `authmodal-${Date.now()}@example.com`);
+  await attestAge(page);
   await page.getByRole("button", { name: "Email Link" }).click();
 
   // The auth modal's magic-link-sent step. (#30 broke this: a double-quote in
@@ -29,6 +30,7 @@ test("requesting a magic link from the login form opens the Check your inbox mod
 test("resending swaps to the Link Resent confirmation and starts the cooldown", async ({ page }) => {
   await page.goto("/signin");
   await page.fill('input[name="email"]', `authmodal-resend-${Date.now()}@example.com`);
+  await attestAge(page);
   await page.getByRole("button", { name: "Email Link" }).click();
   await expect(page.getByText("Check your inbox")).toBeVisible();
 

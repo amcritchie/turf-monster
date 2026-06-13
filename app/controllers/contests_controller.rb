@@ -84,6 +84,7 @@ class ContestsController < ApplicationController
     }
   rescue StandardError => e
     Rails.logger.error("[ContestsController#generate_bundle] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -115,6 +116,7 @@ class ContestsController < ApplicationController
     render_create_error("Invalid or expired bundle token — restart the provision flow.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#finalize_bundle] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -156,6 +158,7 @@ class ContestsController < ApplicationController
     }
   rescue StandardError => e
     Rails.logger.error("[ContestsController#create] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -196,6 +199,7 @@ class ContestsController < ApplicationController
     render_create_error("Invalid or expired form token — restart the contest creation flow.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#rebuild_create_tx] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -225,6 +229,7 @@ class ContestsController < ApplicationController
     render_create_error("Invalid or expired form token — restart the contest creation flow.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#finalize] #{e.class}: #{e.message}")
+    capture_unlogged(e)
     render_create_error(e.message)
   end
 
@@ -318,7 +323,10 @@ class ContestsController < ApplicationController
 
       @contest.update!(
         onchain_contest_id: derived_pda_b58,
-        onchain_tx_signature: params[:tx_signature]
+        onchain_tx_signature: params[:tx_signature],
+        # prepare_onchain_contest built the TX from onchain_params — the USDT
+        # fee (entry_fee_by_currency slot 1) is funded on-chain.
+        accepts_usdt: true
       )
 
       invalidate_usdc_cache if logged_in?
@@ -476,14 +484,33 @@ class ContestsController < ApplicationController
       raise "Wallet mismatch" unless params[:pubkey] == current_user.web3_solana_address
     end
 
-    # Declared here so the respond_to block below (outside the with_lock
-    # transaction) can reference it for the JSON payload.
+    # Declared here so the durable-capture write + confirm! + respond_to below
+    # (all OUTSIDE the with_lock transaction) can reference them. The on-chain
+    # signature/PDA MUST outlive a confirm! failure — see the durable-capture
+    # block after with_lock (incident 2026-06-08).
     token_consumed = false
+    tx_signature = nil
+    onchain_entry_id = nil
 
     rescue_and_log(target: entry, parent: @contest) do
+      # DB-side gates (eligibility, season, on-chain backing) + entry-slot
+      # reservation, serialized under the contest row lock. The IRREVERSIBLE
+      # on-chain consume/transfer runs inside this block too — so EVERY
+      # read-only eligibility gate (selection count, lock time, started games,
+      # sybil, per-user limit, contest-full) MUST run BEFORE it (entry.
+      # assert_enterable! below). Incident 2026-06-08: the consume ran first and
+      # the gate-running confirm! raised AFTER the burn, stranding the user
+      # (paid + entered on-chain, app showed `cart`). A reconciler can't heal a
+      # genuine validation failure — re-running confirm! fails the same gate —
+      # so the only correct fix is to validate BEFORE the irreversible side
+      # effect (backend discipline #2). confirm! (hoisted out below) re-runs the
+      # SAME assert_enterable! as its serialized backstop, and the durable
+      # capture covers a TRANSIENT post-broadcast failure (RPC/DB), which the
+      # reconciler then heals.
       @contest.with_lock do
-        active_count = @contest.entries.where(status: [:active, :complete]).count
-        raise "Contest is full" if @contest.max_entries && active_count >= @contest.max_entries
+        # PRE-FLIGHT: run the read-only eligibility gates BEFORE any consume.
+        # Raises here → token stays unconsumed, entry stays `cart`, fail loudly.
+        entry.assert_enterable!
 
         # On-chain entries require a configured season (seed_schedule lives on its PDA).
         # Catch the missing-season case early with a clear error instead of a cryptic
@@ -500,9 +527,6 @@ class ContestsController < ApplicationController
         if @contest.entry_fee_cents.to_i.positive? && !@contest.onchain?
           raise "This contest isn't on-chain yet — paid entry is unavailable."
         end
-
-        tx_signature = nil
-        onchain_entry_id = nil
 
         if @contest.onchain? && @contest.entry_fee_cents > 0 && current_user.managed_wallet? && !current_user.phantom_wallet?
           # Web2 / managed wallet: consume an on-chain EntryTokenAccount via the new
@@ -562,12 +586,23 @@ class ContestsController < ApplicationController
           tx_signature = result[:signature]
           onchain_entry_id = result[:entry_pda]
         end
-
-        entry.confirm!(tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
       end
 
-      # Confirmed (managed/token path) — announce the join in chat once.
-      announce_contest_join(entry)
+      # Durable capture (incident 2026-06-08). The on-chain consume/transfer
+      # above is IRREVERSIBLE — the token is spent + the Entry PDA exists on
+      # chain. Persist that proof onto the (still-`cart`) entry NOW, in a write
+      # that has already left the with_lock transaction, so the gate-running
+      # confirm! below can fail without erasing the fact that the user paid.
+      # A strand is then a recoverable row (`cart` + onchain_tx_signature) that
+      # self-heals via Entries::OnchainReconcileJob / `rake entries:reconcile_onchain`.
+      entry.update!(onchain_tx_signature: tx_signature, onchain_entry_id: onchain_entry_id) if tx_signature
+
+      finalize_managed_entry!(entry, tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
+
+      # Announce the join in chat once — only when the entry actually went
+      # active. A post-broadcast confirm failure (reconcile pending) skips this;
+      # the reconciler announces when it heals the entry.
+      announce_contest_join(entry) if entry.active?
 
       respond_to do |format|
         format.html { redirect_to contest_path(@contest), notice: "#{current_user.display_name} entered the contest!" }
@@ -618,6 +653,24 @@ class ContestsController < ApplicationController
     # entry flow.
     return render json: { success: false, error: "Phantom session required" }, status: :forbidden unless onchain_session?
 
+    # Currency selection (2026-06-10): "usdc" (default, currency_idx 0) or
+    # "usdt" (currency_idx 1). Strict allow-list — anything else is a client
+    # bug. USDT only works on contests whose on-chain entry_fee_by_currency
+    # funded slot 1 at creation (accepts_usdt) — older contests have an
+    # immutable zero there and the program would reject with EntryFeeNotSet
+    # (6027), so refuse up front with a clear error instead.
+    currency = (params[:currency].presence || "usdc").to_s.downcase
+    unless %w[usdc usdt].include?(currency)
+      return render json: { success: false, error: "Unsupported currency #{params[:currency].to_s.inspect} — use \"usdc\" or \"usdt\"." },
+                    status: :unprocessable_entity
+    end
+    if currency == "usdt" && !@contest.accepts_usdt?
+      return render json: { success: false, error: "This contest doesn't accept USDT — enter with USDC instead." },
+                    status: :unprocessable_entity
+    end
+    currency_idx = currency == "usdt" ? 1 : 0
+    entry_mint   = currency_idx == 1 ? Solana::Config::USDT_MINT : Solana::Config::USDC_MINT
+
     rescue_and_log(target: entry, parent: @contest) do
       raise "Contest is not onchain" unless @contest.onchain?
       raise "Phantom wallet required" unless current_user.phantom_wallet?
@@ -643,18 +696,20 @@ class ContestsController < ApplicationController
       # v0.16: username is required at PDA creation (validate_username on chain
       # enforces >= 3 chars). Pass current_user.username through.
       vault.ensure_user_account(current_user.web3_solana_address, username: current_user.username)
-      # v0.16: user's USDC ATA must exist before they can transfer from it.
-      # init_if_needed isn't used in the instruction so we create it here.
-      vault.ensure_ata(current_user.web3_solana_address, mint: Solana::Config::USDC_MINT)
+      # v0.16: the user's ATA for the SELECTED currency must exist before they
+      # can transfer from it. init_if_needed isn't used in the instruction so
+      # we create it here (USDC for currency_idx 0, USDT for 1).
+      vault.ensure_ata(current_user.web3_solana_address, mint: entry_mint)
 
       # v0.16 collapsed `enter_contest` + `enter_contest_direct` into a
-      # single unified `enter_contest` instruction. currency_idx 0 = USDC
-      # (only currency surfaced in the UI for Phase 1).
+      # single unified `enter_contest` instruction. currency_idx selects the
+      # vault's accepted_currencies slot (0 = USDC, 1 = USDT) — validated
+      # against @contest.accepts_usdt above.
       result = vault.build_enter_contest(
         current_user.web3_solana_address,
         @contest.slug,
         entry.entry_number,
-        currency_idx: 0,
+        currency_idx: currency_idx,
         season_id: @contest.season_id
       )
 
@@ -670,7 +725,7 @@ class ContestsController < ApplicationController
         status: "pending",
         target: entry,
         initiator_address: current_user.web3_solana_address,
-        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug, currency_idx: 0 }.to_json
+        metadata: { entry_pda: result[:entry_pda], contest_slug: @contest.slug, currency_idx: currency_idx }.to_json
       )
 
       render json: {
@@ -701,6 +756,7 @@ class ContestsController < ApplicationController
     ptx.update!(tx_signature: params[:tx_signature], status: "submitted")
     render json: { success: true }
   rescue StandardError => e
+    capture_unlogged(e, parent: @contest)
     render json: { success: false, error: e.message }, status: :unprocessable_entity
   end
 
@@ -790,10 +846,12 @@ class ContestsController < ApplicationController
         tx_signature: ptx.tx_signature
       }
     rescue StandardError => e
+      capture_unlogged(e, target: entry, parent: @contest)
       ptx.update!(status: "failed")
       render json: { status: "failed", error: "Recovery failed: #{e.message}" }
     end
   rescue StandardError => e
+    capture_unlogged(e, parent: @contest)
     render json: { status: "error", error: e.message }, status: :unprocessable_entity
   end
 
@@ -822,6 +880,17 @@ class ContestsController < ApplicationController
     rescue_and_log(target: entry, parent: @contest) do
       raise "Wallet not linked" unless current_user.web3_solana_address.present?
       raise "Missing signed transaction" if params[:signed_tx].blank?
+
+      # PRE-FLIGHT (backend discipline #2): run the read-only eligibility gates
+      # BEFORE the irreversible cosign+broadcast below. The broadcast is
+      # server-side here (cosign_and_broadcast_entry), so a gate failure must
+      # raise NOW — nothing signed, nothing broadcast, entry stays `cart`. The
+      # post-broadcast Entry#confirm_onchain! re-runs the SAME assert_enterable!
+      # as its backstop (no drift); without this pre-flight a stale lock-time /
+      # filled-contest / duplicate-combo between #prepare_entry and here would
+      # only surface AFTER the on-chain payment moved (the 2026-06-08 ordering
+      # bug, in the Phantom path).
+      entry.assert_enterable!
 
       vault = Solana::Vault.new
 
@@ -1259,6 +1328,43 @@ class ContestsController < ApplicationController
     Message.announce_join!(contest: @contest, user: entry.user)
   end
 
+  # Flip the cart entry to `active` now that payment has settled (on-chain
+  # consume/transfer done, or a free contest). For an on-chain-paid entry whose
+  # proof we already durably captured, a confirm! failure must NOT strand the
+  # user or invite a double-spend retry: the token/USDC is already gone on chain
+  # and the Entry PDA exists, so the entry IS valid — we schedule the reconciler
+  # to converge the Rails row to active out-of-band and let the success response
+  # stand (the durable onchain_tx_signature keeps the row recoverable). A free /
+  # off-chain entry has nothing to recover, so its confirm! failure re-raises as
+  # a normal error. (Incident 2026-06-08.)
+  def finalize_managed_entry!(entry, tx_signature:, onchain_entry_id:)
+    entry.confirm!(tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
+  rescue StandardError => e
+    raise e if tx_signature.blank?
+
+    Rails.logger.error(
+      "[entry][post-broadcast-confirm-failed] entry_id=#{entry.id} " \
+      "contest=#{@contest.slug} user_id=#{entry.user_id} " \
+      "tx=#{tx_signature.to_s.first(8)}... #{e.class}: #{e.message} — " \
+      "scheduling reconcile (token already consumed on-chain)"
+    )
+
+    # This branch SWALLOWS the exception (the on-chain payment already settled, so
+    # the entry is valid and reconciles out-of-band) — which means the outer
+    # rescue_and_log never sees it. Persist an ErrorLog ourselves, with the same
+    # target/parent context rescue_and_log would attach, so a stranded entry is
+    # diagnosable in seconds (this exact failure class is what incident #133 was
+    # reconstructed from log scraping). Capture BEFORE the enqueue.
+    error_log = ErrorLog.capture!(e)
+    error_log.target = entry
+    error_log.target_name = entry.slug
+    error_log.parent = @contest
+    error_log.parent_name = @contest.slug
+    error_log.save!
+
+    Entries::OnchainReconcileJob.perform_later(entry.id)
+  end
+
   def post_entry_seeds_payload(entry, path:, tx_signature:, token_consumed: nil)
     seeds_earned = 0
     seeds_total  = 0
@@ -1307,6 +1413,14 @@ class ContestsController < ApplicationController
   # escalated to Rails.logger.error so ops sees it; rescue_and_log has
   # already persisted an error_logs row with the full backtrace.
   def render_entry_error(exception)
+    # rescue_and_log persists an error_logs row for any fault raised INSIDE its
+    # block (and sets @_error_logged). But the entry endpoints (enter,
+    # prepare_entry, confirm_onchain_entry) do guard/auth work BEFORE that block
+    # — a fault there would reach here unlogged. capture_unlogged closes that gap
+    # without double-logging the rescue_and_log path. (Operator directive: every
+    # endpoint records failures to ErrorLog.)
+    capture_unlogged(exception, parent: @contest)
+
     result = Solana::ErrorInterpreter.interpret(exception, contest: @contest)
     Rails.logger.error("[entry][escalate] #{exception.class}: #{exception.message}") if result[:log]
 
@@ -1322,6 +1436,30 @@ class ContestsController < ApplicationController
 
   def render_create_error(msg)
     render json: { success: false, error: msg }, status: :unprocessable_entity
+  end
+
+  # Persist an ErrorLog for an exception rescued OUTSIDE rescue_and_log (the
+  # create/finalize flows, the entry-flow pre-block guards, the stamp/recover
+  # endpoints) so every endpoint's failures land in ErrorLog per the operator
+  # directive. No-op when rescue_and_log already logged this request
+  # (@_error_logged) so we never double-log. Attaches optional target/parent
+  # context (using slugs, matching rescue_and_log). The caller still renders /
+  # raises as before — this only records.
+  def capture_unlogged(exception, target: nil, parent: nil)
+    return if @_error_logged
+
+    log = create_error_log(exception)
+    if target
+      log.target = target
+      log.target_name = target.slug
+    end
+    if parent
+      log.parent = parent
+      log.parent_name = parent.slug
+    end
+    log.save! if target || parent
+    @_error_logged = true
+    log
   end
 
   def build_unpersisted_contest_from_params
@@ -1364,7 +1502,10 @@ class ContestsController < ApplicationController
       status:                     :open,
       user:                       current_user,
       onchain_contest_id:         derived_pda_b58,
-      onchain_tx_signature:       tx_signature
+      onchain_tx_signature:       tx_signature,
+      # The create_contest TX just verified was built from onchain_params,
+      # which funds entry_fee_by_currency slot 1 (USDT) alongside slot 0.
+      accepts_usdt:               true
     ).tap { |c| c.skip_onchain_callback = true }
   end
 
@@ -1617,11 +1758,24 @@ class ContestsController < ApplicationController
   # where no PT is stranded.
   def find_pending_recovery_ptx
     return nil unless current_user&.web3_solana_address.present? && @contest.onchain?
-    PendingTransaction.where(status: %w[pending submitted],
-                             initiator_address: current_user.web3_solana_address,
-                             target_type: "Entry")
-                      .where(target_id: @contest.entries.where(user_id: current_user.id).select(:id))
-                      .order(created_at: :desc).first
+    stranded = PendingTransaction.where(status: %w[pending submitted],
+                                        initiator_address: current_user.web3_solana_address,
+                                        target_type: "Entry")
+                                 .where(target_id: @contest.entries.where(user_id: current_user.id).select(:id))
+
+    # Operator call (2026-06-11): recovery is ONLY for a PT that actually
+    # BROADCAST (carries a tx_signature) — real money may have moved, so the
+    # "Checking Your Last Entry" flow must resolve it. A signatureless PT
+    # means nothing ever left the building (prepare_entry ran, confirm never
+    # broadcast): no modal, no recovery — "if it fails, it fails". Quietly
+    # retire the stale ones; the >10min guard leaves a tab that's mid-confirm
+    # alone (confirm stamps the signature within seconds of broadcasting,
+    # and it looks the PT up by the same pending/submitted scope).
+    stranded.where(tx_signature: nil)
+            .where(created_at: ..10.minutes.ago)
+            .update_all(status: "expired", updated_at: Time.current)
+
+    stranded.where.not(tx_signature: nil).order(created_at: :desc).first
   end
 
   # Pre-rendered seeds payload used by the contest show page's slate

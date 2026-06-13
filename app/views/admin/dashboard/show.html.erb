@@ -1,0 +1,205 @@
+<% content_for(:title, "Dashboard — Admin") %>
+
+<div class="max-w-5xl mx-auto py-8 px-4 space-y-8">
+  <div>
+    <h1 class="text-heading text-2xl font-bold mb-1">Dashboard</h1>
+    <p class="text-muted text-sm">Admin home — recent activity, session replay, and site-wide settings.</p>
+  </div>
+
+  <%# ── Quick actions — external tools + common admin destinations ──────── %>
+  <div class="grid grid-cols-4 gap-3">
+    <%# LogRocket — brand purple + rocket so it pops vs the neutral cards. The
+        brand hex is a one-off inline style (arbitrary hexes aren't in the
+        Tailwind build). %>
+    <%= link_to logrocket_sessions_url, target: "_blank", rel: "noopener",
+          class: "card transition p-4 flex flex-col items-center justify-center gap-1.5 text-center hover:opacity-90",
+          style: "background-color: #764ABC; border-color: #764ABC;" do %>
+      <span class="text-2xl leading-none">🚀</span>
+      <span class="text-sm font-semibold text-white">LogRocket <span class="text-white/70 text-xs">&#8599;</span></span>
+      <span class="text-[11px] text-white/70">session replay</span>
+    <% end %>
+
+    <%= render "admin/dashboard/quick_action", url: "/admin/jobs", label: "Jobs", subtitle: "Sidekiq queue",
+          icon: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" %>
+    <%= render "admin/dashboard/quick_action", url: admin_pending_transactions_path, label: "Treasury", subtitle: "cosign queue",
+          icon: "M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" %>
+    <%= render "admin/dashboard/quick_action", url: admin_hub_path, label: "Link Hub", subtitle: "all admin links",
+          icon: "M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" %>
+  </div>
+
+  <%# ── Activity row: Users + Request Logs ──────────────────────────────── %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+
+    <%# Users — most recently active first; the interesting ones just did
+        something. Shows 5, reveals the rest (loaded up to 25) via Show more. %>
+    <div class="card p-6" x-data="{ expanded: false }">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-heading text-lg font-semibold">Users</h2>
+        <div class="flex items-center gap-3 text-xs">
+          <span class="text-muted"><%= User.count %> total</span>
+          <%= link_to "View all", admin_users_path, class: "text-primary hover:underline" %>
+        </div>
+      </div>
+
+      <% if @recent_users.any? %>
+        <ul class="divide-y divide-subtle">
+          <% @recent_users.each_with_index do |u, i| %>
+            <li <%== 'x-show="expanded" x-cloak ' if i >= 5 %>class="flex items-center gap-3 py-2.5">
+              <%= render "components/avatar", user: u, size: "nav" %>
+              <div class="min-w-0 flex-1">
+                <span class="text-sm font-semibold text-heading">
+                  <%= u.display_name %>
+                  <% if u.admin? %><span class="text-[10px] uppercase font-bold ml-1 px-1 py-0.5 rounded bg-primary/15 text-primary align-middle">admin</span><% end %>
+                </span>
+              </div>
+              <span class="text-xs text-muted shrink-0">
+                <%= u.last_seen_at ? "active #{time_ago_in_words(u.last_seen_at)} ago" : "no recent session" %>
+              </span>
+            </li>
+          <% end %>
+        </ul>
+
+        <% if @recent_users.size > 5 %>
+          <button type="button" @click="expanded = !expanded" class="mt-3 text-sm text-primary hover:underline">
+            <span x-show="!expanded">Show more (<%= @recent_users.size - 5 %>)</span>
+            <span x-show="expanded" x-cloak>Show less</span>
+          </button>
+        <% end %>
+      <% else %>
+        <p class="text-sm text-muted">No users yet.</p>
+      <% end %>
+    </div>
+
+    <%# Request Logs — recent outbound API calls (Stripe / Solana RPC / MoonPay).
+        Full browser + filters at /admin/outbound_requests. %>
+    <div class="card p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-heading text-lg font-semibold">Request Logs</h2>
+        <%= link_to "View all", admin_outbound_requests_path, class: "text-xs text-primary hover:underline" %>
+      </div>
+
+      <% if @recent_requests.any? %>
+        <ul class="divide-y divide-subtle">
+          <% @recent_requests.each do |r| %>
+            <li class="flex items-center gap-3 py-2 text-sm">
+              <span class="font-medium text-heading flex-1 min-w-0 truncate"><%= r.service %></span>
+              <span class="font-mono text-xs shrink-0 px-1.5 py-0.5 rounded <%= r.failed? ? 'bg-red-500/15 text-red-400' : 'bg-primary/15 text-primary' %>">
+                <%= r.status_code || (r.error_class.present? ? "ERR" : "—") %>
+              </span>
+              <span class="text-xs text-muted shrink-0"><%= time_ago_in_words(r.created_at) %> ago</span>
+            </li>
+          <% end %>
+        </ul>
+      <% else %>
+        <p class="text-sm text-muted">No outbound requests logged yet.</p>
+      <% end %>
+    </div>
+  </div>
+
+  <%# ── Settings row: Main Contest + Link Preview defaults ──────────────── %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+
+    <div class="card p-6 space-y-5">
+      <h2 class="text-heading text-lg font-semibold">Main Contest</h2>
+      <p class="text-muted text-xs -mt-3">
+        The default contest the app links to (root <code class="text-xs bg-inset px-1 rounded">/</code>,
+        <code class="text-xs bg-inset px-1 rounded">/account</code> share, <code class="text-xs bg-inset px-1 rounded">/faucet</code> CTA).
+      </p>
+
+      <div class="bg-inset rounded-lg p-4 text-sm space-y-2">
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-muted">Admin-set:</span>
+          <span class="font-mono text-heading">
+            <%= @explicit_main ? @explicit_main.name : "— none —" %>
+            <% if @explicit_main && !@explicit_main.open? %>
+              <span class="text-[10px] uppercase font-bold ml-1 px-1.5 py-0.5 rounded bg-warning-500/20 text-warning border border-warning-500/40">
+                <%= @explicit_main.status %>
+              </span>
+            <% end %>
+          </span>
+        </div>
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="text-muted">Resolved (what the app uses):</span>
+          <span class="font-mono text-heading">
+            <% if @resolved_main %>
+              <%= link_to @resolved_main.name, contest_path(@resolved_main),
+                    class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
+            <% else %>
+              — no open contests —
+            <% end %>
+          </span>
+        </div>
+        <p class="text-xs text-muted pt-1">
+          Resolved falls back to the most recent open contest when no explicit
+          pick is set or when the pick has locked/settled.
+        </p>
+      </div>
+
+      <%= form_with url: admin_dashboard_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+        <div>
+          <label for="main_contest_id" class="block text-sm text-secondary mb-2 font-medium">
+            Pick a contest (open + locked only)
+          </label>
+          <%= select_tag :main_contest_id,
+                options_for_select(
+                  [["— none (auto-fallback) —", ""]] +
+                  @selectable_contests.map { |c| ["#{c.name} (#{c.status})", c.id] },
+                  @explicit_main&.id
+                ),
+                id: "main_contest_id",
+                class: "input-field" %>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+      <% end %>
+
+      <% if @selectable_contests.empty? %>
+        <p class="text-xs text-muted">
+          No open or locked contests exist yet — create one at
+          <%= link_to "/contests/new", new_contest_path, class: "text-primary hover:underline" %>.
+        </p>
+      <% end %>
+    </div>
+
+    <%# Link Preview (og:image) defaults. Cropper.js + the crop-photo modal
+        (registered in the application layout) back the immediate image save. %>
+    <div>
+      <%= render "studio/cropper_assets" %>
+      <div class="card p-6 space-y-5">
+        <div>
+          <h2 class="text-heading text-lg font-semibold">Link Preview Defaults</h2>
+          <p class="text-muted text-sm mt-1">
+            The image, title, and description shown when a turfmonster.media link is
+            shared in iMessage, Discord, Slack, or X. Used site-wide unless a page
+            sets its own. Falls back to the built-in <code class="text-xs bg-inset px-1 rounded">/og.png</code>
+            when no image is uploaded.
+          </p>
+        </div>
+
+        <%= render "admin/shared/og_image_uploader",
+              form_url: admin_dashboard_link_preview_image_path, form_id: "og-image-form",
+              file_param: "site_setting[default_og_image]", preview_dom_id: "default-og-image-preview",
+              attachment: @site_setting.default_og_image, alt: "Default link-preview image",
+              fallback: "No image — falls back to /og.png",
+              label: tag.label("Default image (1200×630)", class: "block text-sm text-secondary mb-2 font-medium") %>
+
+        <%= form_with url: admin_dashboard_link_preview_path, method: :patch, html: { class: "space-y-4" } do |f| %>
+          <div>
+            <label for="default_og_title" class="block text-sm text-secondary mb-2 font-medium">Default title</label>
+            <%# Placeholders render the live OgHelper fallbacks so the admin
+                sees exactly what ships when the field is left blank. %>
+            <%= text_field_tag "site_setting[default_og_title]", @site_setting.default_og_title,
+                  id: "default_og_title", class: "input-field",
+                  placeholder: OgHelper::DEFAULT_OG_TITLE %>
+          </div>
+          <div>
+            <label for="default_og_description" class="block text-sm text-secondary mb-2 font-medium">Default description</label>
+            <%= text_area_tag "site_setting[default_og_description]", @site_setting.default_og_description,
+                  id: "default_og_description", rows: 3, class: "input-field",
+                  placeholder: OgHelper::DEFAULT_OG_DESCRIPTION %>
+          </div>
+          <button type="submit" class="btn btn-primary">Save text</button>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

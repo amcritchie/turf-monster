@@ -24,7 +24,28 @@
        connecting: false,
        picking: '',
        error: '',
+       ageAttested: false,
+       ageError: false,
+       // Show the legal-age attestation for guests (a wallet connect is
+       // create-or-login, so a brand-new wallet creates an account). Linking
+       // flows and logged-in users skip it. Server-side enforcement in
+       // SolanaSessionsController#verify is the boundary for NEW accounts.
+       // Hard false when the attestation flag is off (checkbox parked) —
+       // attested() then always passes.
+       get needsAttestation() {
+         if (!<%= AppFlags.age_attestation? %>) return false;
+         var s = Alpine.store('session');
+         return !this.props.linkMode && !(s && s.loggedIn);
+       },
+       attested() {
+         if (!this.needsAttestation) return true;
+         if (this.ageAttested) return true;
+         this.ageError = true;
+         return false;
+       },
        init() {
+         // Pre-check when the opener (auth card) already collected it.
+         this.ageAttested = this.props.ageAttested === true;
          this.refresh();
          // Wallet Standard registration can land a tick after the module
          // loads — re-read once so a just-registered wallet still appears.
@@ -45,9 +66,10 @@
        },
        async pick(name) {
          if (this.connecting) return;
+         if (!this.attested()) return;
          this.connecting = true; this.picking = name; this.error = '';
          try {
-           var result = await window.solanaConnectAndVerify(name, { linkMode: this.props.linkMode, currentUserId: this.props.currentUserId });
+           var result = await window.solanaConnectAndVerify(name, { linkMode: this.props.linkMode, currentUserId: this.props.currentUserId, ageAttested: this.ageAttested });
            if (result && result.success) {
              if (typeof window.handleSolanaVerifySuccess === 'function') window.handleSolanaVerifySuccess(result);
              window.location.href = this.props.returnUrl || result.redirect || '/';
@@ -62,6 +84,11 @@
          }
        },
        deepLink() {
+         if (!this.attested()) return;
+         // The deep link round-trips through the Phantom app — stash the
+         // attestation alongside the other phantom_dl_* keys so the callback
+         // page can include it in the verify POST.
+         try { localStorage.setItem('phantom_dl_age_attested', this.ageAttested ? '1' : '0'); } catch (e) {}
          if (typeof startPhantomDeepLink === 'function') {
            startPhantomDeepLink(this.props.linkMode || false, (this.props.linkMode && this.props.currentUserId) || null);
          }
@@ -88,6 +115,13 @@
             class="absolute top-0 right-0 -mr-1 text-secondary hover:text-heading text-xl leading-none"
             aria-label="Close">&times;</button>
   </div>
+
+  <%# Legal-age attestation — guests only (connect is create-or-login). %>
+  <template x-if="needsAttestation">
+    <div class="mb-3">
+      <%= render "shared/age_attestation" %>
+    </div>
+  </template>
 
   <div class="space-y-2">
     <%# Detected wallets — INSTALLED, click to connect %>

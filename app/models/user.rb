@@ -1,6 +1,23 @@
 class User < ApplicationRecord
   include Sluggable
 
+  # The seeded house account's stable identity (db/seeds/users.rb). Usernames
+  # can be renamed (and "turf" is itself a reserved prefix), so User.turf keys
+  # on this email, never the username.
+  TURF_HOUSE_EMAIL = "turf@mcritchie.studio".freeze
+
+  # Rails mirror of turf-vault's on-chain reserved-prefix list — keep in sync
+  # with RESERVED_PREFIXES in turf-vault
+  # programs/turf_vault/src/instructions/set_username.rs (v0.15.1, audit C2).
+  # The program rejects any username that case-insensitively STARTS WITH one
+  # of these (custom error 6020 UsernameReserved); without this mirror a user
+  # can hold a Rails username that later fails on-chain with an opaque hex
+  # error. Admins are exempt (they register reserved names via the on-chain
+  # admin path, v0.25+).
+  RESERVED_USERNAME_PREFIXES = %w[
+    admin system turf vault turfmonster support mod official staff team root
+  ].freeze
+
   # Passwordless: email auth is magic-link only (MagicLink service / MagicLinksController).
   # has_secure_password was removed in the passwordless re-auth refactor (closes Lazarus
   # audit #4 — the password re-auth → wallet-key-theft chain). The password_digest column
@@ -9,6 +26,8 @@ class User < ApplicationRecord
   has_many :entries, dependent: :destroy
   has_many :transaction_logs, dependent: :destroy
   has_many :stripe_purchases, dependent: :destroy
+  has_many :cdp_ramp_transactions, dependent: :destroy
+  has_many :paypal_purchases, dependent: :destroy
   belongs_to :inviter, class_name: "User", optional: true, foreign_key: :invited_by_id
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
@@ -20,6 +39,9 @@ class User < ApplicationRecord
   validates :web2_solana_address, uniqueness: true, allow_nil: true
   validates :web3_solana_address, uniqueness: true, allow_nil: true
   validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/, message: "only letters, numbers, hyphens, and underscores" }, uniqueness: { case_sensitive: false }, allow_nil: true
+  # Scoped to username changes so a grandfathered reserved name (e.g. the
+  # house "turf" row) never blocks an unrelated save.
+  validate :username_not_reserved, if: :username_changed?
   validate :has_authentication_method
 
   before_validation :ensure_username, on: :create
@@ -41,6 +63,13 @@ class User < ApplicationRecord
   scope :subscribed_to_newsletter, -> {
     where.not(joined_email_list_at: nil)
          .where("users.left_email_list_at IS NULL OR users.left_email_list_at < users.joined_email_list_at")
+  }
+
+  # Most-recently-active first (admin dashboard). last_seen_at is touched
+  # throttled per authenticated request (ApplicationController#touch_last_seen);
+  # users never seen since the column was added sort last.
+  scope :by_recent_session, -> {
+    order(Arel.sql("users.last_seen_at DESC NULLS LAST, users.created_at DESC"))
   }
 
   # --- Class methods ---
@@ -113,10 +142,22 @@ class User < ApplicationRecord
   # "<name> joined the contest" line, which is posted as a reactable bubble FROM
   # Turf Monster. Returns nil only in an unseeded DB (callers fall back). Not
   # memoized: the test suite recreates users, so a process-level cache would go
-  # stale; the lookup is on the unique `username` index and only fires for the
+  # stale; the lookup is on the unique `email` index and only fires for the
   # handful of system messages in a chat render.
+  #
+  # Keyed on the seeded TURF_HOUSE_EMAIL (db/seeds/users.rb) — the stable
+  # identity that survives renames — with a username fallback for legacy
+  # rows seeded before the email convention.
   def self.turf
-    find_by(username: "turf")
+    find_by(email: TURF_HOUSE_EMAIL) || find_by(username: "turf")
+  end
+
+  # Case-insensitive starts-with check against the on-chain reserved list
+  # (see RESERVED_USERNAME_PREFIXES). Shared by the model validation and the
+  # ensure_username generator filter.
+  def self.reserved_username?(name)
+    candidate = name.to_s.downcase
+    RESERVED_USERNAME_PREFIXES.any? { |prefix| candidate.start_with?(prefix) }
   end
 
   def admin?
@@ -406,10 +447,21 @@ class User < ApplicationRecord
   end
 
   def update_level_from_seeds!(seeds_total)
+    return nil if seeds_total.nil?
+
     computed_level = self.class.level_for(seeds_total)
-    return nil if computed_level == level
-    update!(level: computed_level)
-    computed_level
+    leveled_up = computed_level != level
+    # Cache the seed total (admin list display + sort) and bump level on a level
+    # change. Write ONLY on change, via update_column(s) — this is a denormalized
+    # mirror of on-chain state, so it skips validations/callbacks/updated_at
+    # (avoids RecordInvalid on legacy rows + write churn on every award).
+    if leveled_up
+      update_columns(seeds: seeds_total, level: computed_level)
+    elsif seeds != seeds_total
+      update_column(:seeds, seeds_total)
+    end
+    # Returns the new level on a level-up, else nil (callers fire the level-up UI).
+    leveled_up ? computed_level : nil
   end
 
   # --- Entry tokens (on-chain EntryTokenAccount PDAs, turf-vault v0.9.0+) ---
@@ -474,10 +526,13 @@ class User < ApplicationRecord
     # Studio::UsernameGenerator emits "fruit-animal(-animal)" names that can
     # exceed the model's 30-char limit (length: { in: 3..30 }) — which
     # intermittently broke signups + CI (a generated name happened to be >30).
-    # Prefer an in-range draw; truncate as a deterministic backstop so a
-    # create never raises on username length.
+    # Reserved-prefix draws (e.g. a fruit starting with "mod…") are rejected
+    # too — they'd fail #username_not_reserved and, later, the on-chain
+    # create_user_account (6020 UsernameReserved). Prefer a clean in-range
+    # draw; truncate as a deterministic backstop so a create never raises on
+    # username length.
     candidate = (1..5).lazy.map { Studio::UsernameGenerator.generate.to_s }
-                      .find { |n| n.length.between?(3, 30) }
+                      .find { |n| n.length.between?(3, 30) && !User.reserved_username?(n) }
     self.username = (candidate || Studio::UsernameGenerator.generate.to_s)[0, 30]
   end
 
@@ -489,6 +544,19 @@ class User < ApplicationRecord
   def has_authentication_method
     return if email.present? || web3_solana_address.present? || (provider.present? && uid.present?)
     errors.add(:base, "Must have email, Solana address, or linked social account")
+  end
+
+  # Rails mirror of the on-chain reserved-prefix check (RESERVED_USERNAME_PREFIXES
+  # — see the constant's comment for the turf-vault source). Runs only when the
+  # username changes (see the validate declaration), so existing reserved rows
+  # save fine on unrelated updates. Admins are exempt: they register reserved
+  # names through the on-chain admin path (v0.25+), like the house "turf" row.
+  def username_not_reserved
+    return if username.blank? || admin?
+    return unless User.reserved_username?(username)
+
+    prefix = RESERVED_USERNAME_PREFIXES.find { |p| username.downcase.start_with?(p) }
+    errors.add(:username, "starts with the reserved word \"#{prefix}\" — reserved names can't be registered on-chain. Please pick a different username.")
   end
 
   # Delegates to the shared User.valid_email? so the model, the magic-link

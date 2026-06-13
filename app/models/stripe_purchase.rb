@@ -4,12 +4,14 @@
 # charge produced which on-chain mint TX(s).
 class StripePurchase < ApplicationRecord
   include Sluggable
+  include MintablePurchase
 
   STATUSES = %w[pending minted refunded failed].freeze
 
   # Token packs, keyed by a stable string id (NOT quantity) so two packs can
   # share a quantity — the standard "trio" and the test-scaffolding "test_trio"
   # both sell 3 tokens. Each pack: { quantity: tokens, price_cents: total cents }.
+  # Shared with PaypalPurchase — both providers sell the same packs.
   PACKS = {
     "single"    => { quantity: 1, price_cents: 19_00 },
     "trio"      => { quantity: 3, price_cents: 49_00 },
@@ -57,37 +59,8 @@ class StripePurchase < ApplicationRecord
     config.fetch(:price_cents) / config.fetch(:quantity)
   end
 
-  def mark_minted!(signatures)
-    update!(
-      status: "minted",
-      mint_tx_signatures: signatures.to_json,
-      minted_at: Time.current
-    )
-  end
-
-  # OPSEC-036: Stripe charge.refunded — record the refund for forensics.
-  def mark_refunded!(reason: nil)
-    update!(status: "refunded", refunded_at: Time.current, refund_reason: reason)
-  end
-
-  # Prelaunch audit H8 (2026-05-24): the TokenPurchaseJob rescue used to
-  # call `update(status: "failed")` unconditionally. If an exception fired
-  # AFTER `mark_minted!` (e.g. TransactionLog.record! failing on a DB hiccup
-  # post-mint), the audit row would flip from minted → failed even though
-  # the on-chain mint succeeded — misleading operators investigating
-  # chargebacks. Reload before writing, and refuse to downgrade a minted row.
-  def mark_failed_unless_minted!
-    reload
-    return if status == "minted"
-    update!(status: "failed")
-  end
-
-  def tx_signatures
-    return [] if mint_tx_signatures.blank?
-    JSON.parse(mint_tx_signatures)
-  rescue JSON::ParserError
-    []
-  end
+  # mark_minted! / mark_refunded! / mark_failed_unless_minted! / tx_signatures
+  # live in MintablePurchase — shared with PaypalPurchase.
 
   private
 

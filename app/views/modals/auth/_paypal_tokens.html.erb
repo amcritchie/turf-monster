@@ -1,0 +1,203 @@
+<%#
+  PAYPAL-MODE token-purchase sub-flow of the auth modal — rendered by
+  modals/_auth ONLY when entry_funding_mode == :paypal (PAYMENT_PROVIDER=paypal
+  + credentials; see docs/PAYPAL_VENMO.md). The dormant Stripe original lives
+  in _tokens.html.erb and the CDP-era USDC flow in _usdc_funding.html.erb —
+  one partial per funding mode, same tokens-* step machine.
+
+  Steps handled here (state machine on $store.modals.current().props.step):
+    tokens-picker     — wizard template (step 2/3) — pack picker. Branches on
+                        Payments.paypal_checkout?: Stripe pack-buttons (new-tab
+                        checkout) vs PayPal/Venmo on-page buttons
+    tokens-waiting    — status template (loading)  — Stripe checkout open
+                        (Stripe path only; PayPal stays at the picker while
+                        the SDK popup is up, then jumps to tokens-confirming)
+    tokens-confirming — status template (loading)  — polling /tokens/status
+    tokens-minted     — status template (success)  — hold to confirm entry
+    tokens-error      — poll timed out / submission failed (error_card)
+
+  On a successful entry there is NO 'tokens-submitted' step — the board's
+  confirmEntry calls $store.solanaModal.resolveEntry(), which swaps this
+  wizard for the shared onchain-tx "Entry Confirmed" resolution card (the
+  same one the web3 on-chain path resolves to).
+
+  Display state lives on the modal entry's props (mintedCount, mintedBalance,
+  txSignature, redirectUrl, errorText, seedsEarned, seedsTotal), mutated
+  by the selectionBoard's network methods. Same x-data scope as the
+  parent partial, so `props` is in scope.
+%>
+<template x-if="props.step && props.step.indexOf('tokens-') === 0">
+  <div>
+    <%# Orb-glow CSS + tokenCheckoutSubmit helper for the tokens-picker
+        pack buttons. Previously only loaded by tokens/buy.html.erb and
+        the contest board, which left the picker plain whenever the
+        auth modal opened from anywhere else (post-signup, navbar buy
+        CTA, /admin/modals gallery iframe). Co-locating with the tokens
+        flow makes it self-contained. The inline script is guarded by
+        `if (!window.tokenCheckoutSubmit)` so the remount-on-every-open
+        is a cheap no-op after the first run. %>
+    <%= render "tokens/pack_button_styles" %>
+    <%# PayPal SDK loader + paypalButtons factory — renders nothing unless the
+        PayPal onramp is active, and defers the actual SDK download until the
+        buttons mount, so carrying it here (the modal ships on every page)
+        costs Stripe-provider pages zero bytes and PayPal pages zero network
+        until the picker opens. %>
+    <%= render "tokens/paypal_sdk" %>
+
+    <%# Shared close × — top-right, sits above whichever step is active. %>
+    <button @click="$store.modals.close()"
+            class="absolute top-0 right-0 -mt-2 -mr-2 text-secondary hover:text-heading text-xl leading-none z-10"
+            aria-label="Close">&times;</button>
+
+    <%# ==================================================================
+        STEP 2/3 — Pack picker (wizard template layout) %>
+    <template x-if="props.step === 'tokens-picker'">
+      <div>
+        <%# Wizard-template header — centered title, segmented pill at 2/3. %>
+        <div class="text-center pt-1 mb-3">
+          <h3 class="text-heading font-bold text-lg leading-tight">Get Entry Tokens</h3>
+        </div>
+        <%# Picker is step 2 of the 3-step onboarding journey. %>
+        <%= render "modals/blocks/progress_pill", current: 2, total: 3 %>
+        <p class="text-xs text-secondary mb-4 text-center">1 token = 1 contest entry. Your lineup is saved &mdash; pick a pack to finish.</p>
+        <% if Payments.paypal_checkout? %>
+          <%# PayPal/Venmo path — pack cards select, the standalone buttons
+              pay, everything stays on-page (the SDK drives its own popup or
+              app-switch). On a captured order the selectionBoard's
+              paypal-order-captured listener advances this wizard to
+              tokens-confirming and polls /tokens/status by order_id. %>
+          <%= render "tokens/paypal_buttons", flow: "modal", contest: @contest&.slug %>
+        <% else %>
+          <%# Same gate as tokens/buy.html.erb: with the provider on "none"
+              (or paypal without creds) the Stripe endpoint refuses, so the
+              buttons must grey out instead of posting into a dead checkout.
+              Inert on the default deploy — provider "stripe" + key present
+              renders exactly as before (disabled: false). %>
+          <% stripe_on = Payments.stripe? && Rails.application.config.x.stripe_enabled %>
+          <div class="space-y-3">
+            <% StripePurchase.available_packs.each do |pack_id, pack| %>
+              <%# Pack click advances to 'tokens-waiting' through the store's
+                  advance() so the host card runs its directional slide
+                  between picker → waiting. target_blank + data-turbo=false
+                  (from the partial) preserve the new-tab Stripe checkout
+                  flow — the slide happens alongside the popup open. %>
+              <%= render "tokens/pack_button",
+                  pack_id:      pack_id,
+                  pack:         pack,
+                  extra_params: { contest: @contest&.slug },
+                  target_blank: true,
+                  disabled:     !stripe_on,
+                  on_click_js:  "$store.modals.advance({ step: 'tokens-waiting' })" %>
+            <% end %>
+          </div>
+          <p class="text-center text-xs text-muted mt-4">
+            <% if stripe_on %>
+              Secure checkout opens in a new tab.
+            <% else %>
+              Purchases are temporarily unavailable &mdash; check back shortly.
+            <% end %>
+          </p>
+        <% end %>
+      </div>
+    </template>
+
+    <%# ==================================================================
+        Waiting — Status template shape (default :md card_header). The
+        :external_tab icon (diagonal up-right arrow) signals "action is
+        happening in another tab" — more semantically right than a
+        spinner since the user isn't waiting on the app, they're
+        waiting on themselves to act in the Stripe tab. Small-footprint
+        Status sizing keeps the modal quiet while the real work is in
+        the new tab. %>
+    <template x-if="props.step === 'tokens-waiting'">
+      <div>
+        <%= render "modals/blocks/card_header",
+              icon: :external_tab,
+              title: "Finish checkout in the new tab",
+              subtitle: "We'll bring you back here automatically once payment clears." %>
+        <button @click="$store.modals.advance({ step: 'tokens-picker' }, { direction: 'back' })"
+                class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+          &larr; Back to packs
+        </button>
+      </div>
+    </template>
+
+    <%# ==================================================================
+        Confirming — Status template shape (default :md card_header) with
+        a spinner. Replaces the engine's processing_card so this state
+        renders through the same template family as Waiting and Minted;
+        visually identical, but the chain of dependencies now stops at
+        modals/blocks/_card_header instead of reaching into studio-engine
+        for a near-duplicate component. No secondary action — the webhook
+        + job are already in flight, the user just has to wait. %>
+    <template x-if="props.step === 'tokens-confirming'">
+      <%= render "modals/blocks/card_header",
+            spinner: true,
+            title: "Confirming your purchase…",
+            subtitle: "Minting your entry tokens on-chain." %>
+    </template>
+
+    <%# ==================================================================
+        Minted — Status template shape (default :md card_header — small
+        title). Semantically this is still in-flight from the user's POV:
+        the tokens are minted but the entry isn't confirmed yet, so the
+        smaller-footprint Status template framing reads better than the
+        large-title Success celebration (Success is reserved for the
+        completed-entry state — the shared Entry Confirmed card). Hold-to-confirm button
+        replaces the template's standard primary CTA — the hold gesture
+        IS the on-chain commit signal. %>
+    <template x-if="props.step === 'tokens-minted'">
+      <div>
+        <%= render "modals/blocks/card_header",
+              icon_color: 'primary',
+              title_key: "(props.mintedCount === 1 ? 'Entry Token Minted' : 'Entry Tokens Minted')" do %>
+          You now have <span class="font-bold text-primary font-mono" x-text="props.mintedBalance"></span> available. Hold to confirm your entry.
+        <% end %>
+        <%# In-modal Hold to Confirm. Dispatches the same hold-confirm-entry
+            window event as the board's hold buttons; selectionBoard's
+            listener calls confirmEntry(), which detects the
+            auth-modal/tokens-minted context via $store.modals and, on
+            success, calls resolveEntry() — swapping this wizard for the
+            shared onchain-tx "Entry Confirmed" resolution card. %>
+        <%= render 'shared/hold_button',
+            default_text: "Hold to Confirm Entry",
+            hold_text: "Almost there...",
+            success_text: "Submitting…",
+            duration: 2000,
+            hold_id: "tokens-modal",
+            on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))" %>
+        <button @click="$store.modals.close()"
+                class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+          I'll confirm later
+        </button>
+      </div>
+    </template>
+
+    <%# Entry confirmed has NO step here anymore. On a successful entry the
+        board calls $store.solanaModal.resolveEntry(), which SWAPS this auth
+        wizard for the shared onchain-tx "Entry Confirmed" resolution card —
+        the same terminal modal the web3 on-chain path resolves to. One
+        Confirmed card for token + USDC entries; no duplicate. %>
+
+    <%# ==================================================================
+        Error — Status template shape (default :md card_header with the
+        :error icon, btn-primary btn-lg "Refresh" CTA, subtle dismiss
+        link). Replaces the engine's error_card so the error state
+        renders through the same template family as Waiting, Confirming,
+        and Minted. errorText is bound via card_header's subtitle_key so
+        the live message from the polling timeout surfaces unchanged. %>
+    <template x-if="props.step === 'tokens-error'">
+      <div>
+        <%= render "modals/blocks/card_header",
+              icon: :error,
+              title: "Still processing",
+              subtitle_key: "props.errorText" %>
+        <button @click="window.location.reload()" class="btn btn-primary btn-lg w-full">Refresh</button>
+        <button @click="$store.modals.close()"
+                class="block mx-auto mt-3 text-sm text-secondary hover:text-heading transition">
+          Dismiss
+        </button>
+      </div>
+    </template>
+  </div>
+</template>

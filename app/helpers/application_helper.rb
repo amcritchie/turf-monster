@@ -1,4 +1,22 @@
 module ApplicationHelper
+  # Which funding flow the entry gate offers web2 users: Stripe token packs
+  # while Stripe checkout is enabled (the dormant fallback — flip
+  # STRIPE_CHECKOUT_DISABLED off to restore it wholesale), the Coinbase USDC
+  # ramp when Stripe is off and ENABLE_CDP_RAMP is on, honest offline
+  # otherwise. Routes modals/auth/_tokens vs _usdc_funding in _auth.html.erb
+  # and the /tokens/buy page treatment.
+  def entry_funding_mode
+    if Payments.paypal_checkout?
+      :paypal
+    elsif Payments.stripe?
+      :stripe
+    elsif AppFlags.cdp_ramp?
+      :cdp
+    else
+      :none
+    end
+  end
+
   CONTEST_BADGE_STYLES = {
     "open"      => "bg-mint-900/30 text-mint border-mint-700",
     "locked"    => "bg-yellow-900/50 text-yellow-400 border-yellow-700",
@@ -38,5 +56,14 @@ module ApplicationHelper
   # identify()) to a third party (Lazarus audit #2, 2026-05-31).
   def session_replay_active?
     Rails.env.production? && !@suppress_session_replay
+  end
+
+  # --- LogRocket deep links (admin dashboard) ---
+  # The LogRocket project the app inits with (application.html.erb). Users are
+  # identify()'d by their slug, so we can deep-link a single user's sessions.
+  LOGROCKET_APP_PATH = "jodsqq/mcritchie-studio".freeze
+
+  def logrocket_sessions_url
+    "https://app.logrocket.com/#{LOGROCKET_APP_PATH}/sessions"
   end
 end

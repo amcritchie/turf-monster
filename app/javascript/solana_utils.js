@@ -108,12 +108,13 @@ window.pollConfirmation = pollConfirmation;
 // Navbar hydrate. The navbar now renders cache-first (the server no longer
 // blocks the HTML render on the USDC/USDT/seeds RPCs), so this single call
 // fills the live state once the page has painted:
-//   (a) the USDC balance pill ([data-balance-display])
+//   (a) the balance pill ([data-balance-display]) — USDC + USDT combined
 //   (b) the seeds bar — via the 'navbar-seeds-update' event _seeds_bar listens on
 //   (c) $store.session.usdcCents / usdtCents so eligibilityBlocker has live cents
 // /admin/usdc_balance returns { balance, usdc, usdt, seeds, level, toward_next,
-// progress } and warms the server-side caches as a side effect. Every field is
-// guarded — a flaked RPC yields null and we leave the prior value in place.
+// progress } — `balance` is the server-combined USDC+USDT sum — and warms the
+// server-side caches as a side effect. Every field is guarded — a flaked RPC
+// yields null and we leave the prior value in place.
 export function refreshBalance() {
   return lockedFetch('balance', '/admin/usdc_balance', {
     headers: { 'Accept': 'application/json' }, cache: 'no-store'
@@ -122,8 +123,9 @@ export function refreshBalance() {
     .then(function(data) {
       if (!data) return;
 
-      // (a) USDC pill. data.balance may be null (cold/flaked) — only paint
-      // when we got a number, otherwise leave the placeholder for next poll.
+      // (a) Balance pill (server-combined USDC + USDT). data.balance is null
+      // when BOTH reads flaked — only paint when we got a number, otherwise
+      // leave the placeholder for the next poll.
       if (data.balance != null) {
         var formatted = '$' + Math.floor(parseFloat(data.balance));
         var isZero = formatted === '$0';
@@ -166,6 +168,9 @@ export function refreshBalance() {
           if (data.usdt != null) sess.usdtCents = Math.round(parseFloat(data.usdt) * 100);
         }
       } catch (_) {}
+
+      // (d) wallet tiles — shared fanout, null-guarded per key.
+      updateWalletTiles(data);
     })
     .catch(function() {});
 }
@@ -214,18 +219,26 @@ export function refreshSession() {
         }
       } catch (_) {}
 
-      // USDC balance — reuse the same data-balance-display selector +
-      // hide-on-$0-with-token rule that refreshBalance applies, so the
-      // two helpers agree on what the navbar shows.
+      // Balance pill — USDC + USDT combined (matches display_balance +
+      // refreshBalance's server-combined data.balance), with the same
+      // data-balance-display selector + hide-on-$0-with-token rule so the
+      // helpers agree on what the navbar shows. Only paint when at least one
+      // read landed — null means "RPC flake", and skipping the paint ONLY
+      // when both are null preserves the prior pill value instead of
+      // showing a false $0. A single-sided null counts as 0 in the sum.
       try {
-        var formatted = '$' + Math.floor(parseFloat(data.usdc || 0));
-        var isZero    = formatted === '$0';
-        var hasTokens = (parseInt(data.tokens, 10) || 0) > 0;
-        document.querySelectorAll('[data-balance-display]').forEach(function(el) {
-          el.textContent = formatted;
-          if (isZero && hasTokens) el.classList.add('hidden');
-          else                     el.classList.remove('hidden');
-        });
+        if (data.usdc != null || data.usdt != null) {
+          var combined  = (data.usdc != null ? parseFloat(data.usdc) : 0) +
+                          (data.usdt != null ? parseFloat(data.usdt) : 0);
+          var formatted = '$' + Math.floor(combined);
+          var isZero    = formatted === '$0';
+          var hasTokens = (parseInt(data.tokens, 10) || 0) > 0;
+          document.querySelectorAll('[data-balance-display]').forEach(function(el) {
+            el.textContent = formatted;
+            if (isZero && hasTokens) el.classList.add('hidden');
+            else                     el.classList.remove('hidden');
+          });
+        }
       } catch (_) {}
 
       // 🎟️ token badge — reuse updateNavTokens for the visibility
@@ -249,9 +262,38 @@ export function refreshSession() {
         }));
       } catch (_) {}
 
+      updateWalletTiles(data);
+
       return data;
     })
     .catch(function() { return null; });
+}
+
+// Wallet tiles — generic fanout: any page can subscribe a balance readout
+// to the hydrate calls by tagging an element with
+// data-wallet-tile="usdc|usdt|sol|tokens" (/account's Identities row).
+// Called from BOTH refreshBalance and refreshSession so every hydrate path
+// keeps tiles current (refreshBalance's payload lacks sol/tokens — those
+// keys just no-op there). A null field (flaked RPC) leaves the prior render
+// in place — server-side "—" or the last live value — never overwrites
+// with 0. Deliberately NOT a StateFanout handler: tiles are ephemeral DOM
+// (no localStorage state, no event listeners), which is the part of that
+// pattern they'd use — this is just the DOM-fill step.
+function updateWalletTiles(data) {
+  try {
+    var tiles = {
+      usdc:   data.usdc   != null ? '$' + parseFloat(data.usdc).toFixed(2) : null,
+      usdt:   data.usdt   != null ? parseFloat(data.usdt).toFixed(2)       : null,
+      sol:    data.sol    != null ? parseFloat(data.sol).toFixed(2)        : null,
+      tokens: data.tokens != null ? String(parseInt(data.tokens, 10) || 0) : null
+    };
+    Object.keys(tiles).forEach(function(key) {
+      if (tiles[key] == null) return;
+      document.querySelectorAll('[data-wallet-tile="' + key + '"]').forEach(function(el) {
+        el.textContent = tiles[key];
+      });
+    });
+  } catch (_) {}
 }
 
 // Toggle the navbar's 🎟️ free-entry badge based on the new token count.
@@ -367,8 +409,12 @@ export function fireConfettiFromModal() {
 // against state we already know will fail server-side.
 //
 // neededCents is the contest entry fee. session is Alpine.store('session').
-// Either-or USDC/USDT semantics for web3 — pass if EITHER mint covers fee.
-export function eligibilityBlocker(session, neededCents) {
+// opts.acceptsUsdt (default false): pass it true only for contests whose
+// on-chain entry_fee_by_currency funded slot 1 (Contest#accepts_usdt) — then
+// web3 eligibility is either-or (USDC OR USDT covers the fee). Contests
+// created before 2026-06-10 have an immutable zero USDT fee, so USDT funds
+// must NOT satisfy them (the program would reject with EntryFeeNotSet 6027).
+export function eligibilityBlocker(session, neededCents, opts) {
   if (!session) return null;            // store missing — let server decide
   if (!session.loggedIn) return { reason: 'not_logged_in', mode: 'guest', data: {} };
   if ((neededCents | 0) <= 0) return null;  // free contest
@@ -386,7 +432,9 @@ export function eligibilityBlocker(session, neededCents) {
     if (session.usdcCents == null && session.usdtCents == null) return null;
     var usdc = session.usdcCents | 0;
     var usdt = session.usdtCents | 0;
-    if (usdc >= neededCents || usdt >= neededCents) return null;
+    var acceptsUsdt = !!(opts && opts.acceptsUsdt);
+    if (usdc >= neededCents) return null;
+    if (acceptsUsdt && usdt >= neededCents) return null;
     return { reason: 'insufficient_balance', mode: 'web3',
              data: { usdcCents: usdc, usdtCents: usdt, neededCents: neededCents | 0 } };
   }

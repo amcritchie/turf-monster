@@ -73,14 +73,14 @@
           [data-balance-display] AND removes .hidden (its else-branch), so the
           full "$112" appears all at once. The $0-with-token rule also hides it. %>
       <% balance_loading = display_balance.nil? %>
-      <% usdc            = display_balance.to_f %>
-      <% balance_zero    = !balance_loading && usdc.zero? %>
+      <% balance_dollars = display_balance.to_f %>
+      <% balance_zero    = !balance_loading && balance_dollars.zero? %>
       <% has_tokens      = (current_user.entry_token_balance rescue 0).positive? %>
       <% hide_balance    = balance_loading || (balance_zero && has_tokens) %>
-      <%# USDC balance link. Free-entry tokens are surfaced by the 🎟️
-          badge in _user_nav (next to the balance), not by a second
-          balance-style link here. %>
-      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %><% unless balance_loading %>$<%= usdc.to_i %><% end %><% end %>
+      <%# Balance link — USDC + USDT combined (display_balance). Free-entry
+          tokens are surfaced by the 🎟️ badge in _user_nav (next to the
+          balance), not by a second balance-style link here. %>
+      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %><% unless balance_loading %>$<%= balance_dollars.to_i %><% end %><% end %>
     <% end if show_user %>
     <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
       <% if show_user %>

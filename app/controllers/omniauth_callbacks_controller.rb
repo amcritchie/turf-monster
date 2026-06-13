@@ -9,7 +9,15 @@ class OmniauthCallbacksController < ApplicationController
   # request phase. Reached via window.open from the Turf Totals auth modal.
   def popup
     session[:oauth_popup] = true
-    redirect_to "/auth/google_oauth2"
+    # Forward the legal-age attestation into OmniAuth's request phase as a
+    # query param — OmniAuth snapshots request.GET into session
+    # ["omniauth.params"], which #create reads back as omniauth.params to
+    # enforce the attestation for brand-new signups.
+    if age_attestation_given?
+      redirect_to "/auth/google_oauth2?age_attestation=1"
+    else
+      redirect_to "/auth/google_oauth2"
+    end
   end
 
   # OPSEC-005: Google OAuth callbacks now run through GoogleOauthValidator
@@ -71,6 +79,17 @@ class OmniauthCallbacksController < ApplicationController
       # (managed wallet), so previously_new_record? is unreliable afterward.
       new_signup = User.find_by(provider: auth.provider, uid: auth.uid).nil? &&
                    User.find_by(email: auth.info.email).nil?
+
+      # Underwriting compliance: a brand-new Google signup must carry the
+      # legal-age attestation. It rides the OAuth round-trip as a request-phase
+      # query param (see #popup and the /signin Google form), surfaced here via
+      # omniauth.params. Returning users are a plain login and skip this.
+      # Flag-gated, parked for the first contest — see age_attestation_required?.
+      attestation = request.env["omniauth.params"]&.fetch("age_attestation", nil)
+      if new_signup && age_attestation_required? && !age_attestation_given?(attestation)
+        return finish_oauth(signin_path, success: false, alert: AGE_ATTESTATION_ERROR)
+      end
+
       result = User.from_omniauth(auth, email_verified: true)
       case result
       when :email_not_verified
@@ -104,6 +123,15 @@ class OmniauthCallbacksController < ApplicationController
       if new_signup && result.is_a?(User) && result.reference.blank? && cookies[:reference].present?
         result.update_column(:reference, cookies[:reference].to_s.first(64))
         cookies.delete(:reference)
+      end
+
+      # Stamp the legal-age attestation on the freshly-created account
+      # (enforced above; update_column mirrors the attribution stamp — no
+      # callbacks, the row was just created by from_omniauth). Skipped when
+      # the gate is flag-off: the user was never shown the checkbox, so
+      # recording an attestation would fabricate it.
+      if new_signup && age_attestation_required? && result.is_a?(User) && result.age_attested_at.blank?
+        result.update_column(:age_attested_at, Time.current)
       end
 
       rescue_and_log(target: result) do

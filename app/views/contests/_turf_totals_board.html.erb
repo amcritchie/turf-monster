@@ -82,6 +82,7 @@
   contestSlug: @contest&.slug,
   entryFeeCents: @contest.entry_fee_cents || 0,
   contestOnchain: @contest.onchain?,
+  acceptsUsdt: @contest.accepts_usdt?,
   contestName: @contest.name,
   picksRequired: @contest.picks_required,
   firstMatchupIds: game_pairs.first(2).flatten.map { |m| m.id.to_s },
@@ -125,6 +126,10 @@ window.selectionBoard = function() {
     entryFeeCents: cfg.entryFeeCents,
     userEmail: cfg.userEmail || '',
     contestOnchain: cfg.contestOnchain,
+    // True iff this contest's on-chain entry_fee_by_currency funded slot 1
+    // (USDT) at creation — pre-2026-06-10 contests are USDC-only forever
+    // (the fee array is immutable after create_contest).
+    acceptsUsdt: !!cfg.acceptsUsdt,
     contestName: cfg.contestName,
     picksRequired: cfg.picksRequired,
     sortMode: 'game',
@@ -228,6 +233,41 @@ window.selectionBoard = function() {
       } catch (e) {
         console.error('[tokens] board: BroadcastChannel listener attach failed', e);
       }
+
+      // PayPal/Venmo hand-off (provider=paypal). The paypalButtons factory
+      // (tokens/_paypal_sdk.html.erb) dispatches this after a successful
+      // server-side capture — same shape as the Stripe 'returned' signal
+      // above, minus the cross-tab leg (the SDK popup keeps the buyer on
+      // this page). Advance the wizard to tokens-confirming and poll
+      // /tokens/status by order_id; everything downstream (minted state,
+      // nav fanout, hold-to-confirm) is the shared path.
+      window.addEventListener('paypal-order-captured', function (e) {
+        var orderId = e.detail && e.detail.orderId;
+        if (!orderId) return;
+        var modals = Alpine.store('modals');
+        var cur = modals.current();
+        var curStep = (cur && cur.id === 'auth') ? cur.props.step : null;
+        console.log('[tokens] board ← paypal-order-captured order=', orderId, 'curStep=', curStep);
+        if (curStep === 'tokens-confirming' || curStep === 'tokens-minted') return;
+        board._confirmingHold = window.StudioModals.holdAtLeast(1500);
+        var freshProps = {
+          step:          'tokens-confirming',
+          errorText:     '',
+          mintedCount:   0,
+          mintedBalance: 0,
+          redirectUrl:   '',
+          txSignature:   ''
+        };
+        if (cur && cur.id === 'auth') {
+          // advance() (not Object.assign) so the picker → confirming
+          // transition runs the host's directional slide — the buyer just
+          // acted in the popup, the slide reads as forward progress.
+          modals.advance(freshProps);
+        } else {
+          modals.open('auth', freshProps);
+        }
+        board.pollTokenStatus(orderId, 'order_id');
+      });
 
       // Hold-to-Confirm dispatch listener — the shared hold_button
       // partial fires this window event regardless of which DOM scope
@@ -347,8 +387,12 @@ window.selectionBoard = function() {
       // contest — i.e. they signed an entry TX last session, refreshed
       // mid-flight, and we need to either auto-promote (TX landed) or
       // release (TX failed) the stranded entry.
+      // Capture `this` HERE — the earlier `var self = this` lives inside the
+      // saved-picks restore branch, so with nothing to restore `self` is
+      // hoisted-but-undefined and this timeout threw (prod 2026-06-11).
       if (cfg.pendingRecoveryPtxSlug) {
-        setTimeout(function () { self.recoverPendingEntry(cfg.pendingRecoveryPtxSlug); }, 200);
+        var board = this;
+        setTimeout(function () { board.recoverPendingEntry(cfg.pendingRecoveryPtxSlug); }, 200);
       }
     },
 
@@ -483,13 +527,39 @@ window.selectionBoard = function() {
           self.selections = oldSelections;
           self.selectionOrder = oldOrder;
           self.showError(result.data.error || 'Failed to save selection');
+          return;
         }
+        // Server is the source of truth. Adopt its authoritative selection set
+        // so an optimistic mutation the server normalised/dropped can't leave
+        // the client showing N/6 while the DB holds N-1 — which would otherwise
+        // sail past the Hold-to-Confirm guard and 422 at #enter (incident
+        // 2026-06-08, Bug 2). selectionCount is a getter over this.selections,
+        // so it self-corrects once we reconcile.
+        self.reconcileSelections(result.data.selections);
       })
       .catch(function() {
         self.selections = oldSelections;
         self.selectionOrder = oldOrder;
         self.showError('Network error. Selection not saved.');
       });
+    },
+
+    // Replace the client selection set with the server's authoritative one,
+    // preserving the current display order for ids the server kept and
+    // appending any server-present id we weren't already tracking. Keys are
+    // matchup-id strings (matchupData + selectionOrder are string-keyed).
+    reconcileSelections(serverSelections) {
+      if (!serverSelections || typeof serverSelections !== 'object') return;
+      var next = {};
+      Object.keys(serverSelections).forEach(function(id) {
+        if (serverSelections[id]) next[String(id)] = true;
+      });
+      this.selections = next;
+      var kept = this.selectionOrder.filter(function(id) { return next[id]; });
+      Object.keys(next).forEach(function(id) {
+        if (kept.indexOf(id) === -1) kept.push(id);
+      });
+      this.selectionOrder = kept;
     },
 
     removeSelection(matchupId) {
@@ -615,7 +685,7 @@ window.selectionBoard = function() {
     // + picks ride the signed return_to for a different browser/tab), POST the
     // request, then move the wizard to the 'magic-link-sent' confirmation step.
     // Called from the wizard via the 'auth-magic-link-submit' dispatch.
-    async requestMagicLink(email) {
+    async requestMagicLink(email, ageAttested) {
       var p = this._authProps();
       if (!p || p.submitting) return;
       p.formError = '';
@@ -631,7 +701,7 @@ window.selectionBoard = function() {
         this.saveCartForRedirect(true);
         var picks = this.selectionOrder.slice(0, this.picksRequired).map(function (id) { return parseInt(id, 10); });
 
-        var data = await window.postMagicLink(email, { contest: this.contestId, picks: picks.join(',') });
+        var data = await window.postMagicLink(email, { contest: this.contestId, picks: picks.join(','), ageAttested: !!ageAttested });
         if (!data || !data.success) {
           p.formError = (data && data.error) || 'Could not send the link. Try again.';
           p.submitting = null;
@@ -658,26 +728,31 @@ window.selectionBoard = function() {
     // the modal to the "Connect Wallet" picker (modals/_wallet_connect). The
     // picker runs the SIWS connect itself (window.solanaConnectAndVerify) and
     // returns here (returnUrl = this contest) so the saved cart auto-enters.
-    openWalletConnect() {
+    openWalletConnect(ageAttested) {
       this.saveCartForRedirect(true);
-      Alpine.store('modals').swap('wallet-connect', { returnUrl: window.location.href, backTo: 'auth' });
+      // ageAttested pre-checks the picker's own attestation checkbox (the
+      // auth modal already collected it) — see modals/_wallet_connect.
+      Alpine.store('modals').swap('wallet-connect', { returnUrl: window.location.href, backTo: 'auth', ageAttested: !!ageAttested });
     },
 
     // Google sign-in via a popup window so the contest page stays put.
     // The popup hits /auth/google_popup, runs the OAuth round-trip, and
     // the callback renders a closer page that postMessages the result
     // back here and closes itself.
-    loginWithGoogle() {
+    loginWithGoogle(ageAttested) {
       var p = this._authProps();
       if (!p) return;
       p.googleError = '';
+      // Legal-age attestation rides the popup URL → /auth/google_popup
+      // forwards it into OmniAuth's request phase (omniauth.params).
+      var popupUrl = ageAttested ? '/auth/google_popup?age_attestation=1' : '/auth/google_popup';
       // window.open must run synchronously inside the click handler, or the
       // browser blocks it.
-      var popup = window.open('/auth/google_popup', 'tt_google_oauth',
+      var popup = window.open(popupUrl, 'tt_google_oauth',
         'width=500,height=650,menubar=no,toolbar=no,location=no');
       if (!popup) {
         // Popup blocked — fall back to the full-page redirect.
-        this.googleFullPageRedirect();
+        this.googleFullPageRedirect(ageAttested);
         return;
       }
       p.submitting = 'google';
@@ -718,11 +793,13 @@ window.selectionBoard = function() {
 
     // Fallback when the OAuth popup is blocked — full-page redirect. Save the
     // cart first so the entry resumes when the user returns.
-    googleFullPageRedirect() {
+    googleFullPageRedirect(ageAttested) {
       this.saveCartForRedirect(true);
       var form = document.createElement('form');
       form.method = 'POST';
-      form.action = '/auth/google_oauth2';
+      // Attestation must ride the QUERY string — OmniAuth's request phase
+      // snapshots request.GET into omniauth.params, not the POST body.
+      form.action = ageAttested ? '/auth/google_oauth2?age_attestation=1' : '/auth/google_oauth2';
       var csrf = document.createElement('input');
       csrf.type = 'hidden';
       csrf.name = 'authenticity_token';
@@ -791,23 +868,25 @@ window.selectionBoard = function() {
     },
 
 
-    // Poll /tokens/status until the Stripe webhook + TokenPurchaseJob
+    // Poll /tokens/status until the payment webhook + TokenPurchaseJob
     // finish minting. Drives the wizard through tokens-confirming →
     // tokens-minted. Called from the BroadcastChannel / window message
-    // listener when the new tab hands the session_id back. Mutates the
-    // auth wizard's props on the store; safely no-ops if the modal was
-    // closed mid-poll.
-    pollTokenStatus(sessionId) {
+    // listener when the Stripe tab hands the session_id back (refParam
+    // omitted → 'session_id'), and from the paypal-order-captured
+    // listener with refParam 'order_id'. Mutates the auth wizard's props
+    // on the store; safely no-ops if the modal was closed mid-poll.
+    pollTokenStatus(ref, refParam) {
       var self = this;
+      var param = refParam || 'session_id';
       var elapsedMs = 0;
       var intervalMs = 1500;
       var timeoutMs = 45000;
       var attempt = 0;
-      console.log('[tokens] pollTokenStatus.start sessionId=', sessionId, 'intervalMs=', intervalMs, 'timeoutMs=', timeoutMs);
+      console.log('[tokens] pollTokenStatus.start ' + param + '=', ref, 'intervalMs=', intervalMs, 'timeoutMs=', timeoutMs);
       var tick = async function () {
         attempt++;
         try {
-          var r = await fetch('/tokens/status?session_id=' + encodeURIComponent(sessionId), {
+          var r = await fetch('/tokens/status?' + param + '=' + encodeURIComponent(ref), {
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin'
           });
@@ -902,7 +981,7 @@ window.selectionBoard = function() {
         await new Promise(function (resolve) { setTimeout(resolve, 25); });
       }
       var blocker = (typeof window.eligibilityBlocker === 'function')
-        ? window.eligibilityBlocker(sess, this.entryFeeCents)
+        ? window.eligibilityBlocker(sess, this.entryFeeCents, { acceptsUsdt: this.acceptsUsdt })
         : null;
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
@@ -991,13 +1070,28 @@ window.selectionBoard = function() {
       // 98% case (out of tokens, empty wallet) before the user finishes the
       // hold. The server-side enter still validates as the source of truth
       // for the 2% where running state is stale.
-      var blocker = window.eligibilityBlocker(Alpine.store('session'), this.entryFeeCents);
+      var blocker = window.eligibilityBlocker(Alpine.store('session'), this.entryFeeCents, { acceptsUsdt: this.acceptsUsdt });
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
         return false;
       }
 
       return true;
+    },
+
+    // Which currency the on-chain entry should spend, from live $store.session
+    // cents: USDC when it covers the fee, else USDT — but USDT only on
+    // contests that funded entry_fee_by_currency slot 1 (acceptsUsdt).
+    // Unknown balances (null — RPC flake) default to USDC; the server +
+    // program stay authoritative either way.
+    entryCurrency() {
+      if (!this.acceptsUsdt) return 'usdc';
+      var sess = Alpine.store('session');
+      if (!sess) return 'usdc';
+      var fee = this.entryFeeCents | 0;
+      if (sess.usdcCents != null && (sess.usdcCents | 0) >= fee) return 'usdc';
+      if (sess.usdtCents != null && (sess.usdtCents | 0) >= fee) return 'usdt';
+      return 'usdc';
     },
 
     async confirmEntry() {
@@ -1018,7 +1112,7 @@ window.selectionBoard = function() {
       // Mirror the hold-time eligibility check at submit-time — the user
       // may have entered via auto-submit (e.g. post-login cart replay) or
       // their balance / token count may have changed since the hold check.
-      var blocker = window.eligibilityBlocker(sess, this.entryFeeCents);
+      var blocker = window.eligibilityBlocker(sess, this.entryFeeCents, { acceptsUsdt: this.acceptsUsdt });
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
         return;
@@ -1059,16 +1153,21 @@ window.selectionBoard = function() {
           // integrity (current_user comes from the session cookie set at
           // login via the same SIWS flow). Removed 2026-05-24.
 
+          // Currency pick (2026-06-10): USDC when it covers the fee, else USDT
+          // on accepts-USDT contests. Decided once here so the prepare POST,
+          // the Phantom prompt copy, and the user's mental model all agree.
+          var entryCurrency = this.entryCurrency();
+
           // prepare_entry is just-in-time: the server rebuilds the UNSIGNED entry
           // TX (build_enter_contest → build_partial_unsigned) which RE-FETCHES
           // get_latest_blockhash AND prepends the ComputeBudget priority-fee +
           // CU-limit ixs. We call it immediately before signing so the blockhash
           // is maximally fresh (mirrors create's rebuild_create_tx).
-          console.log('[contest-entry] POST prepare_entry (fresh blockhash + priority fee)…');
+          console.log('[contest-entry] POST prepare_entry (fresh blockhash + priority fee), currency=' + entryCurrency);
           var prepareResp = await window.authedFetch('/contests/' + this.contestId + '/prepare_entry', {
             method: 'POST',
             headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify({ currency: entryCurrency })
           });
           if (!prepareResp) return; // 401 — authedFetch surfaced the login modal
           var prepareData = await prepareResp.json();
@@ -1079,7 +1178,9 @@ window.selectionBoard = function() {
             throw new Error(prepareData.error || 'Failed to prepare entry');
           }
 
-          Alpine.store('solanaModal').show('Sign Transaction', 'Approve the USDC transfer in your wallet...');
+          // Surface WHICH currency this entry spends (small label — the modal
+          // copy is the natural spot; no redesign).
+          Alpine.store('solanaModal').show('Sign Transaction', 'Approve the ' + entryCurrency.toUpperCase() + ' transfer in your wallet...');
           var txBytes = Uint8Array.from(atob(prepareData.serialized_tx), function(c) { return c.charCodeAt(0); });
           var tx = solanaWeb3.Transaction.from(txBytes);
           try {
@@ -1366,9 +1467,9 @@ window.selectionBoard = function() {
 </script>
 
 <div x-data="selectionBoard()" x-cloak
-     @auth-magic-link-submit.window="requestMagicLink($event.detail.email)"
-     @auth-wallet-hub-open.window="openWalletConnect()"
-     @auth-google-click.window="loginWithGoogle()">
+     @auth-magic-link-submit.window="requestMagicLink($event.detail.email, $event.detail.ageAttested)"
+     @auth-wallet-hub-open.window="openWalletConnect($event.detail && $event.detail.ageAttested)"
+     @auth-google-click.window="loginWithGoogle($event.detail && $event.detail.ageAttested)">
 
   <!-- Blur overlay (click to dismiss) -->
   <div x-show="selectionCount === <%= @contest.picks_required %> && !blurDismissed"

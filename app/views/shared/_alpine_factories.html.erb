@@ -221,6 +221,28 @@
     };
   };
 
+  // === walletRefresh — /account "Refresh Wallet" button. =================
+  //     refresh() runs window.refreshSession(), which pulls every on-chain
+  //     value (USDC/USDT/SOL/tokens/seeds) from /account/session_refresh in
+  //     one call and fans it out to ALL subscribed UI: the data-wallet-tile
+  //     spans, the navbar balance pill + 🎟️ badge, $store.session cents, and
+  //     the seeds bar/tile (navbar-seeds-update). No on-load hydrate here —
+  //     the layout's hydrateNavbar already fires refreshSession() on every
+  //     page load, and that same call fills the tiles. By click time the
+  //     importmap module is long since loaded; the guard is just belt and
+  //     braces.
+  window.walletRefresh = function () {
+    return {
+      refreshing: false,
+      refresh() {
+        if (this.refreshing || !window.refreshSession) return;
+        var self = this;
+        this.refreshing = true;
+        window.refreshSession().finally(function () { self.refreshing = false; });
+      }
+    };
+  };
+
   // === entryTokenBadge — navbar 🎟️ pill + popover ==================
   window.entryTokenBadge = function (opts) {
     opts = opts || {};
@@ -600,6 +622,246 @@
         if (this._form && this._formGuard) {
           this._form.removeEventListener("submit", this._formGuard, true);
         }
+      }
+    };
+  };
+
+  // === cdpRampFlow — Coinbase CDP buy / cash-out modal ==================
+  // Drives modals/_cdp_ramp.html.erb (step machine on the modal entry's
+  // props.step — see that partial for the step map). Owns:
+  //   - the session mint (POST /cdp/onramp_sessions | /cdp/offramp_sessions)
+  //     + window.open of the hosted Coinbase widget (NEVER an iframe —
+  //     explicitly unsupported, docs/CDP_RAMP_INTEGRATION.md spec section 14).
+  //     The popup is opened SYNCHRONOUSLY inside the click gesture (blank tab,
+  //     navigated when the URL lands) so popup blockers allow it.
+  //   - the local status poll (GET /cdp/ramp_status/:ref — OUR row, never
+  //     Coinbase; the Sidekiq poll jobs own the CDP reconciliation).
+  //   - the offramp send step: 30-minute countdown to props.deadlineAt,
+  //     managed Confirm & send (POST /cdp/offramp/confirm_send) and the
+  //     Phantom path via window.buildAndSendOfframpUsdcTransfer
+  //     (app/javascript/cdp_offramp_send.js).
+  //   - terminal fanout: StateFanout.apply('cdp_ramp', ...) so the navbar
+  //     balance + any listeners catch up.
+  window.cdpRampFlow = function () {
+    return {
+      _pollTimer: null,
+      _tickTimer: null,
+      _pollBusy: false,
+      now: Date.now(),
+      sendBusy: false,
+      sendStatus: "",
+      get props() {
+        var c = this.$store.modals.current();
+        return (c && c.props) || {};
+      },
+      get isBuy() { return this.props.flow === "buy"; },
+      // wallet_mode comes from the status payload / return-page deep link.
+      // Default to the managed (web2) branch — its send is an explicit
+      // server-side confirm, the safer assumption when the mode is unknown.
+      get walletWeb3() { return this.props.walletMode === "web3"; },
+      get deadlineMs() {
+        var d = this.props.deadlineAt;
+        if (!d) return null;
+        var t = Date.parse(d);
+        return isNaN(t) ? null : t;
+      },
+      get remainingMs() {
+        var d = this.deadlineMs;
+        return d == null ? null : Math.max(0, d - this.now);
+      },
+      get remainingLabel() {
+        var ms = this.remainingMs;
+        if (ms == null) return "--:--";
+        var s = Math.floor(ms / 1000), m = Math.floor(s / 60), r = s % 60;
+        return m + ":" + (r < 10 ? "0" : "") + r;
+      },
+      get windowExpired() { return this.remainingMs !== null && this.remainingMs <= 0; },
+      init() {
+        var self = this;
+        var p = this.props;
+        // Gallery preview affordance: MODAL_VARIANTS is a static constant and
+        // can't carry a live ISO deadline, so demoCountdownMinutes synthesizes
+        // one at mount (0 → already expired, for the late-send preview).
+        if (p.demoCountdownMinutes != null && !p.deadlineAt) {
+          p.deadlineAt = new Date(Date.now() + p.demoCountdownMinutes * 60000).toISOString();
+        }
+        this._tickTimer = setInterval(function () { self.now = Date.now(); }, 1000);
+        // Deep-link resume (return page opens the modal mid-flow): polling
+        // steps restart their poll loop on mount.
+        this._resumePolling();
+      },
+      destroy() {
+        clearInterval(this._tickTimer);
+        this._stopPoll();
+      },
+      _resumePolling() {
+        var s = this.props.step;
+        if (s === "waiting" || s === "awaiting-cdp" || s === "send" || s === "settling") {
+          this._startPoll();
+        }
+      },
+      // Preflight CTA → mint a session token server-side, open the hosted
+      // widget in a new tab, advance to the watching step.
+      async start() {
+        var p = this.props;
+        if (p.step !== "preflight") return;
+        var popup = null;
+        try { popup = window.open("", "_blank"); } catch (e) { popup = null; }
+        p.step = "opening"; // direct patch — no slide while the request runs
+        try {
+          var body = {};
+          if (this.isBuy && p.presetFiat) body.preset_fiat = String(p.presetFiat);
+          var data = await this._post(this.isBuy ? "/cdp/onramp_sessions" : "/cdp/offramp_sessions", body);
+          p = this.props;
+          if (!data) { // authedFetch handled a 401/429 (its own modal is up)
+            p.step = "preflight";
+            if (popup && !popup.closed) { try { popup.close(); } catch (e) {} }
+            return;
+          }
+          p.partnerUserRef = data.partner_user_ref || p.partnerUserRef;
+          p.coinbaseUrl = data.url;
+          if (popup && !popup.closed) popup.location = data.url;
+          else window.open(data.url, "_blank");
+          this._setStep(this.isBuy ? "waiting" : "awaiting-cdp");
+          this._startPoll();
+        } catch (e) {
+          if (popup && !popup.closed) { try { popup.close(); } catch (e2) {} }
+          p = this.props;
+          p.errorText = (e && e.message) || "Could not start a Coinbase session.";
+          p.step = "error";
+        }
+      },
+      // Managed (web2) offramp send — the explicit fresh confirmation the
+      // server requires before it moves user funds (spec section 10 guard).
+      async confirmSend() {
+        var p = this.props;
+        if (this.sendBusy || this.windowExpired) return;
+        this.sendBusy = true;
+        p.sendError = "";
+        try {
+          var data = await this._post("/cdp/offramp/confirm_send", { partner_user_ref: p.partnerUserRef });
+          this.sendBusy = false;
+          if (!data) return; // authedFetch handled it
+          this._setStep("settling");
+          this._startPoll();
+        } catch (e) {
+          this.sendBusy = false;
+          this.props.sendError = (e && e.message) || "Could not start the transfer.";
+        }
+      },
+      // Phantom (web3) offramp send — server builds, Phantom signs, client
+      // broadcasts, signature verified + recorded server-side. The helper
+      // module owns that whole arc; we just surface its progress.
+      async phantomSend() {
+        var p = this.props;
+        if (this.sendBusy || this.windowExpired) return;
+        this.sendBusy = true;
+        p.sendError = "";
+        var self = this;
+        try {
+          if (!window.buildAndSendOfframpUsdcTransfer) {
+            throw new Error("Wallet helper still loading - try again in a second.");
+          }
+          await window.buildAndSendOfframpUsdcTransfer({
+            partnerUserRef: p.partnerUserRef,
+            toAddress: p.toAddress,
+            onStatus: function (msg) { self.sendStatus = msg; }
+          });
+          this.sendBusy = false;
+          this.sendStatus = "";
+          this._setStep("settling");
+          this._startPoll();
+        } catch (e) {
+          this.sendBusy = false;
+          this.sendStatus = "";
+          this.props.sendError = (e && e.message) || "The transfer did not complete.";
+        }
+      },
+      _startPoll() {
+        if (this._pollTimer || !this.props.partnerUserRef) return;
+        var self = this;
+        this._pollTimer = setInterval(function () { self._poll(); }, 5000);
+        this._poll();
+      },
+      _stopPoll() {
+        if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+      },
+      async _poll() {
+        var p = this.props;
+        if (!p.partnerUserRef || this._pollBusy) return;
+        this._pollBusy = true;
+        try {
+          var fetcher = window.authedFetch || window.fetch;
+          var resp = await fetcher("/cdp/ramp_status/" + encodeURIComponent(p.partnerUserRef), {
+            headers: { "Accept": "application/json" }, cache: "no-store"
+          });
+          if (resp && resp.ok) this._applyStatus(await resp.json());
+        } catch (e) { /* transient — keep polling */ }
+        this._pollBusy = false;
+      },
+      _applyStatus(data) {
+        if (!data) return;
+        var p = this.props;
+        p.localStatus = data.status;
+        p.cdpStatus = data.cdp_status;
+        if (data.wallet_mode) p.walletMode = data.wallet_mode;
+        if (data.to_address) p.toAddress = data.to_address;
+        if (data.cashout_deadline_at) p.deadlineAt = data.cashout_deadline_at;
+        if (data.sell_amount) { p.sellAmount = data.sell_amount; p.sellCurrency = data.sell_amount_currency; }
+        if (data.tx_hash) p.txHash = data.tx_hash;
+        if (data.sent_signature) p.sentSignature = data.sent_signature;
+
+        if (data.status === "success") {
+          this._finish(true, data);
+        } else if (data.status === "failed" || data.status === "expired" || data.status === "abandoned") {
+          this._finish(false, data);
+        } else if (p.step === "awaiting-cdp" && data.to_address) {
+          // CDP knows about the sell + gave us the destination — send time.
+          this._setStep("send");
+        } else if (p.step === "send" && (data.status === "sending" || data.status === "sent")) {
+          // Send confirmed elsewhere (another tab / the return page) — follow it.
+          this._setStep("settling");
+        }
+      },
+      _finish(success, data) {
+        this._stopPoll();
+        try {
+          if (window.StateFanout) {
+            window.StateFanout.apply("cdp_ramp", {
+              direction: this.isBuy ? "onramp" : "offramp",
+              status: data.status,
+              partner_user_ref: data.partner_user_ref,
+              tx_hash: data.tx_hash,
+              sent_signature: data.sent_signature
+            }, { source: "cdp-ramp-modal" });
+          }
+        } catch (e) { /* fanout must never block the terminal step */ }
+        this._setStep(success ? "done" : "failed");
+      },
+      // advance() runs the host's directional slide, but its guard no-ops the
+      // call when the card is mid-animation. Poll- and promise-driven step
+      // changes can land in that 220ms window, so verify after the slide
+      // would have finished and patch directly if the advance was dropped.
+      _setStep(step) {
+        var self = this;
+        this.$store.modals.advance({ step: step });
+        setTimeout(function () {
+          var c = self.$store.modals.current();
+          if (c && c.props && c.props.flow && c.props.step !== step) c.props.step = step;
+        }, 700);
+      },
+      async _post(url, body) {
+        var csrf = (document.querySelector("meta[name='csrf-token']") || {}).content || "";
+        var fetcher = window.authedFetch || window.fetch;
+        var resp = await fetcher(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Accept": "application/json" },
+          body: JSON.stringify(body || {})
+        });
+        if (!resp) return null; // authedFetch already surfaced 401/429 UX
+        var data = await resp.json().catch(function () { return {}; });
+        if (!resp.ok) throw new Error(data.error || "Request failed - please try again.");
+        return data;
       }
     };
   };

@@ -4,19 +4,44 @@
   <h1 class="text-2xl font-extrabold text-heading mb-2">Entry Tokens</h1>
   <p class="text-secondary mb-8">1 token = 1 contest entry (any tier).</p>
 
-  <% stripe_on = Rails.application.config.x.stripe_enabled %>
-
-  <% if !stripe_on && current_user&.admin? %>
-    <div class="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-600/30 text-yellow-300 text-xs">
-      Card checkout is disabled — <span class="font-mono">STRIPE_SECRET_KEY</span> not set. Use the dev-mint buttons below or add the key to <span class="font-mono">.env</span> and restart.
+  <% if Payments.paypal_checkout? %>
+    <%# PayPal/Venmo onramp — select a pack, pay with the standalone buttons,
+        then the same confirming/minted/errored status cards the Stripe-return
+        page shows, all in-page (no /tokens/processing leg). %>
+    <%= render "tokens/paypal_sdk" %>
+    <div class="mb-8">
+      <%= render "tokens/paypal_buttons",
+          flow: "page",
+          next_target: @next_contest ? contest_path(@next_contest) : contests_path %>
     </div>
-  <% end %>
+  <% else %>
+    <% stripe_on = Payments.stripe? %>
 
-  <div class="space-y-3 mb-8">
-    <% @packs.each do |pack_id, pack| %>
-      <%= render "tokens/pack_button", pack_id: pack_id, pack: pack, disabled: !stripe_on %>
+    <% if !stripe_on && current_user&.admin? %>
+      <div class="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-600/30 text-yellow-300 text-xs">
+        <% if Payments.paypal? %>
+          Checkout is disabled — <span class="font-mono">PAYMENT_PROVIDER=paypal</span> but <span class="font-mono">PAYPAL_CLIENT_ID</span> / <span class="font-mono">PAYPAL_CLIENT_SECRET</span> aren't set. Use the dev-mint buttons below or add the keys to <span class="font-mono">.env</span> and restart.
+        <% else %>
+          Card checkout is disabled — <span class="font-mono">STRIPE_SECRET_KEY</span> not set (or <span class="font-mono">STRIPE_CHECKOUT_DISABLED</span>). Use the dev-mint buttons below or fix <span class="font-mono">.env</span> and restart.
+        <% end %>
+      </div>
     <% end %>
-  </div>
+
+    <% if !stripe_on && AppFlags.cdp_ramp? %>
+      <div class="card shadow p-5 mb-8">
+        <h2 class="text-lg font-bold text-heading mb-1">Buy USDC with Coinbase</h2>
+        <p class="text-xs text-secondary mb-4">Pay with debit, Apple Pay, or your Coinbase balance. USDC lands in your wallet and covers the entry fee shown on each contest.</p>
+        <button type="button" @click="$store.modals.open('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+                class="btn btn-primary">Buy USDC</button>
+      </div>
+    <% else %>
+      <div class="space-y-3 mb-8">
+        <% @packs.each do |pack_id, pack| %>
+          <%= render "tokens/pack_button", pack_id: pack_id, pack: pack, disabled: !stripe_on %>
+        <% end %>
+      </div>
+    <% end %>
+  <% end %>
 
   <%# Lazarus audit #21: dev/test-only. The free-mint route is not drawn in
       production, so this affordance (and its tokens_dev_mint_path helper) must

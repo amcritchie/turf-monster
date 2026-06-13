@@ -4,7 +4,7 @@
 #
 # Also carries the "main contest" pointer used as the default fallback target
 # across the app — root redirect, /account referral widget, faucet CTA. The
-# main contest is admin-set via /admin/site_config; when unset or the chosen
+# main contest is admin-set via /admin/dashboard; when unset or the chosen
 # contest has settled, SeasonConfig.main_contest falls back to the most
 # recently created open contest.
 class SeasonConfig < ApplicationRecord

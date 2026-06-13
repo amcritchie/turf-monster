@@ -11,9 +11,26 @@
       <p class="text-secondary mt-2">Sign in to play</p>
     </div>
 
-    <div class="card shadow p-8">
-      <%# 1. Google %>
+    <%# ageAttested initializes TRUE when the attestation flag is off — the
+        checkbox partial renders nothing and every gate below passes. %>
+    <div class="card shadow p-8" x-data="{ ageAttested: <%= AppFlags.age_attestation? ? 'false' : 'true' %>, ageError: false }">
+      <%# Legal-age attestation — gates account creation. Google + email are
+          gated here; the Solana button opens the Connect Wallet picker, which
+          carries the checked state in and renders its own checkbox for guests.
+          Server-side enforcement on every signup endpoint is the boundary. %>
+      <% if AppFlags.age_attestation? %>
+        <div class="mb-4">
+          <%= render "shared/age_attestation" %>
+        </div>
+      <% end %>
+
+      <%# 1. Google — the attestation rides the OAuth round-trip as a request
+          phase query param (read back via omniauth.params in the callback). %>
       <%= button_to "/auth/google_oauth2", method: :post, data: { turbo: false },
+          form: {
+            ":action" => "ageAttested ? '/auth/google_oauth2?age_attestation=1' : '/auth/google_oauth2'",
+            "@submit" => "if (!ageAttested) { $event.preventDefault(); ageError = true }"
+          },
           class: "btn btn-neutral btn-lg w-full gap-3" do %>
         <%= render "components/google_logo" %>
         Google
@@ -48,10 +65,11 @@
               error: '',
               async submit(email) {
                 if (!email || this.sending) return;
+                if (!this.ageAttested) { this.ageError = true; return; }
                 this.error = '';
                 this.sending = true;
                 try {
-                  await window.postMagicLink(email);
+                  await window.postMagicLink(email, { ageAttested: true });
                   $store.modals.open('auth', { step: 'magic-link-sent', sentEmail: email });
                 } catch (e) {
                   this.error = 'Could not send the link — check your connection and try again.';

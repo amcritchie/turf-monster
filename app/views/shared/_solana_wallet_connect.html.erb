@@ -4,9 +4,12 @@
     logged in, so their id is passed so the signed wallet message can embed
     `User-ID: <id>`. The connect itself runs inside the modal via
     window.solanaConnectAndVerify. %>
+<%# ageAttested: carry the auth card's legal-age checkbox state into the
+    picker so a user who already checked it isn't asked twice. typeof-guarded
+    because the account-page (link_mode) caller has no attestation scope. %>
 <div x-data x-cloak>
   <button type="button"
-          @click="$store.modals.open('wallet-connect', { linkMode: <%= link_mode %>, currentUserId: <%= (link_mode && current_user&.id) || 'null' %> })"
+          @click="$store.modals.open('wallet-connect', { linkMode: <%= link_mode %>, currentUserId: <%= (link_mode && current_user&.id) || 'null' %>, ageAttested: typeof ageAttested === 'undefined' ? false : !!ageAttested })"
           class="btn btn-neutral btn-lg w-full gap-3">
     <img src="/solana-mark.svg" alt="" class="w-5 h-5">
     <span>Solana</span>

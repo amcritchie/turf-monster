@@ -1,0 +1,14 @@
+<%# locals: (dom_id:, attachment:, alt:, fallback:) — current og:image preview
+    (1200×630). The owning controller's image-save action Turbo-Stream-replaces
+    this element by dom_id after an immediate crop save. Shared by the Admin
+    Dashboard default image and the per-landing-page override. %>
+<div id="<%= dom_id %>" class="rounded-lg overflow-hidden border border-subtle" style="aspect-ratio: 1200 / 630;">
+  <% if attachment.attached? %>
+    <%= image_tag attachment, class: "w-full h-full object-cover", alt: alt %>
+  <% else %>
+    <div class="w-full h-full flex items-center justify-center text-xs text-muted text-center px-4"
+         style="background: linear-gradient(135deg, var(--color-primary-700), var(--color-primary-900))">
+      <%= fallback %>
+    </div>
+  <% end %>
+</div>

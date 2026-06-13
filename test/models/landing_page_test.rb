@@ -73,4 +73,14 @@ class LandingPageTest < ActiveSupport::TestCase
     assert lp.circles?
     assert_equal "circles", lp.background_partial
   end
+
+  test "can attach a per-page og image" do
+    lp = landing_pages(:launch)
+    assert_not lp.og_image.attached?
+
+    lp.og_image.attach(
+      io: file_fixture("banner.png").open, filename: "og.png", content_type: "image/png"
+    )
+    assert lp.reload.og_image.attached?
+  end
 end

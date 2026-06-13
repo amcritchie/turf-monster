@@ -77,6 +77,36 @@ module Solana
         )
       end
 
+      # ── v0.15.1 username codes (6020-6022, audit C2) ─────────────────
+      # Raised by create_user_account / set_username when the username fails
+      # on-chain validation. The Rails mirror (User::RESERVED_USERNAME_PREFIXES
+      # + the username validations) should make these unreachable for normal
+      # users — log:true so a hit flags mirror drift.
+
+      # UsernameReserved (6020 / 0x1784) — reserved prefix (admin/turf/mod/…).
+      if stripped.match?(/0x1784|\b6020\b|usernamereserved/i)
+        return ok(
+          message: "Your username can't be registered on-chain — it starts with a reserved word. Change it on your account page (/account) and try again.",
+          log: true
+        )
+      end
+
+      # UsernameInvalidChars (6021 / 0x1785) — bytes outside printable ASCII.
+      if stripped.match?(/0x1785|\b6021\b|usernameinvalidchars/i)
+        return ok(
+          message: "Your username contains unsupported characters and can't be registered on-chain. Change it on your account page (/account) and try again.",
+          log: true
+        )
+      end
+
+      # UsernameTooShort (6022 / 0x1786) — fewer than 3 characters.
+      if stripped.match?(/0x1786|\b6022\b|usernametooshort/i)
+        return ok(
+          message: "Your username is too short to register on-chain (3 characters minimum). Change it on your account page (/account) and try again.",
+          log: true
+        )
+      end
+
       # ── v0.16 codes (6023-6033) ──────────────────────────────────────
 
       # InvalidCurrencyIndex (6025 / 0x1789) — currency_idx in enter_contest
@@ -97,11 +127,13 @@ module Solana
         )
       end
 
-      # EntryFeeNotSet (6027 / 0x178b) — this contest doesn't accept the
-      # selected currency. Effectively wrong-currency-picked.
+      # EntryFeeNotSet (6027 / 0x178b) — this contest's entry_fee_by_currency
+      # has a zero in the selected slot (e.g. a USDT entry against a contest
+      # created before slot 1 was funded — see Contest#accepts_usdt).
+      # Effectively wrong-currency-picked. JS mirror: solana_errors.js.
       if stripped.match?(/0x178b|\b6027\b|entryfeenotset/i)
         return ok(
-          message: "This contest doesn't accept the selected currency.",
+          message: "This contest doesn't accept that currency — try USDC.",
           blocker: { reason: "currency_unavailable", mode: nil, data: {} }
         )
       end

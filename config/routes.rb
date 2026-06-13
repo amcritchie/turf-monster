@@ -69,6 +69,13 @@ Rails.application.routes.draw do
   get "about",   to: "pages#about",   as: :about
   get "contact", to: "pages#contact", as: :contact
 
+  # Underwriting compliance pages (2026-06): responsible-gaming resources +
+  # the published state-eligibility list (rendered live from GeoSetting so it
+  # can never drift from the IP-geolocation enforcement). Linked from the
+  # global footer next to the legal links.
+  get "responsible-gaming", to: "pages#responsible_gaming", as: :responsible_gaming
+  get "state-eligibility",  to: "pages#state_eligibility",  as: :state_eligibility
+
   # Public proof-of-reserves — reads on-chain Contest PDAs and the shared
   # vault USDC token account from the browser via Solana RPC, then displays
   # them next to the Rails-reported figures.
@@ -285,6 +292,11 @@ Rails.application.routes.draw do
   # Entry tokens (web2 contest-entry currency)
   get  "tokens/buy",             to: "tokens#buy",             as: :tokens_buy
   post "tokens/stripe_checkout", to: "tokens#stripe_checkout", as: :tokens_stripe_checkout
+  # format: false — the rack-attack throttles match these paths EXACTLY;
+  # without it, POST /tokens/paypal_order.json routes to the same action but
+  # skips the 10/min fee-bleed throttle (and 100/min on the webhook below).
+  post "tokens/paypal_order",    to: "tokens#paypal_order",    as: :tokens_paypal_order,   format: false
+  post "tokens/paypal_capture",  to: "tokens#paypal_capture",  as: :tokens_paypal_capture, format: false
   get  "tokens/processing",      to: "tokens#processing",      as: :tokens_processing
   get  "tokens/status",          to: "tokens#status",          as: :tokens_status
   # Lazarus audit #21: dev/test-only free-mint endpoint — not drawn in
@@ -296,6 +308,29 @@ Rails.application.routes.draw do
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"
+  post "webhooks/paypal", to: "webhooks/paypal#create", format: false
+
+  # Coinbase CDP Onramp/Offramp — buy USDC / cash out via the Coinbase-hosted
+  # widget (docs/CDP_RAMP_INTEGRATION.md §8). The routes stay drawn in every
+  # env; Cdp::BaseController 404s everything unless ENABLE_CDP_RAMP is set, so
+  # the env var (not a deploy) is the kill-switch. The session POSTs mint the
+  # single-use widget token; the return GETs are Coinbase's redirectUrl targets
+  # (UX signal only — never confirmation); ramp_status is the local-state poll
+  # for the return page / modal. Phase 2 adds: post "webhooks/cdp".
+  scope :cdp do
+    post "onramp_sessions",  to: "cdp/ramp_sessions#create_onramp",  as: :cdp_onramp_sessions
+    post "offramp_sessions", to: "cdp/ramp_sessions#create_offramp", as: :cdp_offramp_sessions
+    get  "onramp/return",    to: "cdp/returns#onramp",               as: :cdp_onramp_return
+    get  "offramp/return",   to: "cdp/returns#offramp",              as: :cdp_offramp_return
+    get  "ramp_status/:partner_user_ref", to: "cdp/returns#status",  as: :cdp_ramp_status,
+         defaults: { format: :json }
+    # Offramp send path (§10) — managed confirm-then-server-send, and the
+    # Phantom prepare/sign/report loop. All keyed on partner_user_ref in the
+    # body and scoped to the viewer's own offramp rows.
+    post "offramp/confirm_send", to: "cdp/offramp_sends#confirm", as: :cdp_offramp_confirm_send
+    post "offramp/prepare_send", to: "cdp/offramp_sends#prepare", as: :cdp_offramp_prepare_send
+    post "offramp/sent",         to: "cdp/offramp_sends#sent",    as: :cdp_offramp_sent
+  end
 
   post "add_funds", to: "users#add_funds"
 
@@ -315,16 +350,33 @@ Rails.application.routes.draw do
     post   "impersonations/:user_slug", to: "impersonations#create",  as: :impersonate
     delete "impersonations",            to: "impersonations#destroy", as: :stop_impersonating
 
-    # Site-wide singleton config — currently just the main_contest pointer,
-    # but the page is the canonical home for any future global setting that
-    # doesn't fit on a per-record edit form.
-    get   "site_config", to: "site_configs#show",   as: :site_config
-    patch "site_config", to: "site_configs#update"
+    # Site-wide singleton config — the main_contest pointer (SeasonConfig) plus
+    # the link-preview (og:image) defaults (SiteSetting). The canonical home for
+    # any global setting that doesn't fit on a per-record edit form.
+    get   "dashboard", to: "dashboard#show",   as: :dashboard
+    patch "dashboard", to: "dashboard#update"
+    # Link-preview (og:image) defaults — SiteSetting singleton. Text fields
+    # save via the normal patch; the image is an immediate cropper save (its
+    # own multipart endpoint, mirroring the contest banner flow).
+    patch "dashboard/link_preview",       to: "dashboard#update_link_preview",       as: :dashboard_link_preview
+    patch "dashboard/link_preview_image", to: "dashboard#update_link_preview_image", as: :dashboard_link_preview_image
 
     resources :outbound_requests, only: [:index, :show]
 
+    # Error logs — read-only incident-triage browser over ErrorLog (engine model).
+    # Richer than the engine's /error_logs: class facets, target_type filter,
+    # summary stats, and deep-links to target/parent records. Param is the
+    # error-log-<id> slug (ErrorLog#to_param).
+    resources :error_logs, only: [:index, :show], param: :slug
+
     # Landing pages — funnel page manager (public pages live at /l/:slug)
-    resources :landing_pages, only: %i[index new create edit update destroy], param: :slug
+    resources :landing_pages, only: %i[index new create edit update destroy], param: :slug do
+      # Immediate cropper save for the per-page link-preview image (edit only —
+      # the record must exist to attach to). Mirrors the contest banner flow.
+      member do
+        patch :og_image, action: :update_og_image
+      end
+    end
 
     resources :pending_transactions, only: [:index, :show], param: :slug do
       member do

@@ -13,10 +13,14 @@ class ApplicationController < ActionController::Base
   before_action :verify_session_token  # OPSEC-045
   before_action :set_current_context
   before_action :capture_reference
+  # Stamp activity right after auth resolves, BEFORE the geo/profile redirects —
+  # an after_action is skipped when those before_actions halt the chain, so a
+  # genuinely-active but redirected user would never get stamped.
+  before_action :touch_last_seen
   before_action :detect_geo_state
   before_action :require_profile_completion
   before_action :preload_navbar_solana_data
-  helper_method :geo_state, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
+  helper_method :geo_state, :geo_country, :geo_blocked?, :geo_override_active?, :display_balance, :display_seeds_data, :onchain_session?, :wallet_context, :client_session_payload, :true_user, :impersonating?
 
   # OPSEC-045: extend the engine's set_app_session to also bind a per-user
   # session_token in the cookie. The verify_session_token before_action
@@ -65,16 +69,65 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  # ── Age attestation (underwriting compliance, 2026-06) ────────────────────
+  # Every account-creation flow (magic link, Google OAuth, Solana wallet,
+  # legacy POST /signup) must carry an affirmative legal-age attestation
+  # before a User row is created. Existing users grandfather (login paths
+  # never check). Shown to the user when a signup arrives without it.
+  AGE_ATTESTATION_ERROR = "Please confirm you are of legal age to play " \
+                          "skill-based contests in your state before creating an account.".freeze
+
   private
+
+  # True only for an affirmative checkbox value ("1", "true", true). Each
+  # signup controller reads its own source (params, omniauth.params, or the
+  # MagicLink row) and funnels through this single truthiness rule.
+  def age_attestation_given?(value = params[:age_attestation])
+    ActiveModel::Type::Boolean.new.cast(value) == true
+  end
+
+  # Whether account creation requires the legal-age attestation at all —
+  # flag-gated (parked off for the first contest; see AppFlags). Every
+  # signup-path rejection is `if age_attestation_required? &&
+  # !age_attestation_given?`, and age_attested_at stamping is gated on
+  # required? too, so a flag-off signup never records an attestation the
+  # user wasn't shown.
+  def age_attestation_required?
+    AppFlags.age_attestation?
+  end
 
   # Public, crawlable GET pages that must unfurl in link previews (and never
   # 406 a visitor). These carry og/twitter tags and are the URLs people paste
   # into Messages/Slack/social: the marketing funnel + the public contest reads.
   # The interactive/authenticated app still gets the allow_browser guard.
   def public_preview_request?
-    return false unless request.get?
+    # HEAD is a bodyless GET — link-preview scanners (SafeLinks, iMessage,
+    # Slack/social unfurlers) issue HEAD, so it must clear this guard exactly
+    # like GET or those previews 406. (Brakeman VerbConfusion: request.get?
+    # is false for HEAD even though HEAD routes like GET.)
+    return false unless request.get? || request.head?
     return true if controller_name == "landing_pages"
+    # Static legal/compliance pages (terms, privacy, about, contact,
+    # responsible-gaming, state-eligibility): pasted into emails, merchant
+    # applications, and crawled by underwriters' site scanners — they must
+    # never 406 a preview fetcher or an old browser.
+    return true if controller_name == "pages"
     controller_name == "contests" && action_name.in?(%w[show world_cup index live])
+  end
+
+  # Stamp the REAL logged-in user's last activity (admin dashboard "by recent
+  # session"). Throttled to one write per 5 min via update_column (no callbacks,
+  # no updated_at churn) so it's cheap on the hot path; uses true_user so admin
+  # impersonation never bumps the impersonated user's activity. Never raises.
+  LAST_SEEN_THROTTLE = 5.minutes
+  def touch_last_seen
+    user = true_user
+    return unless user
+    return if user.last_seen_at && user.last_seen_at > LAST_SEEN_THROTTLE.ago
+
+    user.update_column(:last_seen_at, Time.current)
+  rescue => e
+    Rails.logger.warn("[last_seen] #{e.class}: #{e.message}")
   end
 
   # ── Admin impersonation (OPSEC-046) ────────────────────────────────────────
@@ -262,6 +315,15 @@ class ApplicationController < ActionController::Base
       result = Geocoder.search(request.remote_ip).first
       raw = result&.try(:state_code).presence || result&.try(:region_code) || result&.try(:region)
       session[:geo_state] = normalize_state_code(raw)
+      # ISO country code from the same lookup — feeds the CDP ramp catalog
+      # gate (country + subdivision). nil when the lookup has no country.
+      session[:geo_country] = result&.try(:country_code).presence&.upcase
+      # Loopback IPs never geocode, so dev sessions have no state/country and
+      # every geo-gated feature (CDP catalog, entry gate) fails closed locally.
+      if Rails.env.development? && session[:geo_state].blank? && request.local?
+        session[:geo_state] = normalize_state_code(ENV.fetch("DEV_GEO_STATE", "CO"))
+        session[:geo_country] = "US"
+      end
       session[:geo_ip] = request.remote_ip
       session[:geo_detected_at] = Time.current.to_s
     end
@@ -274,6 +336,15 @@ class ApplicationController < ActionController::Base
     normalize_state_code(session[:geo_override] || session[:geo_state])
   end
 
+  # ISO country code from the same Geocoder session as geo_state. Defaults to
+  # "US" when undetected — the product + geo blocklist are US-centric, and the
+  # CDP catalog still fails closed for US without a detected subdivision. The
+  # admin geo_override simulates US states, so it forces "US" too.
+  def geo_country
+    return "US" if session[:geo_override].present?
+    session[:geo_country].presence || "US"
+  end
+
   def geo_blocked?
     GeoSetting.blocked?(geo_state)
   end
@@ -282,13 +353,17 @@ class ApplicationController < ActionController::Base
     session[:geo_override].present?
   end
 
-  # Navbar balance — always on-chain USDC for connected wallets.
+  # Navbar balance — on-chain USDC + USDT COMBINED for connected wallets
+  # (operator request 2026-06-10: the pill shows total spendable dollars; the
+  # /account tiles stay per-currency).
   # NON-BLOCKING + cache-first: the render path NEVER issues a Solana RPC.
   # Returns:
-  #   - the preloaded @wallet_balances[:usdc] when a specific page populated
-  #     it explicitly (e.g. /wallet)
-  #   - the cached USDC number (warm cache, written by the hydrate endpoint
-  #     or a prior request) — Rails.cache.read, no fetch-on-miss
+  #   - the SUM of the preloaded @wallet_balances[:usdc] + [:usdt] when a
+  #     specific page populated them explicitly (e.g. /wallet)
+  #   - the SUM of the cached USDC + USDT numbers (warm cache, written by the
+  #     hydrate endpoint or a prior request) — Rails.cache.read, no
+  #     fetch-on-miss. A nil side counts as 0 in the sum; nil only when BOTH
+  #     are nil so the "loading" state is preserved.
   #   - nil when the cache is cold ("loading" — the client-side refreshBalance
   #     fills the [data-balance-display] pill once it lands)
   #   - 0 for guests / non-wallet users (definitive)
@@ -300,14 +375,23 @@ class ApplicationController < ActionController::Base
 
     @display_balance =
       if @wallet_balances.is_a?(Hash) && @wallet_balances.key?(:usdc)
-        @wallet_balances[:usdc] || 0
+        combined_balance(@wallet_balances[:usdc], @wallet_balances[:usdt]) || 0
       elsif current_user&.solana_connected?
         # Cache-only read: warm → number, cold → nil ("loading"). Never a
         # blocking RPC on the render path.
-        Rails.cache.read(usdc_cache_key)
+        combined_balance(Rails.cache.read(usdc_cache_key), Rails.cache.read(usdt_cache_key))
       else
         0
       end
+  end
+
+  # USDC + USDT in dollars: nil treated as 0 in the sum, but nil when BOTH
+  # are nil — so an unknown-balances state stays distinguishable ("loading")
+  # from a definitive $0. Shared by display_balance and the
+  # /admin/usdc_balance hydrate endpoint's combined `balance` field.
+  def combined_balance(usdc, usdt)
+    return nil if usdc.nil? && usdt.nil?
+    usdc.to_f + usdt.to_f
   end
 
   # Fresh onchain USDC balance from logged-in user's wallet
@@ -354,6 +438,9 @@ class ApplicationController < ActionController::Base
     end
     unless seeds.nil?
       Rails.cache.write(seeds_cache_key(user), seeds_payload(seeds), expires_in: 60.seconds)
+      # Sync the denormalized seeds/level cache on the users row (admin list
+      # display + sort) from this fresh on-chain read — write-on-change only.
+      user.update_level_from_seeds!(seeds)
     end
 
     {

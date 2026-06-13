@@ -56,6 +56,10 @@ class Rack::Attack
     req.ip if req.post? && req.path == "/webhooks/stripe"
   end
 
+  throttle("webhooks/paypal", limit: 100, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/webhooks/paypal"
+  end
+
   ### Throttle: devnet faucet / airdrop — money-cost endpoints
   # Faucet is already prod-disabled per OPSEC-020 but rate-limited on devnet
   # too because admin SOL gets burned via mint_spl + ATA creation.
@@ -75,6 +79,27 @@ class Rack::Attack
   ### Throttle: Stripe checkout creation — fee bleed protection
   throttle("stripe_checkout/ip", limit: 10, period: 1.minute) do |req|
     req.ip if req.post? && (req.path == "/tokens/stripe_checkout" || req.path == "/wallet/stripe_deposit")
+  end
+
+  ### Throttle: CDP ramp session-token mint — money surface, per-user cap
+  # POST /onramp/v1/token has NO documented rate limit and Coinbase explicitly
+  # holds the developer liable for misuse of an unsecured mint endpoint — so we
+  # keep our own throttle on top of the controller's auth gate. Keyed by the
+  # session's user id (the endpoints require auth; per-user beats per-IP for
+  # shared NATs), falling back to IP for unauthenticated probes. Tokens are
+  # single-use with a 5-minute TTL, so 10/min is generous for a human retrying
+  # and expensive for a script. Emits the tier-1 "general" 429 → wait modal.
+  throttle("cdp_sessions/user", limit: 10, period: 1.minute) do |req|
+    if req.post? && (req.path == "/cdp/onramp_sessions" || req.path == "/cdp/offramp_sessions")
+      session = req.env["rack.session"] || {}
+      user_id = session[Studio.session_key.to_s] || session[Studio.session_key]
+      (user_id || req.ip).to_s
+    end
+  end
+
+  ### Throttle: PayPal order/capture creation — fee bleed parity with stripe_checkout
+  throttle("paypal_checkout/ip", limit: 10, period: 1.minute) do |req|
+    req.ip if req.post? && (req.path == "/tokens/paypal_order" || req.path == "/tokens/paypal_capture")
   end
 
   ### Throttle: email verification — outbound spam prevention

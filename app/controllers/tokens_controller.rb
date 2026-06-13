@@ -2,10 +2,17 @@ class TokensController < ApplicationController
   before_action :require_login
   before_action :require_dev_mint_allowed, only: [:dev_mint]
   # B4 / OPSEC-048: frozen accounts can't buy tokens.
-  before_action :require_unfrozen_account, only: [:stripe_checkout]
+  before_action :require_unfrozen_account, only: [:stripe_checkout, :paypal_order, :paypal_capture]
 
   def buy
     @packs = StripePurchase.available_packs
+    if Payments.paypal_checkout?
+      # The PayPal flow finishes on this page (no /tokens/processing redirect),
+      # so its success card needs the same "Enter contest" target processing
+      # resolves. Stripe path skips the queries — rendering there is unchanged.
+      @next_contest = Contest.target ||
+                      Contest.where(status: :open).order(created_at: :desc).first
+    end
   end
 
   def stripe_checkout
@@ -16,8 +23,14 @@ class TokensController < ApplicationController
     unless current_user.solana_connected?
       return redirect_to tokens_buy_path, alert: "Connect a wallet first."
     end
+    # Distinct messages, one truth: missing/kill-switched Stripe config reads
+    # as unconfigured; a different active provider reads as disabled. Both
+    # keep stale tabs / scripted clients off the blocked Stripe account.
     unless Rails.application.config.x.stripe_enabled
       return redirect_to tokens_buy_path, alert: "Card checkout isn't configured yet. Set STRIPE_SECRET_KEY and restart."
+    end
+    unless Payments.stripe?
+      return redirect_to tokens_buy_path, alert: "Card checkout is currently disabled."
     end
     # OPSEC-036: a prior chargeback flagged this account — block further card
     # purchases so a stolen-card buyer can't keep racking up disputes.
@@ -82,6 +95,116 @@ class TokensController < ApplicationController
     end
   end
 
+  # PayPal JS SDK createOrder callback (Venmo + PayPal standalone buttons).
+  # JSON-only — the buttons keep the buyer on-page and drive the approval
+  # popup/app-switch themselves, so there is no redirect leg like Stripe's.
+  # Mirrors stripe_checkout's gates; the amount derives SERVER-SIDE from the
+  # pack definition — the client only ever names a pack id.
+  def paypal_order
+    pack_id = params[:pack].to_s
+    unless StripePurchase.available_packs.key?(pack_id)
+      return render json: { error: "Unknown or unavailable token pack" }, status: :unprocessable_entity
+    end
+    unless current_user.solana_connected?
+      return render json: { error: "Connect a wallet first." }, status: :unprocessable_entity
+    end
+    unless paypal_checkout_enabled?
+      return render json: { error: "PayPal checkout isn't enabled." }, status: :unprocessable_entity
+    end
+    # OPSEC-036: a prior chargeback flagged this account — block further fiat
+    # purchases so a stolen-card buyer can't keep racking up disputes.
+    if current_user.payment_risk_flag
+      return render json: { error: "Purchases are disabled on this account. Please contact support." }, status: :forbidden
+    end
+
+    pack    = StripePurchase.pack(pack_id)
+    contest = Contest.find_by(slug: params[:contest].presence)
+
+    rescue_and_log(target: current_user) do
+      # Row first, order second: Current.outbound_source needs the purchase to
+      # exist so the create-order API call lands in outbound_requests with
+      # polymorphic attribution (same ordering as TokenPurchaseJob).
+      @paypal_purchase = PaypalPurchase.create!(
+        user: current_user,
+        pack_id: pack_id,
+        quantity: pack[:quantity],
+        price_cents: pack[:price_cents],
+        wallet_address: current_user.solana_address,
+        contest_slug: contest&.slug,
+        status: "pending"
+      )
+      Current.outbound_source = @paypal_purchase
+
+      order = Paypal::Client.new.create_order(pack: pack, user: current_user, purchase: @paypal_purchase)
+      @paypal_purchase.update!(paypal_order_id: order["id"])
+      Rails.logger.info "[tokens] paypal.order_created purchase=#{@paypal_purchase.id} order=#{order['id']} pack=#{pack_id} user=#{current_user.id}"
+      render json: { order_id: order["id"] }
+    end
+  rescue StandardError => e
+    @paypal_purchase&.mark_failed_unless_minted!
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
+  # PayPal JS SDK onApprove callback — capture the approved order server-side,
+  # validate PayPal's authoritative response (COMPLETED / USD / exact pack
+  # amount), then hand off to the exactly-once mint gate. The webhook's
+  # PAYMENT.CAPTURE.COMPLETED + CHECKOUT.ORDER.APPROVED handlers cover the
+  # client-died path; Paypal::Fulfillment arbitrates the race.
+  def paypal_capture
+    order_id = params[:order_id].to_s
+    return render json: { error: "order_id required" }, status: :bad_request if order_id.blank?
+
+    purchase = current_user.paypal_purchases.for_order(order_id).first
+    return render json: { error: "Purchase not found" }, status: :not_found unless purchase
+
+    # Idempotent retry: fulfillment already started (webhook fallback won, or
+    # a duplicate click) — report current status, never re-capture.
+    return render json: { status: purchase.status } unless purchase.status == "pending"
+
+    # OPSEC-036: the flag can flip between order creation and capture (e.g. an
+    # operator console flag without a freeze) — re-check before the money
+    # moves, exactly as paypal_order/stripe_checkout gate at their entry.
+    if current_user.payment_risk_flag
+      return render json: { error: "Purchases are disabled on this account. Please contact support." }, status: :forbidden
+    end
+
+    rescue_and_log(target: current_user) do
+      Current.outbound_source = purchase
+      response = Paypal::Client.new.capture_order(order_id)
+      capture  = response.dig("purchase_units", 0, "payments", "captures", 0)
+      TokensLogger.dump("paypal.capture_response", {
+        order_id: order_id,
+        order_status: response["status"],
+        capture_id: capture&.dig("id"),
+        capture_status: capture&.dig("status"),
+        amount: capture&.dig("amount")
+      })
+
+      unless response["status"] == "COMPLETED" && purchase.capture_matches?(capture)
+        # eCheck / Venmo-review holds come back capture status PENDING with the
+        # buyer's money already initiated — NOT a failure. Treating it as one
+        # invited a "try again" retry that created a second order = a real
+        # double charge. Report a processing hold instead; the row stays
+        # pending so PAYMENT.CAPTURE.COMPLETED wins the CAS and mints when the
+        # hold clears (days for eCheck).
+        if purchase.capture_pending?(capture)
+          Rails.logger.warn "[tokens] paypal.capture_pending_hold purchase=#{purchase.id} order=#{order_id} " \
+                            "capture=#{capture['id']} — payment initiated, awaiting PAYMENT.CAPTURE.COMPLETED"
+          return render json: { status: "processing" }
+        end
+        Rails.logger.warn "[tokens] paypal.capture_invalid purchase=#{purchase.id} order=#{order_id} " \
+                          "order_status=#{response['status']} capture_status=#{capture&.dig('status')} " \
+                          "amount=#{capture&.dig('amount', 'value')} expected=#{purchase.expected_amount_value}"
+        return render json: { error: "Payment could not be confirmed." }, status: :unprocessable_entity
+      end
+
+      Paypal::Fulfillment.enqueue_mint!(purchase, capture_id: capture["id"])
+      render json: { status: purchase.reload.status }
+    end
+  rescue StandardError => e
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
   def processing
     @session_id = params[:session_id].to_s
     # Gallery preview (/admin/modals) renders this page in a forced state via
@@ -101,11 +224,22 @@ class TokensController < ApplicationController
                     Contest.where(status: :open).order(created_at: :desc).first
   end
 
+  # Polls a purchase by Stripe session_id OR PayPal order_id — the existing
+  # polling UI works unchanged for either provider (both models expose
+  # status / tx_signatures via MintablePurchase).
   def status
     session_id = params[:session_id].to_s
-    return render json: { ready: false }, status: :bad_request if session_id.blank?
+    order_id   = params[:order_id].to_s
 
-    purchase = current_user.stripe_purchases.for_session(session_id).first
+    if session_id.present?
+      purchase = current_user.stripe_purchases.for_session(session_id).first
+      ref = "session=#{session_id[0, 12]}…"
+    elsif order_id.present?
+      purchase = current_user.paypal_purchases.for_order(order_id).first
+      ref = "order=#{order_id[0, 12]}…"
+    else
+      return render json: { ready: false }, status: :bad_request
+    end
 
     # Bypass the entry-tokens cache for polling: we're specifically watching
     # for a brand-new on-chain mint, and Helius's getProgramAccounts indexer
@@ -122,9 +256,9 @@ class TokensController < ApplicationController
     }
     # Tagged log so polling visibility is easy to grep. Pairs with the
     # client-side [tokens] pollTokenStatus logs in the board partial —
-    # together they show the full handoff chain from the Stripe-return
-    # tab through to the in-modal minted state.
-    Rails.logger.info "[tokens] status user=#{current_user.id} session=#{session_id[0,12]}… " \
+    # together they show the full handoff chain from the provider-return
+    # path through to the in-modal minted state.
+    Rails.logger.info "[tokens] status user=#{current_user.id} #{ref} " \
                       "purchase_status=#{purchase&.status.inspect} → #{payload.inspect}"
     render json: payload
   end
@@ -153,6 +287,17 @@ class TokensController < ApplicationController
   end
 
   private
+
+  # Order CREATION is double-gated: the operator flag (PAYMENT_PROVIDER) AND
+  # configured credentials. Either off → paypal_order refuses, so this branch
+  # deploys inert until the operator flips the flag post-approval (no
+  # PaypalPurchase row can exist without it, so paypal_capture 404s too).
+  # paypal_capture and the webhook are deliberately NOT flag-gated: after a
+  # rollback to stripe, in-flight approved orders must still drain — see
+  # docs/PAYPAL_VENMO.md "Heroku flip".
+  def paypal_checkout_enabled?
+    Payments.paypal_checkout?
+  end
 
   def require_login
     return if logged_in?

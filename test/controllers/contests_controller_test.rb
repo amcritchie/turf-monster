@@ -2,6 +2,7 @@ require "test_helper"
 require "minitest/mock"
 
 class ContestsControllerTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
   # FakeVault is shared — see test/support/fake_vault.rb (LW1 extraction).
   setup do
     @contest = contests(:one)
@@ -411,6 +412,134 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, vault.enter_calls.length
   end
 
+  # Incident 2026-06-08 (entry #133), defense-in-depth half: a TRANSIENT failure
+  # (RPC/DB) inside confirm! AFTER a successful consume must not silently strand
+  # the entry. The validation gates now run PRE-flight (see the two tests above),
+  # so the only way to reach confirm! post-consume is a non-validation fault —
+  # here a forced TransactionLog.record! failure inside confirm!'s transaction.
+  # The durable-capture write leaves the consume signature on the row
+  # (recoverable) and a reconcile job is scheduled to converge it.
+  test "enter leaves a recoverable record + schedules reconcile when confirm! hits a transient failure after a successful token consume" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain133", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    # Simulate a transient DB fault inside confirm!'s transaction, AFTER the
+    # FakeVault consume has already "spent" the token on-chain and the durable
+    # capture has committed the signature.
+    boom = ->(*, **) { raise StandardError, "simulated post-broadcast DB failure" }
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        TransactionLog.stub :record!, boom do
+          assert_enqueued_with(job: Entries::OnchainReconcileJob, args: [entry.id]) do
+            post enter_contest_path(@contest), as: :json
+          end
+        end
+      end
+    end
+
+    # The on-chain consume happened exactly once...
+    assert_equal 1, vault.enter_calls.length
+    assert_equal :enter_contest_with_token, vault.enter_calls.first[:method]
+
+    # ...and although confirm! failed, the entry is NOT a silent cart: the
+    # consume signature + Entry PDA are durably captured so it can self-heal.
+    entry.reload
+    assert entry.cart?, "entry stays cart until the reconciler heals it"
+    assert entry.onchain_tx_signature.present?, "consume signature must survive the confirm! failure"
+    assert entry.onchain_entry_id.present?, "entry PDA must survive the confirm! failure"
+
+    # B1 (PR #115 review): the swallow-and-reconcile branch records an ErrorLog
+    # with entry/contest context so the strand is diagnosable (incident #133 was
+    # reconstructed by hand precisely because this row was missing).
+    log = ErrorLog.where(target: entry).order(:id).last
+    assert log, "a swallowed post-broadcast confirm! failure must still create an ErrorLog"
+    assert_equal entry.slug, log.target_name
+    assert_equal @contest, log.parent
+    assert_equal @contest.slug, log.parent_name
+    assert_match "simulated post-broadcast DB failure", log.message
+  end
+
+  # validate-before-consume (backend discipline #2). A read-only eligibility
+  # failure (here: too few selections) must raise in the PRE-FLIGHT
+  # assert_enterable! BEFORE vault.enter_contest_with_token — so the token stays
+  # UNCONSUMED, the entry stays `cart`, and NO reconcile is scheduled (there is
+  # nothing to recover; fail loudly). This is the primary fix for incident
+  # 2026-06-08, where the gate ran AFTER the irreversible burn.
+  test "enter validates selection count BEFORE consuming the token (short entry → nothing burned)" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain-preflight-count", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2].each { |m| entry.selections.create!(slate_matchup: m) } # only 2 of 6
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        assert_no_enqueued_jobs only: Entries::OnchainReconcileJob do
+          post enter_contest_path(@contest), as: :json
+        end
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/selections required/i, JSON.parse(response.body)["error"])
+    assert_equal 0, vault.enter_calls.length, "token must NOT be consumed when a gate fails pre-flight"
+    entry.reload
+    assert entry.cart?, "entry must stay cart"
+    assert_nil entry.onchain_tx_signature, "no signature — nothing was broadcast"
+  end
+
+  # Same validate-before-consume guarantee for the sybil / duplicate-exact-combo
+  # gate: a repeat of an existing active combo must be rejected pre-flight, with
+  # the token left unconsumed.
+  test "enter validates the duplicate-combo (sybil) gate BEFORE consuming the token" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain-preflight-sybil", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    # An existing ACTIVE entry with the exact combo the user is about to repeat.
+    existing = @contest.entries.create!(user: @user, status: :active)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| existing.selections.create!(slate_matchup: m) }
+
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [{ pda: "tpda_1", consumed: false }])
+    Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+      Solana::Vault.stub :new, vault do
+        assert_no_enqueued_jobs only: Entries::OnchainReconcileJob do
+          post enter_contest_path(@contest), as: :json
+        end
+      end
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/already have an entry/i, JSON.parse(response.body)["error"])
+    assert_equal 0, vault.enter_calls.length, "token must NOT be consumed when the sybil gate fails pre-flight"
+    assert entry.reload.cart?
+  end
+
   # --- prepare_entry tests (web3 single-signature flow) ---
 
   test "prepare_entry builds the TX + creates a pending PT" do
@@ -485,6 +614,91 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     end
     assert_response :unprocessable_entity
     assert_match(/Exactly .* selections/, JSON.parse(response.body)["error"])
+  end
+
+  # --- prepare_entry currency selection (USDT entries, 2026-06-10) ---
+
+  test "prepare_entry currency=usdt on an accepts_usdt contest builds with currency_idx 1 + the USDT ATA" do
+    @user.update!(web3_solana_address: "Web3UsdtHappy#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_usdt_ok", season_id: 1, accepts_usdt: true)
+    SeasonConfig.set_current!(1)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    assert_difference "PendingTransaction.count", 1 do
+      Solana::Vault.stub :new, vault do
+        post prepare_entry_contest_path(@contest), params: { currency: "usdt" }, as: :json
+      end
+    end
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["success"]
+
+    build = vault.enter_calls.last
+    assert_equal :build_enter_contest, build[:method]
+    assert_equal 1, build[:currency_idx]
+
+    # The pre-entry ATA bootstrap must target the USDT mint, not USDC.
+    assert_equal [Solana::Config::USDT_MINT], vault.ensure_ata_calls.map { |c| c[:mint] }
+
+    ptx = PendingTransaction.find_by(slug: body["ptx_slug"])
+    assert_equal 1, JSON.parse(ptx.metadata)["currency_idx"]
+  end
+
+  test "prepare_entry defaults to USDC: currency_idx 0, USDC ATA, metadata 0" do
+    @user.update!(web3_solana_address: "Web3UsdcDef#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_usdc_def", season_id: 1, accepts_usdt: true)
+    SeasonConfig.set_current!(1)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new
+    Solana::Vault.stub :new, vault do
+      post prepare_entry_contest_path(@contest), as: :json
+    end
+
+    assert_response :success
+    assert_equal 0, vault.enter_calls.last[:currency_idx]
+    assert_equal [Solana::Config::USDC_MINT], vault.ensure_ata_calls.map { |c| c[:mint] }
+
+    ptx = PendingTransaction.find_by(slug: JSON.parse(response.body)["ptx_slug"])
+    assert_equal 0, JSON.parse(ptx.metadata)["currency_idx"]
+  end
+
+  test "prepare_entry rejects currency=usdt when the contest does not accept USDT" do
+    @user.update!(web3_solana_address: "Web3UsdtNo#{SecureRandom.hex(4)}")
+    # accepts_usdt stays false — e.g. any contest created before 2026-06-10
+    # (its on-chain entry_fee_by_currency slot 1 is an immutable zero).
+    @contest.update!(onchain_contest_id: "onchain_usdt_no", season_id: 1)
+    log_in_as_onchain(@user)
+    @contest.entries.create!(user: @user, status: :cart)
+
+    assert_no_difference "PendingTransaction.count" do
+      post prepare_entry_contest_path(@contest), params: { currency: "usdt" }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/doesn't accept USDT/, JSON.parse(response.body)["error"])
+  end
+
+  test "prepare_entry rejects an unknown currency outright" do
+    @user.update!(web3_solana_address: "Web3BadCur#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_bad_cur", season_id: 1, accepts_usdt: true)
+    log_in_as_onchain(@user)
+    @contest.entries.create!(user: @user, status: :cart)
+
+    assert_no_difference "PendingTransaction.count" do
+      post prepare_entry_contest_path(@contest), params: { currency: "doge" }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/Unsupported currency/, JSON.parse(response.body)["error"])
   end
 
   # --- confirm_onchain_entry tests ---
@@ -718,20 +932,20 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
   # linkage for the four scope cases — present, wrong user, wrong contest,
   # non-pending status.
 
-  def stranded_ptx_for(user:, contest:, status: "pending")
+  def stranded_ptx_for(user:, contest:, status: "pending", tx_signature: nil)
     entry = contest.entries.find_or_create_by!(user: user, status: :cart)
     PendingTransaction.create!(
       tx_type: "enter_contest", serialized_tx: "stx",
-      status: status, target: entry,
+      status: status, target: entry, tx_signature: tx_signature,
       initiator_address: user.web3_solana_address
     )
   end
 
-  test "contest show exposes pendingRecoveryPtxSlug when the current user has a pending PT here" do
+  test "contest show exposes pendingRecoveryPtxSlug for a BROADCAST (signed) pending PT here" do
     @user.update!(web3_solana_address: "Web3Show#{SecureRandom.hex(4)}")
     @contest.update!(onchain_contest_id: "onchain_show")
     log_in_as_onchain(@user)
-    ptx = stranded_ptx_for(user: @user, contest: @contest)
+    ptx = stranded_ptx_for(user: @user, contest: @contest, tx_signature: "sig-broadcast")
 
     get contest_path(@contest)
     assert_response :success
@@ -745,7 +959,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     other.update!(web3_solana_address: "Web3Theirs#{SecureRandom.hex(4)}")
     @contest.update!(onchain_contest_id: "onchain_x")
     log_in_as_onchain(@user)
-    stranded_ptx_for(user: other, contest: @contest)
+    stranded_ptx_for(user: other, contest: @contest, tx_signature: "sig-theirs")
 
     get contest_path(@contest)
     assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
@@ -760,7 +974,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
       status: :open, onchain_contest_id: "onchain_b"
     )
     log_in_as_onchain(@user)
-    stranded_ptx_for(user: @user, contest: other_contest)
+    stranded_ptx_for(user: @user, contest: other_contest, tx_signature: "sig-elsewhere")
 
     get contest_path(@contest)
     assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
@@ -777,6 +991,46 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     get contest_path(@contest)
     assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
                  "only pending/submitted PTs are eligible for client-side recovery")
+  end
+
+  # --- broadcast-only recovery policy (operator call, 2026-06-11) ---
+  # "If it fails, it fails": only a PT that actually broadcast (carries a
+  # tx_signature — real money may have moved) triggers the recovery modal.
+  # Never-broadcast PTs surface nothing; stale ones are quietly retired.
+
+  test "a signatureless pending PT is NOT surfaced for recovery (nothing was broadcast)" do
+    @user.update!(web3_solana_address: "Web3NoSig#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_nosig")
+    log_in_as_onchain(@user)
+    stranded_ptx_for(user: @user, contest: @contest) # no tx_signature
+
+    get contest_path(@contest)
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body,
+                 "a PT that never broadcast must not trigger the recovery modal")
+  end
+
+  test "a STALE signatureless pending PT is quietly retired on page load" do
+    @user.update!(web3_solana_address: "Web3Stale#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_stale")
+    log_in_as_onchain(@user)
+    ptx = stranded_ptx_for(user: @user, contest: @contest)
+    ptx.update_columns(created_at: 11.minutes.ago)
+
+    get contest_path(@contest)
+    assert_equal "expired", ptx.reload.status,
+                 "stale never-broadcast PTs are retired, not recovered"
+  end
+
+  test "a FRESH signatureless pending PT is left alone (a tab may be mid-confirm)" do
+    @user.update!(web3_solana_address: "Web3Fresh#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_fresh")
+    log_in_as_onchain(@user)
+    ptx = stranded_ptx_for(user: @user, contest: @contest)
+
+    get contest_path(@contest)
+    assert_equal "pending", ptx.reload.status,
+                 "a <10min signatureless PT must not be retired out from under a mid-confirm tab"
+    assert_match(/"pendingRecoveryPtxSlug":null/, response.body)
   end
 
   # --- recover_pending_entry tests ---

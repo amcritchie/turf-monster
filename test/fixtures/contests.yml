@@ -5,9 +5,7 @@ one:
   status: open
   max_entries: 29
   contest_type: standard
-  # Relative so the contest never falls past its lock time as real dates pass
-  # (was 2026-06-11, which started failing EntryTest once that date arrived).
-  starts_at: <%= 2.years.from_now.strftime("%Y-%m-%d %H:%M:%S") %>
+  starts_at: <%= 30.days.from_now.utc.iso8601 %> # dynamic — a literal date here became a calendar time bomb on 2026-06-11
   slate: one
   rank: 100
   user: alex

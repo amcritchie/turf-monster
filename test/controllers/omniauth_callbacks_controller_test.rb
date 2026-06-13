@@ -1,6 +1,12 @@
 require "test_helper"
 
 class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
+  # These tests exercise the legal-age attestation gate as designed (ON).
+  # The flag is parked off by default for the first contest; the off state
+  # is covered in age_attestation_flag_test.rb.
+  setup    { ENV["ENABLE_AGE_ATTESTATION"] = "true" }
+  teardown { ENV.delete("ENABLE_AGE_ATTESTATION") }
+
   setup do
     OmniAuth.config.mock_auth[:google_oauth2] = OmniAuth::AuthHash.new(
       provider: "google_oauth2",
@@ -11,11 +17,28 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
 
   test "google callback creates user and logs in" do
     assert_difference "User.count", 1 do
-      get "/auth/google_oauth2/callback"
+      # Drive the REAL transport: the legal-age attestation rides the OAuth
+      # request phase as a query param (exactly what /auth/google_popup and
+      # the /signin form emit); OmniAuth snapshots request.GET into
+      # session["omniauth.params"], which the callback pops back out.
+      get "/auth/google_oauth2?age_attestation=1"
+      follow_redirect!
     end
 
     assert_redirected_to tokens_buy_path
-    assert_equal User.find_by(email: "googleuser@example.com").id, session[:turf_user_id]
+    user = User.find_by(email: "googleuser@example.com")
+    assert_equal user.id, session[:turf_user_id]
+    assert user.age_attested_at.present?, "new Google signup must be stamped age-attested"
+  end
+
+  # ── legal-age attestation (underwriting compliance) ───────────────────────
+  test "google callback REFUSES a brand-new signup without the legal-age attestation" do
+    assert_no_difference "User.count" do
+      get "/auth/google_oauth2/callback"
+    end
+    assert_redirected_to signin_path
+    assert_match(/legal age/i, flash[:alert])
+    assert_nil session[:turf_user_id]
   end
 
   test "google callback logs in existing user when email is verified (OPSEC-005)" do

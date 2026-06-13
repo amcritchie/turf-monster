@@ -32,6 +32,15 @@ module Solana
     # ComputeBudget program id (deterministic).
     COMPUTE_BUDGET_PROGRAM_ID = Keypair.decode_base58("ComputeBudget111111111111111111111111111111")
 
+    # Lighthouse — Phantom's transaction-protection program. On MAINNET (not
+    # devnet, which is why staging never sees it) Phantom may INJECT Lighthouse
+    # assertion instructions into the tx at signing time. Lighthouse
+    # instructions are pure post-state assertions: they can only make the tx
+    # FAIL, never move funds or delegate authority, so allowing them preserves
+    # the C1 cosign-safety model. Without this every protected Phantom signer
+    # is cosign-rejected with "disallowed_program" (hit in prod 2026-06-11).
+    LIGHTHOUSE_PROGRAM_ID = Keypair.decode_base58("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95")
+
     # Priority fee for the Phantom-signed partial TXs (create_contest,
     # enter_contest, set_contest_lock_time/conclusion_time, cancel_contest —
     # everything that routes through `build_partial_signed`).
@@ -303,6 +312,66 @@ module Solana
       signature = client.send_and_confirm(tx.serialize_base64)
 
       { signature: signature, amount: amount_lamports, destination: Keypair.encode_base58(to_bytes) }
+    end
+
+    # --- Offramp send (Coinbase CDP cash-out — docs/CDP_RAMP_INTEGRATION.md §10) ---
+
+    # Build + SIGN (server-side, both signers) the USDC SPL transfer that
+    # fulfills a managed-wallet offramp: user's USDC ATA → the RESOLVED
+    # Coinbase destination token account (Cdp::OfframpDestination — never the
+    # raw to_address). Authority = the user's managed keypair; admin = fee
+    # payer (managed wallets hold no SOL). Carries the same ComputeBudget
+    # priority-fee pair as the Phantom partial TXs (the mainnet tx-landing fix).
+    #
+    # DOES NOT BROADCAST. Returns { wire_base64:, signature: } so the caller
+    # can durably persist the tx signature BEFORE attempting the broadcast —
+    # the verify-before-retry anchor (Cdp::OfframpSendJob: on any timeout or
+    # ambiguous RPC result, check the signature on-chain; never blind-resend).
+    def build_user_usdc_transfer(user_keypair:, destination_token_account:, amount_lamports:)
+      raise ArgumentError, "user_keypair required" unless user_keypair
+      raise ArgumentError, "amount must be positive" unless amount_lamports.to_i.positive?
+
+      admin = Keypair.admin
+      from_ata, _ = Solana::SplToken.find_associated_token_address(
+        user_keypair.public_key_bytes, Config::USDC_MINT
+      )
+
+      tx = build_tx(admin)
+      tx.add_signer(user_keypair)
+      tx.add_instruction(**compute_unit_price_ix(PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS))
+      tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
+      tx.add_instruction(**Solana::SplToken.transfer_instruction(
+        from: from_ata,
+        to: destination_token_account,
+        authority: user_keypair.public_key_bytes,
+        amount: amount_lamports.to_i
+      ))
+
+      wire = tx.serialize
+      { wire_base64: Base64.strict_encode64(wire), signature: extract_tx_signature(wire) }
+    end
+
+    # Phantom flavor for the offramp send: a fully-UNSIGNED single-signer tx —
+    # the user's wallet is BOTH fee payer and transfer authority. Phantom signs
+    # and the client broadcasts (mirroring the lock_contest sign flow), then
+    # POSTs the signature back to /cdp/offramp/sent for verified recording.
+    def build_user_usdc_transfer_unsigned(wallet_address:, destination_token_account:, amount_lamports:)
+      raise ArgumentError, "amount must be positive" unless amount_lamports.to_i.positive?
+
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+      from_ata, _ = Solana::SplToken.find_associated_token_address(wallet_address, Config::USDC_MINT)
+
+      tx = build_tx_unsigned
+      tx.add_instruction(**compute_unit_price_ix(PARTIAL_TX_PRIORITY_FEE_MICROLAMPORTS))
+      tx.add_instruction(**compute_unit_limit_ix(PARTIAL_TX_COMPUTE_UNIT_LIMIT))
+      tx.add_instruction(**Solana::SplToken.transfer_instruction(
+        from: from_ata,
+        to: destination_token_account,
+        authority: wallet_bytes,
+        amount: amount_lamports.to_i
+      ))
+
+      { serialized_tx: tx.serialize_partial_base64(additional_signers: [wallet_bytes]) }
     end
 
     # Fund a user's wallet ATA with USDC.
@@ -1116,11 +1185,21 @@ module Solana
         season_pda:         s_pda
       )
 
-      # Anchor the entry tx on the durable nonce when one is configured (opt-in
-      # via SOLANA_DURABLE_NONCE_PUBKEY) so it survives a slow/flagged-dApp
-      # signing window (the mainnet BlockhashNotFound class of failure). Unset =
-      # recent blockhash, unchanged.
-      dn = durable_nonce_config
+      # ENTRY TXS DO NOT USE THE DURABLE NONCE (mainnet incident 2026-06-11).
+      # Two reasons, both fatal:
+      #   1. A durable-nonce tx is only recognized when advanceNonceAccount is
+      #      instruction 0 — and Phantom INJECTS Lighthouse guard instructions
+      #      at signing time at positions we don't control. When the injection
+      #      lands before the advance, validators treat the nonce value as a
+      #      plain (unknown) blockhash and reject with BlockhashNotFound at
+      #      sendTransaction preflight.
+      #   2. One nonce account anchors ONE in-flight tx at a time — a shared
+      #      operator nonce under concurrent user entries is a contention bug.
+      # Entries re-prepare seconds before signing, so a fresh recent blockhash
+      # (~60-90s validity) comfortably covers the Phantom signing window. The
+      # durable nonce remains for OPERATOR flows (lock-time etc. via
+      # build_partial_signed), where a slow human cosign is the actual problem.
+      dn = nil
 
       serialized =
         if admin_signs
@@ -1473,7 +1552,11 @@ module Solana
     # ── Entry tokens (turf-vault v0.9.0+) ───────────────────────────────────
     # On-chain EntryTokenAccount PDAs per token. Source enum: 0=operator, 1=stripe, 2=moonpay.
 
-    ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2 }.freeze
+    # paypal (3) is Rails-side only for now — the deployed program stores the
+    # source byte unvalidated (turf-vault mint_entry_token.rs assigns it raw),
+    # so no program upgrade is needed; mirror it into state.rs's
+    # entry_token_source mod on the next turf-vault release.
+    ENTRY_TOKEN_SOURCE = { operator: 0, stripe: 1, moonpay: 2, paypal: 3 }.freeze
     ENTRY_TOKEN_LEN = 124 # bytes — 8 disc + 32 owner + 1 source + 64 source_ref + 1 consumed + 9 consumed_at + 8 created_at + 1 bump
 
     def mint_entry_token(wallet_address:, source:, source_ref:)
@@ -1825,6 +1908,7 @@ module Solana
       turf_vault       = @program_id.b
       system_program   = Transaction::SYSTEM_PROGRAM_ID.b   # 32 zero bytes
       compute_budget   = COMPUTE_BUDGET_PROGRAM_ID.b
+      lighthouse       = LIGHTHOUSE_PROGRAM_ID.b
       dn               = durable_nonce_config
       configured_nonce = dn && Keypair.decode_base58(dn.fetch(:pubkey)).b
 
@@ -1866,8 +1950,13 @@ module Solana
           end
         when compute_budget
           # (4) Priority-fee / CU-limit hints — allowed, carry no authority risk.
+        when lighthouse
+          # (5) Phantom-injected Lighthouse protection assertions — allowed.
+          # Pure post-state asserts (the worst they can do is fail the tx);
+          # they cannot transfer funds or grant authority, so they pose no
+          # risk to the admin cosign. See LIGHTHOUSE_PROGRAM_ID.
         else
-          # (5) Anything else — reject.
+          # (6) Anything else — reject.
           cosign_reject!(entry, wallet_address, "disallowed_program: ix #{i} program=#{b58(program_id)}")
         end
       end
@@ -1888,7 +1977,15 @@ module Solana
 
       # Server-side pre-flight. sig_verify:false — both sigs are present now but we
       # don't need the RPC to re-verify; we want program-error + log surfacing.
-      sim = client.simulate_transaction(patched_b64, sig_verify: false)
+      # replace_recent_blockhash:true — entry txs are anchored on the DURABLE
+      # NONCE when SOLANA_DURABLE_NONCE_PUBKEY is set (prod is), and a nonce
+      # value is never in the recent-blockhash queue, so a default simulation
+      # rejects every nonce-anchored tx with "BlockhashNotFound" (prod,
+      # 2026-06-11; devnet has no nonce configured, so staging never saw it).
+      # The RPC requires sigVerify=false alongside replaceRecentBlockhash —
+      # already our setting; the real broadcast still enforces signatures.
+      sim = client.simulate_transaction(patched_b64, sig_verify: false,
+                                        replace_recent_blockhash: true)
       if sim && sim["err"]
         logs = Array(sim["logs"]).last(6).join("\n")
         raise "Entry pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
@@ -2179,6 +2276,15 @@ module Solana
         sleep(tries * 2)
         retry
       end
+    end
+
+    # The cluster's "transaction signature" = the FIRST signature on the wire
+    # (the fee payer's): compact-u16 signature count, then 64-byte sigs.
+    def extract_tx_signature(wire)
+      _count, offset = Transaction.read_compact_u16(wire, 0)
+      sig = wire.byteslice(offset, 64)
+      raise "wire too short to carry a signature" if sig.nil? || sig.bytesize != 64
+      Keypair.encode_base58(sig)
     end
 
     def b(str)

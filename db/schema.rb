@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -64,6 +64,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.string "sent_signature"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "confirmed_at"
+    t.datetime "broadcast_at"
     t.index ["coinbase_transaction_id"], name: "index_cdp_ramp_transactions_on_coinbase_transaction_id", unique: true
     t.index ["partner_user_ref"], name: "index_cdp_ramp_transactions_on_partner_user_ref", unique: true
     t.index ["status", "direction"], name: "index_cdp_ramp_transactions_on_status_and_direction"
@@ -96,6 +98,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "concludes_at"
     t.boolean "onchain_closed", default: false, null: false
     t.boolean "onchain_cancelled", default: false, null: false
+    t.boolean "accepts_usdt", default: false, null: false
     t.index ["game_type"], name: "index_contests_on_game_type"
     t.index ["rank"], name: "index_contests_on_rank"
     t.index ["slate_id"], name: "index_contests_on_slate_id"
@@ -262,6 +265,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "consumed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "age_attested", default: false, null: false
     t.index ["expires_at"], name: "index_magic_links_on_expires_at"
     t.index ["token"], name: "index_magic_links_on_token", unique: true
   end
@@ -302,6 +306,30 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.index ["service", "created_at"], name: "index_outbound_requests_on_service_and_created_at"
     t.index ["source_type", "source_id"], name: "index_outbound_requests_on_source_type_and_source_id"
     t.index ["user_id"], name: "index_outbound_requests_on_user_id", where: "(user_id IS NOT NULL)"
+  end
+
+  create_table "paypal_purchases", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "paypal_order_id"
+    t.string "capture_id"
+    t.string "pack_id", null: false
+    t.integer "quantity", default: 1, null: false
+    t.integer "price_cents", null: false
+    t.string "wallet_address"
+    t.string "contest_slug"
+    t.string "status", default: "pending", null: false
+    t.text "mint_tx_signatures"
+    t.datetime "captured_at"
+    t.datetime "minted_at"
+    t.datetime "refunded_at"
+    t.string "refund_reason"
+    t.string "slug", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["capture_id"], name: "index_paypal_purchases_on_capture_id"
+    t.index ["paypal_order_id"], name: "index_paypal_purchases_on_paypal_order_id", unique: true
+    t.index ["slug"], name: "index_paypal_purchases_on_slug", unique: true
+    t.index ["user_id"], name: "index_paypal_purchases_on_user_id"
   end
 
   create_table "pending_transactions", force: :cascade do |t|
@@ -559,6 +587,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
     t.datetime "first_chat_message_at"
     t.datetime "last_seen_at"
     t.integer "seeds", default: 0, null: false
+    t.datetime "age_attested_at"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["contest_entered"], name: "index_users_on_contest_entered_true", where: "(contest_entered = true)"
     t.index ["email"], name: "index_users_on_email", unique: true, where: "(email IS NOT NULL)"
@@ -589,6 +618,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_10_033637) do
   add_foreign_key "landing_pages", "contests", on_delete: :nullify
   add_foreign_key "messages", "contests"
   add_foreign_key "messages", "users"
+  add_foreign_key "paypal_purchases", "users"
   add_foreign_key "reactions", "messages"
   add_foreign_key "reactions", "users"
   add_foreign_key "season_configs", "contests", column: "main_contest_id", on_delete: :nullify

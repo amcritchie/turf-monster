@@ -7,7 +7,7 @@ class FaucetController < ApplicationController
                                    .limit(10)
                                    .includes(:user)
     # Bottom-CTA target — prefer the admin-set main contest (set via
-    # /admin/site_config), then fall back to the oldest open contest.
+    # /admin/dashboard), then fall back to the oldest open contest.
     @contest = SeasonConfig.main_contest ||
                Contest.where(status: "open").order(created_at: :asc).first
   end
