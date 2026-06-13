@@ -2,22 +2,22 @@
   "ignored_warnings": [
     {
       "warning_type": "Unmaintained Dependency",
-      "warning_code": 121,
-      "fingerprint": "edf687f759ec9765bd5db185dbc615c80af77d6e7e19386fc42934e7a80307af",
-      "check_name": "EOLRuby",
-      "message": "Support for Ruby 3.1.6 ended on 2025-03-31",
-      "file": ".ruby-version",
-      "line": 1,
+      "warning_code": 122,
+      "fingerprint": "21ab0fe00fdd5899ffc405cff75aadb91b805ee996a614f7e27b08a287e9062d",
+      "check_name": "EOLRails",
+      "message": "Support for Rails 7.2.3.1 ends on 2026-08-09",
+      "file": "Gemfile.lock",
+      "line": 291,
       "link": "https://brakemanscanner.org/docs/warning_types/unmaintained_dependency/",
       "code": null,
       "render_path": null,
       "location": null,
       "user_input": null,
-      "confidence": "High",
+      "confidence": "Weak",
       "cwe_id": [
         1104
       ],
-      "note": "Intentional: the app is deliberately on Ruby 3.1.6 for now (smallest change to unblock CI). A move to a supported Ruby (3.3/3.4) is the real fix and is tracked separately; revisit this ignore then."
+      "note": "Deferred, NOT dismissed. The Rails 7.2 series reaches end-of-life on 2026-08-09; bumping the 7.2.x PATCH (e.g. 7.2.3.1 -> 7.2.x) does NOT move that EOL date, so brakeman will keep emitting this advisory no matter the patch level. The real fix is a major upgrade to Rails 8.x, which is tracked separately as a follow-up (open the Rails 8 upgrade issue and reference it here). This ignore keeps scan_ruby green in the interim and MUST be removed as part of that upgrade. Treat it as a live reminder, not a silenced bug."
     }
   ],
   "brakeman_version": "7.1.1"

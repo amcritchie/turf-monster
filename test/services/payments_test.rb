@@ -4,7 +4,11 @@ class PaymentsTest < ActiveSupport::TestCase
   test "defaults to stripe when no provider configured" do
     swap_provider(nil) do
       assert_equal "stripe", Payments.provider
-      assert Payments.stripe?
+      # stripe? ANDs in config.x.stripe_enabled, which is resolved at boot from
+      # ENV["STRIPE_SECRET_KEY"] (config/initializers/stripe.rb). Force it on so
+      # this test exercises the provider-default logic regardless of whether the
+      # ambient env has a Stripe key (it's set via .env locally but absent in CI).
+      swap_stripe_enabled(true) { assert Payments.stripe? }
       refute Payments.paypal?
       refute Payments.none?
     end
@@ -43,6 +47,14 @@ class PaymentsTest < ActiveSupport::TestCase
     yield
   ensure
     Rails.application.config.x.paypal_enabled = original
+  end
+
+  def swap_stripe_enabled(value)
+    original = Rails.application.config.x.stripe_enabled
+    Rails.application.config.x.stripe_enabled = value
+    yield
+  ensure
+    Rails.application.config.x.stripe_enabled = original
   end
 
   def swap_provider(value)

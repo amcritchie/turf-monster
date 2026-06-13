@@ -9,7 +9,7 @@ class CreateEmailDeliveries < ActiveRecord::Migration[7.2]
       t.jsonb   :kwargs, null: false, default: {}   # ActiveJob-serialized keyword args
       t.boolean :sent,   null: false, default: false
       t.datetime :sent_at
-      t.text    :error
+      t.text :error
       t.references :user, foreign_key: true         # recipient, when known
 
       t.timestamps

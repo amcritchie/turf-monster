@@ -58,12 +58,14 @@ test.describe("Geo Settings", () => {
     await page.goto("/admin/geo");
     await page.getByRole("checkbox", { name: "Enable Geo-Blocking" }).check();
     await page.locator('input[value="Save Settings"]').click();
-    await page.waitForLoadState("networkidle");
+    // Web-first assertion replaces waitForLoadState("networkidle"): the navbar
+    // hydrates on every page load (refreshSession + ActionCable), so the network
+    // is never reliably idle and networkidle flakes under shard load. toContainText
+    // auto-polls through the post-redirect navigation until the flash appears.
     await expect(page.locator("body")).toContainText("Geo settings updated");
 
     // Simulate WA state — click the .btn on the geo page (not the navbar dropdown)
     await page.locator("button.btn-outline:has-text('Simulate WA')").click();
-    await page.waitForLoadState("networkidle");
     await expect(page.locator("body")).toContainText("Simulating WA");
 
     // Try to toggle a selection — should be blocked (geo-restricted action)
@@ -74,15 +76,17 @@ test.describe("Geo Settings", () => {
     });
     // The geo block is enforced on toggle_selection/enter — verified by hold validation in other test
 
-    // Clean up: clear geo override
+    // Clean up: clear geo override — assert the flash so the cleared state lands
+    // before teardown (GeoSetting is global; reseed does not reset it, so an
+    // un-awaited write here leaks geo-blocking into later specs).
     await page.goto("/admin/geo");
     await page.locator("button.btn-danger:has-text('Clear GEO Override')").click();
-    await page.waitForLoadState("networkidle");
+    await expect(page.locator("body")).toContainText("GEO override cleared");
 
-    // Disable geoblocking
+    // Disable geoblocking — assert the flash so the DB write completes deterministically.
     await page.goto("/admin/geo");
     await page.getByRole("checkbox", { name: "Enable Geo-Blocking" }).uncheck();
     await page.locator('input[value="Save Settings"]').click();
-    await page.waitForLoadState("networkidle");
+    await expect(page.locator("body")).toContainText("Geo settings updated");
   });
 });
