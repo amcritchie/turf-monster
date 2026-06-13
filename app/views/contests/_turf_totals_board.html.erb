@@ -305,6 +305,12 @@ window.selectionBoard = function() {
           sessionStorage.removeItem('pendingAuthStep');
           if (step && step.contestSlug === this.contestId) {
             if (step.step === 'tokens') {
+              // Post-signup pack-picker resume — deliberately STAYS the Get
+              // Entry Tokens picker (not the Top Up Wallet modal). This restores
+              // the buy-tokens step the user was on through the signup reload,
+              // not the in-entry funds wall (that's the 'no_tokens' blocker +
+              // its chain-layer twin, both rerouted to showWalletTopup).
+              //
               // If the magic-link welcome modal is showing (flag set by the
               // layout when flash[:magic_link_welcome] is present), give it its
               // ~3s success beat THEN swap to the tokens picker. Otherwise
@@ -627,7 +633,10 @@ window.selectionBoard = function() {
       switch (blocker.reason) {
         case 'not_logged_in':        this.showLoginModal(); break;
         case 'age_required':         this.showAgeVerifyModal(); break;
-        case 'no_tokens':            this.showTokensPanel(); break;
+        // Funds-needed entry wall: the Coinbase-forward Top Up Wallet modal is
+        // now the FIRST modal here (was the Get Entry Tokens pack picker). The
+        // picker stays reachable via the hub's "More ways to add funds" rail.
+        case 'no_tokens':            this.showWalletTopup(); break;
         case 'insufficient_balance': this.showInsufficientBalanceModal(blocker); break;
         default:                     this.resetHoldButtons();
       }
@@ -886,6 +895,26 @@ window.selectionBoard = function() {
         s.swap('auth', props);
       } else {
         s.open('auth', props);
+      }
+    },
+
+    // Open (or swap into) the Coinbase-forward Top Up Wallet modal — the FIRST
+    // funds modal a logged-in player sees at the entry blocker when they lack
+    // funds (replaces the pack picker at that trigger; showTokensPanel above is
+    // still the picker, reached via the hub's Stripe card + the post-signup
+    // resume). wallet-topup is its OWN modal id, so unlike showTokensPanel
+    // (which advance()s WITHIN the auth wizard) the choice is open-vs-swap:
+    //   - any modal currently open (auth wizard, magic-link welcome beat) →
+    //     swap() runs the host's cross-modal directional slide.
+    //   - cold board (no modal open) → open() plays the fresh mount.
+    showWalletTopup() {
+      this.profileModal = false;
+      var s   = Alpine.store('modals');
+      var cur = s.current();
+      if (cur && cur.id) {
+        s.swap('wallet-topup', {});
+      } else {
+        s.open('wallet-topup', { enterAnim: 'shake' });
       }
     },
 
@@ -1374,13 +1403,16 @@ window.selectionBoard = function() {
           } else if (this._handleBlockerResponse(data)) {
             // Layer 2 — handled by _handleBlockerResponse.
           } else if (/entry token/i.test(data.error || '')) {
-            // Defense-in-depth — older string-match for the "no tokens"
-            // raise from the server. Kept so a deploy of the controller
-            // ahead of the interpreter doesn't lose the buy-tokens panel.
+            // Defense-in-depth — older string-match for the "no tokens" raise
+            // from the server (the chain-layer twin of the 'no_tokens' eligibility
+            // blocker). Routes to the same Top Up Wallet modal so the funds-needed
+            // UX is identical whether the wall is caught pre-flight or surfaced
+            // from the server. Kept so a deploy of the controller ahead of the
+            // interpreter doesn't lose the funds panel.
             if (Alpine.store('solanaModal').visible) Alpine.store('solanaModal').close();
             this.resetHoldButtons();
             this.submitting = false;
-            this.showTokensPanel();
+            this.showWalletTopup();
           } else {
             if (Alpine.store('solanaModal').visible) {
               Alpine.store('solanaModal').error(data.error || 'Something went wrong');

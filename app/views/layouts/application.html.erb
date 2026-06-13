@@ -859,6 +859,25 @@
       <template x-if="$store.modals.current().id === 'it-begins'">
         <%= render "modals/it_begins" %>
       </template>
+      <%# Add Funds hub — rail picker (Coinbase / PayPal / Venmo / Stripe)
+          reached by swap() from the Get Entry Tokens picker. Registered
+          ungated (like 'auth', which opens it) so an in-session signup that
+          rendered the layout while logged out can still reach it; each rail
+          self-gates via onramp_rail_visible?. The Coinbase rail hands off to
+          cdp-ramp (registered under logged_in? + ENABLE_CDP_RAMP below). %>
+      <template x-if="$store.modals.current().id === 'onramp-hub'">
+        <%= render "modals/onramp_hub" %>
+      </template>
+      <%# Top Up Wallet — the Coinbase-forward FIRST funds modal at the entry
+          blocker (selectionBoard#showWalletTopup), replacing the pack picker at
+          that trigger. Registered ungated alongside onramp-hub (which it links
+          into) for the same reason: it can appear right after an in-session
+          signup where the server-rendered logged_in? was still false. The
+          Coinbase CTA hands off to cdp-ramp (registered under logged_in? +
+          ENABLE_CDP_RAMP below). %>
+      <template x-if="$store.modals.current().id === 'wallet-topup'">
+        <%= render "modals/wallet_topup" %>
+      </template>
       <% if logged_in? %>
         <template x-if="$store.modals.current().id === 'username'">
           <%= render "modals/username" %>
