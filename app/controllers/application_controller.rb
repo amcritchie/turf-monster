@@ -295,6 +295,11 @@ class ApplicationController < ActionController::Base
       usdcCents:       wallet_field_cents(:usdc),
       usdtCents:       wallet_field_cents(:usdt),
       tokensAvailable: (current_user&.entry_token_balance.to_i rescue 0),
+      # ENABLE_WEB2_USDC_ENTRY kill-switch — eligibilityBlocker reads this to
+      # decide whether a web2 user's USDC counts as a funding method (token-first,
+      # then USDC). Static per render (the flag can't change mid-session), so
+      # refreshSession/refreshBalance never touch it.
+      web2UsdcEntry:   AppFlags.web2_usdc_entry?,
       # Entry-time age gate (ENABLE_AGE_GATE). eligibilityBlocker reads these
       # synchronously at hold-time and pops the DOB modal BEFORE the tokens /
       # balance check when the gate is on and this user hasn't verified yet.

@@ -308,7 +308,7 @@ window.selectionBoard = function() {
               // Post-signup pack-picker resume — deliberately STAYS the Get
               // Entry Tokens picker (not the Top Up Wallet modal). This restores
               // the buy-tokens step the user was on through the signup reload,
-              // not the in-entry funds wall (that's the 'no_tokens' blocker +
+              // not the in-entry funds wall (that's the 'no_funding' blocker +
               // its chain-layer twin, both rerouted to showWalletTopup).
               //
               // If the magic-link welcome modal is showing (flag set by the
@@ -636,7 +636,7 @@ window.selectionBoard = function() {
         // Funds-needed entry wall: the Coinbase-forward Top Up Wallet modal is
         // now the FIRST modal here (was the Get Entry Tokens pack picker). The
         // picker stays reachable via the hub's "More ways to add funds" rail.
-        case 'no_tokens':            this.showWalletTopup(); break;
+        case 'no_funding':           this.showWalletTopup(); break;
         case 'insufficient_balance': this.showInsufficientBalanceModal(blocker); break;
         default:                     this.resetHoldButtons();
       }
@@ -1404,7 +1404,7 @@ window.selectionBoard = function() {
             // Layer 2 — handled by _handleBlockerResponse.
           } else if (/entry token/i.test(data.error || '')) {
             // Defense-in-depth — older string-match for the "no tokens" raise
-            // from the server (the chain-layer twin of the 'no_tokens' eligibility
+            // from the server (the chain-layer twin of the 'no_funding' eligibility
             // blocker). Routes to the same Top Up Wallet modal so the funds-needed
             // UX is identical whether the wall is caught pre-flight or surfaced
             // from the server. Kept so a deploy of the controller ahead of the

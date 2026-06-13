@@ -530,63 +530,12 @@ class ContestsController < ApplicationController
           raise "This contest isn't on-chain yet — paid entry is unavailable."
         end
 
-        if @contest.onchain? && @contest.entry_fee_cents > 0 && current_user.managed_wallet? && !current_user.phantom_wallet?
-          # Web2 / managed wallet: consume an on-chain EntryTokenAccount via the new
-          # enter_contest_with_token instruction. Atomic — entry creation + token consume
-          # + seeds +65 happen in one TX. No USDC transfer (token IS the payment).
-          token = current_user.next_unconsumed_entry_token
-          raise "No entry tokens. Buy at /tokens/buy" unless token
-
-          vault = Solana::Vault.new
-          # Probe the chain for a free entry slot (handles orphaned PDAs left by
-          # a contest Reset). See Entry#assign_onchain_entry_number!.
-          entry.assign_onchain_entry_number!(current_user.solana_address, vault)
-
-          vault.ensure_user_account(current_user.solana_address, username: current_user.username) if current_user.solana_connected?
-          # OPSEC-004: pass the managed wallet's keypair — turf-vault v0.12.0
-          # requires the token owner to sign the consume.
-          result = vault.enter_contest_with_token(
-            current_user.solana_address,
-            @contest.slug,
-            entry.entry_number,
-            token[:pda],
-            user_keypair: current_user.solana_keypair,
-            season_id: @contest.season_id
-          )
-          tx_signature = result[:signature]
-          onchain_entry_id = result[:entry_pda]
-          # The on-chain EntryTokenAccount.consumed flag just flipped to true.
-          # Bust the 60s entry-tokens cache so a follow-up entry within the
-          # same TTL doesn't re-pick this token and trip 0x177f
-          # (EntryTokenAlreadyConsumed) when the chain rejects the consume.
-          current_user.bust_entry_tokens_cache!
-          token_consumed = true
-        elsif @contest.onchain? && !onchain_session?
-          # Offchain session entering onchain contest: blocking vault entry.
-          # v0.16 unified enter_contest requires the user's keypair to sign
-          # the SPL transfer; managed wallets supply it from the encrypted
-          # `solana_keypair` column. Default to currency_idx 0 (USDC) for
-          # Phase 1 — currency picker is a Phase 2 task.
-          raise "Managed wallet missing keypair (cannot sign entry)" unless current_user.solana_keypair
-
-          vault = Solana::Vault.new
-          # Probe the chain for a free entry slot (handles orphaned PDAs left by
-          # a contest Reset). See Entry#assign_onchain_entry_number!.
-          entry.assign_onchain_entry_number!(current_user.solana_address, vault)
-
-          vault.ensure_user_account(current_user.solana_address, username: current_user.username) if current_user.solana_connected?
-          vault.ensure_ata(current_user.solana_address, mint: Solana::Config::USDC_MINT)
-
-          result = vault.enter_contest(
-            current_user.solana_address,
-            @contest.slug,
-            entry.entry_number,
-            currency_idx: 0,
-            user_keypair: current_user.solana_keypair,
-            season_id: @contest.season_id
-          )
-          tx_signature = result[:signature]
-          onchain_entry_id = result[:entry_pda]
+        if @contest.onchain? && @contest.entry_fee_cents > 0 && !onchain_session?
+          # Web2 / managed-wallet (server-signed) entry funding. Unified priority
+          # (operator spec 2026-06-13): entry token first, then USDC (flag-gated),
+          # else block. web3 (Phantom) sessions never reach here — they fund via
+          # prepare_entry / confirm_onchain_entry. See #resolve_web2_entry_funding!.
+          tx_signature, onchain_entry_id, token_consumed = resolve_web2_entry_funding!(entry)
         end
       end
 
@@ -1360,6 +1309,62 @@ class ContestsController < ApplicationController
   # stand (the durable onchain_tx_signature keeps the row recoverable). A free /
   # off-chain entry has nothing to recover, so its confirm! failure re-raises as
   # a normal error. (Incident 2026-06-08.)
+  # Web2 / managed-wallet entry funding — runs INSIDE #enter's @contest.with_lock
+  # (after entry.assert_enterable!) for a non-onchain session on a paid on-chain
+  # contest. Unified funding priority (operator spec 2026-06-13):
+  #   1. ENTRY TOKEN (incl. seed-earned free entries) — atomic on-chain consume
+  #      via enter_contest_with_token (no USDC transfer; token IS the payment).
+  #   2. USDC, only when ENABLE_WEB2_USDC_ENTRY is on — the server signs the
+  #      existing enter_contest (USDC) instruction with the managed keypair
+  #      (Solana::Vault#enter_contest_with_usdc). This is what lets a USDC
+  #      contest payout fund the next entry.
+  #   3. else block ("No entry tokens") — flag-off token-only fallback (today's
+  #      behavior). Solana::ErrorInterpreter maps the raise to the no_funding
+  #      blocker so the board opens the Top Up Wallet modal.
+  # USDT is deliberately NOT offered to web2 (payouts are USDC).
+  #
+  # Everything derives from the managed (web2) address so a managed+phantom
+  # combo account signs with — and spends from — the custodial wallet the server
+  # holds, never the web3 address (which #solana_address would otherwise prefer
+  # and desync from the keypair). Returns [tx_signature, onchain_entry_id,
+  # token_consumed]; the IRREVERSIBLE consume/transfer is durably captured by
+  # the caller immediately after with_lock (incident 2026-06-08).
+  def resolve_web2_entry_funding!(entry)
+    address = current_user.web2_solana_address
+    raise "Managed wallet missing keypair (cannot sign entry)" if address.blank?
+
+    vault = Solana::Vault.new
+    # Probe the chain for a free entry slot (handles orphaned PDAs left by a
+    # contest Reset). See Entry#assign_onchain_entry_number!.
+    entry.assign_onchain_entry_number!(address, vault)
+
+    token = current_user.next_unconsumed_entry_token
+    if token
+      vault.ensure_user_account(address, username: current_user.username) if current_user.solana_connected?
+      # OPSEC-004: the token owner (managed keypair) must sign the consume.
+      result = vault.enter_contest_with_token(
+        address, @contest.slug, entry.entry_number, token[:pda],
+        user_keypair: current_user.solana_keypair, season_id: @contest.season_id
+      )
+      # The on-chain EntryTokenAccount.consumed flag just flipped to true. Bust
+      # the 60s entry-tokens cache so a follow-up entry within the same TTL
+      # doesn't re-pick this token and trip 0x177f (EntryTokenAlreadyConsumed).
+      current_user.bust_entry_tokens_cache!
+      [result[:signature], result[:entry_pda], true]
+    elsif AppFlags.web2_usdc_entry?
+      # enter_contest_with_usdc encapsulates the web2-address/keypair/username
+      # resolution + ensure_user_account + ensure_ata(USDC) preamble, so the
+      # signer/ATA-desync footgun can't reach the call site. Atomic SPL transfer
+      # + entry-PDA init — an underfunded ATA fails the whole TX (no strand).
+      result = vault.enter_contest_with_usdc(
+        user: current_user, contest: @contest, entry_num: entry.entry_number
+      )
+      [result[:signature], result[:entry_pda], false]
+    else
+      raise "No entry tokens. Buy at /tokens/buy"
+    end
+  end
+
   def finalize_managed_entry!(entry, tx_signature:, onchain_entry_id:)
     entry.confirm!(tx_signature: tx_signature, onchain_entry_id: onchain_entry_id)
   rescue StandardError => e
@@ -1444,7 +1449,10 @@ class ContestsController < ApplicationController
     # endpoint records failures to ErrorLog.)
     capture_unlogged(exception, parent: @contest)
 
-    result = Solana::ErrorInterpreter.interpret(exception, contest: @contest)
+    # Thread the viewer's wallet mode so a web2/managed USDC entry that 6002s
+    # on-chain (underfunded ATA) routes to the no_funding/web2 Top Up modal, not
+    # the web3 deposit/currency picker. web3 (Phantom) sessions stay unchanged.
+    result = Solana::ErrorInterpreter.interpret(exception, contest: @contest, mode: wallet_context.mode)
     Rails.logger.error("[entry][escalate] #{exception.class}: #{exception.message}") if result[:log]
 
     if request.format.json?

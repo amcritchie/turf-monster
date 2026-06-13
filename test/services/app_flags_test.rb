@@ -43,4 +43,19 @@ class AppFlagsTest < ActiveSupport::TestCase
     with_env("1", var: "ENABLE_CDP_RAMP")      { assert_not AppFlags.cdp_ramp? }
     with_env("", var: "ENABLE_CDP_RAMP")       { assert_not AppFlags.cdp_ramp? }
   end
+
+  # ENABLE_WEB2_USDC_ENTRY is a KILL-SWITCH: ON unless explicitly "false".
+  # Opposite default of the opt-in flags above.
+  test "web2_usdc_entry? defaults ON when unset (kill-switch)" do
+    with_env(nil, var: "ENABLE_WEB2_USDC_ENTRY") { assert AppFlags.web2_usdc_entry? }
+  end
+
+  test "web2_usdc_entry? is on for everything except a 'false' value" do
+    with_env("false", var: "ENABLE_WEB2_USDC_ENTRY") { assert_not AppFlags.web2_usdc_entry? }
+    with_env("FALSE", var: "ENABLE_WEB2_USDC_ENTRY") { assert_not AppFlags.web2_usdc_entry? }
+    with_env(" false ", var: "ENABLE_WEB2_USDC_ENTRY") { assert_not AppFlags.web2_usdc_entry? }
+    with_env("true", var: "ENABLE_WEB2_USDC_ENTRY")  { assert AppFlags.web2_usdc_entry? }
+    with_env("1", var: "ENABLE_WEB2_USDC_ENTRY")     { assert AppFlags.web2_usdc_entry? }
+    with_env("", var: "ENABLE_WEB2_USDC_ENTRY")      { assert AppFlags.web2_usdc_entry? }
+  end
 end

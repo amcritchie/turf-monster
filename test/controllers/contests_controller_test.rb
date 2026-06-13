@@ -388,7 +388,11 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert entry.reload.active?
   end
 
-  test "enter blocks managed-wallet user with no tokens via 'No entry tokens' error" do
+  # Unified funding (operator spec 2026-06-13): a managed-wallet user with NO
+  # token but ENABLE_WEB2_USDC_ENTRY on now funds the entry with USDC (server
+  # signs enter_contest via Solana::Vault#enter_contest_with_usdc) instead of
+  # being walled. USDT is never offered to web2 (currency_idx hard-pinned 0).
+  test "enter funds a tokenless managed-wallet user via vault.enter_contest_with_usdc when ENABLE_WEB2_USDC_ENTRY is on" do
     @user.update!(
       web3_solana_address: nil,
       web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
@@ -402,12 +406,51 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
 
     vault = FakeVault.new(tokens: [])
-    Solana::Vault.stub :new, vault do
-      post enter_contest_path(@contest), as: :json
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert json["success"], "expected USDC-funded entry success, got: #{json["error"]}"
+    refute json["token_consumed"], "a USDC entry must NOT report a token consume"
+    assert_equal 1, vault.enter_calls.length
+    assert_equal :enter_contest_with_usdc, vault.enter_calls.first[:method]
+    assert_equal 0, vault.enter_calls.first[:currency_idx], "web2 entry must hard-pin USDC (idx 0), never USDT"
+    assert_equal @user.web2_solana_address, vault.enter_calls.first[:wallet]
+    assert entry.reload.active?
+  end
+
+  # Kill-switch off → web2 reverts to TOKEN-ONLY (today's pre-unification
+  # behavior): a tokenless managed user is blocked with the "No entry tokens"
+  # raise, which Solana::ErrorInterpreter maps to the no_funding blocker.
+  test "enter blocks a tokenless managed-wallet user when ENABLE_WEB2_USDC_ENTRY is off" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: [])
+    AppFlags.stub :web2_usdc_entry?, false do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
     end
 
     assert_response :unprocessable_entity
-    assert_match(/No entry tokens/, JSON.parse(response.body)["error"])
+    body = JSON.parse(response.body)
+    assert_match(/No entry tokens/, body["error"])
+    assert_equal "no_funding", body.dig("blocker", "reason")
+    assert_equal "web2",       body.dig("blocker", "mode")
     assert entry.reload.cart?
     assert_equal 0, vault.enter_calls.length
   end

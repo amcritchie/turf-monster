@@ -45,4 +45,18 @@ module AppFlags
   def self.age_gate?
     ENV["ENABLE_AGE_GATE"].to_s.strip.downcase == "true"
   end
+
+  # True when a web2 / managed-wallet user with enough USDC can fund a contest
+  # entry directly — the server signs the EXISTING on-chain enter_contest (USDC)
+  # instruction with the user's custodial keypair (Solana::Vault#enter_contest_with_usdc).
+  # This is what lets a USDC contest payout fund the next entry.
+  #
+  # DEFAULT ON — unlike every other flag here this is an operator KILL-SWITCH,
+  # not an opt-in: web2 USDC entry is live unless ENABLE_WEB2_USDC_ENTRY is set
+  # to "false", which reverts web2 to TOKEN-ONLY (today's pre-unification
+  # behavior). web3 (Phantom) USDC/USDT entry is unaffected either way; USDT is
+  # never offered to web2 (payouts are USDC, so managed users won't hold USDT).
+  def self.web2_usdc_entry?
+    ENV.fetch("ENABLE_WEB2_USDC_ENTRY", "true").to_s.strip.downcase != "false"
+  end
 end

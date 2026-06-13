@@ -89,12 +89,12 @@ class WalletTopupTest < ActionDispatch::IntegrationTest
     body = response.body
     # The showWalletTopup method exists on the board component.
     assert_includes body, "showWalletTopup()"
-    # The 'no_tokens' eligibility-blocker case now opens the Top Up Wallet modal
-    # (was showTokensPanel — the pack picker).
-    assert_match(/case 'no_tokens':\s+this\.showWalletTopup\(\);/, body,
-                 "the no_tokens entry wall must reroute to showWalletTopup")
-    refute_match(/case 'no_tokens':\s+this\.showTokensPanel\(\);/, body,
-                 "the no_tokens entry wall must no longer open the pack picker")
+    # The 'no_funding' eligibility-blocker case (renamed from 'no_tokens' in the
+    # unified-funding refactor) opens the Top Up Wallet modal.
+    assert_match(/case 'no_funding':\s+this\.showWalletTopup\(\);/, body,
+                 "the no_funding entry wall must reroute to showWalletTopup")
+    refute_match(/case 'no_tokens':/, body,
+                 "the legacy no_tokens blocker case must be gone (renamed no_funding)")
   end
 
   test "the board keeps showTokensPanel for the post-signup pack-picker resume" do
