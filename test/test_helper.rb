@@ -80,6 +80,13 @@ class ActionDispatch::IntegrationTest
   setup do
     OmniAuth.config.test_mode = true
     OmniAuth.config.mock_auth.clear
+    # ENABLE_AGE_GATE leaks from the operator's .env into the test env via
+    # dotenv-rails, so a developer dogfooding the gate (flag on locally) would
+    # see entry tests 422 with age_required while CI (clean env) stays green.
+    # Force the gate OFF as the per-test baseline — matching CI — so the suite
+    # is hermetic against ambient .env. The age-gate tests opt back IN
+    # explicitly via with_age_gate (test/controllers/contests_age_gate_test.rb).
+    ENV.delete("ENABLE_AGE_GATE")
   end
 
   # Passwordless: email auth is magic-link only. Logging in = mint a magic-link
