@@ -22,6 +22,11 @@
     early_action       - JS expression executed early (for Web3 users) (default: none)
     early_action_at    - ms delay before firing early action (default: 1500)
     early_action_guard - JS expression that must be truthy for early action (default: none)
+    on_hold_start      - JS expression executed the instant a hold BEGINS, after
+                         the guard/submitting checks pass (default: none). Used to
+                         kick off work that should run in parallel with the hold
+                         (e.g. the board's authoritative funding pre-check fetch,
+                         resolved by the time the hold completes ~2s later).
 %>
 <% default_text       ||= "Hold to Confirm" %>
 <% hold_text          ||= "Almost there..." %>
@@ -36,11 +41,13 @@
 <% early_action       ||= nil %>
 <% early_action_at    ||= 1500 %>
 <% early_action_guard ||= nil %>
+<% on_hold_start      ||= nil %>
 
 <button class="hold-btn"
         data-hold-id="<%= hold_id %>"
         data-duration="<%= duration %>"
         <% if guard              %>data-guard="<%= guard %>"<% end %>
+        <% if on_hold_start      %>data-on-hold-start="<%= on_hold_start %>"<% end %>
         <% if on_success         %>data-on-success="<%= on_success %>"<% end %>
         <% if validate           %>data-validate="<%= validate %>" data-validate-at="<%= validate_at %>"<% end %>
         <% if early_action       %>data-early-action="<%= early_action %>" data-early-action-at="<%= early_action_at %>"<% end %>
@@ -200,6 +207,21 @@
         }
       } else {
         console.warn('[hold:' + holdId + '] no [x-data] ancestor — evalIn calls will be no-ops');
+      }
+
+      // Hold-START hook (2026-06-13). Fires the instant a hold BEGINS — the
+      // guard + submitting checks above have already passed, so this only runs
+      // for a hold that is actually going to count down. Runs in PARALLEL with
+      // the 2s hold; the board uses it to kick off the authoritative funding
+      // pre-check fetch (beginFundingCheck) so the result is resolved by the
+      // time on_success fires. Wrapped — a throwing hook must never abort the
+      // hold itself.
+      if (scope) {
+        var onHoldStart = el.dataset.onHoldStart;
+        if (onHoldStart) {
+          try { evalIn(scope, onHoldStart); }
+          catch (e) { console.error('[hold:' + holdId + '] on_hold_start threw:', e); }
+        }
       }
 
       var id = el.dataset.holdId || 'hold';

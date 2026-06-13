@@ -163,4 +163,79 @@ class WalletTopupTest < ActionDispatch::IntegrationTest
     assert_includes body, "showTokensPanel()"
     assert_includes body, "board.showTokensPanel();"
   end
+
+  # --- hold-window funding pre-check wiring (render level; e2e gap noted above) ---
+  #
+  # The fix for the fresh-managed-wallet "0x1" sim error: the 2s hold's START
+  # kicks off an authoritative server funding check (POST check_funding) that
+  # confirmEntry awaits at hold-COMPLETE, rerouting an unfundable web2 entry to
+  # the Top Up Wallet instead of a doomed on-chain attempt. These assert the
+  # client wiring at render level; the live hold-window race is a tracked
+  # Playwright e2e gap (same precedent as the on-chain success-modal coverage).
+
+  test "both board hold buttons fire the funding pre-check on hold-start" do
+    get contest_path(contests(:one))
+    assert_response :success
+    body = response.body
+    # The shared hold_button renders on_hold_start as data-on-hold-start, and
+    # both the desktop + mobile board buttons dispatch the hold-funding-check
+    # window event (scope-independent, like hold-confirm-entry). The attribute
+    # value's single quotes are HTML-escaped on render (&#39;), exactly like the
+    # sibling data-on-success.
+    assert_equal 2, body.scan("data-on-hold-start=").size,
+                 "exactly the desktop + mobile board hold buttons carry on_hold_start"
+    assert_includes body,
+                    %(data-on-hold-start="window.dispatchEvent(new CustomEvent(&#39;hold-funding-check&#39;))"),
+                    "the board hold buttons must dispatch hold-funding-check on hold-start"
+  end
+
+  test "the board listens for hold-funding-check and kicks off beginFundingCheck" do
+    get contest_path(contests(:one))
+    assert_response :success
+    body = response.body
+    assert_includes body, "window.addEventListener('hold-funding-check', function () {",
+                     "the board must register a hold-funding-check listener"
+    assert_match(/hold-funding-check.*\n.*board\.beginFundingCheck\(\)/, body,
+                 "the listener must call beginFundingCheck()")
+  end
+
+  test "beginFundingCheck is web2-scoped and POSTs the authoritative check_funding endpoint" do
+    get contest_path(contests(:one))
+    assert_response :success
+    body = response.body
+    assert_includes body, "beginFundingCheck() {"
+    # web3 is left alone (fail-open-on-flake preserved) — the check only fires
+    # for a logged-in managed (web2) session.
+    assert_includes body, "if (sess.mode !== 'web2') return;"
+    # Fresh authoritative read against Carl's endpoint (relative path, contest-scoped).
+    assert_includes body, "'/contests/' + this.contestId + '/check_funding'"
+    # Stashed unawaited on the component for confirmEntry to consume.
+    assert_includes body, "this._fundingCheck = window.authedFetch("
+  end
+
+  test "confirmEntry awaits the hold-window check and reroutes an unfundable web2 entry to Top Up Wallet" do
+    get contest_path(contests(:one))
+    assert_response :success
+    body = response.body
+    # The gate consumes the pre-check (single-use, freshness-bounded) and only a
+    # DEFINITIVE fundable:false aborts into showWalletTopup() — fail-open otherwise.
+    assert_includes body, "if (this._fundingCheck && (Date.now() - (this._fundingCheckAt || 0)) < 8000) {"
+    assert_includes body, "this._fundingCheck = null;   // single-use — consume it for this attempt"
+    assert_match(/if \(funding && funding\.fundable === false\) \{\s*\n\s*this\.submitting = false;\s*\n\s*this\.resetHoldButtons\(\);\s*\n\s*this\.showWalletTopup\(\);/, body,
+                 "an unfundable hold-window verdict must abort the entry into the Top Up Wallet")
+  end
+
+  test "the eligibilityBlocker keeps web2 null-usdcCents fail-open and documents the hold-window layering" do
+    # eligibilityBlocker ships as an importmap module (solana_utils.js), not
+    # inlined in the page, so assert against the source. The synchronous web2
+    # blocker must STILL fail OPEN on null usdcCents (a funded user with a cold
+    # cache is never false-blocked); the genuinely-unfunded null case is the
+    # hold-window server check's job — the comment must name it so a future edit
+    # doesn't "fix" the fail-open and reintroduce the false-block.
+    src = Rails.root.join("app/javascript/solana_utils.js").read
+    assert_includes src, "if (session.usdcCents == null) return null;",
+                    "web2 null-usdcCents must keep failing OPEN in the synchronous blocker"
+    assert_match(/AUTHORITATIVE hold-window server check/, src,
+                 "eligibilityBlocker must document that the hold-window check covers the null-balance case")
+  end
 end

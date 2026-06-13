@@ -285,6 +285,18 @@ window.selectionBoard = function() {
           .catch(function (e) { console.error('[hold-confirm-entry] confirmEntry rejected:', e); });
       });
 
+      // Hold-START funding pre-check (2026-06-13). The shared hold_button
+      // fires this the instant a hold BEGINS (on_hold_start), regardless of
+      // DOM scope — same window-event channel as hold-confirm-entry so the
+      // in-modal hold buttons reach the board too. beginFundingCheck kicks
+      // off a FRESH authoritative server balance read in PARALLEL with the
+      // ~2s hold; confirmEntry() awaits the resolved verdict at hold-complete
+      // (see the funding-gate there). Read-only — never touches the chain.
+      window.addEventListener('hold-funding-check', function () {
+        try { board.beginFundingCheck(); }
+        catch (e) { console.error('[hold-funding-check] beginFundingCheck threw:', e); }
+      });
+
       // Age gate (ENABLE_AGE_GATE): the DOB modal fired 'age-verified' after a
       // successful verify (it already flipped $store.session.ageVerified). Pick
       // the entry back up so the user flows straight to the next gate / entry
@@ -1098,6 +1110,46 @@ window.selectionBoard = function() {
       });
     },
 
+    // Authoritative hold-window funding pre-check (2026-06-13). Fired the
+    // instant a hold STARTS (shared/_hold_button on_hold_start → the board's
+    // 'hold-funding-check' listener), so the FRESH server balance read runs in
+    // PARALLEL and is resolved by the time the hold completes ~2s later.
+    // confirmEntry()'s funding-gate awaits this.
+    //
+    // SCOPE: managed (web2) sessions ONLY. This is the gate for the funds wall
+    // the synchronous eligibilityBlocker CANNOT catch — a brand-new managed
+    // wallet has no USDC ATA yet, so $store.session.usdcCents is null (unknown,
+    // not 0) and the sync blocker deliberately fails OPEN (it must not false-
+    // block a funded user whose navbar cache is merely cold). web3 is left
+    // alone on purpose: it keeps its sync-blocker fail-open + on-chain
+    // authority, and the endpoint is fail-CLOSED on an RPC flake — gating web3
+    // on it would wrongly block a funded Phantom user (regressing fail-open-on-
+    // flake). The server safety-net (resolve_web2_entry_funding!) is web2-only
+    // too, so the two layers line up.
+    beginFundingCheck() {
+      // Reset every hold-start so a stale promise from a released-early hold
+      // can't leak into a later submit; _fundingCheckAt below is the freshness
+      // belt for the cross-flow case (release → buy tokens → in-modal hold).
+      this._fundingCheck = null;
+      this._fundingCheckAt = 0;
+      var sess = Alpine.store('session');
+      if (!sess || !sess.loggedIn) return;        // guest → the login gate handles it
+      if (sess.mode !== 'web2') return;            // web3 unaffected (fail-open preserved)
+      if ((this.entryFeeCents | 0) <= 0) return;   // free contest — nothing to fund
+      if (typeof window.authedFetch !== 'function') return;
+      this._fundingCheckAt = Date.now();
+      this._fundingCheck = window.authedFetch('/contests/' + this.contestId + '/check_funding', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': this.csrfToken, 'Content-Type': 'application/json', 'Accept': 'application/json' }
+      }).then(function (resp) {
+        // 401 (authedFetch surfaced the login modal → null) or non-OK → treat
+        // as "unknown": confirmEntry proceeds and the server safety-net catches
+        // a genuinely unfunded entry. Never block on an inconclusive read.
+        if (!resp || !resp.ok) return null;
+        return resp.json();
+      }).catch(function () { return null; });       // network error → unknown → proceed
+    },
+
     async runHoldValidations() {
       try {
         var res = await fetch('/geo/check', { headers: { 'Accept': 'application/json' } });
@@ -1167,6 +1219,41 @@ window.selectionBoard = function() {
       if (blocker) {
         this.showEligibilityBlockerModal(blocker);
         return;
+      }
+
+      // Hold-window funding gate (2026-06-13). beginFundingCheck() — fired at
+      // hold-START — kicked off a FRESH authoritative server balance read in
+      // parallel; by hold-COMPLETE it has had the full ~2s to resolve. This is
+      // the authoritative gate for the managed-wallet (web2) funds wall the
+      // synchronous eligibilityBlocker CANNOT catch: a brand-new managed wallet
+      // has no USDC ATA yet, so $store.session.usdcCents reads null (unknown,
+      // not 0) and the sync blocker fails OPEN — which previously let a $0 user
+      // submit a doomed on-chain entry (cryptic "custom program error: 0x1").
+      // Only a DEFINITIVE { fundable:false } aborts into the Top Up Wallet.
+      //
+      // Fail-OPEN by design — proceed (and rely on the server safety-net
+      // resolve_web2_entry_funding!, which pre-checks USDC and returns
+      // no_funding → Top Up Wallet) when the check is: absent (non-hold auto-
+      // enter, or web3 — beginFundingCheck no-ops there), null (401/flake/non-
+      // OK), still unresolved at hold-end, or stale from an earlier flow (the
+      // 8s freshness belt covers the release → buy-tokens → in-modal-hold case,
+      // where the user now HAS a token and must not be blocked by the old read).
+      if (this._fundingCheck && (Date.now() - (this._fundingCheckAt || 0)) < 8000) {
+        var pending = this._fundingCheck;
+        this._fundingCheck = null;   // single-use — consume it for this attempt
+        var funding = null;
+        try {
+          funding = await Promise.race([
+            pending,
+            new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 1500); })
+          ]);
+        } catch (e) { funding = null; }
+        if (funding && funding.fundable === false) {
+          this.submitting = false;
+          this.resetHoldButtons();
+          this.showWalletTopup();
+          return;
+        }
       }
 
       // web3 = a Phantom-authenticated session — sign the entry directly.
@@ -1683,6 +1770,7 @@ window.selectionBoard = function() {
             duration: 2000,
             hold_id: "desktop",
             guard: "data.selectionCount === #{@contest.picks_required}",
+            on_hold_start: "window.dispatchEvent(new CustomEvent('hold-funding-check'))",
             validate: "d.runHoldValidations()",
             validate_at: 750,
             on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",
@@ -1743,6 +1831,7 @@ window.selectionBoard = function() {
         duration: 2000,
         hold_id: "mobile",
         guard: "data.selectionCount === #{@contest.picks_required}",
+        on_hold_start: "window.dispatchEvent(new CustomEvent('hold-funding-check'))",
         validate: "d.runHoldValidations()",
         validate_at: 750,
         on_success: "window.dispatchEvent(new CustomEvent('hold-confirm-entry'))",

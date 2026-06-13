@@ -435,8 +435,16 @@ export function eligibilityBlocker(session, neededCents, opts) {
     // only when NO enabled method covers the fee.
     if ((session.tokensAvailable | 0) >= 1) return null;
     if (session.web2UsdcEntry) {
-      // Unknown balance (null — cold navbar cache / RPC flake) fails OPEN: the
-      // atomic server-side enter is authoritative and can't strand a user.
+      // LAYERING (2026-06-13) — this synchronous blocker is a fast FIRST pass:
+      //  - usdcCents is a KNOWN number < fee  → no_funding below (caught here).
+      //  - usdcCents is null (UNKNOWN — a brand-new managed wallet has no USDC
+      //    ATA yet, OR a cold navbar cache / RPC flake) → fail OPEN (return
+      //    null) so we never FALSE-block a funded user whose balance simply
+      //    hasn't hydrated. The genuinely-unfunded null case is covered by the
+      //    AUTHORITATIVE hold-window server check (the board's beginFundingCheck
+      //    → POST check_funding, awaited in confirmEntry) plus the server
+      //    safety-net (resolve_web2_entry_funding!), so a $0 fresh wallet lands
+      //    on the Top Up Wallet — never a doomed on-chain "0x1" sim attempt.
       if (session.usdcCents == null) return null;
       if ((session.usdcCents | 0) >= neededCents) return null;
     }
