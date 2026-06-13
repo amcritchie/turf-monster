@@ -1,4 +1,4 @@
 one:
   name: Test Slate
   slug: test-slate
-  starts_at: 2026-06-11 16:00:00
+  starts_at: <%= 2.years.from_now.strftime("%Y-%m-%d %H:%M:%S") %>
