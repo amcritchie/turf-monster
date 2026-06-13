@@ -35,4 +35,26 @@ class OnrampHubTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
     assert_includes response.body, "$store.modals.swap('auth', { step: 'tokens-picker'"
   end
+
+  # Flag-aware degrade (Avi review 2026-06-13): the Coinbase rail buys USDC,
+  # which a web2 kill-switch viewer (ENABLE_WEB2_USDC_ENTRY off) can NOT spend on
+  # an entry — so a "More ways to add funds" hop from the (already-degraded)
+  # wallet-topup modal must not surface a real-money USDC dead-end. The Coinbase
+  # rail is gated behind !tokenFallback client-side (mirrors the wallet-topup
+  # getter); the Stripe entry-token rail stays so the hub never empties. The live
+  # branching is Alpine-runtime, so it's asserted at the render level only.
+  test "the hub Coinbase rail is gated behind !tokenFallback for the web2 kill-switch" do
+    get contests_path
+    assert_response :success
+    body = response.body
+    # The tokenFallback getter exists on the hub and matches the wallet-topup one.
+    assert_includes body,
+                    "get tokenFallback() { return $store.session.mode === 'web2' && !$store.session.web2UsdcEntry }"
+    # The Coinbase rail card is wrapped in the !tokenFallback template gate.
+    assert_match(/x-if="!tokenFallback">\s*<button type="button" data-onramp-rail="coinbase"/m, body,
+                 "the hub Coinbase rail must be hidden for the web2 kill-switch audience")
+    # The Stripe entry-token rail is NOT gated — it stays for the degraded viewer.
+    refute_match(/x-if="!tokenFallback">\s*<button type="button" data-onramp-rail="stripe"/m, body,
+                 "the Stripe token rail must remain visible in the kill-switch degrade")
+  end
 end

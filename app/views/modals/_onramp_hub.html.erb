@@ -11,6 +11,16 @@
   onramp_helper.rb): every rail shows locally, each gates on its own backend
   flag in production.
 
+  FLAG-AWARE degrade (tokenFallback): the Coinbase rail buys USDC, which a web2
+  kill-switch viewer (ENABLE_WEB2_USDC_ENTRY off) can NOT spend on an entry, so
+  it is additionally hidden for that audience client-side. Without this, a quiet
+  "More ways to add funds" hop from the (already-degraded) wallet-topup modal,
+  or from the tokens picker, would put a flag-off web2 user one click from a
+  real-money USDC buy that dead-ends their entry. tokenFallback mirrors the
+  wallet-topup getter exactly (web2 mode AND the flag off, read from
+  $store.session); web3 + flag-on web2 still see Coinbase. The Stripe entry-token
+  rail stays visible for the degraded audience, so the hub never empties.
+
   Back-navigation returns to wherever the hub was opened FROM, keyed on the
   props it was opened with:
     - props.returnModal === 'wallet-topup'  -> Back swaps to wallet-topup
@@ -24,7 +34,10 @@
   the same way _wallet_deposit does; single-quote everything inside the
   double-quoted x-data / @click attributes.
 %>
-<div x-data="{ get props() { return ($store.modals.current() || {}).props || {} } }"
+<div x-data="{
+       get props() { return ($store.modals.current() || {}).props || {} },
+       get tokenFallback() { return $store.session.mode === 'web2' && !$store.session.web2UsdcEntry }
+     }"
      class="relative">
 
   <%# Top-right close. Backdrop close still works too. %>
@@ -43,19 +56,26 @@
     <% if onramp_rail_visible?(:coinbase) %>
       <%# Coinbase — wired to the existing cdp-ramp buy preflight, the same
           handoff the /wallet Buy USDC button and the wallet-deposit modal
-          use. swap() (not open) because we are already inside the host. %>
-      <button type="button" data-onramp-rail="coinbase"
-              @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
-              class="w-full flex items-center gap-4 p-4 rounded-xl border border-strong hover:border-primary bg-inset transition text-left">
-        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#0052FF">C</span>
-        <span class="flex-1 min-w-0">
-          <span class="block text-heading font-semibold text-sm">Coinbase</span>
-          <span class="block text-xs text-secondary">Buy USDC with a card or bank</span>
-        </span>
-        <svg class="shrink-0 w-4 h-4 text-muted" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-        </svg>
-      </button>
+          use. swap() (not open) because we are already inside the host.
+
+          Gated behind !tokenFallback (single root inside the template, the
+          x-if rule): a web2 kill-switch viewer can not fund an entry with USDC,
+          so this USDC-buy rail must not be a dead-end for them. See the header
+          note. web3 + flag-on web2 always see it. %>
+      <template x-if="!tokenFallback">
+        <button type="button" data-onramp-rail="coinbase"
+                @click="$store.modals.swap('cdp-ramp', { flow: 'buy', step: 'preflight' })"
+                class="w-full flex items-center gap-4 p-4 rounded-xl border border-strong hover:border-primary bg-inset transition text-left">
+          <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#0052FF">C</span>
+          <span class="flex-1 min-w-0">
+            <span class="block text-heading font-semibold text-sm">Coinbase</span>
+            <span class="block text-xs text-secondary">Buy USDC with a card or bank</span>
+          </span>
+          <svg class="shrink-0 w-4 h-4 text-muted" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+          </svg>
+        </button>
+      </template>
     <% end %>
 
     <% if onramp_rail_visible?(:paypal) %>

@@ -517,6 +517,27 @@ class User < ApplicationRecord
     cached_entry_tokens.find { |t| !t[:consumed] }
   end
 
+  # Like #next_unconsumed_entry_token but scoped to a SPECIFIC wallet address.
+  #
+  # The web2 server-sign entry path (ContestsController#resolve_web2_entry_funding!)
+  # signs the consume with the managed (web2) keypair, so it must only surface a
+  # token the web2 address actually OWNS. #next_unconsumed_entry_token reads
+  # #solana_address — web3-preferred for a combo (web2+web3) account — and
+  # would mis-detect a web3-owned token the managed keypair can NOT sign for: a
+  # doomed on-chain consume (owner != signer) that also masks an available USDC
+  # fallback, hard-walling a combo user who could have paid. list_entry_tokens
+  # memcmp-filters on owner == `address`, so this only ever returns web2-owned
+  # tokens. When `address` IS #solana_address (pure web2, or the primary) reuse
+  # the per-request memo; otherwise do a scoped on-chain lookup.
+  def next_unconsumed_entry_token_for(address)
+    return nil if address.blank?
+    return next_unconsumed_entry_token if address == solana_address
+    Solana::Vault.new.list_entry_tokens(address).find { |t| !t[:consumed] }
+  rescue => e
+    Rails.logger.warn "next_unconsumed_entry_token_for failed for user=#{id} addr=#{address}: #{e.message}"
+    nil
+  end
+
   private
 
   # Every account gets an auto-generated username — signup never has a

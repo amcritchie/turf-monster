@@ -1338,7 +1338,14 @@ class ContestsController < ApplicationController
     # contest Reset). See Entry#assign_onchain_entry_number!.
     entry.assign_onchain_entry_number!(address, vault)
 
-    token = current_user.next_unconsumed_entry_token
+    # Token detection MUST be scoped to the SAME web2 `address` we sign with.
+    # #next_unconsumed_entry_token reads #solana_address (web3-preferred for a
+    # combo account), so for a managed+phantom account it would surface a
+    # web3-OWNED token the managed keypair can't consume (doomed owner != signer)
+    # AND mask an available USDC fallback — a confusing hard wall. Scoping to the
+    # web2 address makes the token sub-path derive from the same wallet the USDC
+    # sub-path's signer guard already pins. (Avi review 2026-06-13.)
+    token = current_user.next_unconsumed_entry_token_for(address)
     if token
       vault.ensure_user_account(address, username: current_user.username) if current_user.solana_connected?
       # OPSEC-004: the token owner (managed keypair) must sign the consume.

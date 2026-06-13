@@ -455,6 +455,92 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, vault.enter_calls.length
   end
 
+  # Combo-account desync regression (Avi review 2026-06-13). A managed+phantom
+  # account in a web2 (magic-link) session holds a token minted to its WEB3
+  # address (tokens mint to #solana_address, web3-preferred). The web2 server-sign
+  # path signs with the MANAGED keypair, so it must NOT try to consume that
+  # web3-owned token (on-chain owner != signer → atomic fail) AND must NOT let a
+  # bogus "found a token" branch mask the working USDC fallback. With token
+  # detection scoped to the web2 address (#next_unconsumed_entry_token_for), the
+  # resolver sees no web2-owned token and funds the entry via USDC.
+  test "enter ignores a web3-owned token for a combo account in a web2 session and funds via USDC" do
+    web2_addr = "ManagedAddr#{SecureRandom.hex(4)}"
+    web3_addr = "Web3Combo#{SecureRandom.hex(4)}"
+    @user.update!(
+      web3_solana_address: web3_addr,
+      web2_solana_address: web2_addr,
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    # The unconsumed token lives on the WEB3 address; the web2 address holds none.
+    vault = FakeVault.new(tokens: {
+      web3_addr => [{ pda: "tpda_web3", consumed: false }],
+      web2_addr => []
+    })
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert json["success"], "expected USDC-funded entry success, got: #{json["error"]}"
+    refute json["token_consumed"], "the web3-owned token must NOT be consumed by the web2 keypair"
+    assert_equal 1, vault.enter_calls.length
+    assert_equal :enter_contest_with_usdc, vault.enter_calls.first[:method],
+                 "a combo web2 session must fall through to USDC, not a doomed web3-token consume"
+    assert_equal web2_addr, vault.enter_calls.first[:wallet]
+    assert entry.reload.active?
+  end
+
+  # Positive twin: when the SAME combo account's WEB2 address owns an unconsumed
+  # token, the scoped lookup finds it and consumes it with the managed keypair
+  # (owner == signer), ahead of the USDC fallback. Proves the scoping reads web2
+  # tokens, not just that it ignores web3 ones.
+  test "enter consumes a web2-owned token for a combo account in a web2 session" do
+    web2_addr = "ManagedAddr#{SecureRandom.hex(4)}"
+    web3_addr = "Web3Combo#{SecureRandom.hex(4)}"
+    @user.update!(
+      web3_solana_address: web3_addr,
+      web2_solana_address: web2_addr,
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(tokens: {
+      web2_addr => [{ pda: "tpda_web2", consumed: false }],
+      web3_addr => [{ pda: "tpda_web3", consumed: false }]
+    })
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Keypair.stub :from_encrypted, "fake-keypair-object" do
+        Solana::Vault.stub :new, vault do
+          post enter_contest_path(@contest), as: :json
+        end
+      end
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert json["success"], "expected token-funded entry success, got: #{json["error"]}"
+    assert_equal :enter_contest_with_token, vault.enter_calls.first[:method]
+    assert_equal "tpda_web2", vault.enter_calls.first[:token_pda],
+                 "the scoped lookup must consume the WEB2-owned token, not the web3 one"
+    assert_equal web2_addr, vault.enter_calls.first[:wallet]
+    assert entry.reload.active?
+  end
+
   # Incident 2026-06-08 (entry #133), defense-in-depth half: a TRANSIENT failure
   # (RPC/DB) inside confirm! AFTER a successful consume must not silently strand
   # the entry. The validation gates now run PRE-flight (see the two tests above),

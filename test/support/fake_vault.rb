@@ -106,7 +106,12 @@ class FakeVault
     { signature: "sig_#{seq}_#{SecureRandom.hex(2)}", pda: "pda-seq-#{seq}", sequence: seq }
   end
 
-  def list_entry_tokens(_wallet, **_opts)
+  # `tokens:` is usually an Array applied to EVERY address. Pass a Hash
+  # (address => array) instead to model a combo (web2+web3) account whose two
+  # wallets hold different tokens — e.g. a web3-owned token the web2 server-sign
+  # path must NOT pick. An address missing from the Hash returns [].
+  def list_entry_tokens(wallet, **_opts)
+    return (@tokens[wallet] || []).dup if @tokens.is_a?(Hash)
     @tokens.dup
   end
 
