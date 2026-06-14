@@ -17,6 +17,7 @@ default `resend`). Turf uses the shared Studio engine mail transport:
 
 - `config/initializers/studio_mail_transport.rb` — calls `Studio::MailTransport.configure!`.
 - `studio-engine` owns `Studio::MailTransport`, the Resend dependency, and the shared `ses:*` Rake tasks.
+- `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so engine magic links and app transactional mail use one sender.
 - Tests always use `:test` (in-memory); the transport no-ops in `Rails.env.test?`.
 
 ## Goal: fully off Resend.com → SES

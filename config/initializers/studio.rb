@@ -23,6 +23,7 @@ Studio.configure do |config|
   config.registration_params = [:email, :reference]
   config.configure_new_user = ->(user) { }
   config.configure_sso_user = ->(user) { }
+  config.mailer_from = ENV.fetch("MAILER_FROM", "alex@turfmonster.media")
 
   config.theme_logos = [
     { file: "favicon.png",   title: "Favicon" },

@@ -1,5 +1,5 @@
 class ApplicationMailer < ActionMailer::Base
-  default from: ENV.fetch("MAILER_FROM", "alex@turfmonster.media")
+  default from: -> { Studio.mailer_from || ENV.fetch("MAILER_FROM", "alex@turfmonster.media") }
   layout "mailer"
 
   private

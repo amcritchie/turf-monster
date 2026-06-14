@@ -55,7 +55,7 @@
     <ul class="list-disc list-inside text-body space-y-2">
       <li>To run the game: create your account, record entries, score contests, and distribute payouts.</li>
       <li>To process token and entry-fee purchases through Stripe.</li>
-      <li>To send transactional email (magic-link sign-in, receipts, account notices) via our email provider, Resend.</li>
+      <li>To send transactional email (magic-link sign-in, receipts, account notices) via our transactional email provider.</li>
       <li>To confirm you are accessing the game from a permitted jurisdiction (geo-eligibility).</li>
       <li>To detect and prevent fraud, abuse, and multi-account referral manipulation.</li>
       <li>To diagnose bugs and improve the product.</li>
@@ -81,7 +81,7 @@
     </p>
     <ul class="list-disc list-inside text-body space-y-2">
       <li><strong>Stripe</strong> &mdash; payment processing.</li>
-      <li><strong>Resend</strong> &mdash; transactional email delivery.</li>
+      <li><strong>Resend / Amazon SES</strong> &mdash; transactional email delivery, depending on the active mail transport.</li>
       <li><strong>Solana RPC providers</strong> &mdash; reading and broadcasting on-chain transactions.</li>
       <li><strong>Google</strong> &mdash; only if you use Google sign-in.</li>
       <li><strong>Sentry / LogRocket</strong> &mdash; error monitoring and bug reproduction, as described above.</li>

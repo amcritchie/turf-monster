@@ -10,7 +10,7 @@
 #     SDK itself; the button + checkout/QR overlay iframes need frame-src
 #     entries for *.paypal.com and *.venmo.com — added conditionally below so
 #     Stripe-provider deploys serve byte-identical headers)
-#   - Resend is server-side only
+#   - Transactional email providers are server-side only
 #
 # Inline scripts/styles are used by Alpine and several inline blocks in the
 # ERB layouts. Rails 7's `:strict_dynamic` + nonce approach would be ideal
