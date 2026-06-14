@@ -11,7 +11,7 @@ const { reseed, attestAge } = require("./helpers");
 // in tests. That path stays a known Playwright gap.
 //
 // reseed clears rack-attack counters + volatile state between tests (when run
-// locally against the dev :3001 server, rack-attack IS on; CI's test-env server
+// locally against the dev :3100 server, rack-attack IS on; CI's test-env server
 // has it off — either way reseed keeps runs isolated).
 test.beforeEach(async ({ request }) => await reseed(request));
 

@@ -17,7 +17,7 @@
 const { request } = require("@playwright/test");
 
 module.exports = async (config) => {
-  const baseURL = config?.projects?.[0]?.use?.baseURL || "http://127.0.0.1:3001";
+  const baseURL = config?.projects?.[0]?.use?.baseURL || "http://127.0.0.1:3100";
   const ctx = await request.newContext({ baseURL });
   const response = await ctx.post("/test/use_phantom_mock_admin");
   if (!response.ok()) {

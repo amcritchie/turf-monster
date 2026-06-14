@@ -31,7 +31,7 @@
 # prod. Then revert the SessionsController override and re-add the
 # `render "sessions/sso_continue"` call in sessions/new.html.erb.
 # key is env-overridable (TM_SESSION_KEY) so a parallel worktree dev stack on
-# localhost doesn't share the "_turf_session" cookie with the primary :3001 stack
+# localhost doesn't share the "_turf_session" cookie with the primary :3100 stack
 # — same key + same SECRET_KEY_BASE there means each stack overwrites the other's
 # session_token, tripping the OPSEC-045 verify_session_token check (spurious 401 +
 # auth modal on authed POSTs). Defaults to "_turf_session" so prod is unchanged.

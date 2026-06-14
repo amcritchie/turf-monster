@@ -97,7 +97,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 **Tests fail with wrong data**
 - Diagnosis: E2E tests expect data from `e2e/seed.rb` (2 users, 1 contest, 6 matchups). If dev server is running, tests hit the dev database instead.
-- Fix: Stop the dev server before running `npm test`. E2E config (`playwright.config.js`) starts its own server on port 3001. Alternatively, run `ruby e2e/seed.rb` against dev DB to align data.
+- Fix: Stop the dev server before running `npm test`. E2E config (`playwright.config.js`) starts its own server on port 3100. Alternatively, run `ruby e2e/seed.rb` against dev DB to align data.
 
 **Stale seed data**
 - Diagnosis: Seed is idempotent but if dev DB schema changed, seed may fail.

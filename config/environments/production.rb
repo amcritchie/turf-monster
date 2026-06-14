@@ -117,9 +117,9 @@ Rails.application.configure do
   # caching is enabled.
   config.action_mailer.perform_caching = false
 
-  # OPSEC-005: production delivery via Resend (config/initializers/resend.rb).
-  # MAILER_FROM defaults to noreply@mcritchie.studio (set in
-  # ApplicationMailer). The sending domain must be verified in Resend.
+  # OPSEC-005: production delivery is selected by Studio::MailTransport.
+  # MAILER_FROM defaults to noreply@mcritchie.studio (set in ApplicationMailer).
+  # The sending domain must be verified by the active transport.
   config.action_mailer.default_url_options = { host: ENV.fetch("MAILER_HOST", app_host), protocol: "https" }
   # Branded email banners are served from this app's own asset pipeline
   # (app/assets/images/emails/*.png) — absolute URLs for inbox rendering.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # parallel-server — spin up an ISOLATED second dev stack (web + Sidekiq) so a
-# second session/worktree can run alongside the primary dev server (:3001)
+# second session/worktree can run alongside the primary dev server (:3100)
 # without colliding on port, Redis (queue + cache), or mailer links.
 #
 # Why this exists: a fresh `git worktree` has no gitignored files (.env, the
@@ -19,28 +19,30 @@
 #      isolated Redis db, with APP_PORT set so emailed magic-links point here.
 #
 # Usage:  bin/parallel-server [PORT] [REDIS_DB]
-#           PORT      default 3002   (web + mailer-link host)
+#           PORT      default 3101   (web + mailer-link host)
 #           REDIS_DB  default 9      (Sidekiq + Rails.cache isolation)
 #         PARALLEL_WORKTREE=/abs/path overrides the worktree location
-#         (default: <primary>-parallel).
+#         (default: <primary>/.worktrees/parallel-<PORT>).
 #
 # Stop:   Ctrl-C stops the web server; the trap also stops Sidekiq.
 # Remove the worktree entirely when done:
 #   git worktree remove <worktree> --force && git worktree prune
 #
-# NOTE: shares the dev DB (turf_monster_development) with the primary worktree.
-# For an isolated test DB when running the suite, see CLAUDE.md → Dev Server →
-# "Parallel dev server".
+# Uses an isolated dev DB by default. For an isolated test DB when running the
+# suite, see the McRitchie Studio worktree docs.
 #
 set -euo pipefail
 
-PORT="${1:-3002}"
+PORT="${1:-3101}"
 REDIS_DB="${2:-9}"
 PRIMARY="$(git rev-parse --show-toplevel)"
-WORKTREE="${PARALLEL_WORKTREE:-${PRIMARY}-parallel}"
+WORKTREE="${PARALLEL_WORKTREE:-${PRIMARY}/.worktrees/parallel-${PORT}}"
+DB_NAME="${PARALLEL_DATABASE:-turf_monster_development_parallel_${PORT}}"
+SESSION_KEY="${PARALLEL_SESSION_KEY:-_turf_session_parallel_${PORT}}"
 
 if [ ! -d "$WORKTREE" ]; then
   echo "▶ creating worktree at $WORKTREE (off origin/main)"
+  mkdir -p "$(dirname "$WORKTREE")"
   git -C "$PRIMARY" fetch origin --quiet
   git -C "$PRIMARY" worktree add "$WORKTREE" origin/main
 fi
@@ -53,11 +55,14 @@ fi
 cd "$WORKTREE"
 export APP_PORT="$PORT"
 export REDIS_URL="redis://localhost:6379/${REDIS_DB}"
+export DATABASE_URL="postgresql://localhost/${DB_NAME}"
+export TM_SESSION_KEY="$SESSION_KEY"
 
 echo "▶ building Tailwind"
+bin/rails db:prepare >/dev/null
 bin/rails tailwindcss:build >/dev/null
 
-echo "▶ isolated stack up — web http://localhost:${PORT}, Redis db ${REDIS_DB}"
+echo "▶ isolated stack up — web http://localhost:${PORT}, DB ${DB_NAME}, Redis db ${REDIS_DB}"
 echo "  (Ctrl-C stops web + Sidekiq)"
 bundle exec sidekiq -q default -q mailers -c 3 &
 SIDEKIQ_PID=$!

@@ -4,7 +4,7 @@ Sports pick'em game for the FIFA World Cup 2026. Players select 5 team matchups 
 
 **Live**: https://app.turfmonster.media
 
-Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritchie/mcritchie-studio) (the SSO hub + flagship of the 5-repo ecosystem).
+Turf Monster is a **satellite product app** in the [McRitchie Studio](https://github.com/amcritchie/mcritchie-studio) ecosystem. McRitchie Studio owns the shared recovery scripts and agent-neutral docs.
 
 > **Part of the McRitchie ecosystem** — see [`ECOSYSTEM.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/ECOSYSTEM.md) for the 5-repo map; [`house-burn-down.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/house-burn-down.md) for fresh-Mac recovery.
 
@@ -12,7 +12,7 @@ Turf Monster is a **satellite** of [McRitchie Studio](https://github.com/amcritc
 
 ## Standing up a fresh Mac? Start at the flagship.
 
-The canonical way to install Turf Monster + all 4 sibling repos + the toolchain is from McRitchie Studio's `bin/ecosystem-build` script. It clones this repo, restores `.env` from Heroku, pulls `SOLANA_ADMIN_KEY` from 1Password, runs `db:create db:migrate db:seed`, and boots the server on port 3001 — all idempotent.
+The canonical way to install Turf Monster + all 4 sibling repos + the toolchain is from McRitchie Studio's `bin/ecosystem-build` script. It clones this repo, restores `.env` from Heroku, pulls `SOLANA_ADMIN_KEY` from 1Password, runs `db:create db:migrate db:seed`, and boots the server on port 3100 — all idempotent.
 
 ```bash
 git clone https://github.com/amcritchie/mcritchie-studio.git ~/projects/mcritchie-studio
@@ -28,25 +28,27 @@ See [mcritchie-studio/docs/agents/system/house-burn-down.md](https://github.com/
 
 ## Single-app dev (when you already have the toolchain)
 
-If your machine already has Ruby 3.1.7 (via `brew install ruby@3.1`), Postgres 14, Redis, Node 20, and an `.env` in place:
+If your machine already has Ruby 3.3.11 (via `brew install ruby@3.3`), Postgres 14, Redis, Node 20, and an `.env` in place:
 
 ```bash
 git clone https://github.com/amcritchie/turf-monster.git
 cd turf-monster
 bundle install
 bin/rails db:create db:migrate db:seed
-bin/dev
+bin/tm up
 ```
 
-`bin/dev` (via Procfile.dev) launches web on port 3001 + Tailwind watcher + Sidekiq. Redis must be running first (`brew services start redis`). Open http://localhost:3001 — login `alex@mcritchie.studio` / `password`.
+`bin/tm up` starts or adopts the agent-friendly detached stack: web on port 3100, Sidekiq, Tailwind build, and Stripe listener when available. Open http://localhost:3100 and sign in with a magic link. See [`docs/LOCAL_STACK.md`](docs/LOCAL_STACK.md).
+
+`bin/dev` remains available for a human interactive terminal with combined logs, but it does not start the Stripe listener and is not reliable in background/no-TTY agent sessions.
 
 Seeds create 5 users, 48 World Cup teams, 72 group stage matches, and 67 players.
 
-**Required `.env` keys**: `RAILS_MASTER_KEY` (not optional — seed encrypts managed wallets via `secret_key_base`), `GOOGLE_CLIENT_ID`/`SECRET`, `AWS_ACCESS_KEY_ID`/`SECRET`, `SOLANA_ADMIN_KEY` (1Password `agent.solana`).
+**Required `.env` keys**: `RAILS_MASTER_KEY` (not optional — seed encrypts managed wallets via `secret_key_base`), `GOOGLE_CLIENT_ID`/`SECRET`, `AWS_ACCESS_KEY_ID`/`SECRET`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `MANAGED_WALLET_ENCRYPTION_KEY`, and mail transport credentials for local email delivery. Current 1Password item names live in McRitchie Studio's credential docs.
 
 ## Prerequisites (single-app path)
 
-- Ruby **3.1.7** (use `brew install ruby@3.1` — not mise/rbenv on Apple Silicon, the socket extension silently breaks)
+- Ruby **3.3.11** (use `brew install ruby@3.3`; matches `.ruby-version` and `Gemfile`)
 - PostgreSQL 14+
 - Redis (Sidekiq queue)
 - Node.js **20+** (Node 18 breaks turf-vault's `@solana/codecs-numbers` peer dep)
@@ -56,10 +58,10 @@ Seeds create 5 users, 48 World Cup teams, 72 group stage matches, and 67 players
 
 ```bash
 # Rails tests
-bin/rails test                  # 97 runs, 264 assertions
+bin/rails test
 
 # Playwright E2E (chromium project — skip @devnet which needs a funded wallet)
-npm test                        # 42 tests
+npm test
 npm run test:headed             # with visible browser
 ```
 
@@ -69,7 +71,7 @@ npm run test:headed             # with visible browser
 - **Contest lifecycle**: draft, open, locked, settled with admin controls (fill, lock, jump, grade, reset)
 - **Multiple entries** per user per contest with different selection combos
 - **Scoring**: team goals x multiplier per selection, entries ranked, payouts distributed
-- **Solana integration**: on-chain contest escrow via [TurfVault](https://github.com/amcritchie/turf-vault) Anchor program (devnet)
+- **Solana integration**: on-chain contest escrow via [TurfVault](https://github.com/amcritchie/turf-vault) Anchor program
 - **Phantom wallet** connect, deposit, withdraw, and direct entry
 - **Dark/light theme** toggle with green primary palette
 
@@ -80,12 +82,11 @@ bin/deploy   # single mainnet target → turf-monster-mainnet (real funds, confi
 ```
 
 Migrations run in Heroku's release phase (Procfile `release:`), not the deploy
-script. See CLAUDE.md → Deployment and `MAINNET_LAUNCH.md` (one-time first
-deploy). Platform: Heroku (heroku-24 stack). Required env vars: `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+script. `MAINNET_LAUNCH.md` is historical first-launch context; current deploys use `bin/deploy`. Platform: Heroku (heroku-24 stack). Required env vars include `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the active mail transport settings.
 
 ## Solana Integration
 
-The app connects to the TurfVault Anchor program on Solana devnet for contest escrow. Users with Phantom wallets can deposit USDC, enter contests on-chain, and receive payouts. The `SOLANA_ADMIN_KEY` env var holds the admin bot's base58 private key. See `docs/SOLANA.md` for full details.
+The app connects to the TurfVault Anchor program for contest escrow. Users with Phantom wallets can enter contests on-chain and receive payouts. The `SOLANA_ADMIN_KEY` env var holds the admin bot's base58 private key. Live deployment identity lives in `turf-vault/docs/CURRENT_DEPLOYMENT.md`; app integration details live in `docs/SOLANA.md`.
 
 ## Architecture
 
@@ -97,13 +98,14 @@ The app connects to the TurfVault Anchor program on Solana devnet for contest es
 
 ## Development Notes
 
-See [CLAUDE.md](./CLAUDE.md) for detailed development context including model schemas, route maps, error handling patterns, and code conventions.
+See McRitchie Studio's generated `AGENTS.md` entrypoint for cross-repo agent guidance. `CLAUDE.md` remains legacy migration context while neutral app docs are being extracted.
 
 Topic-specific documentation lives in `docs/`:
 
 | File | Topic |
 |------|-------|
 | `docs/AUTH.md` | Authentication, account management, SSO |
+| `docs/LOCAL_STACK.md` | Agent-friendly local stack, ports, Sidekiq, Stripe listener |
 | `docs/SOLANA.md` | Solana integration, wallet types, on-chain flows |
 | `docs/FORMULAS.md` | Scoring formulas, slate system, Chart.js patterns |
 | `docs/UI_PATTERNS.md` | Branding, theme, matchup grid, animations |

@@ -5,7 +5,7 @@ End-to-end tests that exercise Turf Monster against real Solana devnet. These te
 ## Prerequisites
 
 - Node.js + `npx playwright` installed (`npm install` in project root)
-- Dev server running on port 3001 (`bin/dev` or `bin/rails server -p 3001`)
+- Dev server running on port 3100 (`bin/dev` or `bin/rails server -p 3100`)
 - Sidekiq running (`bundle exec sidekiq`) — required for `EnsureAtaJob` after user registration
 - `SOLANA_BOT_KEY` env var set to Alex Bot's base58-encoded private key (same as `SOLANA_ADMIN_KEY` in `.env`)
 - Alex Bot wallet funded with ~0.2 SOL + ~$20 USDC on devnet
@@ -151,7 +151,7 @@ Devnet RPC can be flaky. If tests fail with timeout errors:
 
 ### Stale Server
 If tests fail on page assertions (wrong content, missing elements):
-- Restart the dev server: kill port 3001, re-run
+- Restart the dev server: kill port 3100, re-run
 - Re-seed: `bin/rails runner e2e/seed.rb`
 - Check for pending migrations: `bin/rails db:migrate`
 

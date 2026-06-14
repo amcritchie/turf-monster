@@ -7,7 +7,7 @@ Every send is also recorded as an `EmailDelivery` audit row (`sent` boolean).
 ## Transport switch
 
 The active transport is chosen by **`MAIL_TRANSPORT`** (`resend` | `ses`,
-default `resend`). The two initializers are mutually exclusive on that flag:
+default `resend`). Turf uses the shared Studio engine mail transport:
 
 | `MAIL_TRANSPORT` | Active transport | Notes |
 |---|---|---|
@@ -15,9 +15,9 @@ default `resend`). The two initializers are mutually exclusive on that flag:
 | `ses` (+ SES creds) | **SES** (`:smtp`) | requires `SES_SMTP_USERNAME` / `SES_SMTP_PASSWORD` / `SES_REGION`. |
 | `ses` (creds missing) | **Resend** (fallback) | logs a warning; never silently breaks mail. |
 
-- `config/initializers/resend.rb` — activates `:resend` unless SES is the selected, credentialed transport. **Not removed** — it is the revert path.
-- `config/initializers/ses.rb` — activates SES SMTP only when `MAIL_TRANSPORT=ses` **and** creds are present, so SES creds can be staged on Heroku without changing the live path.
-- Tests always use `:test` (in-memory); both initializers no-op in `Rails.env.test?`.
+- `config/initializers/studio_mail_transport.rb` — calls `Studio::MailTransport.configure!`.
+- `studio-engine` owns `Studio::MailTransport`, the Resend dependency, and the shared `ses:*` Rake tasks.
+- Tests always use `:test` (in-memory); the transport no-ops in `Rails.env.test?`.
 
 ## Goal: fully off Resend.com → SES
 
@@ -46,5 +46,11 @@ heroku config:unset -a turf-monster-mainnet MAIL_TRANSPORT       # Resend resume
 ```
 
 ### Decommission (later, after confidence)
-Cancel the Resend subscription + drop `RESEND_API_KEY`. Leave the Resend code in
-place unless there's a reason to remove it.
+Cancel the Resend subscription + drop `RESEND_API_KEY` only after SES has been
+stable long enough that the rollback path is no longer useful.
+
+## Engine ownership
+
+Turf Monster is bundled with `studio-engine 0.5.2+`, so the compatibility
+fallback has been removed from the app. Keep future transport changes in
+`studio-engine` unless they are truly app-specific.

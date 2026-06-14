@@ -142,10 +142,10 @@ turf-vault v0.15.0 devnet validation
 ## 6. Manual end-to-end UI test (Phantom required)
 
 ```bash
-bin/rails server -p 3001
+bin/rails server -p 3100
 ```
 
-Visit `http://localhost:3001` in a Phantom-equipped browser on devnet.
+Visit `http://localhost:3100` in a Phantom-equipped browser on devnet.
 
 ### 6a. Vault State page renders
 

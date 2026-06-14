@@ -6,7 +6,7 @@ require "test_helper"
 # while an auth-surface throttle tags "auth" so it's left to its own inline UX.
 # Unit-tests the custom throttled_responder directly (rack-attack is disabled in
 # test env; tripping the real middleware also pulls in Solana/auth side effects).
-# The end-to-end trip → modal is verified manually on :3001.
+# The end-to-end trip → modal is verified manually on :3100.
 class RateLimitResponderTest < ActiveSupport::TestCase
   def call_responder(matched:, period:)
     env = {

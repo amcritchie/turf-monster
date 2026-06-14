@@ -35,6 +35,9 @@
 # Ignore master key for decrypting credentials and more.
 /config/master.key
 
+# Hidden per-task git worktrees created by mcritchie-studio/bin/agent-worktree.
+/.worktrees/
+
 # Solana test validator
 test-ledger/
 

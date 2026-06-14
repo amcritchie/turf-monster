@@ -1,5 +1,11 @@
 # Turf Monster Mainnet Launch Runbook
 
+> **HISTORICAL FIRST-LAUNCH RUNBOOK.** Turf Monster's current production app is
+> `turf-monster-mainnet` at `https://app.turfmonster.media`, and normal deploys
+> go through `bin/deploy`. Do not use this file as current deployment identity
+> without first reconciling it against `CLAUDE.md`, `docs/SOLANA.md`, and
+> `turf-vault/docs/CURRENT_DEPLOYMENT.md`.
+
 One-time runbook for the **v0.15.0 mainnet first deploy**. Read top-to-bottom; each step has acceptance criteria. For ongoing post-launch deploys, use `bin/deploy`.
 
 > **Audit baseline**: this runbook assumes you've already shipped the v0.15.0 hardening (H1 init constraints, M5 pause/unpause, $100/24h withdraw cap, H4 IDL boot-refusal, H2 payout_entry removal). See `/Users/alex/projects/turf-vault/CHANGELOG.md` for the full v0.15.0 changeset.
@@ -19,7 +25,7 @@ One-time runbook for the **v0.15.0 mainnet first deploy**. Read top-to-bottom; e
   - Mason: `CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR`
   - Threshold: 2
   - Record the new vault PDA → it becomes the program upgrade authority.
-- [ ] **1Password updated**: `agent.solana.mainnet` (Alex Bot mainnet keypair), `agent.mason.solana.mainnet` (Mason mainnet keypair), `agent.managed_wallet.mainnet` (32-byte hex MANAGED_WALLET_ENCRYPTION_KEY for mainnet — generate fresh, do NOT reuse the devnet one).
+- [ ] **1Password updated**: `agent.alex.solana.mainnet` (Alex Bot mainnet keypair), `agent.mason.solana.mainnet` (Mason mainnet keypair), `agent.managed_wallet.mainnet` (32-byte hex MANAGED_WALLET_ENCRYPTION_KEY for mainnet — generate fresh, do NOT reuse the devnet one).
 - [ ] **Mainnet RPC URL** chosen (Helius / QuickNode / Triton — NOT public api.mainnet-beta.solana.com for production traffic).
 - [ ] **Stripe live keys** ready: `STRIPE_SECRET_KEY` (sk_live_...), `STRIPE_WEBHOOK_SECRET` (whsec_... — created against the live mode endpoint).
 - [ ] **Browse `/admin/transactions`** on devnet — confirm no PendingTransactions are stuck in :pending. They won't carry over but cleaner state is easier to debug.
@@ -177,7 +183,7 @@ heroku config:unset ENABLE_TEST_SCAFFOLDING --app turf-monster-mainnet 2>/dev/nu
 
 In the Stripe dashboard, create a NEW webhook endpoint pointing to your prod URL:
 
-- URL: `https://turf.mcritchie.studio/webhooks/stripe`
+- URL: `https://app.turfmonster.media/webhooks/stripe`
 - Events: `checkout.session.completed`, `charge.dispute.created`, `charge.dispute.funds_withdrawn`, `charge.refunded`
 - Mode: **Live** (not Test)
 
@@ -198,7 +204,7 @@ bin/deploy turf-monster-mainnet  # → heroku-mainnet remote; runs the IDL allow
 ```
 
 - [ ] Heroku build succeeds (no IDL hash mismatch, no env-var failures).
-- [ ] First request to `https://turf.mcritchie.studio` returns 200.
+- [ ] First request to `https://app.turfmonster.media` returns 200.
 
 ---
 

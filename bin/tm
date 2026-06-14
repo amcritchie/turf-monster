@@ -24,9 +24,9 @@
 #   bin/tm logs [web|sidekiq|stripe]   tail -f a log (default: all three)
 #
 # Env overrides (default to the canonical primary stack):
-#   TM_PORT=3001  TM_REDIS_DB=0   — point at an isolated stack (e.g. smoke tests)
+#   TM_PORT=3100  TM_REDIS_DB=0   — point at an isolated stack (e.g. smoke tests)
 #
-# This manages the PRIMARY :3001 stack. For a second isolated stack ALONGSIDE
+# This manages the PRIMARY :3100 stack. For a second isolated stack ALONGSIDE
 # it (a worktree), use `bin/parallel-server`, or set TM_PORT/TM_REDIS_DB here.
 #
 set -uo pipefail   # deliberately no -e: failures are handled inline with messages
@@ -35,7 +35,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 APP="$(basename "$ROOT")"
 
-PORT="${TM_PORT:-3001}"
+# Agent/background shells do not always inherit the interactive shell's Ruby
+# path. Force the app's documented Homebrew Ruby first so bin/rails does not
+# fall back to macOS system Ruby 2.6 or an older Homebrew Ruby.
+export PATH="/opt/homebrew/opt/ruby@3.3/bin:/opt/homebrew/lib/ruby/gems/3.3.0/bin:$PATH"
+
+PORT="${TM_PORT:-3100}"
 REDIS_DB="${TM_REDIS_DB:-0}"
 NO_STRIPE=0
 
@@ -50,7 +55,9 @@ PIDDIR="$ROOT/tmp/pids"; LOGDIR="$ROOT/log"
 mkdir -p "$PIDDIR" "$LOGDIR"
 WEB_PID="$PIDDIR/tm-web.pid";    WEB_LOG="$LOGDIR/tm-web.log"
 SK_PID="$PIDDIR/tm-sidekiq.pid"; SK_LOG="$LOGDIR/tm-sidekiq.log"
+SK_ENV="$PIDDIR/tm-sidekiq.env"
 ST_PID="$PIDDIR/tm-stripe.pid";  ST_LOG="$LOGDIR/tm-stripe.log"
+RAILS_PID="$PIDDIR/server.pid"
 FORWARD="localhost:${PORT}/webhooks/stripe"
 
 c_say(){  printf '  \033[36m▶\033[0m %s\n' "$*"; }
@@ -78,10 +85,49 @@ our_sidekiqs(){ pgrep -f "sidekiq [0-9.]+ ${APP} \[" 2>/dev/null; }
 stripe_running(){ pgrep -f "stripe listen --forward-to ${FORWARD}" 2>/dev/null | head -1; }
 env_val(){ grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'; }
 
+sidekiq_env_signature(){
+  printf 'APP_PORT=%s\nTM_REDIS_DB=%s\nREDIS_URL=%s\n' "$PORT" "$REDIS_DB" "${REDIS_URL:-}"
+}
+
+indent_log_tail(){
+  tail -n 12 "$1" 2>/dev/null | tr -d '\000' | while IFS= read -r line; do
+    printf '      %s\n' "$line" >&2
+  done
+}
+
+clear_wrong_rails_pid(){
+  local p current
+  p="$(readpid "$RAILS_PID")"
+  [ -z "$p" ] && return 0
+  current="$(web_pid)"
+  [ "$p" = "$current" ] && return 0
+
+  if alive "$p" "puma|rails|ruby"; then
+    c_warn "Rails server.pid points at pid $p, but :$PORT is not using it — stopping stale/wrong-port server"
+    kill -TERM "$p" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$p" 2>/dev/null || break; sleep 0.3; done
+    kill -0 "$p" 2>/dev/null && { c_warn "stale/wrong-port server still alive — SIGKILL"; kill -KILL "$p" 2>/dev/null; sleep 0.3; }
+  fi
+
+  rm -f "$RAILS_PID"
+}
+
 # spawn <logfile> <pidfile> <cmd...> — detached, survives this shell (nohup +
 # </dev/null + disown; macOS has no setsid).
 spawn(){
   local log="$1" pf="$2"; shift 2
+  if command -v screen >/dev/null 2>&1; then
+    local session root_q log_q pf_q path_q cmd_q
+    session="${APP}-$(basename "$pf" .pid)-${PORT}"
+    printf -v root_q '%q' "$ROOT"
+    printf -v log_q '%q' "$log"
+    printf -v pf_q '%q' "$pf"
+    printf -v path_q '%q' "$PATH"
+    printf -v cmd_q '%q ' "$@"
+    screen -S "$session" -X quit >/dev/null 2>&1 || true
+    screen -dmS "$session" bash -c "export PATH=$path_q; cd $root_q && echo \$\$ > $pf_q && exec $cmd_q >>$log_q 2>&1"
+    return 0
+  fi
   nohup "$@" </dev/null >"$log" 2>&1 &
   echo $! >"$pf"
   disown 2>/dev/null || true
@@ -119,18 +165,30 @@ start_web(){
     for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(web_pid)" ] && break; sleep 0.3; done
     [ -n "$(web_pid)" ] && { c_warn "port :$PORT still held — SIGKILL"; kill -KILL "$(web_pid)" 2>/dev/null; sleep 0.3; }
   fi
+  clear_wrong_rails_pid
   c_say "starting web → http://localhost:$PORT"
   spawn "$WEB_LOG" "$WEB_PID" bin/rails server -p "$PORT"
 }
 
 start_sidekiq(){
   local arr; arr=($(our_sidekiqs)); local n=${#arr[@]}
-  if [ "$n" -eq 1 ]; then echo "${arr[0]}" >"$SK_PID"; c_ok "sidekiq already running (adopted pid ${arr[0]})"; return 0; fi
+  if [ "$n" -eq 1 ]; then
+    if [ -f "$SK_ENV" ] && [ "$(cat "$SK_ENV" 2>/dev/null)" = "$(sidekiq_env_signature)" ]; then
+      echo "${arr[0]}" >"$SK_PID"
+      c_ok "sidekiq already running (adopted pid ${arr[0]})"
+      return 0
+    fi
+
+    c_warn "sidekiq env is stale or unknown — restarting so mailers use :$PORT"
+    kill -TERM "${arr[0]}" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8; do [ -z "$(our_sidekiqs)" ] && break; sleep 0.5; done
+  fi
   if [ "$n" -gt 1 ]; then
     c_warn "$n sidekiqs for $APP — resetting to one"; kill -TERM "${arr[@]}" 2>/dev/null
     for _ in 1 2 3 4 5 6 7 8; do [ -z "$(our_sidekiqs)" ] && break; sleep 0.5; done
   fi
   c_say "starting sidekiq (queues: default, mailers)"
+  sidekiq_env_signature >"$SK_ENV"
   spawn "$SK_LOG" "$SK_PID" bundle exec sidekiq -q default -q mailers
 }
 
@@ -159,7 +217,7 @@ poll_ready(){
   local code; code="$(curl -s -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused -m 60 \
     -w '%{http_code}' "http://localhost:${PORT}/up" 2>/dev/null)"
   if [ "$code" = "200" ]; then c_ok "web serving (/up → 200)"
-  else c_err "web did not come up (/up → ${code:-no response}) — see $WEB_LOG"; tail -n 12 "$WEB_LOG" 2>/dev/null | sed 's/^/      /' >&2; fi
+  else c_err "web did not come up (/up → ${code:-no response}) — see $WEB_LOG"; indent_log_tail "$WEB_LOG"; fi
   local sk; sk="$(readpid "$SK_PID")"
   alive "$sk" sidekiq && c_ok "sidekiq alive (pid $sk)" || c_err "sidekiq not alive — see $SK_LOG"
 }
@@ -199,19 +257,20 @@ stop_one(){ # stop_one <pidfile> <cmd-substring> <label>
     c_say "$3 not running"
   fi
   rm -f "$1"
+  [ "$1" = "$SK_PID" ] && rm -f "$SK_ENV"
 }
 
-# bin/tm manages the canonical :3001 stack. Run from a NON-primary worktree on
+# bin/tm manages the canonical :3100 stack. Run from a NON-primary worktree on
 # the default port, it would adopt the primary's web (port-keyed) yet manage
 # this checkout's own Sidekiq (basename-keyed) — mixed ownership. Refuse, and
 # point at the right tool. TM_PORT/TM_REDIS_DB (or bin/parallel-server) opt out.
 guard_primary(){
-  [ "$PORT" != "3001" ] && return 0
+  [ "$PORT" != "3100" ] && return 0
   local primary; primary="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')"
   [ -z "$primary" ] && return 0
   [ "$primary" = "$ROOT" ] && return 0
-  c_err "refusing: '$APP' is a worktree, not the primary checkout, but TM_PORT is the default 3001."
-  c_err "  → use the primary checkout's bin/tm for :3001, or set TM_PORT+TM_REDIS_DB (or use bin/parallel-server)."
+  c_err "refusing: '$APP' is a worktree, not the primary checkout, but TM_PORT is the default 3100."
+  c_err "  → use the primary checkout's bin/tm for :3100, or set TM_PORT+TM_REDIS_DB (or use bin/parallel-server)."
   return 1
 }
 

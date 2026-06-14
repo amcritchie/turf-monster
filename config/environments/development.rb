@@ -50,13 +50,13 @@ Rails.application.configure do
   # caching is enabled.
   config.action_mailer.perform_caching = false
 
-  # turf-monster's dev server runs on 3001 (3000 is mcritchie-studio) — mailer
+  # turf-monster's dev server runs on 3100 (3000 is mcritchie-studio) — mailer
   # links must point here or they 404 against the wrong app. APP_PORT lets a
-  # second worktree on another port (e.g. 3002) emit links that point at itself.
-  config.action_mailer.default_url_options = { host: "localhost", port: ENV.fetch("APP_PORT", 3001).to_i }
+  # second worktree on another port (e.g. 3101) emit links that point at itself.
+  config.action_mailer.default_url_options = { host: "localhost", port: ENV.fetch("APP_PORT", 3100).to_i }
   # Email banners come from this app's asset pipeline; point at this dev server
   # (APP_PORT) so previews/sends resolve the image locally.
-  config.action_mailer.asset_host = "http://localhost:#{ENV.fetch('APP_PORT', 3001)}"
+  config.action_mailer.asset_host = "http://localhost:#{ENV.fetch('APP_PORT', 3100)}"
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

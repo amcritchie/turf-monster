@@ -24,7 +24,7 @@
 #   bin/e2e-parallel 4 -- --retries=1                  # mirror CI's retry policy
 #
 # Ports BASE_PORT..BASE_PORT+N-1 (default 3101+) and DBs turf_monster_e2e_pw_<i>.
-# Stays clear of :3001 (the canonical dev server) and the shared
+# Stays clear of :3100 (the canonical dev server) and the shared
 # turf_monster_test DB, so it never collides with a running dev stack or
 # `bin/rails test`. Servers are killed and DBs dropped on exit.
 

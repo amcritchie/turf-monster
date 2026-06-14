@@ -104,12 +104,6 @@ gem "stripe"
 # See docs/CDP_RAMP_INTEGRATION.md §1.
 gem "jwt-eddsa", "~> 0.9"
 
-# Transactional email delivery (Resend). Used by UserMailer for OPSEC-005
-# email verification + future transactional sends. Provides an ActionMailer
-# delivery method; configured in config/initializers/resend.rb. Production
-# requires RESEND_API_KEY env var.
-gem "resend"
-
 # Request throttling (OPSEC-019). Rack middleware that rate-limits per IP /
 # per user / per endpoint. Configured in config/initializers/rack_attack.rb.
 # Disabled in test env (so tests don't hit throttles by accident).
