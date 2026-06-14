@@ -1,4 +1,24 @@
 module ApplicationHelper
+  NON_DELIVERING_EMAIL_METHODS = %w[test file].freeze
+
+  def email_delivery_banner_status
+    delivery_method = ActionMailer::Base.delivery_method.to_s
+    capture_enabled = Studio.local_email_capture?
+    sends_email = ActionMailer::Base.perform_deliveries && !capture_enabled &&
+                  !NON_DELIVERING_EMAIL_METHODS.include?(delivery_method)
+
+    "EMAIL SEND #{sends_email} · #{email_delivery_transport_label(delivery_method, capture_enabled)}"
+  end
+
+  def email_delivery_transport_label(delivery_method = ActionMailer::Base.delivery_method.to_s,
+                                     capture_enabled = Studio.local_email_capture?)
+    return "capture" if capture_enabled
+    return "ses" if Studio.ses_transport_ready?
+    return "resend" if delivery_method == "resend"
+
+    delivery_method.presence || "unknown"
+  end
+
   # Which funding flow the entry gate offers web2 users: Stripe token packs
   # while Stripe checkout is enabled (the dormant fallback — flip
   # STRIPE_CHECKOUT_DISABLED off to restore it wholesale), the Coinbase USDC
