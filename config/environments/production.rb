@@ -118,7 +118,7 @@ Rails.application.configure do
   config.action_mailer.perform_caching = false
 
   # OPSEC-005: production delivery is selected by Studio::MailTransport.
-  # MAILER_FROM defaults to Turf Monster <team@turfmonster.media>.
+  # SES uses MAILER_FROM; Resend fallback uses RESEND_MAILER_FROM.
   # The sending domain must be verified by the active transport.
   config.action_mailer.default_url_options = { host: ENV.fetch("MAILER_HOST", app_host), protocol: "https" }
   # Branded email banners are served from this app's own asset pipeline

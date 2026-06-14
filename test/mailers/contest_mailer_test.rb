@@ -18,8 +18,8 @@ class ContestMailerTest < ActionMailer::TestCase
     mail = ContestMailer.winnings(@entry)
 
     assert_equal [@user.email], mail.to
-    assert_equal ["team@turfmonster.media"], mail.from
-    assert_includes mail[:from].to_s, "Turf Monster"
+    assert_equal ["team@mcritchie.studio"], mail.from
+    assert_includes mail[:from].to_s, "McRitchie Studio"
     assert_equal "🏆 You won $45.00 on Turf Monster!", mail.subject
 
     [mail.html_part, mail.text_part].each do |part|

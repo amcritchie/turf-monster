@@ -25,10 +25,12 @@ Turf uses the shared Studio engine mail transport:
 - `config/initializers/studio_mail_transport.rb` calls `Studio::MailTransport.configure!`.
 - `studio-engine` owns `Studio::MailTransport`, `Studio::Email.deliver`, the
   Resend dependency, and the shared `ses:*` Rake tasks.
-- `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so
-  engine magic links and app transactional mail use one sender.
-- Transactional/auth/security/contest email uses `Turf Monster <team@turfmonster.media>`.
-- Newsletter/marketing email uses `Alex from Turf Monster <alex@turfmonster.media>`.
+- `MAILER_FROM` and `MARKETING_MAILER_FROM` are the app-branded SES senders.
+- `RESEND_MAILER_FROM` is the shared fallback sender. While SES is blocked by
+  sandbox/presetup, Resend sends from `McRitchie Studio
+  <team@mcritchie.studio>` instead of requiring another paid Resend domain.
+- SES transactional/auth/security/contest email uses `Turf Monster <team@turfmonster.media>`.
+- SES newsletter/marketing email uses `Alex from Turf Monster <alex@turfmonster.media>`.
 - Tests always use `:test` in memory; the transport no-ops in `Rails.env.test?`.
 
 SES account/domain checks should use `SES_AWS_ACCESS_KEY_ID` and
@@ -91,6 +93,7 @@ Current production status, last checked 2026-06-14:
    `SES_SMTP_PASSWORD`, `SES_REGION`.
 5. `MAILER_FROM="Turf Monster <team@turfmonster.media>"` is set.
 6. `MARKETING_MAILER_FROM="Alex from Turf Monster <alex@turfmonster.media>"` is set for newsletter/marketing mail.
+7. `RESEND_MAILER_FROM="McRitchie Studio <team@mcritchie.studio>"` is set for rollback/presetup mail.
 
 Verify state any time:
 
@@ -105,7 +108,8 @@ heroku config:set -a turf-monster-mainnet \
   SES_SMTP_USERNAME=... SES_SMTP_PASSWORD=... SES_REGION=us-east-2
 heroku config:set -a turf-monster-mainnet \
   MAILER_FROM="Turf Monster <team@turfmonster.media>" \
-  MARKETING_MAILER_FROM="Alex from Turf Monster <alex@turfmonster.media>"
+  MARKETING_MAILER_FROM="Alex from Turf Monster <alex@turfmonster.media>" \
+  RESEND_MAILER_FROM="McRitchie Studio <team@mcritchie.studio>"
 heroku config:set -a turf-monster-mainnet MAIL_TRANSPORT=ses
 ```
 
