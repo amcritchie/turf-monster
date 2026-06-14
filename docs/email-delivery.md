@@ -38,24 +38,27 @@ SES account/domain checks should use `SES_AWS_ACCESS_KEY_ID` and
 Turf's existing S3 or app-level `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
 unless that IAM user is deliberately being rotated.
 
-## Local Agent Inbox
+## Local Email Delivery
 
-In non-production, `studio-engine` exposes a local inbox:
+Primary local stacks send real email through the configured provider by default.
+Keep `LOCAL_EMAIL_CAPTURE=0` in the primary `.env` when testing sign-in or
+transactional flows locally. While SES production access is pending, that means
+Resend sends from `McRitchie Studio <team@mcritchie.studio>`.
+
+In non-production, `studio-engine` also exposes a local inbox:
 
 ```text
 http://localhost:3100/_studio/local_emails
 ```
 
-Worktree stacks launched through McRitchie Studio's `bin/agent-worktree` set
-`LOCAL_EMAIL_CAPTURE=1` and blank provider mail credentials in `.env.agent-stack`.
-In that mode `Studio::Email.deliver` still records Turf's `email_deliveries`
-rows, but `EmailDeliveryJob` is not enqueued and `deliver_now!` refuses to send.
-Agents should use the inbox URL as the proof surface for magic-link/auth work
-instead of asking the user to check Gmail.
+Worktree stacks launched through McRitchie Studio's `bin/agent-worktree` still
+set `LOCAL_EMAIL_CAPTURE=1` and blank provider mail credentials in
+`.env.agent-stack`. In that mode `Studio::Email.deliver` still records Turf's
+`email_deliveries` rows, but `EmailDeliveryJob` is not enqueued and
+`deliver_now!` refuses to send. Agents should use the inbox URL as the proof
+surface for magic-link/auth work instead of asking the user to check Gmail.
 
-Primary local stacks can opt into the same behavior with `LOCAL_EMAIL_CAPTURE=1`.
-Set `LOCAL_EMAIL_CAPTURE=0` only when the task is explicitly testing SES/Resend
-provider delivery.
+Set `LOCAL_EMAIL_CAPTURE=1` only when intentionally using local inbox capture.
 
 ## Durable Delivery
 
