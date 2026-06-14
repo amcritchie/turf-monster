@@ -1,4 +1,6 @@
-# Outbox + audit log for every transactional email. `EmailDelivery.deliver(...)`
+# Outbox + audit log for every transactional email. App code should call
+# `Studio::Email.deliver(...)`; that shared facade delegates here while Turf
+# keeps its app-level table.
 # records the intent durably, then enqueues EmailDeliveryJob to actually send and
 # flip `sent`. A mail-server outage leaves rows `sent: false` — the job retries
 # via Sidekiq, and `EmailDelivery.resend_unsent!` re-enqueues any stragglers so

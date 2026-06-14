@@ -2,7 +2,9 @@
 
 Turf Monster sends transactional email (magic-link sign-in, verification, wallet
 export, email-change, contest winnings, newsletter welcome) through ActionMailer.
-Every send is also recorded as an `EmailDelivery` audit row (`sent` boolean).
+App code calls `Studio::Email.deliver`; the shared facade delegates to Turf's
+existing top-level `EmailDelivery` outbox, so every send is recorded as an audit
+row (`sent` boolean).
 
 ## Transport switch
 
@@ -16,9 +18,19 @@ default `resend`). Turf uses the shared Studio engine mail transport:
 | `ses` (creds missing) | **Resend** (fallback) | logs a warning; never silently breaks mail. |
 
 - `config/initializers/studio_mail_transport.rb` — calls `Studio::MailTransport.configure!`.
-- `studio-engine` owns `Studio::MailTransport`, the Resend dependency, and the shared `ses:*` Rake tasks.
+- `studio-engine` owns `Studio::MailTransport`, `Studio::Email.deliver`, the
+  Resend dependency, and the shared `ses:*` Rake tasks.
 - `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so engine magic links and app transactional mail use one sender.
 - Tests always use `:test` (in-memory); the transport no-ops in `Rails.env.test?`.
+
+## Durable delivery
+
+Turf Monster keeps its existing `email_deliveries` table and `EmailDeliveryJob`.
+The shared `Studio::Email.deliver` facade uses that app-level adapter first, so
+Turf can align call sites with McRitchie Studio without moving production data
+into `studio_email_deliveries` yet.
+
+Use `EmailDelivery.resend_unsent!` after a provider or worker outage.
 
 ## Goal: fully off Resend.com → SES
 
@@ -52,6 +64,6 @@ stable long enough that the rollback path is no longer useful.
 
 ## Engine ownership
 
-Turf Monster is bundled with `studio-engine 0.5.2+`, so the compatibility
-fallback has been removed from the app. Keep future transport changes in
-`studio-engine` unless they are truly app-specific.
+Turf Monster is bundled with `studio-engine 0.5.3+`. Keep future shared
+transport and delivery facade changes in `studio-engine`; keep Turf-specific
+catalog entries, previews, and email copy in the app.

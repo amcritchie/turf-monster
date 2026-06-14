@@ -30,7 +30,7 @@ class NewsletterController < ApplicationController
 
     rescue_and_log(target: user) do
       user.update!(joined_email_list_at: Time.current, left_email_list_at: nil)
-      EmailDelivery.deliver(NewsletterMailer, :welcome, user, to: user.email, user: user) if first_join && user.email.present?
+      Studio::Email.deliver(NewsletterMailer, :welcome, user, to: user.email, user: user) if first_join && user.email.present?
       payload = first_join ? grant_newsletter_seeds(user) : nil
       render json: { success: true, subscribed: true, email: user.email }.merge(payload || {})
     end

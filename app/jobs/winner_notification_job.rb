@@ -30,7 +30,7 @@ class WinnerNotificationJob < ApplicationJob
       locked = Entry.lock.find(entry.id)
       return if locked.winner_notified_at.present?
 
-      EmailDelivery.deliver(ContestMailer, :winnings, locked, to: locked.user.email, user: locked.user)
+      Studio::Email.deliver(ContestMailer, :winnings, locked, to: locked.user.email, user: locked.user)
       locked.update_column(:winner_notified_at, Time.current)
     end
   end

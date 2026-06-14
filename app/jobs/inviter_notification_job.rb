@@ -15,6 +15,6 @@ class InviterNotificationJob < ApplicationJob
     return unless invitee
     return unless invitee.inviter && invitee.inviter.email.present?
 
-    EmailDelivery.deliver(InviterMailer, :friend_joined_contest, to: invitee.inviter.email, user: invitee.inviter, invitee: invitee)
+    Studio::Email.deliver(InviterMailer, :friend_joined_contest, to: invitee.inviter.email, user: invitee.inviter, invitee: invitee)
   end
 end
