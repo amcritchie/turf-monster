@@ -108,6 +108,7 @@ Topic-specific documentation lives in `docs/`:
 | `docs/LOCAL_STACK.md` | Agent-friendly local stack, ports, Sidekiq, Stripe listener |
 | `docs/SOLANA.md` | Solana integration, wallet types, on-chain flows |
 | `docs/FORMULAS.md` | Scoring formulas, slate system, Chart.js patterns |
+| `docs/SECURITY_REVIEW.md` | Current security/readiness review checklist |
 | `docs/TEST_COVERAGE_STATUS.md` | Current test-coverage orientation and remaining gaps |
 | `docs/UI_PATTERNS.md` | Branding, theme, matchup grid, animations |
 | `docs/world_cup_2026.md` | World Cup format, groups, matchday structure |

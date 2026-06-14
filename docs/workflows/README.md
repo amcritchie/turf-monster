@@ -36,8 +36,10 @@ What a Turf Monster operator does from the admin surface or rake tasks.
 
 ## Dev / deploy
 
-Local development, devnet rehearsal, prod deploys, IDL re-pin. (Some sit in
-top-level `RUNBOOK.md` / `DEVNET_REHEARSAL.md` — link from here when relevant.)
+Local development, devnet proof, prod deploys, and IDL re-pin. Current Solana
+proof lives in `docs/SOLANA.md`, `docs/SECURITY_REVIEW.md`, and
+`turf-vault/docs/VERIFICATION_MATRIX.md`; retired rehearsal runbooks are
+historical only.
 
 | Workflow | Entrypoint | One-liner |
 |---|---|---|
