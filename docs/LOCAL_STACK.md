@@ -69,6 +69,17 @@ bin/agent-worktree up turf-monster task-slug
 
 This creates the worktree under `turf-monster/.worktrees/`, assigns the port, database, Redis DB, and session cookie key, then prints the review URL.
 
+The launcher also prints a local email inbox:
+
+```text
+http://localhost:<port>/_studio/local_emails
+```
+
+Worktree stacks default to `LOCAL_EMAIL_CAPTURE=1`, so magic links and other
+transactional emails are recorded there instead of sent through Resend/SES.
+Agents should hand back this URL for auth proof flows. Only disable capture for
+tasks that explicitly test provider delivery.
+
 ## Required Local Secrets
 
 At minimum, `.env` needs:

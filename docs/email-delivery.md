@@ -23,6 +23,25 @@ default `resend`). Turf uses the shared Studio engine mail transport:
 - `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so engine magic links and app transactional mail use one sender.
 - Tests always use `:test` (in-memory); the transport no-ops in `Rails.env.test?`.
 
+## Local agent inbox
+
+In non-production, `studio-engine` exposes a local inbox:
+
+```text
+http://localhost:3100/_studio/local_emails
+```
+
+Worktree stacks launched through McRitchie Studio's `bin/agent-worktree` set
+`LOCAL_EMAIL_CAPTURE=1` and blank provider mail credentials in `.env.agent-stack`.
+In that mode `Studio::Email.deliver` still records Turf's `email_deliveries`
+rows, but `EmailDeliveryJob` is not enqueued and `deliver_now!` refuses to send.
+Agents should use the inbox URL as the proof surface for magic-link/auth work
+instead of asking the user to check Gmail.
+
+Primary local stacks can opt into the same behavior with `LOCAL_EMAIL_CAPTURE=1`.
+Set `LOCAL_EMAIL_CAPTURE=0` only when the task is explicitly testing SES/Resend
+provider delivery.
+
 ## Durable delivery
 
 Turf Monster keeps its existing `email_deliveries` table and `EmailDeliveryJob`.
@@ -64,6 +83,6 @@ stable long enough that the rollback path is no longer useful.
 
 ## Engine ownership
 
-Turf Monster is bundled with `studio-engine 0.5.3+`. Keep future shared
-transport and delivery facade changes in `studio-engine`; keep Turf-specific
-catalog entries, previews, and email copy in the app.
+Turf Monster is bundled with `studio-engine 0.5.5+`. Keep future shared
+transport, delivery facade, and local agent inbox changes in `studio-engine`;
+keep Turf-specific catalog entries, previews, and email copy in the app.

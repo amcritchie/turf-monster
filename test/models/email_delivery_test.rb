@@ -4,7 +4,14 @@ class EmailDeliveryTest < ActiveSupport::TestCase
   include ActiveJob::TestHelper
   include ActionMailer::TestHelper
 
-  setup { @user = users(:alex) }
+  setup do
+    @user = users(:alex)
+    Studio.local_email_capture = nil
+  end
+
+  teardown do
+    Studio.local_email_capture = nil
+  end
 
   test "deliver records a durable unsent row and enqueues the send job" do
     rec = nil
@@ -42,5 +49,17 @@ class EmailDeliveryTest < ActiveSupport::TestCase
     assert_enqueued_jobs 1, only: EmailDeliveryJob do
       EmailDelivery.resend_unsent!
     end
+  end
+
+  test "local email capture records without enqueueing" do
+    Studio.local_email_capture = true
+
+    assert_no_enqueued_jobs only: EmailDeliveryJob do
+      assert_difference "EmailDelivery.count", 1 do
+        EmailDelivery.deliver(UserMailer, :magic_link, @user.email, "tok", to: @user.email)
+      end
+    end
+
+    assert_not EmailDelivery.recent.first.sent?
   end
 end

@@ -23,7 +23,7 @@ class EmailDelivery < ApplicationRecord
       args:      ActiveJob::Arguments.serialize(args),
       kwargs:    ActiveJob::Arguments.serialize([kwargs]).first
     )
-    EmailDeliveryJob.perform_later(record.id)
+    EmailDeliveryJob.perform_later(record.id) unless Studio.local_email_capture?
     record
   end
 
@@ -32,6 +32,7 @@ class EmailDelivery < ApplicationRecord
   # retries.
   def deliver_now!
     return if sent?
+    return update!(error: "local email capture enabled; not sent") if Studio.local_email_capture?
 
     pos = ActiveJob::Arguments.deserialize(args)
     kw  = ActiveJob::Arguments.deserialize([kwargs]).first.symbolize_keys
