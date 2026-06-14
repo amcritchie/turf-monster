@@ -8,9 +8,9 @@ paid ad, an X/Twitter post, or a friend's share link with `?reference=…`.
 **Actors:** Guest visitor → User (created mid-flow) · Phantom wallet · Rails ·
 Sidekiq · Solana devnet/mainnet RPC.
 **Outcome:** New `User` row with `web3_solana_address` set, a server-managed
-custodial wallet (`web2_solana_address`) attached, an on-chain `UserAccount` PDA
+wallet (`web2_solana_address`) attached, an on-chain `UserAccount` PDA
 created with username, and an `active` `Entry` row whose `onchain_tx_signature`
-points at the `enter_contest_direct` instruction confirmed on-chain.
+points at the `enter_contest` instruction confirmed on-chain.
 **Preconditions:** A `LandingPage` row is `active: true` with a `contest_id`
 wired (`app/models/landing_page.rb:46`), and that `Contest` is `open` and
 `onchain?` (i.e. its `onchain_contest_id` is set). Phantom must be installed in
@@ -49,7 +49,7 @@ the browser or available via mobile deep link.
    - The board partial mounts `x-data="selectionBoard()"` —
      `app/views/contests/_turf_totals_board.html.erb:1185`. The factory is
      defined inline (`:61-1182`) because Alpine processes `x-data` before
-     importmap modules load (see CLAUDE.md § Alpine + ERB constraints).
+     importmap modules load (see `docs/UI_PATTERNS.md` § Alpine + ERB Constraints).
    - Board config — picks_required, matchup data, contest slug, cart state — is
      serialized into `<script id="board-config">…</script>` JSON
      (`:25-56`). Auth state is read live from `Alpine.store('session')` (the
@@ -64,7 +64,7 @@ the browser or available via mobile deep link.
      (`app/controllers/contests_controller.rb:652`) creates an `Entry` with
      `status: :cart` (`:660`) and toggles a `Selection` via
      `Entry#toggle_selection!` (`app/models/entry.rb:29`). Hard-capped at
-     `contest.picks_required` (= 6, see CLAUDE.md) — extras replace the oldest.
+     `contest.picks_required` (= 6 for Turf Totals) — extras replace the oldest.
    - At 6 selections the UI blurs the page and the "Hold to Confirm" button
      appears (`_turf_totals_board.html.erb:1194-1200`, `:1368-1382`).
 
@@ -103,8 +103,7 @@ the browser or available via mobile deep link.
      during signup (OPSEC-044 — see `docs/SIGNUP_FLOWS.md`).
    - `User.from_solana_wallet(pubkey_b58)` looks up an existing user
      (`app/models/user.rb:87`); if absent, a new `User` is built with
-     `web3_solana_address: pubkey_b58`, a random password, and
-     `reference: cookies[:reference]` — first-touch funnel attribution
+     `web3_solana_address: pubkey_b58` and `reference: cookies[:reference]` — first-touch funnel attribution
      pulled off the cookie set by the landing page in step 1
      (`solana_sessions_controller.rb:37-42`).
    - `user.save!` triggers the shared spine:
@@ -113,7 +112,7 @@ the browser or available via mobile deep link.
      - `before_create :set_initial_session_token` — writes
        `users.session_token` (`:22`, `:217`) for OPSEC-045 cookie binding.
      - `after_create :generate_managed_wallet!` (`:23`, `:237`) generates a
-       custodial ed25519 keypair via `Solana::Keypair.generate`
+       server-managed ed25519 keypair via `Solana::Keypair.generate`
        (local, no RPC), encrypts the secret key with
        `MANAGED_WALLET_ENCRYPTION_KEY`, and writes `web2_solana_address` +
        `encrypted_web2_solana_private_key`. **Admins are excluded** (`:244`).
@@ -173,13 +172,13 @@ the browser or available via mobile deep link.
      - `Solana::Vault#ensure_user_account` runs synchronously here
        (`:434`) — closes the race where the async
        `CreateOnchainUserAccountJob` hasn't landed yet.
-     - `vault.build_enter_contest_direct(wallet, slug, entry_number,
+     - `vault.build_enter_contest(wallet, slug, entry_number,
        season_id: contest.season_id)`
        (`app/services/solana/vault.rb:747`) returns a partially-signed
        transaction (admin pays SOL rent, user co-signs the USDC transfer +
        entry write).
      - Persists a `PendingTransaction` row with `tx_type:
-       "enter_contest_direct"`, `status: "pending"`, `target: entry`,
+       "enter_contest"`, `status: "pending"`, `target: entry`,
        `metadata: { entry_pda, contest_slug }` (`:452-459`). Survives a
        mid-flight refresh — see failure modes below.
      - Returns `{ success, serialized_tx, entry_id, entry_pda, ptx_slug }`
@@ -202,7 +201,7 @@ the browser or available via mobile deep link.
        and refuses any client-supplied PDA mismatch (`:582`). Then
        `verify_solana_transaction!` calls `Solana::TxVerifier.verify!`
        (`:584-589`, `:915-924`) to fetch the tx from chain and assert the
-       instruction discriminator is `enter_contest_direct`, signed by
+       instruction discriminator is `enter_contest`, signed by
        `current_user.web3_solana_address`, writing to the derived PDA.
      - `entry.confirm_onchain!(tx_signature:, entry_pda:)` —
        `app/models/entry.rb:130`. Inside a `user.with_lock` transaction:
@@ -237,15 +236,14 @@ the browser or available via mobile deep link.
 - on-chain: `UserAccount` PDA (`create_user_account` / `ensure_user_account`
   in step 7; re-asserted synchronously in step 9 `#prepare_entry`)
 - on-chain: `Entry` PDA + `Contest.entry_fees` USDC credit, seeds award
-  per `Season.seed_schedule` — single atomic `enter_contest_direct`
+  per `Season.seed_schedule` — single atomic `enter_contest`
   instruction (step 9)
 - external: Solana devnet/mainnet RPC for tx broadcast + confirm + signature
   fetch (logged through `Solana::ClientLogger` →
   `outbound_requests`)
 - external: Phantom wallet for two interactions — `signMessage` at signup
-  (step 5) and `signTransaction` at entry (step 9). Single-signature entry
-  (per CLAUDE.md note, audit 2026-05-24) — no per-entry SIWS signMessage
-  prompt anymore.
+  (step 5) and `signTransaction` at entry (step 9). There is no separate
+  per-entry SIWS `signMessage` prompt.
 
 ## Failure modes
 

@@ -1,131 +1,198 @@
 # Authentication & Account Management
 
-## Three Auth Methods
+Turf Monster is passwordless. The live sign-in surface is `GET /signin`
+(`SessionsController#new`), and legacy `GET /login` / `GET /signup` redirect
+there while preserving query params.
 
-All optional — user needs at least one:
+## Auth Methods
 
-- **Email + password** — traditional signup/login via studio engine controllers
-- **Google OAuth** — via OmniAuth, links to existing email users automatically
-- **Solana wallet (Phantom)** — Ed25519 signature verification, `SolanaSessionsController`
+Users can authenticate through any of these paths:
 
-> Email auth is now a passwordless magic link (no password field) — see `MagicLinksController`. `has_secure_password` is kept dormant as a fallback.
+- **Email magic link** - `POST /magic_link` requests a link, `GET /magic_link/:token` renders a scanner-safe confirmation page, and `POST /magic_link/:token` consumes the token.
+- **Google OAuth** - OmniAuth + `GoogleOauthValidator` re-check Google's ID token before linking or creating a user.
+- **Solana wallet** - Phantom / Wallet Standard SIWS flow through `SolanaSessionsController`; the server verifies the Ed25519 signature without calling Solana RPC during sign-in.
 
-> See [`SIGNUP_FLOWS.md`](SIGNUP_FLOWS.md) for end-to-end sequence diagrams of all three sign-up paths — frontend, backend, third parties, and on-chain.
+There is no password login, no password reset, and no `User#authenticate`.
+`users.password_digest` remains in the schema only as dormant legacy baggage.
 
-**Unified sign-in page (2026-06-02):** login and signup are one create-or-login flow, so there is a single canonical page at `GET /signin` (`sessions#new`). Legacy `/login` + `/signup` 301-redirect to it, preserving the query string. The CTA label is "Sign in" everywhere. See the CLAUDE.md "Unified `/signin`" note for the routing details.
+See [SIGNUP_FLOWS.md](SIGNUP_FLOWS.md) for end-to-end flow diagrams.
 
-## Legal-Age Attestation (flag-gated, parked OFF)
+## Legal-Age Attestation
 
-The underwriting-compliance age checkbox (`shared/_age_attestation`, rendered on the signin card, the in-contest auth modal, and the wallet-connect modal) is gated by `AppFlags.age_attestation?` / `ENABLE_AGE_ATTESTATION` — **unset = off, the current prod state** (operator call 2026-06-10; will be re-enabled after the first contest). When OFF: the partial renders nothing, auth surfaces initialize their `ageAttested` Alpine model to `true` so the CTAs are ungated, the server-side signup gates (`age_attestation_required? && !age_attestation_given?` in `RegistrationsController`, `MagicLinksController`, `SolanaSessionsController`, `OmniauthCallbacksController`) all pass, and `age_attested_at` is **deliberately NOT stamped** — we never record an attestation the user wasn't actually shown. The e2e helper `attestAge()` no-ops when the checkbox isn't rendered.
+The underwriting-compliance checkbox is flag-gated by
+`AppFlags.age_attestation?` / `ENABLE_AGE_ATTESTATION`.
+
+When the flag is off, the shared checkbox partial renders nothing, client auth
+models initialize as already attested, server signup gates pass, and
+`age_attested_at` is intentionally not stamped. When the flag is on, brand-new
+magic-link, Google, wallet, and fallback `POST /signup` creations must carry the
+attestation.
 
 ## User Model Auth Design
 
+Current authentication identity lives directly on `users`:
+
 ```ruby
-has_secure_password validations: false  # wallet users have no password
 has_one_attached :avatar
 validates :email, uniqueness: true, allow_nil: true
-validates :username, uniqueness: { case_sensitive: false }, allow_nil: true
-validates :username, length: { in: 3..30 }, format: { with: /\A[a-zA-Z0-9_-]+\z/ }, allow_nil: true
-validates :password, length: { minimum: 6 }, if: -> { password.present? }
-validates :password, confirmation: true, if: -> { password_confirmation.present? }
-validate :has_authentication_method  # must have email, solana_address, or provider+uid
+validates :web2_solana_address, uniqueness: true, allow_nil: true
+validates :web3_solana_address, uniqueness: true, allow_nil: true
+validates :username, length: { in: 3..30 },
+                     format: { with: /\A[a-zA-Z0-9_-]+\z/ },
+                     uniqueness: { case_sensitive: false },
+                     allow_nil: true
+validate :has_authentication_method
 ```
 
-- `email` is **nullable** — wallet-only users have no email
-- `username` — 3-30 chars, alphanumeric + underscore + hyphen, case-insensitive uniqueness, nullable
-- `password_digest` keeps `null: false, default: ""` (has_secure_password needs it)
-- Predicate helpers: `google_connected?`, `has_password?`, `has_email?`, `profile_complete?` (username present)
-- `display_name` fallback chain: username → name → email prefix → truncated_solana → "anon"
-- `has_one_attached :avatar` — user profile avatar via Active Storage
-- `profile_complete?` — returns `username.present?`, used by `require_profile_completion` before_action
-- `require_profile_completion` in ApplicationController — redirects incomplete profiles to `/account/complete_profile` (skips auth routes, API, account completion itself)
+Important invariants:
 
-## Account Management (`/account`)
+- `email` is nullable; wallet-only users may not have one.
+- Email format uses `User.valid_email?`, shared by model validation and magic-link request handling.
+- `has_authentication_method` requires at least one of email, Google `(provider, uid)`, or Solana wallet identity.
+- `display_name` falls back through username, name, email prefix, truncated wallet address, then `"anon"`.
+- `profile_complete?` is `username.present?`; usernames are auto-generated on create, so normal signups are immediately complete.
+- `before_create :set_initial_session_token` writes the OPSEC-045 session-binding token.
+- `after_create :generate_managed_wallet!` creates a server-managed Solana wallet for non-admin users.
+- `after_commit :enqueue_onchain_account_setup` creates the on-chain username PDA asynchronously.
 
-- **AccountsController** — show, update, unlink_google, change_password, complete_profile, save_profile, update_username, confirm_username
-- **Complete Profile page** (`/account/complete_profile`) — shown when `profile_complete?` is false. Collects username (+ optional avatar). `save_profile` action saves and redirects back to original destination.
-- **UserMergeable concern** — merges accounts when linking reveals overlap (lower ID survives)
-- **OmniauthCallbacksController** (app override) — merge support when linking Google while logged in. Uses `rescue ActiveRecord::RecordNotUnique` in `from_omniauth` to handle race conditions on concurrent OAuth callbacks.
-- Merge transfers entries, sums balances, fills blank auth fields, updates ErrorLog references
+## Email Magic Links
 
-## On-Chain Usernames (turf-vault v0.14.0+)
+Routes:
 
-Every user gets an on-chain `UserAccount` PDA with their username stored as a 32-byte UTF-8 field. The DB `username` column mirrors what's on-chain — the chain is the source of truth.
+- `POST /magic_link` - request a create-or-login link for an email.
+- `GET /magic_link/:token` - inert confirmation page. It does not consume the token, so link scanners cannot burn the login.
+- `POST /magic_link/:token` - authoritative consume; signs in an existing user or creates a new one.
 
-### Signup auto-generation
+The consume step proves email ownership. Existing users with blank
+`email_verified_at` are stamped verified on consume. New users are built from
+the email in the token, pass through `Studio.configure_new_user`, get the normal
+managed-wallet callbacks, then receive a session through `set_app_session`.
 
-Two callbacks on `User` set this up eagerly so no user ever has a blank username:
+Magic-link session setup hard-resets any prior browser session first. This
+prevents a previous Phantom/web3 session from leaking `session[:onchain]`,
+nonces, return targets, or client wallet state into the new web2 email session.
 
-- `before_validation :ensure_username, on: :create` (`user.rb:20`) — fills the DB column with `Studio::UsernameGenerator.generate` if blank.
-- `after_commit :enqueue_onchain_account_setup, on: :create` (`user.rb:27`) — enqueues `CreateOnchainUserAccountJob` which calls `Solana::Vault#ensure_user_account(wallet, username:)`. The job is idempotent (skips if the PDA already exists at the current size).
+## Google OAuth
 
-The job runs async via Sidekiq, so users are logged in before the PDA is finalized. Reads of `user.username` always work because the DB column is set first; on-chain lookups should fall back to the DB column when the PDA isn't found yet.
+Routes:
 
-### Editing the username
+- `POST /auth/google_oauth2` - normal OmniAuth request phase.
+- `GET /auth/google_oauth2/callback` - callback handled by `OmniauthCallbacksController#create`.
+- `GET /auth/google_popup` - popup-mode entrypoint used by the in-contest auth modal.
 
-The `AccountsController` exposes a two-step edit flow because Phantom users must client-side-sign the `set_username` instruction:
+The callback re-validates Google's ID token with `GoogleOauthValidator` before
+trusting `auth.info.email`. `User.from_omniauth(auth, email_verified: true)`
+then:
 
-- **Managed wallets** — `POST /account/update_username` server-signs immediately via `Solana::Vault#set_username(wallet, new_username, user_keypair:)`. DB column is mirrored in the same request. (`accounts_controller.rb:181-185`)
-- **Phantom wallets** — `POST /account/update_username` returns a partial `set_username` TX. Client signs and broadcasts. `POST /account/confirm_username` verifies the TX signature via `verify_solana_transaction!` (OPSEC-010) before mirroring the new username to the DB. (`accounts_controller.rb:159-217`)
+- returns an already-linked `(provider, uid)` user,
+- links an existing email user only if that user had already verified email
+  ownership, or
+- creates a new verified Google user.
 
-The instruction itself (`set_username`) is in turf-vault — the username is padded with `0x00` to 32 bytes on-chain. `Solana::Vault#username_bytes32` (`vault.rb`) handles the encoding.
+If Google collides with a wallet account that has not verified email ownership,
+the controller stores a short-lived pending Google identity and asks the user to
+prove wallet ownership before linking.
 
-### Files
+## Solana Wallet Auth
 
-- `app/models/user.rb` — callbacks (lines 20, 27, 278-285)
-- `app/jobs/create_onchain_user_account_job.rb` — async PDA creation
-- `app/controllers/accounts_controller.rb` — edit flow (lines 159-217)
-- `app/services/solana/vault.rb` — `ensure_user_account`, `create_user_account`, `set_username`, `build_set_username`, `username_bytes32`
-- `studio-engine` — `Studio::UsernameGenerator` (auto-gen helper)
+Routes:
+
+- `GET /auth/solana/nonce`
+- `POST /auth/solana/verify`
+- `GET /auth/phantom/callback` for mobile deep links
+- `GET /login/wallet` for the Google-collided-with-wallet recovery path
+
+`Solana::SessionAuth#verify_solana_signature!` enforces:
+
+- a server-generated nonce with a five-minute freshness window,
+- delete-before-verify replay protection,
+- host binding through the SIWS message, and
+- optional session/user binding when linking a wallet to an existing account.
+
+Successful wallet sign-in sets the normal app session and then marks
+`session[:onchain] = true`. That flag means the current browser session proved
+fresh wallet ownership and may sign on-chain actions. It is distinct from the
+account-level `web3_solana_address`, because an account can have a Phantom
+wallet linked but currently be signed in via magic link or Google.
+
+Signup itself does not touch Solana RPC. New wallet users get a Rails row and
+managed wallet immediately; on-chain `UserAccount` creation is async and
+idempotent.
+
+## Account Management
+
+`AccountsController` owns profile, identity, and account-level wallet actions:
+
+- `GET /account` - account settings and identity overview.
+- `PATCH /account` - profile update, first email set, or out-of-band email-change request.
+- `GET /account/complete_profile` and `POST /account/save_profile` - avatar/profile completion.
+- `POST /account/link_solana` - link a Phantom wallet to the current account after a session-bound signature.
+- `POST /account/unlink_google` - remove Google OAuth identity.
+- `PATCH /account/set_inviter` - one-time inviter/referral binding.
+- `POST /account/update_username` and `POST /account/confirm_username` - on-chain username edit.
+- `GET /account/session_state` and `GET /account/session_refresh` - client rehydrate endpoints.
+- `POST /account/initiate_wallet_export` - send the self-custody export link to the verified email address.
+
+Email changes are out-of-band. Changing an existing email mints a signed token
+and emails the current address; the address changes only after the human POSTs
+from the confirmation page. Wallet export also uses a signed emailed token and
+requires a managed, non-self-custodied account with a verified email.
+
+Identity mutations are blocked while an admin is impersonating another user.
+
+## On-Chain Usernames
+
+Every user gets a DB username and an on-chain `UserAccount` PDA whose username
+field mirrors it.
+
+Signup callbacks:
+
+- `before_validation :ensure_username, on: :create` fills `users.username`.
+- `after_commit :enqueue_onchain_account_setup, on: :create` enqueues
+  `CreateOnchainUserAccountJob`.
+
+Username edits are gated by `User#can_change_username?`, which requires a
+connected wallet and at least one contest entry.
+
+Edit flow:
+
+- Managed-wallet users call `POST /account/update_username`; the server signs
+  `set_username` and mirrors the DB column.
+- Phantom or self-custodied users call `POST /account/update_username`, receive
+  a partial transaction, sign in the wallet, then call
+  `POST /account/confirm_username`; the server verifies the transaction before
+  mirroring the DB column.
 
 ## Admin Authorization
 
-- `role` string column on User (default `"viewer"`)
-- `admin?` predicate: `role == "admin"`
-- `require_admin` before_action in ApplicationController — redirects non-admins to root with alert
-- Admin-gated actions on ContestsController: `grade`, `fill`, `lock`, `jump`, `reset`
-- Seed admin: `alex@mcritchie.studio` (role: "admin")
+- `role` string column on `users`, default `"viewer"`.
+- `User#admin?` returns `role == "admin"`.
+- `require_admin` comes from `Studio::ErrorHandling`.
+- Sidekiq Web has an extra local middleware that requires both admin role and a
+  matching `session_token`.
 
-## Passwords
+Seeded operator account: `alex@mcritchie.studio`.
 
-- Minimum 6 characters (enforced in model validation)
-- Seed/fixture password: `"password"` (not "pass" — too short for min 6 validation)
-- `has_secure_password validations: false` disables ALL built-in validations including confirmation — must add `validates :password, confirmation: true` explicitly
+## SSO Satellite Role - Removed 2026-05-24
 
-## SSO Satellite Role — REMOVED 2026-05-24
+Turf Monster does not accept McRitchie Studio SSO today. Cookie isolation and
+local controller overrides make `sso_login` and `sso_continue` return 404.
 
-> **Effective status: SSO is fully removed from turf-monster** as of the 2026-05-24 pre-launch audit (finding C3). The cookie is isolated, the SSO endpoints return 404, and the UI partial is deleted.
+What changed:
 
-### What was changed
-- **Cookie key + scope** (`config/initializers/session_store.rb`): key `_studio_session` → `_turf_session`, `.mcritchie.studio` domain dropped. The hub's shared cookie is no longer readable here, so `session[:sso_email]` etc. cannot flow in.
-- **Controller override** (`app/controllers/sessions_controller.rb`): local replacement that 404s `sso_continue` and `sso_login`. Other actions (`new`/`create`/`destroy`) mirror studio-engine's.
-- **Login view** (`app/views/sessions/new.html.erb`): `has_sso` reveal overlay logic + `render "sessions/sso_continue"` calls removed.
-- **Partial deleted** (`app/views/sessions/_sso_continue.html.erb`).
+- `config/initializers/session_store.rb` uses an app-specific `_turf_session`
+  cookie with no shared `.mcritchie.studio` domain.
+- `SessionsController` overrides SSO actions and disables them.
+- The old SSO continue partial was removed from the local sign-in view.
 
-### Why
-The hub (mcritchie-studio) sets `_studio_session` cookie without `secure` / `httponly` / `same_site` flags. Because the cookie was shared with turf-monster (`.mcritchie.studio` domain + same key), the hub's unhardened cookie would overwrite turf-monster's hardened cookie on every cross-app request — making turf-monster sessions stealable via XSS or network MITM on the hub side, then replayable here. The hub also writes `session[:sso_email]` / `[:sso_name]` / `[:sso_provider]` / `[:sso_uid]`, which the engine's `sso_continue` action would consume to silently create or log in a turf-monster user. Closing this attack chain pre-mainnet was a launch-blocker.
+Do not restore SSO until the hub/satellite cookie contract is deliberately
+redesigned and hardened.
 
-### Restoring SSO later
-When the hub's `config/initializers/session_store.rb` is hardened (secure/httponly/same_site flags added) and you want cross-app SSO back:
-1. Revert `config/initializers/session_store.rb` — key back to `_studio_session`, re-add `domain: ".mcritchie.studio"` in prod.
-2. Delete `app/controllers/sessions_controller.rb` (so the engine's SSO actions take over again).
-3. Re-render the SSO partial in `app/views/sessions/new.html.erb` — `<%= render "sessions/sso_continue" %>` plus the original `has_sso` reveal overlay.
-4. Recreate `app/views/sessions/_sso_continue.html.erb` (or rely on the engine's version — no local override needed).
+## Route Gotchas
 
-### Reference: how it worked before
-This app received one-way SSO from McRitchie Studio (the hub). Login page showed "Continue as [name]" button when the user was logged into Studio. `GET /sso_login` (the hub's nav-link target) redirected here; sign-in went through the CSRF-protected `POST /sso_continue` (OPSEC-016 — the GET no longer mutated the session). Logout only cleared this app's session. Wallet-only users (no email) couldn't SSO. Hub logo at `public/studio-logo.svg`. Required shared `SECRET_KEY_BASE`.
+`resource :account` member routes put the action name first. For example,
+`unlink_google_account_path` is correct; `account_unlink_google_path` is not.
 
-## Solana Auth Security
-
-- **Nonce replay prevention**: Solana nonces include timestamp, enforced 5-minute expiry window. Nonce is deleted from session before verification (delete-before-verify pattern) to prevent replay attacks.
-- **Host binding** (OPSEC-018): the signed message must name the request host as its opening token (`"<host> wants to sign in…"`). `Solana::SessionAuth#verify_solana_signature!` passes `expected_host: request.host_with_port` to the gem's `Solana::AuthVerifier.verify!`, so a signature the user produced for another dApp (with a matching nonce) can't satisfy turf-monster login.
-
-## Account Routes
-
-- `/account` — GET account settings, PATCH update profile
-- `/account/complete_profile` — GET, complete profile page
-- `/account/save_profile` — POST, save profile completion form
-- `/account/unlink_google` — POST, unlink Google OAuth
-- `/account/change_password` — POST, set or change password
-
-**Route name gotcha**: `resource :account` with member routes generates `unlink_google_account_path` (not `account_unlink_google_path`). The action name comes first.
+`/signin` is the canonical human auth page. `POST /login` exists only because
+the engine route remains drawn; the local controller redirects stale password
+posts back to `/signin` with a magic-link hint.

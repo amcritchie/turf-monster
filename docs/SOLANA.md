@@ -4,7 +4,7 @@
 
 ## Architecture: self-custody (v0.16+)
 
-There is **no custodial vault balance**. USDC and USDT live in each user's **own ATA**:
+There is **no pooled server vault balance**. USDC and USDT live in each user's **own ATA**:
 - **Managed (web2) wallets** — Rails holds the user's Ed25519 secret, encrypted at rest, and server-signs on their behalf. Funds still sit in the user's ATA.
 - **Phantom (web3) wallets** — true self-custody; the user signs in the browser.
 
@@ -25,7 +25,7 @@ Local (turf-monster) classes:
 - `Solana::Reconciler` — compares **on-chain contest state** (entry counts, slot-0 `entry_fees`) and per-user on-chain account presence against the DB; writes discrepancies to `ErrorLog` only. **No** Slack/Discord webhook. The scheduled cron was **removed 2026-05-19 (OPSEC-040)** — run ad-hoc via the rake tasks below.
 - `Solana::ClientLogger` — prepended onto the RPC client to write `OutboundRequest` audit rows.
 
-RPC + serialization primitives come from the **`solana-studio` gem** (`~> 0.4.3`), not local: `Solana::Client` (JSON-RPC over Net::HTTP, retry/blockhash logic), `Solana::Borsh`, `Solana::Transaction` (builder, `find_pda`, `anchor_discriminator`, partial signing), `Solana::SplToken`.
+RPC + serialization primitives come from the **`solana-studio` gem** (`~> 0.4.7`), not local: `Solana::Client` (JSON-RPC over Net::HTTP, retry/blockhash logic), `Solana::Borsh`, `Solana::Transaction` (builder, `find_pda`, `anchor_discriminator`, partial signing), `Solana::SplToken`.
 
 ## Anchor Program (`turf-vault/`)
 
@@ -92,7 +92,7 @@ Signers (`VaultState.signers`, threshold 2):
 
 **`anchor deploy` no longer works.** The program upgrade authority is a Squads V4 2-of-3 multisig vault (`BW13kgfiG2koFn3WRkte21NW9TFygsD1ge2fNJdjH6kC`) — distinct from `VaultState`'s in-program multisig — not a single keypair. Every upgrade goes through the Squad. Running `anchor deploy` will fail because the Solana CLI signs as a single keypair that is no longer the upgrade authority.
 
-Use `turf-vault/scripts/squad-upgrade.js` — it builds a buffer, sets the buffer authority to the Squad vault, then proposes + approves the upgrade tx through the Squad. See `turf-vault/CLAUDE.md` § "Deploying an upgrade" for the full step-by-step (1Password key refs included).
+Use `turf-vault/scripts/squad-upgrade.js` — it builds a buffer, sets the buffer authority to the Squad vault, then proposes + approves the upgrade tx through the Squad. Treat `turf-vault/docs/CURRENT_DEPLOYMENT.md` as the canonical program identity record; use the McRitchie Studio credential inventory for current 1Password item names instead of copying key refs into this app doc.
 
 **Post-deploy IDL re-pin (mandatory)**: After every Squad upgrade, turf-monster MUST re-pin `EXPECTED_IDL_HASH` from the **freshly built** IDL — NOT `anchor idl fetch`. Squad upgrades run only the BPF `upgrade` instruction; they do NOT update the on-chain IDL account. `anchor idl fetch` therefore returns the stale pre-upgrade IDL.
 
@@ -133,7 +133,7 @@ bin/deploy
 
 ## Wallet Types
 
-- **Managed (web2)**: Server generates an Ed25519 keypair and stores the secret encrypted (via `MANAGED_WALLET_ENCRYPTION_KEY`), signing on behalf of the user. USDC still lives in the user's own ATA (self-custody model; formerly "custodial").
+- **Managed (web2)**: Server generates an Ed25519 keypair and stores the secret encrypted (via `MANAGED_WALLET_ENCRYPTION_KEY`), signing on behalf of the user. USDC still lives in the user's own ATA.
 - **Phantom (web3)**: User connects the Phantom browser extension (or any Wallet-Standard wallet) and signs transactions directly.
 
 ## Hard Escrow Contest Creation (Phantom-driven, 2026-05-18+)
@@ -159,7 +159,7 @@ The on-chain TX completes **before** the DB row is created, so the database alwa
 All three end at `Entry#confirm!` / `#confirm_onchain!`, which enforce the payment-proof (`tx_signature`), lock-time, exactly-`picks_required`, no-locked-games, per-user-limit, and sybil checks.
 
 1. **Managed-wallet token-consume** — managed user with an `EntryTokenAccount`: `Vault#enter_contest_with_token` signs with the server-held keypair; consumes the token (no USDC moves), awards seeds, then `bust_entry_tokens_cache!`.
-2. **Managed-wallet USDC** — `Vault#enter_contest` signs **both** the admin (payer) and user (custodial keypair) slots and broadcasts directly. SPL transfer user-ATA → `op_rev` ATA. There is no DB-balance or PDA-balance deduction — neither exists in v0.16.
+2. **Managed-wallet USDC** — `Vault#enter_contest` signs **both** the admin (payer) and user (server-managed keypair) slots and broadcasts directly. SPL transfer user-ATA → `op_rev` ATA. There is no DB-balance or PDA-balance deduction — neither exists in v0.16.
 3. **Phantom-direct** — Phantom-FIRST (2026-06-06): `prepare_entry` builds a fully-UNSIGNED `enter_contest` TX (admin reserved as fee-payer + nonce-authority but NOT signed) + creates a `PendingTransaction`; Phantom signs FIRST, the client POSTs the signed wire bytes to `confirm_onchain_entry`, which admin-cosigns (`Vault#cosign_and_broadcast_entry` via `Solana::Transaction.cosign_wire`), runs a `simulateTransaction` pre-flight, broadcasts **server-side**, then verifies (`TxVerifier`) and runs `Entry#confirm_onchain!`. `recover_pending_entry` resolves entries stranded by a mid-flight refresh (also TxVerifier-gated — Lazarus audit #1).
 
 **Currency selection (2026-06-10)**: `prepare_entry` takes a strict `currency=usdc|usdt` param (default `usdc`). USDT is rejected unless the contest's `accepts_usdt` flag is set — only contests whose on-chain `entry_fee_by_currency` slot 1 was funded at creation accept it, and that array is **immutable** after `create_contest`, so contests created before 2026-06-11 stay USDC-only forever (the program rejects `currency_idx: 1` with `EntryFeeNotSet` 6027). The endpoint ensures the user's ATA for the SELECTED mint and threads `currency_idx` (0=USDC, 1=USDT) into `build_enter_contest` + the `PendingTransaction` metadata. Client: `#board-config` carries `acceptsUsdt`, the flow auto-picks USDC-first/USDT-fallback, and `eligibilityBlocker(session, neededCents, { acceptsUsdt })` only counts USDT funds on accepts-USDT contests.
@@ -170,7 +170,7 @@ All three end at `Entry#confirm!` / `#confirm_onchain!`, which enforce the payme
 
 Seeds are awarded on-chain per the active **Season**'s `seed_schedule` (turf-vault v0.11.0+). Default schedule is `[25, 19, 14, 10, 7]` — entry index 0 → 25 seeds, index 4+ clamps to slot 4. No DB column for the seeds count — read from the `UserAccount` PDA via `Solana::Vault#sync_balance`. UI-derived levels: `level = seeds / 100 + 1` (`SEEDS_PER_LEVEL = 100`); class methods `User.level_for(seeds)`, `seeds_toward_next_level(seeds)`, `seeds_progress_percent(seeds)`. The active season is tracked in `SeasonConfig.current_season_id` (Rails singleton); the on-chain `Season` PDA lives at `[b"season", season_id_le]`. Compute an entry's award via `Solana::Vault.new.seeds_for_entry(entry_num)`. Progress-bar partial `_seeds_bar.html.erb` (navbar via `_user_nav` + contest show via `_slate_progress_xp`); level-up confetti; "Free Entry Earned 🎟️" badge in the entry-confirm modal (cosmetic — operator mints actual `EntryTokenAccount` PDAs via `/admin/free_entries`). `User#level` column persisted via `update_level_from_seeds!` (`PATCH /account/update_level`).
 
-> Cross-doc note: `CLAUDE.md` currently says "65 seeds per entry" — that figure is **stale**; the per-season schedule above (matching `vault.rb`) is authoritative.
+The per-season schedule above is authoritative for Turf Monster; update this doc and the active `SeasonConfig`/vault setup together when changing rewards.
 
 ## Rake Tasks (`lib/tasks/solana.rake`)
 
@@ -183,7 +183,7 @@ Seeds are awarded on-chain per the active **Season**'s `seed_schedule` (turf-vau
 - `solana:mint_usdc` — mint test USDC to the admin ATA (`AMOUNT=<dollars>`, default 100). **Devnet only — hard-aborts in production (OPSEC-020).**
 - `solana:fund_wallets` — fund a set of wallets (dev bring-up).
 - `solana:generate_keypair` / `solana:test_encryption` / `solana:reencrypt_managed_wallets` — managed-wallet key tooling (the last rotates ciphertext to the current `MANAGED_WALLET_ENCRYPTION_KEY`).
-- `solana:reconcile` — run `Solana::Reconciler` over all users (on-chain account-presence / state checks; no balance reconciliation — there are no custodial balances).
+- `solana:reconcile` — run `Solana::Reconciler` over all users (on-chain account-presence / state checks; no pooled balance reconciliation).
 - `solana:reconcile_contest CONTEST=<slug>` — compare an on-chain contest's entry count + slot-0 `entry_fees` against the DB.
 
 ## Public faucet endpoint

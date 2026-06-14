@@ -28,7 +28,7 @@
    - `verify_solana_signature!` (`app/controllers/concerns/solana/session_auth.rb:20-47`) deletes the nonce before verifying (replay protection) and delegates to `Solana::AuthVerifier.verify!` in the solana-studio gem with `expected_host: request.host_with_port`.
    - Looks up the user by wallet via `User.from_solana_wallet(pubkey_b58)` (`app/models/user.rb:87-89`); creates a new `User` if none exists.
    - `set_app_session(user)` (`app/controllers/application_controller.rb:19-28`) writes the session-token cookie and explicitly **clears** any stale `session[:onchain]` flag, then `session[:onchain] = true` is re-granted because this auth path is a genuine Phantom signature.
-5. **Admin gate** — every admin route runs `before_action :require_admin` (`app/controllers/contests_controller.rb:6`). The helper is `Studio::ErrorHandling#require_admin` (`studio-engine-0.4.4/app/controllers/concerns/studio/error_handling.rb:81-83`), which redirects with "Not authorized" unless `logged_in? && current_user.admin?`.
+5. **Admin gate** — every admin route runs `before_action :require_admin` (`app/controllers/contests_controller.rb:6`). The helper is `Studio::ErrorHandling#require_admin` in `studio-engine`, which redirects with "Not authorized" unless `logged_in? && current_user.admin?`.
 
 ### 2. Initialize on-chain accounts — **conditional**
 
@@ -81,7 +81,7 @@ Phantom-driven, three-step. The DB row is only created **after** the on-chain TX
    - `build_finalized_contest` (`app/controllers/contests_controller.rb:820-836`) constructs the DB row with `skip_onchain_callback = true` (so the legacy `Contest#create_onchain!` `after_create` hook doesn't fire and double-spend — `app/models/contest.rb:39-40`, `app/models/contest.rb:156-158`). `before_create` binds `season_id` to `SeasonConfig.current_season_id` (`app/models/contest.rb:42-45`).
    - Attaches `contest_image` if present, then `contest.save!` returns `{ success: true, redirect: contest_path(contest), slug: }`.
 
-> **Fallback path — server-funded.** `Contest#create_onchain!` (`app/models/contest.rb:136-154`) wired via `after_create :create_onchain_with_rollback!` (`app/models/contest.rb:40, 163-169`) calls `Solana::Vault#create_contest_server_funded` (`app/services/solana/vault.rb:599+`). Admin signs as both payer and creator, prize pool funded from custodial USDC. Used for Rails console / scripts; auto-skipped in tests (`Rails.env.test?` in `skip_onchain_callback_active?`). The UI does not use this path.
+> **Fallback path — server-funded.** `Contest#create_onchain!` (`app/models/contest.rb:136-154`) wired via `after_create :create_onchain_with_rollback!` (`app/models/contest.rb:40, 163-169`) calls `Solana::Vault#create_contest_server_funded` (`app/services/solana/vault.rb:599+`). Admin signs as both payer and creator, with prize-pool USDC funded from the configured server/admin wallet. Used for Rails console / scripts; auto-skipped in tests (`Rails.env.test?` in `skip_onchain_callback_active?`). The UI does not use this path.
 
 ### 4. Admin enters their own contest
 

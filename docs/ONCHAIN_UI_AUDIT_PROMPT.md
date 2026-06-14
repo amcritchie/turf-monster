@@ -27,7 +27,7 @@ This is a defensive security review of code I own. Look for OWASP-style bugs (XS
 **Code state:**
 - Full Rails suite: 462/462 green
 - Playwright chromium E2E: 53/53 green (2 `@devnet` skips by design)
-- `solana-studio` gem at 0.4.3 (downstream monkey-patch removed)
+- `solana-studio` gem at 0.4.7+ (downstream monkey-patch removed)
 
 **Remaining pending tasks:**
 - **#11** Self-custody export + prove-custody flow (bigger design piece — out of scope for this audit)
@@ -51,7 +51,7 @@ This is a defensive security review of code I own. Look for OWASP-style bugs (XS
    - `app/views/tokens/processing.html.erb` (Stripe-return processing card)
    - `app/controllers/tokens_controller.rb` (`#buy`, `#stripe_checkout`, `#processing`, `#status`, `#dev_mint`)
    - `app/jobs/token_purchase_job.rb` (mint loop + idempotency)
-   - `app/jobs/stripe_deposit_job.rb`, `app/jobs/moonpay_deposit_job.rb` (other deposit paths)
+   - `app/jobs/stripe_deposit_job.rb` and current ramp/payment jobs
    - `app/webhooks/` — Stripe webhook entry points
    - Look for: replay attacks on session_id; ability to redeem a Stripe session for a different user; race between webhook + manual /tokens/status poll; what happens if mint fails after Stripe charge succeeded
 
@@ -63,7 +63,7 @@ This is a defensive security review of code I own. Look for OWASP-style bugs (XS
 
 3. **Signup → on-chain UserAccount**
    - `app/controllers/omniauth_callbacks_controller.rb` (Google → managed wallet → on-chain UserAccount)
-   - `app/services/solana/auth_verifier.rb` (Phantom signature → session adapter)
+   - `app/controllers/concerns/solana/session_auth.rb` plus `solana-studio`'s `Solana::AuthVerifier` (Phantom signature -> session adapter)
    - `app/jobs/create_onchain_user_account_job.rb`
    - `app/models/user.rb` — `#ensure_username`, `#managed_wallet?`, `#solana_connected?`
    - Look for: username collisions / squatting; signature replay across dApps (OPSEC-018 should prevent — verify); managed-wallet key encryption rotation; Google email-not-verified bypass
@@ -124,7 +124,7 @@ Send all four in a single message so they run concurrently. Brief each on the v0
 Then read the punch-list together and:
 - Fix anything ranked critical/high inline
 - Open tracked tasks for medium/low
-- Update CLAUDE.md with anything subtle that bit us
+- Update the active neutral docs (`docs/SOLANA.md`, `docs/AUTH.md`, `docs/UI_PATTERNS.md`, or McRitchie Studio agent docs) with anything subtle that bit us
 
 ---
 
@@ -134,7 +134,7 @@ Then read the punch-list together and:
 - [ ] All critical + high findings patched (or have a tracked task explaining the gate)
 - [ ] Boot guards verified to cover every on-chain entry point
 - [ ] `bin/rails solana:health` wired into `bin/deploy` (or documented as a manual step)
-- [ ] CLAUDE.md and `docs/SOLANA.md` reflect any subtle gotchas learned
+- [ ] Active neutral docs reflect any subtle gotchas learned
 - [ ] Final memory entry summarizing the audit
 - [ ] Task #12 (mainnet first deploy) unblocked: an explicit go/no-go in writing
 
@@ -148,4 +148,4 @@ Then read the punch-list together and:
 - Delete any of the migration files in `db/migrate/`
 - Re-deploy turf-vault (the contract) — that's a separate flow with its own runbook
 
-If anything feels destructive or irreversible, ask first. Per the existing CLAUDE.md: "measure twice, cut once."
+If anything feels destructive or irreversible, ask first.

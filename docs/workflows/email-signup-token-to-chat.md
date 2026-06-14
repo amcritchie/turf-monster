@@ -1,11 +1,11 @@
-# Workflow: email-signup-token-to-chat
+# Workflow: email magic-link signup -> token -> chat
 
 > **Code is law.** Every claim below cites `path/to/file.rb:NN` from the current
 > codebase. Re-confirm citations on edit — line numbers drift on refactor.
 
 **Trigger:** Anonymous visitor opens `/` (`GET /`)
-**Actors:** User / Rails / Stripe / Sidekiq / Solana RPC (devnet) / Resend (post-flow, optional)
-**Outcome:** New `users` row, custodial wallet generated, on-chain `UserAccount` PDA created, one Stripe-funded on-chain `EntryTokenAccount` minted and consumed, an `entries` row for the main contest in status `active` with 6 `selections`, and one visible `messages` row broadcast over ActionCable to that contest's chat stream.
+**Actors:** User / Rails / email transport / Stripe / Sidekiq / Solana RPC (devnet)
+**Outcome:** New `users` row, server-managed wallet generated, on-chain `UserAccount` PDA created, one Stripe-funded on-chain `EntryTokenAccount` minted and consumed, an `entries` row for the main contest in status `active` with 6 `selections`, and one visible `messages` row broadcast over ActionCable to that contest's chat stream.
 **Preconditions:** at least one contest in status `open`/`settled` exists (otherwise root falls back to `/contests`; `locked` is no longer a status — it's a derived time-gate); Stripe keys set (`Rails.application.config.x.stripe_enabled`); a `SeasonConfig` row exists with a non-zero `current_season_id` (`contests_controller.rb:297`); the chosen contest is on-chain (token entry requires `contest.onchain?` — see `contests_controller.rb:311`).
 
 ## Sequence
@@ -19,22 +19,22 @@
    - Hero banner + creator avatar + on-chain explorer link (`show.html.erb:11-41`).
    - Inline matchup board partial `_turf_totals_board.html.erb` exposes a `link_to "buy", tokens_buy_path` only when logged in (`_turf_totals_board.html.erb:1292-1294`) — anonymous visitor sees the entry fee in dollars.
 
-3. **Clicks "Sign up" in the navbar** — `app/views/layouts/_navbar.html.erb:92` (`link_to "Sign up", signup_path`, also surfaced in `app/views/components/_user_nav.html.erb:56`).
-   - `signup_path` is drawn by `Studio.routes(self)` (`config/routes.rb:81`) → engine `lib/studio.rb:121-122` (`get "signup", to: "registrations#new"`).
+3. **Clicks "Sign in" in the navbar** — the logged-out CTA targets the unified `/signin` page. Legacy `GET /login` and `GET /signup` redirect there.
 
-4. **`GET /signup` renders the form** — `RegistrationsController#new` (`app/controllers/registrations_controller.rb:7-9`, local override of the studio-engine version).
-   - View: `app/views/registrations/new.html.erb` — email + password (no confirm field; reveal-eye serves as confirmation per the inline comment at `registrations/new.html.erb:27-32`).
-   - Hidden `:reference` field carries the funnel cookie if present (`registrations/new.html.erb:17`).
+4. **Requests an email magic link** — `SessionsController#new` renders the unified auth surface; the email form posts to `POST /magic_link`.
+   - `MagicLinksController#create` validates the email shape, creates a one-time `MagicLink`, and sends `UserMailer.magic_link` through `Studio::Email`.
+   - The response is uniform for well-formed requests so the endpoint does not enumerate accounts.
 
-5. **`POST /signup` creates the user** — `RegistrationsController#create` (`registrations_controller.rb:11-28`).
-   - `Studio.configure_new_user.call(@user)` applies app-supplied hooks (`registrations_controller.rb:13`).
+5. **Consumes the magic link** — the emailed URL first hits inert `GET /magic_link/:token`, then the human confirmation form POSTs to `POST /magic_link/:token`.
+   - `MagicLink.consume` burns the token once.
+   - If the user does not exist, `MagicLinksController#sign_up_new` builds `User.new(email: result.email)`.
    - `@user.save!` triggers the shared spine on `User` (see [[referral-google-tokens-to-chat]] for the equivalent flow on the Google path):
      - `before_validation :ensure_username, on: :create` (`app/models/user.rb:20`) → `Studio::UsernameGenerator.generate` fills `username` (`user.rb:312-314`).
      - `before_create :set_initial_session_token` (`user.rb:22`) writes `users.session_token` (OPSEC-045 cookie-binding).
      - `after_create :generate_managed_wallet!` (`user.rb:23`) → `Solana::Keypair.generate` (local ed25519, **no RPC**), encrypts with `MANAGED_WALLET_ENCRYPTION_KEY`, writes `web2_solana_address` + `encrypted_web2_solana_private_key` (`user.rb:237-257`). Skipped for admins (`user.rb:244`).
      - `after_commit :enqueue_onchain_account_setup, on: :create` (`user.rb:27`) → `CreateOnchainUserAccountJob.perform_later(id)` (`user.rb:317-319`). Async — user is logged in before the PDA settles.
-   - `set_app_session(@user)` (`registrations_controller.rb:16`) writes `session[:turf_user_id]` (engine `app/controllers/concerns/studio/error_handling.rb:21-36`), then the local override adds `session[:session_token]` and clears `session[:onchain]` (`app/controllers/application_controller.rb:19-28`).
-   - **Redirects to `tokens_buy_path`**, not `root_path` (`registrations_controller.rb:17`) — that is the only intentional divergence from the engine version. `email_verified_at` stays NULL; **email verification is fully non-blocking** — no `before_action` references `email_verified_at` outside the verification controller itself, and `EmailVerificationsController#create` is user-initiated (`app/controllers/email_verifications_controller.rb:28-46`).
+   - `set_app_session(@user)` writes `session[:turf_user_id]`, `session[:session_token]`, and clears stale `session[:onchain]`.
+   - Magic-link consume proves email ownership, so `email_verified_at` is stamped for new and previously-unverified existing users.
 
 6. **Buy 1 token via Stripe** — `TokensController#buy` (`app/controllers/tokens_controller.rb:7-9`) renders `app/views/tokens/buy.html.erb`.
    - Pack catalog: `StripePurchase::PACKS` (`app/models/stripe_purchase.rb:13-20`) — `"single"` = 1 token, `19_00` cents. The 3-token bundle (`"trio"`, `49_00`) shares the same checkout path with a different `pack_id`. `"test_trio"` ($5) is gated by `ENABLE_TEST_SCAFFOLDING` (`stripe_purchase.rb:39-41`).
@@ -87,14 +87,15 @@
 
 ## Data touched
 
-- `users` (insert) — `email`, `password_digest`, `username`, `web2_solana_address`, `encrypted_web2_solana_private_key`, `session_token`, optionally `reference`.
+- `users` (insert) — `email`, `email_verified_at`, `username`, `web2_solana_address`, `encrypted_web2_solana_private_key`, `session_token`, optionally `reference`.
+- `magic_links` (insert + consume) — one-time email sign-in token.
 - `stripe_purchases` (insert + update) — `stripe_session_id`, `quantity`, `price_cents`, `status` (pending → minted), `mint_tx_signatures`, `minted_at`.
 - `transaction_logs` (insert) — one row for the token purchase (`token_purchase_job.rb:83-91`), one for the entry fee debit (`entry.rb:101-103`).
 - `entries` (insert + update) — created `status: :cart` by `toggle_selection`, flipped to `:active` with `onchain_tx_signature` + `onchain_entry_id` by `confirm!` (`entry.rb:104`).
 - `selections` (insert × 6) — one per matchup tap (`entry.rb:29-50`).
 - `messages` (insert) — `body`, `user_id`, `contest_id`.
 - **on-chain**: `UserAccount` PDA (created by `CreateOnchainUserAccountJob` post-signup); one `EntryTokenAccount` PDA per mint (`mint_entry_token` instruction, source = `:stripe`); `Entry` PDA created and the token PDA consumed atomically by `enter_contest_with_token` (turf-vault v0.12.0+).
-- **external**: Stripe Checkout Session (created in step 6, validated in step 7); Stripe `checkout.session.completed` webhook; Solana RPC (`sendTransaction` for each mint + the entry). No email sent on this happy path (verification is opt-in).
+- **external**: magic-link email; Stripe Checkout Session (created in step 6, validated in step 7); Stripe `checkout.session.completed` webhook; Solana RPC (`sendTransaction` for each mint + the entry).
 - **audit**: `OutboundRequest` rows for every Stripe + Solana RPC call (`Current.outbound_source = purchase` at `token_purchase_job.rb:49-50`).
 
 ## Failure modes

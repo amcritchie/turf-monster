@@ -8,7 +8,7 @@ The nightly CI workflow at `.github/workflows/devnet-nightly.yml` is already in 
 
 ## Setup needed (operator, one-time)
 
-1. **Fund a CI bot wallet on devnet** (~10 SOL via the devnet faucet protocol in `turf-vault/CLAUDE.md`)
+1. **Fund a CI bot wallet on devnet** (~10 SOL via the Solana devnet faucet; use `turf-vault/docs/CURRENT_DEPLOYMENT.md` for current program identity)
 2. **Generate the bot keypair** and store as base58 in 1Password
 3. **Set GH secrets** in turf-monster repo:
    - `SOLANA_BOT_KEY` (base58 secret)
@@ -20,19 +20,19 @@ The nightly CI workflow at `.github/workflows/devnet-nightly.yml` is already in 
 
 Each test in `e2e/devnet-*.spec.js`, tagged `@devnet` in the describe block. Reuse the bot key for all of them; reset state between tests via `Contest#reset!` rake task.
 
-### Vault round-trip
-1. **Deposit USDC** → assert PDA balance increments by deposited amount
-2. **Withdraw USDC** → assert PDA balance decrements and user wallet balance increases
-3. **Deposit + immediate withdraw** → final balance == initial (within fee tolerance)
-4. **Withdraw exceeding balance** → asserts on-chain error surfaces as Rails-side `Solana::Vault::InsufficientBalance`
+### Wallet/token plumbing
+1. **Ensure user ATA** → assert a managed user's USDC ATA can be created/read without a pooled DB balance
+2. **Managed-wallet USDC entry** → assert user ATA decreases and `op_rev` ATA increases by the entry fee
+3. **Managed-wallet token entry** → assert an `EntryTokenAccount` is consumed and no SPL fee transfer occurs
+4. **Insufficient selected currency** → asserts on-chain error surfaces as a Rails-side eligibility blocker
 
 ### Contest lifecycle (managed entry mode)
-5. **create_contest (admin) → enter_contest (3 users) → settle_contest (admin + cosigner)** → all 3 users' PDA balances reflect rank-based payouts
+5. **create_contest (admin) → enter_contest (3 users) → settle_contest (admin + cosigner)** → winner ATAs reflect rank-based payouts
 6. **Settlement with tied 1st** → tied users receive split payout (per program logic)
 7. **Settlement with all entries abandoned** → no payouts, status → settled
 
-### Contest lifecycle (Phantom direct entry mode)
-8. **enter_contest_direct from a Phantom-mocked wallet** → asserts on-chain ATA debit + seeds award
+### Contest lifecycle (Phantom entry mode)
+8. **enter_contest from a Phantom-mocked wallet** → asserts on-chain ATA debit + seeds award
 9. **Direct entry insufficient USDC** → on-chain error → Rails error surfaces cleanly
 
 ### Multisig boundary

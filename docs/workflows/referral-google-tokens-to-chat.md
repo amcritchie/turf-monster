@@ -31,14 +31,14 @@
 
 ## Data touched
 
-- `users` (insert) — `email`, `name`, `provider="google_oauth2"`, `uid`, `email_verified_at`, `password=SecureRandom.hex(16)`, `username` (auto-gen), `web2_solana_address`, `encrypted_web2_solana_private_key`, `session_token`. `reference` written immediately after via `update_column` (`omniauth_callbacks_controller.rb:96`).
+- `users` (insert) — `email`, `name`, `provider="google_oauth2"`, `uid`, `email_verified_at`, `username` (auto-gen), `web2_solana_address`, `encrypted_web2_solana_private_key`, `session_token`. `reference` written immediately after via `update_column` (`omniauth_callbacks_controller.rb:96`).
 - `cookies[:reference]` (read/write — `landing_pages_controller.rb:18`, `application_controller.rb:55`, deleted in `omniauth_callbacks_controller.rb:97`).
 - `session[:turf_user_id]` + `session[:session_token]` (write, via `set_app_session` — `application_controller.rb:19-28`).
 - `stripe_purchases` (insert + updates) — `stripe_session_id`, `quantity=3`, `price_cents=4900`, `status: pending → minted`, `mint_tx_signatures` (incremental JSON array — `token_purchase_job.rb:75`).
 - `entries` (insert as `cart`, then update to `complete`) — via `replaySelectionsToServer` (cart toggles) and `entry.confirm!` (`contests_controller.rb:348`). `onchain_tx_signature`, `onchain_entry_id`, `entry_number` written.
 - `selections` (insert × 6) — `replaySelectionsToServer` POSTs `toggle_selection` for each saved id.
 - `transaction_logs` (insert) — `token_purchase_job.rb:83-91` with `type="token_purchase"`, `direction="credit"`.
-- `outbound_requests` (insert) — every Stripe API + Solana RPC call from this flow auto-logs via `Stripe::Instrumentation` + `Solana::ClientLogger` (see CLAUDE.md § OutboundRequest).
+- `outbound_requests` (insert) — every Stripe API + Solana RPC call from this flow auto-logs via `Stripe::Instrumentation` + `Solana::ClientLogger`.
 - `messages` (insert) — `body`, `user_id`, `contest_id`. `hidden_at` stays `NULL`.
 - `sessionStorage.pendingContestEntry` (browser-only) — picks snapshot for resumption (`_turf_totals_board.html.erb:408`).
 - on-chain: `EntryTokenAccount` PDA × 3 via `mint_entry_token` (signer: vault admin keypair). `EntryAccount` PDA + `UserAccount` PDA seeds bump via `enter_contest_with_token` (signer: vault admin + user managed keypair). `UserAccount` PDA initial create via `CreateOnchainUserAccountJob` async.
@@ -62,7 +62,7 @@
 
 - [[admin-contest-setup]] — produces the `Contest` + `LandingPage` records this flow depends on (the `?reference=` cookie target).
 - [[web3-landing-to-entry]] — alternate path: Phantom signup instead of Google, on-chain entry via `prepare_entry` / `confirm_onchain_entry` (signed by Phantom, not managed wallet).
-- [[email-signup-token-to-chat]] — alternate signup lane: email + password via `inline_registrations_controller.rb` instead of Google OAuth; same `tokens-picker` → on-chain mint tail.
+- [[email-signup-token-to-chat]] — alternate signup lane: email magic link instead of Google OAuth; same `tokens-picker` → on-chain mint tail.
 
 ---
 

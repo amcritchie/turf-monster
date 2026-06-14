@@ -1,31 +1,33 @@
 # Tests to Add (Audit Tier 2 #14)
 
 > **Status (2026-05-23):**
-> - **Priority 1** (Vault round-trip ~20 tests) — ⏳ **NOT STARTED at Rails unit level.** `test/services/solana/vault_test.rb` does not exist yet. Devnet smoke spec (`e2e/devnet-smoke.spec.js`, ~890 lines) covers the round-trip happy paths end-to-end at the Playwright level, but Rails unit coverage for edge cases (insufficient balance, wrong mint, locked contest, lamports-for-rent shortfall, sync of non-existent PDA) is still missing.
+> - **Priority 1** (Vault client boundary ~20 tests) — ⏳ **NOT STARTED at Rails unit level.** `test/services/solana/vault_test.rb` does not exist yet. Devnet smoke spec (`e2e/devnet-smoke.spec.js`, ~890 lines) covers happy paths end-to-end at the Playwright level, but Rails unit coverage for edge cases (insufficient selected currency, locked contest, lamports-for-rent shortfall, sync of non-existent PDA/ATA) is still missing.
 > - **Priority 2** (Reconciler ~15 tests) — ⏳ **NOT STARTED.** `test/services/solana/reconciler_test.rb` does not exist. The Sidekiq-cron job is wired and writes to `ErrorLog` / `RECONCILER_ALERT_WEBHOOK`, but divergence-detection logic is not unit-tested.
 > - **Priority 3+** (Contest grading, settlement, edge cases) — ⏳ **PARTIAL.** `test/models/contest_test.rb` exists but doesn't cover all listed scenarios. Devnet smoke spec covers grade-then-settle end-to-end.
 > - Devnet integration tests are tracked separately in [`DEVNET_INTEGRATION_TESTS_TO_ADD.md`](DEVNET_INTEGRATION_TESTS_TO_ADD.md).
 >
 > When closing this doc out: collapse into a `docs/TEST_COVERAGE_STATUS.md` with per-priority completion %. For now, the priorities below remain the live punch list.
 
-The 2026-05-17 ecosystem audit identified turf-monster's test count (97 tests, 264 assertions) as low for the risk profile (real Solana tokens, 2-of-3 multisig settlement, on-chain entry/withdrawal flows). The audit's target: ~200 tests, roughly doubling current coverage, concentrated on the Solana boundary.
+The 2026-05-17 ecosystem audit identified turf-monster's test count (97 tests, 264 assertions) as low for the risk profile (real Solana tokens, 2-of-3 multisig settlement, on-chain entry and wallet/ramp flows). The audit's target: ~200 tests, roughly doubling current coverage, concentrated on the Solana boundary.
 
 This file is the concrete punch list. Execute in a focused session — each item below is roughly one test or one tight test cluster. After every batch, run `bin/rails test` and ensure green before continuing.
 
-## Priority 1 — Vault round-trip + balance accounting (~20 tests)
+## Priority 1 — Vault client boundary + on-chain accounting (~20 tests)
 
 `test/services/solana/vault_test.rb` (create if absent)
-- `Vault#deposit` happy path → DB balance increments, `TransactionLog` row created
-- `Vault#deposit` with wrong mint → raises `Solana::Config::InvalidMint`, no DB change
-- `Vault#deposit` with insufficient lamports for rent → raises, no DB change
-- `Vault#withdraw` happy path → DB balance decrements, on-chain CPI succeeds
-- `Vault#withdraw` insufficient balance → raises `InsufficientBalance`, no state change
-- `Vault#sync_balance` for managed wallet → reads from PDA, returns decoded balance
-- `Vault#sync_balance` for non-existent PDA → returns nil, no error
-- `Vault#enter_contest` (managed mode) → debits PDA balance, creates ContestEntry
+- `Vault#sync_balance` for managed wallet → reads `UserAccount`, returns seeds plus back-compat balance keys
+- `Vault#sync_balance` for non-existent `UserAccount` PDA → returns nil/zero shape without raising
+- `Vault#fetch_wallet_balances` for existing USDC/USDT ATAs → returns per-currency cents
+- `Vault#fetch_wallet_balances` for missing ATAs → returns zero balances without creating DB balance state
+- `Vault#ensure_ata` idempotently creates/returns an ATA
+- `Vault#mint_entry_token` → creates one unconsumed `EntryTokenAccount`
+- `Vault#list_entry_tokens` → decodes consumed/unconsumed tokens for an owner
+- `Vault#enter_contest_with_token` (managed mode) → consumes token, creates ContestEntry, awards seeds
+- `Vault#enter_contest` (managed USDC mode) → transfers user ATA funds to `op_rev`, creates ContestEntry
 - `Vault#enter_contest` when contest is locked → raises, no on-chain call
-- `Vault#enter_contest_direct` (Phantom mode) → builds correct TX with user as signer
-- 5+ round-trip pairs: deposit then withdraw → final balance == initial
+- `Vault#build_enter_contest` (Phantom mode) → builds correct partial TX with user as signer and admin cosign path
+- Currency selection: USDT rejected when contest `accepts_usdt` is false
+- Insufficient selected currency → raises/interprets a user-facing blocker without mutating DB state
 
 ## Priority 2 — Reconciler divergence detection (~15 tests)
 
@@ -85,7 +87,7 @@ This file is the concrete punch list. Execute in a focused session — each item
 - Re-submission after `:failed` → new PendingTransaction created (not mutation)
 - `target` polymorphic association resolves to Contest correctly
 - `serialized_tx` round-trips through base64 without corruption
-- `metadata` jsonb stores per-tx-type fields (settle vs withdraw)
+- `metadata` jsonb stores per-tx-type fields (settle, entry, wallet-export/ramp flows)
 
 ## Priority 5 — SSO wallet-only error path (~5 tests)
 
@@ -105,9 +107,9 @@ This file is the concrete punch list. Execute in a focused session — each item
 - The stub registers only in `RAILS_ENV=test` (not dev/prod)
 - Removing the stub mid-test allows real RPC calls again
 
-## Priority 7 — Misc Solana::AuthVerifier shim (~5 tests)
+## Priority 7 — Misc Solana::SessionAuth shim (~5 tests)
 
-`test/controllers/concerns/solana/auth_verifier_test.rb` (create if absent — now that the gem owns the verifier, only the shim needs tests)
+`test/controllers/concerns/solana/session_auth_test.rb` (create if absent — now that the gem owns the verifier, only the app shim needs tests)
 - Shim deletes both `:solana_nonce` and `:solana_nonce_at` from session BEFORE delegating
 - Shim delegates to gem with correct keyword args
 - Replay attempt (same nonce reused) → second call has no nonce in session → raises

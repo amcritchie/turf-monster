@@ -2,7 +2,7 @@
 
 ## Branding & Theme
 
-- **Theme**: Dynamic — engine-generated CSS custom properties from 7 role colors (see top-level `CLAUDE.md` for full theme docs)
+- **Theme**: Dynamic — engine-generated CSS custom properties from 7 role colors (see `studio-engine/docs/NAVBAR_SETUP.md` plus this file's semantic-token notes)
 - **Theme config**: `theme_primary = "#4BAF50"` (green), `theme_accent = "#8E82FE"` (violet) in `studio.rb`
 - **Admin theme page**: `/admin/theme` — color editor + styleguide (from engine)
 - **Primary**: `#4BAF50` Green — brand text, CTAs, buttons, nav hovers, money displays, balances, checkmarks, hold button idle state
@@ -82,7 +82,7 @@ JS-driven, big nudge at 3s then soft nudge every 10s. Resets on hold, soft-only 
 ## Redirect Modal
 When hold-to-confirm hits a blocker (geo-blocked, not logged in, insufficient funds), a centered modal appears with icon, title, message, progress bar countdown (5s), and CTA button. Hold button flips to red `.error` state ("Entry Blocked").
 - Geo-blocked → "Location Restricted" → `/`
-- Not logged in → "Log In Required" → `/login`
+- Not logged in → "Log In Required" → `/signin`
 - Insufficient funds → "Insufficient Funds" / "Top Up Wallet" → `/wallet`
 - `showRedirectModal(title, message, icon, url, seconds, cta)` method on Alpine component
 
@@ -183,7 +183,7 @@ The stack is LIFO — multiple modals can be open simultaneously and render as a
 
 **Step sequence + transitions**:
 
-1. **credentials** — initial state. Phantom + Google + email/password forms. Local validation. Submits via `$dispatch('auth-*-submit')` / `$dispatch('auth-*-click')`.
+1. **credentials** — initial state. Phantom + Google + magic-link email form. Local validation. Submits via `$dispatch('auth-*-submit')` / `$dispatch('auth-*-click')`.
 2. **tokens-picker** — Stripe pack grid (via `_tokens.html.erb`). Click opens Stripe Checkout in a new tab. Sets step → `tokens-waiting`.
 3. **tokens-waiting** — Spinner + "Finish checkout in the new tab" message. No countdown; user returns manually.
 4. **tokens-confirming** — Processing card (spinner + "Confirming…"). Waits for the polling loop on `/tokens/status` to mark the purchase `minted`.
@@ -276,7 +276,7 @@ UI branching example:
 
 ```html
 <button x-show="$store.session.mode === 'web3'" @click="signTx()">Sign on-chain</button>
-<a     x-show="!$store.session.loggedIn"        href="/login">Log in</a>
+<a     x-show="!$store.session.loggedIn"        href="/signin">Log in</a>
 <div   x-show="$store.session.mode === 'web2'">Connect Phantom to sign</div>
 ```
 
@@ -298,7 +298,7 @@ Landing pages are `LandingPage` records (name, headline, subheadline, badge, cta
 
 ## Alpine + ERB Constraints (critical — silent failures)
 
-These are gotchas that produce **silent no-ops or phantom DOM** rather than errors. Every UI-touching change must respect them. The same list lives in `CLAUDE.md`'s "Known Gotchas" — kept in both because UI agents start here.
+These are gotchas that produce **silent no-ops or phantom DOM** rather than errors. Every UI-touching change must respect them. Keep this neutral doc as the app-level source of truth; mirror cross-app lessons into McRitchie Studio's agent docs when they apply beyond Turf Monster.
 
 1. **`<template x-if>` must have ONE root element.** Multiple siblings silently mount as a no-op; sibling `<style>` / `<script>` are dropped during parsing. Wrap content in a single outer `<div>`; move styles outside the template.
 2. **Never combine `@click.outside` with hold buttons.** Button-release fires AFTER `@click.outside`, so a hold that opens a modal via `@click.outside` will have the release click close the freshly-opened modal. Use `@click`, or delay the open via `setTimeout(500ms)`.

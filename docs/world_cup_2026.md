@@ -107,7 +107,7 @@ Both formats are defined in `Contest::FORMATS` alongside the Turf Totals tiers. 
 
 ### Lifecycle
 
-Survivor contests share the standard `pending → open → settled` lifecycle from Turf Totals (`locked` is a derived time-gate, not a status — see `CLAUDE.md` § Contest Lifecycle), plus a per-round `grade_round` admin action that scores the current `SurvivorRound`, marks each `SurvivorPick.result` as `survived` or `eliminated`, and transitions the round to `completed`. The contest fully settles when one entry remains (or all remaining entries tie out on a shared elimination round and split the prize).
+Survivor contests share the standard `pending → open → settled` lifecycle from Turf Totals (`locked` is a derived time-gate, not a status; see `Contest#locked?` and the contest lifecycle notes in `docs/SOLANA.md`), plus a per-round `grade_round` admin action that scores the current `SurvivorRound`, marks each `SurvivorPick.result` as `survived` or `eliminated`, and transitions the round to `completed`. The contest fully settles when one entry remains (or all remaining entries tie out on a shared elimination round and split the prize).
 
 ### Key models + methods
 
