@@ -133,6 +133,6 @@ Follow the shared decommission criteria before canceling Resend or dropping
 
 ## Engine Ownership
 
-Turf Monster is bundled with `studio-engine 0.5.6+`. Keep future shared
-transport, delivery facade, and local agent inbox changes in `studio-engine`;
-keep Turf-specific catalog entries, previews, and email copy in the app.
+Turf Monster currently uses `studio-engine 0.5.7`. Keep future shared transport,
+delivery facade, and local agent inbox changes in `studio-engine`; keep
+Turf-specific catalog entries, previews, and email copy in the app.
