@@ -21,6 +21,18 @@
 - **CSS var naming**: `--color-cta` / `--color-cta-hover` for singular CTA color. Full `--color-primary-{50..900}` palette with RGB variants for Tailwind `primary-*` utilities.
 - **Tailwind config**: `primary` palette is dynamic from shared studio config (CSS vars). `warning` palette defined locally in `config/tailwind.config.js`. Safelist includes `bg`, `text`, `border`, `ring` utilities for brand colors.
 
+### Tailwind Compilation Constraints
+Tailwind emits only classes it can see during the build. Keep dynamic class names on a short leash:
+
+- Prefer literal class strings in ERB and JS templates.
+- If a class is assembled dynamically, add it to `config/tailwind.config.js` `safelist`.
+- Theme role colors are already safelisted for `bg`, `text`, `border`, and `ring` utilities across the configured shades/opacities.
+- `level-badge-*` classes are safelisted because ERB emits them dynamically.
+- One-off static dimensions can stay inline when extracting a class would create noise or when a previously valid utility was purged.
+
+### Public S3 and OG Assets
+Open Graph images must use the `amazon_public` / `amazon_dev_public` Active Storage services. The private `amazon` services return signed URLs; social unfurlers cache image URLs long enough for signed links to expire. Public OG services return permanent S3 object URLs, and `OgImageAttachable` owns the per-environment service choice.
+
 ### Status Badges
 mint=open, yellow=locked (DERIVED time-gate, not a status — `Contest#locked?`), gray=settled, violet=pending
 
@@ -246,6 +258,29 @@ Entry tokens are on-chain `EntryTokenAccount` PDAs minted via Stripe Checkout. T
 
 **Navbar badge**: free-entry tokens are surfaced by the 🎟️ badge in `_user_nav` (`[data-free-entry-badge]`, count in `data-token-count`, toggled by `updateNavTokens`). When the combined USDC+USDT balance is $0 AND the user has tokens, the `$X` balance link HIDES entirely (`_navbar.html.erb` `hide_balance` rule, re-applied live by `refreshSession`/`refreshBalance`) — the badge alone signals the next-step affordance; there is no token-count-in-place-of-dollars display anymore.
 
+## State Fanout Pattern
+
+`app/javascript/state_fanout.js` is the standardized bridge from a server-confirmed state change to client UI catch-up. Controllers and inline Alpine handlers should call:
+
+```js
+window.StateFanout.apply(stateType, payload, opts)
+```
+
+A handler owns three things for its state type:
+
+1. Durable client cache updates, usually `localStorage`, when the next page render needs the value.
+2. Window events for long-lived Alpine components that should animate without a page reload.
+3. Structured console logging with a `source` label so Sentry breadcrumbs and replay tools can connect the server action to the UI update.
+
+Registered handlers:
+
+| State type | Payload | Effect |
+|---|---|---|
+| `seeds` | `{ seeds_earned, seeds_total, seeds_level? }` | Updates `seedsNavbar`, records `seedsLevelUp` when the user crosses a level, and dispatches `navbar-seeds-update`. |
+| `cdp_ramp` | `{ direction, status, partner_user_ref, tx_hash?, sent_signature? }` | Refreshes the navbar balance for moved funds and dispatches `cdp-ramp-update`. |
+
+When adding a state type, write one handler with `register(stateType, handler)` and keep all call sites on `window.StateFanout.apply(...)`. Pass constants such as `seedsPerLevel` through `opts`; do not hardcode model constants in client code.
+
 ## $store.session — wallet-mode pattern
 
 Session state (guest / web2 / web3) is the canonical source of truth for what the user can do. **Always branch on `$store.session.mode === 'web3'`** — never on legacy `cfg.onchain_session`, never on `phantom_linked` alone.
@@ -307,6 +342,15 @@ These are gotchas that produce **silent no-ops or phantom DOM** rather than erro
 5. **HTML5 forbids `--` inside `<!-- ... -->`** — including CSS custom property refs (`--color-primary`) in dev notes. Parser recovery reparents downstream content into wrong containers. Use single hyphens or `−`, or move var refs to a `<style>` block.
 6. **`block_given?` inside a partial inherits the layout's `<%= yield %>`** — returns true even with no block passed. Calling `yield` then returns the entire enclosing view's HTML. In shared partials, check explicit locals BEFORE `block_given?`: `if locals[:block] || block_given?`.
 7. **`Alpine.evaluate` is synchronous** — returns `undefined` for async expressions. `evaluateLater`'s `extras` shape is version-dependent. For custom async logic, compile your own `AsyncFunction`: `new Function('return (async () => { ... })')().then(...)`.
+
+### Inline JS that stays inline
+Some Alpine factories intentionally stay inline in `.erb` partials because Alpine evaluates `x-data` before importmap modules have finished executing. Keep these inline unless the surrounding component is refactored to a registered `Alpine.data(...)` factory loaded before Alpine starts:
+
+- `proofOfReserves()` in `app/views/proof_of_reserves/show.html.erb`
+- `contestChat()` and related chat helpers in `app/views/contests/_chat_panel.html.erb`
+- callback-bearing hold button expressions that depend on ERB interpolation
+
+Do move pure helper logic into modules when it does not participate in early `x-data` resolution. `StateFanout` is safe as a module because it is invoked from later event callbacks, not during Alpine's first component scan.
 
 ## Solana Modal (legacy alias)
 `shared/_solana_modal.html.erb` — Now a thin compatibility proxy over `$store.modals` (see § Modal Host above). The store name `Alpine.store('solanaModal')` is preserved for older callsites; new code should call `$store.modals` directly. Three logical states still apply (processing / success / error). `fireSuccessConfetti()` from `solana_utils.js` fires 4 confetti bursts (center, left cannon, right cannon, delayed shower) on the success state via `$watch`.

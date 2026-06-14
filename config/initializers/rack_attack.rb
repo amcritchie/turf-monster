@@ -152,7 +152,7 @@ class Rack::Attack
   ### Throttle: hold-window funding pre-check — getProgramAccounts amplification (2026-06-13)
   # /contests/:id/check_funding fires automatically on every hold-START, and each
   # call FORCE-busts the entry-tokens cache then does a fresh getProgramAccounts
-  # (the call CLAUDE.md flags as expensive + Helius-rate-limited) PLUS a
+  # (expensive + Helius-rate-limited) PLUS a
   # getTokenAccountsByOwner — two RPCs per invocation. It is NOT on the general/ip
   # allowlist (a new POST route defaults to EXEMPT), so without this a buggy or
   # malicious authed client (rapid hold start/release) could drive unbounded

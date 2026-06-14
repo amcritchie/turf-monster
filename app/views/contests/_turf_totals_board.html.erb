@@ -1267,7 +1267,7 @@ window.selectionBoard = function() {
 
       // Seeds fanout (localStorage + navbar event + structured log) is now
       // owned by the StateFanout registry — see app/javascript/state_fanout.js
-      // and the "State fanout pattern" section in CLAUDE.md. Two call sites
+      // and docs/UI_PATTERNS.md "State Fanout Pattern". Two call sites
       // below (phantom-direct + managed-wallet) hand off the server payload
       // and the source label; the handler does the rest.
 

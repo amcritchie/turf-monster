@@ -1,5 +1,12 @@
 # Turf Monster (turf-monster)
 
+> **ARCHIVE-ONLY MIGRATION CONTEXT.** This file is no longer the agent
+> entrypoint or source of truth. Start at `/Users/alex/projects/AGENTS.md`.
+> Current Turf Monster docs live in `README.md`, `docs/workflows/README.md`,
+> `docs/AUTH.md`, `docs/SOLANA.md`, `docs/LOCAL_STACK.md`, and
+> `docs/UI_PATTERNS.md`. Do not update this file except to remove it after
+> Claude compatibility with generated `AGENTS.md` is verified.
+
 Peer-to-peer sports pick'em game focused on team matchup selections with Turf Scores for the World Cup.
 
 ## Topic Files

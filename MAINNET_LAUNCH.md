@@ -3,8 +3,8 @@
 > **HISTORICAL FIRST-LAUNCH RUNBOOK.** Turf Monster's current production app is
 > `turf-monster-mainnet` at `https://app.turfmonster.media`, and normal deploys
 > go through `bin/deploy`. Do not use this file as current deployment identity
-> without first reconciling it against `CLAUDE.md`, `docs/SOLANA.md`, and
-> `turf-vault/docs/CURRENT_DEPLOYMENT.md`.
+> without first reconciling it against `docs/SOLANA.md`,
+> `docs/LOCAL_STACK.md`, and `turf-vault/docs/CURRENT_DEPLOYMENT.md`.
 
 One-time runbook for the **v0.15.0 mainnet first deploy**. Read top-to-bottom; each step has acceptance criteria. For ongoing post-launch deploys, use `bin/deploy`.
 
@@ -74,7 +74,7 @@ solana program deploy target/deploy/turf_vault.so \
 - [ ] Deploy succeeds (~3-5 SOL spent from Alex Bot mainnet wallet).
 - [ ] `solana program show MAINNET_PROGRAM_ID --url mainnet-beta` shows the Squads vault PDA as upgrade authority.
 
-> **After this initial deploy**, all future program upgrades require 2-of-3 cosign via `turf-vault/scripts/squad-upgrade.js`. `anchor deploy` will fail silently once the Squads vault is the authority. See `turf-vault/CLAUDE.md` § "Deploying an upgrade" for the cosign flow.
+> **After this initial deploy**, all future program upgrades require 2-of-3 cosign via `turf-vault/scripts/squad-upgrade.js`. `anchor deploy` will fail silently once the Squads vault is the authority. See `turf-vault/docs/CURRENT_DEPLOYMENT.md` for the current upgrade rule.
 
 ---
 
@@ -238,8 +238,8 @@ Do this with a real Phantom wallet on mainnet. Plan to spend ~$5.
 
 ## 11. Update internal docs
 
-- [ ] `turf-monster/CLAUDE.md`: update the Deployment section with the mainnet program ID + URL.
-- [ ] `turf-vault/CLAUDE.md`: update the "Current Deployment" section to point to mainnet.
+- [ ] `turf-monster/docs/SOLANA.md`: update the Deployment section with the mainnet program ID + URL.
+- [ ] `turf-vault/docs/CURRENT_DEPLOYMENT.md`: update the current deployment section to point to mainnet.
 - [ ] Save a memory record (`project_turf_mainnet_launch_2026_MM_DD.md`) noting the new program ID, vault PDA, season PDA, IDL hash, and any deviations from this runbook.
 
 ---

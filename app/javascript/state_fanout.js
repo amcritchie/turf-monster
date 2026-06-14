@@ -16,8 +16,8 @@
 // surface stays `window.StateFanout.apply(stateType, payload, opts)` for
 // every caller.
 //
-// See CLAUDE.md → "State fanout pattern" for the full handler contract and
-// the table of currently-registered keys.
+// See docs/UI_PATTERNS.md → "State Fanout Pattern" for the handler contract
+// and the table of currently-registered keys.
 
 const _handlers = {};
 

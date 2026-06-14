@@ -88,7 +88,7 @@ class CdpRampTransaction < ApplicationRecord
 
   # ErrorLog target compatibility — rescue_and_log / the poll jobs set
   # target_name = target.slug. No slug COLUMN (the correlation key doubles as
-  # the identifier); see the CLAUDE.md model entry.
+  # the identifier); this method preserves the shared ErrorLog target contract.
   def slug
     partner_user_ref || "cdp-ramp-#{id}"
   end

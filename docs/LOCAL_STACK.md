@@ -45,6 +45,12 @@ Use `bin/tm restart` after changing `.env`, gems, migrations, or anything Sideki
 
 Agents should prefer `bin/tm up`.
 
+## Testing Notes
+
+Rails unit/integration tests run against the test database and use `Rails.cache` as `:null_store` by default. Tests that need cache reads must inject or stub a real store, usually `ActiveSupport::Cache::MemoryStore`, for the branch under test.
+
+Playwright specs run against a live dev server from `playwright.config.js`. Seed with `bin/rails runner e2e/seed.rb` against the dev database unless a spec explicitly provisions its own isolated server/database pair.
+
 ## Callback Rule
 
 Keep callback-heavy flows on the primary stack unless the external provider is configured for a worktree port.

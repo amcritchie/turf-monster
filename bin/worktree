@@ -3,7 +3,7 @@
 # worktree — per-task git worktree lifecycle off current origin/main, so
 # parallel sessions never tangle branches. The primary checkout stays on `main`
 # and is never committed to; every task gets its own worktree + feature branch.
-# (See CLAUDE.md → "Parallel work — worktrees".)
+# See mcritchie-studio/docs/agents/modules/worktrees.md for ecosystem policy.
 #
 #   bin/worktree new <slug> [type]   create .worktrees/<slug> on <type>/<slug>
 #                                     off origin/main (+ copy .env). type=feat.

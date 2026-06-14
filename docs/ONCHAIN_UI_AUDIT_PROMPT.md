@@ -1,7 +1,8 @@
 # Session Prompt — On-chain UI Review + Pre-Mainnet Vulnerability Audit
 
 **Created**: 2026-05-28 (after the v0.16 prod deploy)
-**Use**: Paste the body of this file into a fresh Claude Code session in `~/projects/turf-monster`.
+**Status**: Archive-only prompt artifact. Do not treat the state below as current production truth.
+**Use**: If this audit is repeated, start from `/Users/alex/projects/AGENTS.md`, `turf-monster/docs/SOLANA.md`, and `turf-vault/docs/CURRENT_DEPLOYMENT.md`, then adapt the historical prompt body below.
 
 ---
 

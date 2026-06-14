@@ -77,8 +77,8 @@
 
       <%# Clickable avatar — hover reveals "Update" overlay. Inline width/
           height because Tailwind w-24/h-24 weren't compiled here (the JIT
-          only emits classes it sees at build time — see CLAUDE.md "Tailwind
-          class compilation"). Squeezing on flex-col + items-center left the
+          only emits classes it sees at build time — see docs/UI_PATTERNS.md
+          "Tailwind Compilation Constraints"). Squeezing on flex-col + items-center left the
           avatar as a pill instead of a circle. %>
       <div @click="$refs.filePicker.click()"
            style="width: 96px; height: 96px;"

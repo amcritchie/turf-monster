@@ -188,7 +188,7 @@ module Cdp
       end
     end
 
-    # Job-level ErrorLog discipline (~/.claude/disciplines/backend-development.md):
+    # Job-level ErrorLog discipline (mcritchie-studio/docs/agents/modules/backend-discipline.md):
     # nothing escapes unlogged; target = the ramp row, parent = its user.
     def capture_with_context(exception, ramp)
       error_log = ErrorLog.capture!(exception)

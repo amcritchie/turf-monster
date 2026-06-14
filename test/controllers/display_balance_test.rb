@@ -9,7 +9,7 @@ require "minitest/mock"
 # Unit-style on a bare controller instance with current_user pinned. The
 # cache-backed branch needs a real store — the test env runs :null_store
 # (reads always nil), so Rails.cache is stubbed to a MemoryStore per the
-# injected-store pattern (see CLAUDE.md "Test DB" note).
+# injected-store pattern (see docs/LOCAL_STACK.md "Testing Notes").
 class DisplayBalanceTest < ActiveSupport::TestCase
   setup do
     @user = users(:sam) # web3_solana_address fixture → solana_connected?

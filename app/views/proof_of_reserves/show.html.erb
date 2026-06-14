@@ -13,7 +13,7 @@
 <script>
   // Inline Alpine factory — the layout's `defer` script fires alpine:init
   // before importmap modules execute, so any function used in x-data must
-  // be defined inline (see CLAUDE.md "Inline JS that MUST stay inline").
+  // be defined inline (see docs/UI_PATTERNS.md "Inline JS that stays inline").
   window.proofOfReserves = function () {
     var CFG_EL_ID = "proof-of-reserves-config";
     var STATUS_NAMES = ["Open", "Locked", "Settled", "Cancelled"];

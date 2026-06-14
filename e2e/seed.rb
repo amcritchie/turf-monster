@@ -1,9 +1,9 @@
 # Seed dev (or test) database for Playwright specs.
 # Run with: bin/rails runner e2e/seed.rb
 #
-# Playwright runs against the dev server (per playwright.config.js — see
-# the "Dev server gotcha" note in CLAUDE.md), so this seed is normally
-# invoked against the dev DB, not the test DB.
+# Playwright runs against the dev server (per playwright.config.js), so this
+# seed is normally invoked against the dev DB, not the test DB. See
+# docs/LOCAL_STACK.md "Testing Notes".
 #
 # Layering model (changed 2026-05-28):
 #   1. Load db/seeds.rb (canonical). Idempotent — creates the 3 real

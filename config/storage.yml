@@ -28,7 +28,8 @@ amazon_dev:
 # signature expires. These `public: true` services return PERMANENT, absolute
 # object URLs (https://<bucket>.s3.us-east-2.amazonaws.com/<key>) instead, so
 # attach og images here (see OgImageAttachable). All four turf-monster buckets
-# are already public-read at the bucket policy level (see CLAUDE.md § S3).
+# are already public-read at the bucket policy level (see docs/UI_PATTERNS.md
+# "Public S3 and OG Assets").
 #
 # Same prod/dev bucket split as amazon/amazon_dev; the per-env service NAME is
 # chosen in OgImageAttachable::PUBLIC_OG_SERVICE (has_one_attached's `service:`

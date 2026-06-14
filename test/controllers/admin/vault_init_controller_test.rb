@@ -2,8 +2,8 @@ require "test_helper"
 
 class Admin::VaultInitControllerTest < ActionDispatch::IntegrationTest
   # Three real-looking base58 pubkeys for happy-path validation. Pulled
-  # from turf-vault/CLAUDE.md so the fixtures stay aligned with the
-  # documented signer set.
+  # from turf-vault/docs/CURRENT_DEPLOYMENT.md so the fixtures stay aligned
+  # with the documented signer set.
   # Legacy bot multisig signer pubkey (MULTISIG_SIGNERS slot 0). The bot's
   # *display* wallet rotated to 8K81w4e6… in the seed (2026-06-02) and its name
   # is now "Alex"; this constant mirrors the on-chain signer set, not the seed.
