@@ -45,7 +45,7 @@ Content-Type: application/json
   "user": {
     "slug": "alex-bot",
     "username": "alex-bot",
-    "wallet": "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ"
+    "wallet": "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd"
   }
 }
 ```
@@ -202,7 +202,7 @@ GET /api/v1/account
 {
   "slug": "alex-bot",
   "username": "alex-bot",
-  "wallet": "F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ",
+  "wallet": "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd",
   "usdc_balance": 500.00,
   "seeds_total": 180,
   "level": 2
@@ -234,7 +234,7 @@ Api::V1::AccountsController      — show
 
 - `Solana::AuthVerifier` — signature verification
 - `Contest#prepare_entry_for` — transaction building
-- `Entry#confirm!` — entry confirmation + balance deduction
+- `Entry#confirm!` / `Entry#confirm_onchain!` — entry confirmation after payment proof
 - `rescue_and_log` — error logging pattern
 
 ---

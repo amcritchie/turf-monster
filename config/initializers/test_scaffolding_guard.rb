@@ -9,7 +9,7 @@
 Rails.application.config.after_initialize do
   if Rails.env.production? && AppFlags.test_scaffolding?
     raise "ENABLE_TEST_SCAFFOLDING is enabled in production. Unset this env " \
-          "var (heroku config:unset ENABLE_TEST_SCAFFOLDING --app turf-monster) " \
+          "var (heroku config:unset ENABLE_TEST_SCAFFOLDING --app turf-monster-mainnet) " \
           "before deploying."
   end
 end

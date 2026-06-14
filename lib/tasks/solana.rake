@@ -353,7 +353,7 @@ namespace :solana do
       puts "SHA256: #{hash}"
       puts ""
       puts "To pin this hash on prod:"
-      puts "  heroku config:set EXPECTED_IDL_HASH=#{hash} --app turf-monster"
+      puts "  heroku config:set EXPECTED_IDL_HASH=#{hash} --app turf-monster-mainnet"
     else
       puts "ERROR: #{Solana::Config::IDL_PATH} not found."
       puts "Pull the deployed IDL first:"

@@ -31,12 +31,13 @@
 
       <p class="text-secondary text-sm">
         <% if @vault[:paused] %>
-          Deposit, withdraw, and all <code>enter_contest*</code> instructions
-          are rejected with <code>VaultPaused</code>. Settle, close, mint,
-          migrate, set_username, and create_user_account remain available.
+          <code>enter_contest</code> and <code>enter_contest_with_token</code>
+          are rejected with <code>VaultPaused</code>. Settlement, cancellation,
+          close, mint-entry-token, username, and user-account operations remain
+          available.
         <% else %>
           Vault is operating normally. Pausing requires 2-of-3 multisig and
-          stops user-facing funds movement immediately.
+          stops new on-chain contest entries immediately.
         <% end %>
       </p>
     </div>
@@ -45,8 +46,8 @@
       <div class="card p-4 mb-6 border-green-500/30">
         <h2 class="text-lg font-bold text-heading mb-2">Unpause Vault</h2>
         <p class="text-secondary text-sm mb-4">
-          Restores deposit / withdraw / enter_contest operations. Same 2-of-3
-          auth as pause. The bot signs server-side; Phantom cosigns.
+          Restores on-chain entry operations. Same 2-of-3 auth as pause. The
+          bot signs server-side; Phantom cosigns.
         </p>
 
         <form id="vault-unpause-form" class="space-y-4" onsubmit="return false;">
@@ -72,9 +73,9 @@
       <div class="card p-4 mb-6 border-red-500/30">
         <h2 class="text-lg font-bold text-heading mb-2">🚨 Pause Vault</h2>
         <p class="text-secondary text-sm mb-4">
-          Emergency stop — blocks user-facing funds operations within one
-          TX's finality time. The reason you enter below is logged on-chain
-          for incident triage. 2-of-3 cosign required.
+          Emergency stop — blocks paid and token-funded entries within one TX's
+          finality time. The reason you enter below is logged on-chain for
+          incident triage. 2-of-3 cosign required.
         </p>
 
         <form id="vault-pause-form" class="space-y-4" onsubmit="return false;">
@@ -184,7 +185,7 @@
 
     if (instruction === 'pause' &&
         !confirm('About to PAUSE the vault on ' + pageNetwork.toUpperCase() + '.\n\n' +
-                 'All deposits, withdraws, and contest entries will be blocked\n' +
+                 'All paid and token-funded contest entries will be blocked\n' +
                  'until an unpause is cosigned.\n\n' +
                  'Reason: ' + payload.reason + '\n\nProceed?')) {
       return;

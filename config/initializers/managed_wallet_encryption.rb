@@ -11,8 +11,8 @@ if Rails.env.production? && ENV["MANAGED_WALLET_ENCRYPTION_KEY"].blank?
     MANAGED_WALLET_ENCRYPTION_KEY required in production (OPSEC-015).
 
     Generate:  ruby -e 'require "securerandom"; puts SecureRandom.hex(32)'
-    Set:       heroku config:set MANAGED_WALLET_ENCRYPTION_KEY=<value> --app turf-monster
-    Migrate:   heroku run bin/rails solana:reencrypt_managed_wallets --app turf-monster
+    Set:       heroku config:set MANAGED_WALLET_ENCRYPTION_KEY=<value> --app turf-monster-mainnet
+    Migrate:   heroku run bin/rails solana:reencrypt_managed_wallets --app turf-monster-mainnet
 
     Until reencrypt_managed_wallets runs, legacy-encrypted rows still decrypt
     (Solana::Keypair handles both schemes) — but new wallets use v2 from the

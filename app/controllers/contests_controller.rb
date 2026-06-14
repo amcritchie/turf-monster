@@ -341,15 +341,13 @@ class ContestsController < ApplicationController
   #
   # It was a per-entry admin button that called `vault.transfer_spl` from
   # admin's USDC ATA → user's ATA. Combined with `Contest#grade!` ->
-  # `settle_onchain!` (which credits on-chain UserAccount.balance via the
-  # 2-of-3 settle_contest cosign flow), the two paths together produced a
-  # **double payout**: settle credits the user's vault balance + admin then
-  # transfers USDC directly to user ATA + user later withdraws the credited
-  # balance = paid twice.
+  # `settle_onchain!` (which already transfers prize-pool USDC to winners via
+  # the 2-of-3 settle_contest cosign flow), the two paths together produced a
+  # **double payout**: settle pays the winner on-chain, then admin pays again.
   #
   # The single source of truth for payouts is now on-chain settle. After
-  # cosign confirms, winners' balances are credited automatically; users
-  # withdraw on their own schedule via /wallet. No admin per-entry button.
+  # cosign confirms, winners receive USDC in their own ATA. No admin per-entry
+  # button.
 
   def world_cup
     @contest = Contest.featured
@@ -618,8 +616,8 @@ class ContestsController < ApplicationController
     render json: { fundable: false, reason: "no_funding", method: nil }
   end
 
-  # Build a partially-signed enter_contest_direct transaction for Phantom users.
-  # Admin signs (pays rent), returns base64 tx for user to co-sign client-side.
+  # Build an enter_contest transaction for Phantom users. Phantom signs first;
+  # confirm_onchain_entry validates, admin-cosigns, broadcasts, and verifies.
   def prepare_entry
     if @contest.cancelled?
       return render json: { success: false, error: "This contest was cancelled." },
@@ -638,7 +636,7 @@ class ContestsController < ApplicationController
     # Single-signature entry flow (2026-05-24): the per-entry SIWS
     # signMessage check was removed because the on-chain TX signed in
     # confirm_onchain_entry below is itself the wallet-ownership proof —
-    # Anchor rejects any enter_contest_direct whose signer doesn't match
+    # Anchor rejects any enter_contest whose signer doesn't match
     # the entry PDA's owner. We still require that this Rails session
     # was established via a Phantom signature at login (onchain_session?)
     # so a stolen email/password cookie can't pivot into the on-chain

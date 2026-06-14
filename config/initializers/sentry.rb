@@ -6,8 +6,8 @@
 # Setup steps (operator):
 #   1. Create a Sentry project at https://sentry.io for the "turf-monster" app
 #   2. Copy the DSN from Project Settings → Client Keys (DSN)
-#   3. `heroku config:set SENTRY_DSN=https://...@sentry.io/... --app turf-monster`
-#   4. Restart dynos: `heroku restart --app turf-monster`
+#   3. `heroku config:set SENTRY_DSN=https://...@sentry.io/... --app turf-monster-mainnet`
+#   4. Restart dynos: `heroku restart --app turf-monster-mainnet`
 #
 # Optional env vars:
 #   SENTRY_TRACES_SAMPLE_RATE — 0.0 (default) to 1.0; performance traces sampling

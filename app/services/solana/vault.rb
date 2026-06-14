@@ -1324,8 +1324,7 @@ module Solana
     end
 
     # Build a partially-signed enter_contest_with_token TX (Phantom wallet).
-    # Admin signs (payer), Phantom signs (user). Server holds the partial TX
-    # until the client co-signs and broadcasts.
+    # Admin signs as payer, Phantom signs as user.
     def build_enter_contest_with_token(wallet_address, contest_slug, entry_num, entry_token_pda_b58,
                                        season_id: nil)
       wallet_bytes = Keypair.decode_base58(wallet_address)

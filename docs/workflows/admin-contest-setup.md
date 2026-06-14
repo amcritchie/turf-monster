@@ -2,6 +2,10 @@
 
 > **Code is law.** Every claim below cites `path/to/file.rb:NN` from the current
 > codebase. Re-verify on edit — line numbers drift on refactor.
+>
+> **Refresh status:** This workflow has been partially refreshed for the
+> current self-custody `enter_contest` contract, but the line-number citations
+> should still be re-verified before using it as an implementation map.
 
 **Trigger:** Operator (admin) opens the app to spin up a brand-new on-chain contest and enter it themselves.
 **Actors:** Admin (Phantom wallet) / Phantom / Rails / Solana RPC / turf-vault Anchor program / Squads (only if the vault has never been initialized on this program).
@@ -41,7 +45,7 @@ Surfaced in the navbar admin dropdown as **"Vault Init"** with a yellow `!` badg
   1. `Admin::VaultInitController#build` (`app/controllers/admin/vault_init_controller.rb:26-46`) validates params (`validate_init_params!` lines 90-110 — three distinct signers, threshold 1-3, creator must equal `INIT_AUTHORITY` on mainnet) and calls `Solana::Vault#build_initialize_vault` (`app/services/solana/vault.rb:217-245`). Bot fee-pays; the creator slot is left for Phantom.
   2. Phantom cosigns + broadcasts client-side.
   3. `Admin::VaultInitController#confirm` (`app/controllers/admin/vault_init_controller.rb:48-72`) verifies the TX via `Solana::TxVerifier.verify!` against the `initialize` discriminator + the vault PDA as writable + the creator as signer, then busts the `uninitialized?` cache.
-- **Today's reality (2026-05-31):** devnet vault is initialized at PDA `J7b5g9uS…HkK2` on program `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ` (v0.18; see `docs/SOLANA.md`). The admin will *not* see Vault Init on devnet; this branch only fires the first time the program is deployed to a fresh cluster (mainnet first deploy — see `MAINNET_LAUNCH.md`).
+- **Today's reality:** live devnet/mainnet program identity is canonical in `/Users/alex/projects/turf-vault/docs/CURRENT_DEPLOYMENT.md`. The admin will not see Vault Init on an already-initialized program; this branch only fires the first time the app points at a fresh program ID.
 
 #### 2b. Per-season seed-schedule init (rare — once per Season)
 
@@ -49,7 +53,7 @@ Surfaced in the navbar admin dropdown as **"Vault Init"** with a yellow `!` badg
 
 - Admin UI: `Admin::SeasonsController#create` (`app/controllers/admin/seasons_controller.rb:11-39`) reads `name`, `season_id`, and `slot_0..slot_4` from the form, calls `Solana::Vault#create_season(season_id:, name:, schedule:)`, and (when `params[:set_current] == "1"`) flips `SeasonConfig.set_current!(season_id)`.
 - Routes: `config/routes.rb:248-250`.
-- The on-chain `Season` PDA lives at `[b"season", season_id_le]` and stores the `seed_schedule` (default `[25, 19, 14, 10, 7]`) the `enter_contest_direct` instruction reads to award seeds (see `docs/SOLANA.md:107-109`).
+- The on-chain `Season` PDA lives at `[b"season", season_id_le]` and stores the `seed_schedule` (default `[25, 19, 14, 10, 7]`) the `enter_contest` instruction reads to award seeds (see `docs/SOLANA.md`).
 
 #### 2c. Per-contest Contest PDA init — **fires every time** in step 3
 
@@ -93,14 +97,13 @@ Two-stage hold-to-confirm followed by the Phantom direct-entry signing flow:
    - Validates exactly `picks_required` (= 6 for Turf Totals — `app/models/contest.rb:57-59`) selections and that none of the underlying games are `locked?` (`app/controllers/contests_controller.rb:422-425`).
    - Assigns `entry.entry_number` based on existing entries for this user/contest (`app/controllers/contests_controller.rb:428-429`).
    - `Solana::Vault#ensure_user_account(current_user.web3_solana_address)` — see 2d above.
-   - `Solana::Vault#build_enter_contest_direct(wallet, slug, entry_num, season_id:)` (`app/services/solana/vault.rb:747-785`) — admin signs as payer, creator signs the USDC transfer. Account layout includes the `Season` PDA (`app/services/solana/vault.rb:760, 777`) so the on-chain handler can read `seed_schedule` and award seeds atomically.
-   - Persists a `PendingTransaction` with `tx_type: "enter_contest_direct"`, `status: "pending"`, polymorphic `target: entry` (`app/controllers/contests_controller.rb:452-459`) so a mid-flight refresh leaves a recoverable trail.
+   - `Solana::Vault#build_enter_contest(wallet, slug, entry_num, currency_idx:, season_id:)` builds the unified `enter_contest` transaction. Phantom-first flow leaves both admin and user signatures empty, then `confirm_onchain_entry` validates the user-signed wire before the server cosigns and broadcasts.
+   - Persists a `PendingTransaction` with `tx_type: "enter_contest"`, `status: "pending"`, polymorphic `target: entry`, so a mid-flight refresh leaves a recoverable trail.
    - Returns `{ serialized_tx, entry_id, entry_pda, ptx_slug }`.
-4. **Phantom cosigns + broadcasts** — `app/views/contests/_turf_totals_board.html.erb:946-952`.
-5. **`POST /contests/:id/stamp_entry_signature`** — fire-and-forget (`app/controllers/contests_controller.rb:479-490`). Updates the PT to `status: "submitted"` + stamps `tx_signature` before the client awaits `confirmTransaction`.
-6. **`POST /contests/:id/confirm_onchain_entry`** — `ContestsController#confirm_onchain_entry` (`app/controllers/contests_controller.rb:568-628`):
+4. **Phantom signs, server broadcasts** — the browser signs the prepared wire transaction and posts it to `confirm_onchain_entry`; the server validates the signed wire, cosigns with the admin key, simulates, broadcasts, stamps the `PendingTransaction`, and verifies the resulting signature.
+5. **`POST /contests/:id/confirm_onchain_entry`** — `ContestsController#confirm_onchain_entry`:
    - Re-derives `entry_pda` via `Solana::Vault#entry_pda(slug, wallet, entry_number)`; rejects mismatched client-supplied PDAs (`app/controllers/contests_controller.rb:579-582`).
-   - `verify_solana_transaction!` asserts the TX is `enter_contest_direct` signed by the admin's wallet writing to the derived entry PDA (OPSEC-010).
+   - `verify_solana_transaction!` asserts the TX is `enter_contest` signed by the user's wallet, cosigned by the admin server key, and writing to the derived entry PDA (OPSEC-010).
    - `Entry#confirm_onchain!` (`app/models/entry.rb:130+`) promotes the entry to `active`, stamps `onchain_tx_signature` + `onchain_entry_id`. The `comped:` flag is NOT passed — the on-chain TX itself is the payment proof (`app/models/entry.rb:97`).
    - Marks the PT `confirmed`, returns `{ success: true, redirect, tx_signature, seeds_earned, seeds_total, seeds_level }`.
 
@@ -120,9 +123,9 @@ Two-stage hold-to-confirm followed by the Phantom direct-entry signing flow:
   - `Season` PDA at `[b"season", season_id_le]` (read; **init** if 2b fires)
   - `UserAccount` PDA at `[b"user", wallet]` (read; **init** if 2d fires — `ensure_user_account`)
   - `Contest` PDA at `[b"contest", sha256(slug)]` (**init** via `create_contest` IX in step 3)
-  - `ContestEntry` PDA at `[b"entry", contest_pda, wallet, entry_num_le]` (**init** via `enter_contest_direct` IX in step 4)
-  - SPL token transfers: creator ATA → vault USDC PDA for the prize pool (step 3); admin ATA → vault USDC PDA for the entry fee (step 4)
-- **External:** Solana RPC (every `build_*` re-derives PDAs; `client.send_and_confirm` for server-signed paths; client-side `connection.sendRawTransaction` + `confirmTransaction` for cosign paths).
+  - `ContestEntry` PDA at `[b"entry", contest_pda, wallet, entry_num_le]` (**init** via `enter_contest` IX in step 4)
+  - SPL token transfers: creator ATA → per-contest prize-pool ATA for the prize pool (step 3); user ATA → per-currency operator-revenue ATA for the entry fee (step 4)
+- **External:** Solana RPC (every `build_*` re-derives PDAs; server-signed paths use `client.send_and_confirm`; Phantom entry signs in-browser and broadcasts server-side after admin cosign).
 
 ## Failure modes
 

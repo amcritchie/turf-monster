@@ -1,4 +1,4 @@
-# Solana Integration (Devnet)
+# Solana Integration
 
 "DeFi mullet" — Web2 UX front, Solana settlement back. **Read paths** rescue-and-log (balance/seeds display falls back to 0 on RPC error). **Money-mutating paths** (create_contest, enter, settle) are TX-first — the on-chain transaction confirms *before* the DB row is written/promoted — and fail closed: `Solana::Vault.ensure_program_id_live!` raises if `PROGRAM_ID` isn't on the RPC, and `Solana::Config.verify_idl!` refuses to boot/precompile in prod on IDL drift. The app does not transact against a missing or IDL-mismatched program.
 
@@ -19,7 +19,7 @@ The two are **decoupled**: entry fees are operator revenue and do **not** count 
 Local (turf-monster) classes:
 - `Solana::Config` — program ID, RPC URL, mints, network, signer set, IDL pinning (`verify_idl!`).
 - `Solana::Keypair` — Ed25519 keygen, sign, base58, and encrypt/decrypt of managed-wallet secrets via a 256-bit key derived from the **`MANAGED_WALLET_ENCRYPTION_KEY`** env var (OPSEC-015; `secret_key_base[0,32]` is a legacy fallback only). `#inspect`/`#to_s` are redacted (OPSEC-021).
-- `Solana::Vault` — high-level builders + senders for every v0.18 instruction (see table below). Each has a server-signed form (managed wallet) and a `build_*` partial-signed form (Phantom co-sign). `sync_balance` surfaces the user's USDC ATA balance (back-compat `:balance` key) + decodes `seeds` from the `UserAccount` PDA; `fetch_wallet_balances` reads USDC/USDT ATAs; `ensure_program_id_live!` guards stale env.
+- `Solana::Vault` — high-level builders + senders for the current TurfVault instruction surface (see table below). Managed-wallet paths sign server-side; Phantom paths build partial transactions for browser/user signatures plus server cosign where required. `sync_balance` surfaces the user's USDC ATA balance (back-compat `:balance` key) + decodes `seeds` from the `UserAccount` PDA; `fetch_wallet_balances` reads USDC/USDT ATAs; `ensure_program_id_live!` guards stale env.
 - `Solana::TxVerifier` — fetches a confirmed TX and asserts it touches `PROGRAM_ID` with the expected Anchor discriminator + signer + writable PDA (OPSEC-010). Defeats "submit any successful signature."
 - `Solana::ErrorInterpreter` — maps on-chain error codes into the JS eligibility-blocker `{reason, mode, data}` shape. Friendly mappings include the v0.15.1 username codes `6020`/`6021`/`6022` (UsernameReserved / UsernameInvalidChars / UsernameTooShort) and `6027` EntryFeeNotSet (entering with a currency the contest's `entry_fee_by_currency` never funded); `app/javascript/solana_errors.js` (`parseSolanaError`) mirrors the same codes client-side.
 - `Solana::Reconciler` — compares **on-chain contest state** (entry counts, slot-0 `entry_fees`) and per-user on-chain account presence against the DB; writes discrepancies to `ErrorLog` only. **No** Slack/Discord webhook. The scheduled cron was **removed 2026-05-19 (OPSEC-040)** — run ad-hoc via the rake tasks below.
@@ -29,12 +29,13 @@ RPC + serialization primitives come from the **`solana-studio` gem** (`~> 0.4.3`
 
 ## Anchor Program (`turf-vault/`)
 
-Separate project at `/Users/alex/projects/turf-vault/`. **v0.18.0**, Anchor 0.32.1.
+Separate project at `/Users/alex/projects/turf-vault/`. Current deployment identity is canonical in `turf-vault/docs/CURRENT_DEPLOYMENT.md`; do not copy stale program IDs or signer keys from old launch notes.
 
-- Program ID: `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ` (devnet — current, v0.18; deployed slot 465782911, 2026-05-31). `declare_id!` is cluster-gated — mainnet builds carry the `1111…1111` placeholder until the operator generates a mainnet keypair (see `MAINNET_LAUNCH.md` §3).
-  - Superseded/orphaned devnet programs: `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` (the 2026-05-18 migration target, since superseded; ~4 SOL ProgramData rent locked under the Squads authority) and `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J` (upgrade authority lost; ~3.45 SOL of rent locked there). See the program-ID migration notes in `CLAUDE.md`'s TODO log.
+- Devnet program ID: `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ`
+- Mainnet program ID: `DaFv83yokwTz8msP9CzJ13eazSGk15NuUTxjkfzJzxMM`
+- Superseded/orphaned devnet programs include `Dx8uGU5w7B9NytDSsW4kseGZuqdVVRq1KY1mGXN2GaCT` and `7Hy8GmJWPMdt6bx3VG4BLFnpNX9TBwkPt87W6bkHgr2J`; never use them for live verification.
 - `VaultState` PDA `[b"vault"]` is a **zero-copy singleton** (~1515 bytes) holding the signer set, threshold, `paused` flag, the pinned `payout_mint` (USDC), the pinned `treasury_authority` (Squads vault PDA), and the 16-slot `accepted_currencies` registry. It holds **no pooled token balance**. Rails decodes it via hardcoded byte offsets in `vault.rb#read_vault_state`.
-- IDL: committed at `config/turf_vault.idl.json`, SHA256-pinned via `EXPECTED_IDL_HASH` (`Solana::Config.verify_idl!`). Current v0.18 hash: `2d87b0935f5cd217b04a98153033c371d0b6f90018e9713acf3c3b44fe4db263`.
+- IDL: committed at `config/turf_vault.idl.json` for devnet and `config/turf_vault.mainnet.idl.json` for mainnet, SHA256-pinned via `EXPECTED_IDL_HASH` (`Solana::Config.verify_idl!`). Current source-tree hashes: devnet `f11446facec1043cb15b169929aaff3da9e955e05f3c462e86c7b584706246e9`; mainnet `b9b522635894a42f5434f1faa1cd126d146f3042ae2c233acd1dd76a300f7152`. Live Heroku truth is the configured `EXPECTED_IDL_HASH` allow-list; a committed IDL can be staged before a mainnet upgrade is accepted.
 - USDC Mint (devnet test): `222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9` — registry **slot 0** (= `payout_mint`, the immutable settlement currency).
 - USDT Mint (devnet test): `9mxkN8KaVA8FFgDE2LEsn2UbYLPG8Xg9bf4V9MYYi8Ne` — registry **slot 1**. (Mainnet builds pin Circle USDC `EPjFWdd5…Dt1v` + Tether USDT `Es9vMFr…wNYB`.) All amounts are `u64` at 6 decimals (1 USDC = 1_000_000).
 
@@ -83,7 +84,7 @@ Separate project at `/Users/alex/projects/turf-vault/`. **v0.18.0**, Anchor 0.32
 - `create_user_account` is permissionless (payer only); `initialize` is gated to `INIT_AUTHORITY` on mainnet builds.
 
 Signers (`VaultState.signers`, threshold 2):
-- Alex Bot (server) — `F6f8h5yynbnkgWvU5abQx3RJxJpe8EoQmeFBuNKdKzhZ`
+- Alex Bot (server) — `8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd`
 - Alex (human Phantom, = `INIT_AUTHORITY`) — `7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr`
 - Mason — `CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR`
 
@@ -103,7 +104,7 @@ cd /Users/alex/projects/turf-monster
 shasum -a 256 config/turf_vault.idl.json   # → this is the new EXPECTED_IDL_HASH
 
 # Set EXPECTED_IDL_HASH on Heroku BEFORE git push (assets:precompile runs verify_idl!):
-heroku config:set EXPECTED_IDL_HASH=<sha> -a turf-monster
+heroku config:set EXPECTED_IDL_HASH=<sha> -a turf-monster-mainnet
 
 # Then commit + deploy
 git add config/turf_vault.idl.json

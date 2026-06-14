@@ -72,7 +72,7 @@ npm run test:headed             # with visible browser
 - **Multiple entries** per user per contest with different selection combos
 - **Scoring**: team goals x multiplier per selection, entries ranked, payouts distributed
 - **Solana integration**: on-chain contest escrow via [TurfVault](https://github.com/amcritchie/turf-vault) Anchor program
-- **Phantom wallet** connect, deposit, withdraw, and direct entry
+- **Phantom wallet** connect, self-custody USDC/USDT entry, and on-chain payouts
 - **Dark/light theme** toggle with green primary palette
 
 ## Deploy

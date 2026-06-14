@@ -34,7 +34,7 @@ if Rails.env.production? && !ENV["SECRET_KEY_BASE_DUMMY"]
       Audit H4 (2026-05-23) removed this escape hatch. To deploy a new IDL,
       set EXPECTED_IDL_HASH to the new hash and commit the IDL JSON instead.
 
-      heroku config:unset SKIP_IDL_VERIFICATION --app turf-monster
+      heroku config:unset SKIP_IDL_VERIFICATION --app turf-monster-mainnet
     MSG
   end
 

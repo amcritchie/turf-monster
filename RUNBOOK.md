@@ -9,18 +9,18 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 - Fix: `bin/rails tailwindcss:build` locally to reproduce. Fix the CSS. Redeploy.
 
 **Missing env vars on Heroku**
-- Diagnosis: App crashes on boot. Check `heroku logs --tail --app turf-monster`.
-- Fix: Vars currently set on the `turf-monster` app: `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `RAILS_SERVE_STATIC_FILES`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `MAILER_FROM`, `MANAGED_WALLET_ENCRYPTION_KEY`, `EXPECTED_IDL_HASH`, `SOLANA_PROGRAM_ID`. Boot fails closed without `MANAGED_WALLET_ENCRYPTION_KEY` (OPSEC-015), `SOLANA_PROGRAM_ID` (OPSEC-012), or `EXPECTED_IDL_HASH` (OPSEC-014). See `.env.example` for the documented set. Set with: `heroku config:set KEY=value --app turf-monster`.
+- Diagnosis: App crashes on boot. Check `heroku logs --tail --app turf-monster-mainnet`.
+- Fix: Vars currently set on the `turf-monster-mainnet` app include `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `RAILS_SERVE_STATIC_FILES`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `MAILER_FROM`, `MAIL_TRANSPORT`, `MANAGED_WALLET_ENCRYPTION_KEY`, `EXPECTED_IDL_HASH`, `SOLANA_PROGRAM_ID`, `SOLANA_NETWORK`, and `SOLANA_RPC_URL`. Boot fails closed without `MANAGED_WALLET_ENCRYPTION_KEY` (OPSEC-015), `SOLANA_PROGRAM_ID` (OPSEC-012), or `EXPECTED_IDL_HASH` (OPSEC-014). See `.env.example` for the documented set. Set with: `heroku config:set KEY=value --app turf-monster-mainnet`.
 
 **Migration fails**
-- Diagnosis: `heroku run bin/rails db:migrate --app turf-monster` errors. Check exact SQL error in logs.
-- Fix: Connect via `heroku pg:psql --app turf-monster` to inspect state. If partially applied, check `schema_migrations` table.
+- Diagnosis: `heroku run bin/rails db:migrate --app turf-monster-mainnet` errors. Check exact SQL error in logs.
+- Fix: Connect via `heroku pg:psql --app turf-monster-mainnet` to inspect state. If partially applied, check `schema_migrations` table.
 
 ## Solana RPC Errors
 
 **Rate limit (HTTP 429)**
 - Diagnosis: `Solana::Client` retries automatically but exhausts retries. Logs show `429 Too Many Requests`.
-- Fix: Check `SOLANA_RPC_URL`. Public devnet RPC rate-limits aggressively. Switch to a provider RPC (QuickNode, Helius). Set via `heroku config:set SOLANA_RPC_URL=<provider_url> --app turf-monster`.
+- Fix: Check `SOLANA_RPC_URL`. Public RPC rate-limits aggressively. Switch to a provider RPC (QuickNode, Helius). Set via `heroku config:set SOLANA_RPC_URL=<provider_url> --app turf-monster-mainnet`.
 
 **Timeout on RPC calls**
 - Diagnosis: `Net::OpenTimeout` or `Net::ReadTimeout`. RPC node is slow or down.
@@ -28,7 +28,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 **Wrong network (mainnet vs devnet)**
 - Diagnosis: Transactions fail with "account not found" or wrong program ID.
-- Fix: Verify `SOLANA_RPC_URL` points to devnet: `bin/rails runner "puts Solana::Client.new.send_rpc('getVersion', [])"`. Program ID `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ` is only deployed on devnet.
+- Fix: Verify `SOLANA_NETWORK`, `SOLANA_RPC_URL`, `SOLANA_PROGRAM_ID`, and the committed IDL file agree. Devnet uses `EQGFJAcABtDb6VXtiijTjZ6cE2UqdvhnqJvoharJbpMJ`; mainnet uses `DaFv83yokwTz8msP9CzJ13eazSGk15NuUTxjkfzJzxMM`. Live deployment identity is canonical in `/Users/alex/projects/turf-vault/docs/CURRENT_DEPLOYMENT.md`. Run `bin/rails solana:preflight` or `bin/rails solana:health` before changing production config.
 
 ## Phantom Wallet Connection Issues
 
