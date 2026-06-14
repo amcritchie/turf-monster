@@ -1,8 +1,15 @@
 class ApplicationMailer < ActionMailer::Base
-  default from: -> { Studio.mailer_from || ENV.fetch("MAILER_FROM", "alex@turfmonster.media") }
+  TRANSACTIONAL_FROM = "Turf Monster <team@turfmonster.media>"
+  MARKETING_FROM = "Alex from Turf Monster <alex@turfmonster.media>"
+
+  default from: -> { Studio.mailer_from || ENV.fetch("MAILER_FROM", TRANSACTIONAL_FROM) }
   layout "mailer"
 
   private
+
+  def marketing_from
+    ENV.fetch("MARKETING_MAILER_FROM", MARKETING_FROM)
+  end
 
   # Absolute URL for a branded email banner, served from the app's OWN asset
   # pipeline (app/assets/images/emails/*.png) — no external bucket, version-

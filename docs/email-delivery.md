@@ -27,6 +27,8 @@ Turf uses the shared Studio engine mail transport:
   Resend dependency, and the shared `ses:*` Rake tasks.
 - `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so
   engine magic links and app transactional mail use one sender.
+- Transactional/auth/security/contest email uses `Turf Monster <team@turfmonster.media>`.
+- Newsletter/marketing email uses `Alex from Turf Monster <alex@turfmonster.media>`.
 - Tests always use `:test` in memory; the transport no-ops in `Rails.env.test?`.
 
 SES account/domain checks should use `SES_AWS_ACCESS_KEY_ID` and
@@ -87,7 +89,8 @@ Current production status, last checked 2026-06-14:
 3. SPF includes Amazon SES, and DMARC exists for `turfmonster.media`.
 4. SES SMTP creds are staged on Heroku: `SES_SMTP_USERNAME`,
    `SES_SMTP_PASSWORD`, `SES_REGION`.
-5. `MAILER_FROM=noreply@turfmonster.media` is set.
+5. `MAILER_FROM="Turf Monster <team@turfmonster.media>"` is set.
+6. `MARKETING_MAILER_FROM="Alex from Turf Monster <alex@turfmonster.media>"` is set for newsletter/marketing mail.
 
 Verify state any time:
 
@@ -100,7 +103,9 @@ bin/rails ses:check
 ```bash
 heroku config:set -a turf-monster-mainnet \
   SES_SMTP_USERNAME=... SES_SMTP_PASSWORD=... SES_REGION=us-east-2
-heroku config:set -a turf-monster-mainnet MAILER_FROM=noreply@turfmonster.media
+heroku config:set -a turf-monster-mainnet \
+  MAILER_FROM="Turf Monster <team@turfmonster.media>" \
+  MARKETING_MAILER_FROM="Alex from Turf Monster <alex@turfmonster.media>"
 heroku config:set -a turf-monster-mainnet MAIL_TRANSPORT=ses
 ```
 

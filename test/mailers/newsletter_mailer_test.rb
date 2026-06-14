@@ -6,6 +6,8 @@ class NewsletterMailerTest < ActionMailer::TestCase
     mail = NewsletterMailer.welcome(user)
 
     assert_equal ["sam@example.com"], mail.to
+    assert_equal ["alex@turfmonster.media"], mail.from
+    assert_includes mail[:from].to_s, "Alex from Turf Monster"
     assert_equal "Welcome to the Turf Monster newsletter 🐊", mail.subject
 
     body = mail.html_part.body.to_s

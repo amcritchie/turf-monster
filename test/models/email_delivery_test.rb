@@ -45,6 +45,7 @@ class EmailDeliveryTest < ActiveSupport::TestCase
   test "resend_unsent! re-enqueues only the unsent rows (outage recovery)" do
     EmailDelivery.deliver(NewsletterMailer, :welcome, @user, to: @user.email).update!(sent: true)
     EmailDelivery.deliver(NewsletterMailer, :welcome, @user, to: @user.email) # stays unsent
+    clear_enqueued_jobs
 
     assert_enqueued_jobs 1, only: EmailDeliveryJob do
       EmailDelivery.resend_unsent!

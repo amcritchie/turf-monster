@@ -13,8 +13,8 @@ module EmailCatalog
     u = sample_user
     tok = "preview-token-not-real"
     [
-      Item.new(key: "newsletter_welcome", name: "Newsletter welcome", type: :transactional,
-               description: "Sent on a user's first newsletter subscribe (the 25-seed quest).",
+      Item.new(key: "newsletter_welcome", name: "Newsletter welcome", type: :marketing,
+               description: "Sent from Alex on a user's first newsletter subscribe (the 25-seed quest).",
                builder: -> { NewsletterMailer.welcome(u) }),
       Item.new(key: "magic_link", name: "Magic-link sign-in", type: :transactional,
                description: "Passwordless create-or-login link.",
