@@ -98,7 +98,8 @@ The app connects to the TurfVault Anchor program for contest escrow. Users with 
 
 ## Development Notes
 
-See McRitchie Studio's generated `AGENTS.md` entrypoint for cross-repo agent guidance. Treat the docs below as active source of truth; `CLAUDE.md` is archive/migration context only.
+See McRitchie Studio's generated `AGENTS.md` entrypoint for cross-repo agent
+guidance. Treat the docs below as active source of truth.
 
 Topic-specific documentation lives in `docs/`:
 
