@@ -109,9 +109,9 @@ class Rack::Attack
 
   ### Throttle: magic-link request — outbound email spam + can't-spam-a-mailbox
   # Per-email is the important cap (limits mail to a single address); IP is a
-  # generous backstop for shared NATs. Consume (GET /magic_link/:token) is not
-  # throttled — brute-forcing an HMAC token is infeasible and legit clicks must
-  # always go through.
+  # generous backstop for shared NATs. The GET confirmation page is inert, and
+  # the POST consume relies on CSRF + single-use token semantics; brute-forcing
+  # an HMAC token is infeasible and legit clicks must always go through.
   # Dev gets looser caps so a single localhost (one IP, many test addresses)
   # doesn't trip the limit during normal testing; prod stays strict.
   magic_link_ip_limit    = Rails.env.development? ? 10 : 5

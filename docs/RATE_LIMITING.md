@@ -62,8 +62,8 @@ Key facts that constrain the design:
   reseed (`TestController#reseed` → `Rails.cache.delete_matched("rack::attack:*")`)
   and the manual dev clear both match that exact string. Any new counter that
   must be swept between e2e specs has to use the same prefix.
-- The magic-link **consume** route (`GET /magic_link/:token`) is intentionally
-  un-throttled.
+- The magic-link GET confirmation page is inert, and the POST consume route is
+  intentionally un-throttled; CSRF plus the single-use signed token do the work.
 - The one existing *stateful* limiter is `MessagesController#posting_too_fast?`
   (DB-backed, 5 msgs / 15 s per user) — the model for any future per-user logic.
 
