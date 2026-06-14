@@ -29,6 +29,11 @@ Turf uses the shared Studio engine mail transport:
   engine magic links and app transactional mail use one sender.
 - Tests always use `:test` in memory; the transport no-ops in `Rails.env.test?`.
 
+SES account/domain checks should use `SES_AWS_ACCESS_KEY_ID` and
+`SES_AWS_SECRET_ACCESS_KEY` from `agent.aws.mcritchie-ses`. Do not overwrite
+Turf's existing S3 or app-level `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+unless that IAM user is deliberately being rotated.
+
 ## Local Agent Inbox
 
 In non-production, `studio-engine` exposes a local inbox:
@@ -62,6 +67,16 @@ Use `EmailDelivery.resend_unsent!` after a provider or worker outage.
 Use the shared checklist in
 `mcritchie-studio/docs/agents/modules/email-operations.md` first, then apply the
 Turf-specific values below.
+
+Current production status, last checked 2026-06-14:
+
+- SES account in `us-east-2`: sending enabled, enforcement healthy, still in
+  sandbox (`ProductionAccessEnabled=false`).
+- `turfmonster.media`: verified for sending, DKIM `SUCCESS`.
+- Persistent production transport: keep Resend active until SES production
+  access is approved.
+- Production app adoption: deploy the current `studio-engine` release before
+  proving the shared `Studio::Email.deliver` provider path on Heroku.
 
 ### Prerequisites
 
