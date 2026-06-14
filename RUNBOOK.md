@@ -10,7 +10,13 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 **Missing env vars on Heroku**
 - Diagnosis: App crashes on boot. Check `heroku logs --tail --app turf-monster-mainnet`.
-- Fix: Vars currently set on the `turf-monster-mainnet` app include `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, `DATABASE_URL` (auto), `REDIS_URL` (auto), `RAILS_SERVE_STATIC_FILES`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `MAILER_FROM`, `MAIL_TRANSPORT`, `MANAGED_WALLET_ENCRYPTION_KEY`, `EXPECTED_IDL_HASH`, `SOLANA_PROGRAM_ID`, `SOLANA_NETWORK`, and `SOLANA_RPC_URL`. Boot fails closed without `MANAGED_WALLET_ENCRYPTION_KEY` (OPSEC-015), `SOLANA_PROGRAM_ID` (OPSEC-012), or `EXPECTED_IDL_HASH` (OPSEC-014). See `.env.example` for the documented set. Set with: `heroku config:set KEY=value --app turf-monster-mainnet`.
+- Fix: Compare `heroku config --app turf-monster-mainnet` against
+  `.env.example`, then use the owning docs for provider-specific values:
+  `docs/email-delivery.md` for mail, `docs/SOLANA.md` for Solana, and
+  `docs/CDP_RAMP_INTEGRATION.md` for Coinbase CDP. Boot fails closed without
+  `MANAGED_WALLET_ENCRYPTION_KEY` (OPSEC-015), `SOLANA_PROGRAM_ID`
+  (OPSEC-012), or `EXPECTED_IDL_HASH` (OPSEC-014). Set missing values with
+  `heroku config:set KEY=value --app turf-monster-mainnet`.
 
 **Migration fails**
 - Diagnosis: `heroku run bin/rails db:migrate --app turf-monster-mainnet` errors. Check exact SQL error in logs.

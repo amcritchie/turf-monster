@@ -10,11 +10,14 @@
 > - **Priority 3+** (Contest grading, settlement, edge cases) — ⏳ **PARTIAL.** `test/models/contest_test.rb` exists but doesn't cover all listed scenarios. Devnet smoke spec covers grade-then-settle end-to-end.
 > - Devnet integration tests are tracked separately in [`DEVNET_INTEGRATION_TESTS_TO_ADD.md`](DEVNET_INTEGRATION_TESTS_TO_ADD.md).
 >
-> When closing this doc out: collapse into a `docs/TEST_COVERAGE_STATUS.md` with per-priority completion %. For now, the priorities below remain the live punch list.
+> The priorities below are historical context. Use
+> `docs/TEST_COVERAGE_STATUS.md` before reviving any item.
 
 The 2026-05-17 ecosystem audit identified turf-monster's test count (97 tests, 264 assertions) as low for the risk profile (real Solana tokens, 2-of-3 multisig settlement, on-chain entry and wallet/ramp flows). The audit's target: ~200 tests, roughly doubling current coverage, concentrated on the Solana boundary.
 
-This file is the concrete punch list. Execute in a focused session — each item below is roughly one test or one tight test cluster. After every batch, run `bin/rails test` and ensure green before continuing.
+This file was the concrete punch list for the May 2026 audit. If an item is
+revived, re-check the current code first, then execute in a focused batch and
+run the relevant Rails or Playwright tests before committing.
 
 ## Priority 1 — Vault client boundary + on-chain accounting (~20 tests)
 
