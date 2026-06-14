@@ -1,29 +1,35 @@
-# Email delivery — transport + the Resend → SES cutover
+# Email Delivery - SES Primary, Resend Rollback
 
-Turf Monster sends transactional email (magic-link sign-in, verification, wallet
-export, email-change, contest winnings, newsletter welcome) through ActionMailer.
-App code calls `Studio::Email.deliver`; the shared facade delegates to Turf's
-existing top-level `EmailDelivery` outbox, so every send is recorded as an audit
-row (`sent` boolean).
+Turf Monster sends transactional email through ActionMailer: magic-link sign-in,
+verification, wallet export, email-change, contest winnings, and newsletter
+welcome. App code calls `Studio::Email.deliver`; the shared facade delegates to
+Turf's existing top-level `EmailDelivery` outbox, so every send is recorded as
+an audit row.
 
-## Transport switch
+Cross-app sender inventory, SES cutover rules, local inbox proof, and rollback
+policy live in `mcritchie-studio/docs/agents/modules/email-operations.md`. Keep
+this file focused on Turf-specific wiring.
 
-The active transport is chosen by **`MAIL_TRANSPORT`** (`resend` | `ses`,
-default `resend`). Turf uses the shared Studio engine mail transport:
+## Transport Switch
+
+The active transport is chosen by `MAIL_TRANSPORT` (`ses` | `resend`). `ses` is
+the target state; Resend remains a rollback path while SES adoption is proved.
+Turf uses the shared Studio engine mail transport:
 
 | `MAIL_TRANSPORT` | Active transport | Notes |
 |---|---|---|
-| unset / `resend` | **Resend** (`:resend`) | requires `RESEND_API_KEY`. Default + revert target. |
-| `ses` (+ SES creds) | **SES** (`:smtp`) | requires `SES_SMTP_USERNAME` / `SES_SMTP_PASSWORD` / `SES_REGION`. |
-| `ses` (creds missing) | **Resend** (fallback) | logs a warning; never silently breaks mail. |
+| `ses` with SES creds | SES SMTP | Target state. Requires `SES_SMTP_USERNAME`, `SES_SMTP_PASSWORD`, `SES_REGION`. |
+| `ses` without SES creds | Resend fallback | Logs a warning; avoids silently breaking login during setup. |
+| unset / `resend` | Resend | Rollback path while the Resend account remains available. |
 
-- `config/initializers/studio_mail_transport.rb` — calls `Studio::MailTransport.configure!`.
+- `config/initializers/studio_mail_transport.rb` calls `Studio::MailTransport.configure!`.
 - `studio-engine` owns `Studio::MailTransport`, `Studio::Email.deliver`, the
   Resend dependency, and the shared `ses:*` Rake tasks.
-- `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so engine magic links and app transactional mail use one sender.
-- Tests always use `:test` (in-memory); the transport no-ops in `Rails.env.test?`.
+- `MAILER_FROM` sets both `Studio.mailer_from` and the app mailer default, so
+  engine magic links and app transactional mail use one sender.
+- Tests always use `:test` in memory; the transport no-ops in `Rails.env.test?`.
 
-## Local agent inbox
+## Local Agent Inbox
 
 In non-production, `studio-engine` exposes a local inbox:
 
@@ -42,7 +48,7 @@ Primary local stacks can opt into the same behavior with `LOCAL_EMAIL_CAPTURE=1`
 Set `LOCAL_EMAIL_CAPTURE=0` only when the task is explicitly testing SES/Resend
 provider delivery.
 
-## Durable delivery
+## Durable Delivery
 
 Turf Monster keeps its existing `email_deliveries` table and `EmailDeliveryJob`.
 The shared `Studio::Email.deliver` facade uses that app-level adapter first, so
@@ -51,38 +57,55 @@ into `studio_email_deliveries` yet.
 
 Use `EmailDelivery.resend_unsent!` after a provider or worker outage.
 
-## Goal: fully off Resend.com → SES
+## Cutover Checklist
 
-SES is pay-per-use ($0.10/1k, no monthly fee) and supports both sending domains.
-The cutover is a one-variable flip once the prerequisites below are met.
+Use the shared checklist in
+`mcritchie-studio/docs/agents/modules/email-operations.md` first, then apply the
+Turf-specific values below.
 
-### Prerequisites (ops — AWS / DNS / Heroku)
-1. **SES production access** — out of sandbox for the region (sandbox only sends to verified addresses).
-2. **`turfmonster.media` verified** in SES with DKIM (3 CNAMEs on name.com). `bin/rails "ses:verify_domain[turfmonster.media]"` prints the records.
-3. **SPF + DMARC** for turfmonster.media (SPF `include:amazonses.com`).
-4. **SES SMTP creds** on Heroku: `SES_SMTP_USERNAME`, `SES_SMTP_PASSWORD`, `SES_REGION`.
+### Prerequisites
 
-Verify state any time: `bin/rails ses:check` (needs `AWS_ACCESS_KEY_ID/SECRET` + `SES_REGION` in env).
+1. SES production access is approved in `us-east-2`; sandbox mode can send only
+   to verified recipients.
+2. `turfmonster.media` is verified in SES with DKIM. Run
+   `bin/rails "ses:verify_domain[turfmonster.media]"` to print the records.
+3. SPF includes Amazon SES, and DMARC exists for `turfmonster.media`.
+4. SES SMTP creds are staged on Heroku: `SES_SMTP_USERNAME`,
+   `SES_SMTP_PASSWORD`, `SES_REGION`.
+5. `MAILER_FROM=noreply@turfmonster.media` is set.
+
+Verify state any time:
+
+```bash
+bin/rails ses:check
+```
 
 ### Cutover
-```sh
+
+```bash
 heroku config:set -a turf-monster-mainnet \
-  SES_SMTP_USERNAME=… SES_SMTP_PASSWORD=… SES_REGION=us-east-2   # stage (inert)
-heroku config:set -a turf-monster-mainnet MAIL_TRANSPORT=ses     # the flip
-# smoke test: send a magic link in prod, confirm delivery + DKIM pass
+  SES_SMTP_USERNAME=... SES_SMTP_PASSWORD=... SES_REGION=us-east-2
+heroku config:set -a turf-monster-mainnet MAILER_FROM=noreply@turfmonster.media
+heroku config:set -a turf-monster-mainnet MAIL_TRANSPORT=ses
 ```
 
-### Revert (instant)
-```sh
-heroku config:unset -a turf-monster-mainnet MAIL_TRANSPORT       # Resend resumes
+Smoke test a production magic link and confirm delivery plus DKIM/SPF/DMARC pass.
+
+### Rollback
+
+```bash
+heroku config:unset -a turf-monster-mainnet MAIL_TRANSPORT
 ```
 
-### Decommission (later, after confidence)
-Cancel the Resend subscription + drop `RESEND_API_KEY` only after SES has been
-stable long enough that the rollback path is no longer useful.
+Resend resumes if `RESEND_API_KEY` is present.
 
-## Engine ownership
+### Decommission
 
-Turf Monster is bundled with `studio-engine 0.5.5+`. Keep future shared
+Follow the shared decommission criteria before canceling Resend or dropping
+`RESEND_API_KEY`.
+
+## Engine Ownership
+
+Turf Monster is bundled with `studio-engine 0.5.6+`. Keep future shared
 transport, delivery facade, and local agent inbox changes in `studio-engine`;
 keep Turf-specific catalog entries, previews, and email copy in the app.
