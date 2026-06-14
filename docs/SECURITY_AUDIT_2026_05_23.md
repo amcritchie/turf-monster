@@ -1,5 +1,10 @@
 # Pre-Mainnet Security Audit — Turf Monster Ecosystem
 
+> **ARCHIVE-ONLY AUDIT SNAPSHOT.** This report captured May 2026 security
+> findings before later auth, payment, and Solana hardening passes. Use current
+> Turf docs and the newer security/audit records before acting on any item
+> below.
+
 **Date:** 2026-05-23
 **Scope:** turf-monster (Rails 7.2), turf-vault (Anchor program), studio-engine + solana-studio gems, Heroku/Sidekiq/CI config
 **Launch profile:** public mainnet, real Stripe, no invite gate

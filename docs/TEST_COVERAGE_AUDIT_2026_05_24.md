@@ -1,5 +1,9 @@
 # Stage 3 — Test Coverage Audit
 
+> **ARCHIVE-ONLY AUDIT SNAPSHOT.** Several "zero tests" claims below were true
+> in May 2026 but are no longer current. Use `docs/TEST_COVERAGE_STATUS.md` for
+> the active coverage orientation.
+
 **Date:** 2026-05-24
 **Companion to:** [`SECURITY_AUDIT_2026_05_23.md`](SECURITY_AUDIT_2026_05_23.md), [`REFACTOR_AUDIT_2026_05_23.md`](REFACTOR_AUDIT_2026_05_23.md)
 **Scope:** `test/**`, `e2e/**`, CI configuration, fixtures, test infrastructure

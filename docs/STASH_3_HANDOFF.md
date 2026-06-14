@@ -1,5 +1,9 @@
 # `stash@{3}` salvage — handoff
 
+> **ARCHIVE-ONLY SALVAGE RECORD.** This file documents a historical stash
+> recovery. Do not treat the punted feature list as current roadmap without
+> re-checking code and current product priorities.
+
 The `signup-transition-refactor` branch carried 3359 lines of
 working-tree-only WIP when it was merged to main (via `dcc577a`).
 Since the WIP wasn't committed first, the merge brought in only what

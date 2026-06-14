@@ -1,6 +1,6 @@
 # Turf Monster
 
-Sports pick'em game for the FIFA World Cup 2026. Players select 5 team matchups with multipliers per entry, scored by actual goals. Features Solana blockchain integration for contest escrow and prize distribution.
+Sports pick'em game for the FIFA World Cup 2026. Players select 6 team matchups with multipliers per entry, scored by actual goals. Features Solana blockchain integration for contest escrow and prize distribution.
 
 **Live**: https://app.turfmonster.media
 
@@ -68,7 +68,7 @@ npm run test:headed             # with visible browser
 ## Key Features
 
 - **Matchup grid** with team selection, multipliers, and animated hold-to-confirm button
-- **Contest lifecycle**: draft, open, locked, settled with admin controls (fill, lock, jump, grade, reset)
+- **Contest lifecycle**: pending, open, settled, with locked/concluded derived from timestamps and admin controls for fill, jump, grade, and reset
 - **Multiple entries** per user per contest with different selection combos
 - **Scoring**: team goals x multiplier per selection, entries ranked, payouts distributed
 - **Solana integration**: on-chain contest escrow via [TurfVault](https://github.com/amcritchie/turf-vault) Anchor program
@@ -108,5 +108,6 @@ Topic-specific documentation lives in `docs/`:
 | `docs/LOCAL_STACK.md` | Agent-friendly local stack, ports, Sidekiq, Stripe listener |
 | `docs/SOLANA.md` | Solana integration, wallet types, on-chain flows |
 | `docs/FORMULAS.md` | Scoring formulas, slate system, Chart.js patterns |
+| `docs/TEST_COVERAGE_STATUS.md` | Current test-coverage orientation and remaining gaps |
 | `docs/UI_PATTERNS.md` | Branding, theme, matchup grid, animations |
 | `docs/world_cup_2026.md` | World Cup format, groups, matchday structure |

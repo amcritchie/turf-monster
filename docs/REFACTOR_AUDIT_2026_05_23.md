@@ -1,5 +1,9 @@
 # Stage 2 — Refactor / Scalability Audit
 
+> **ARCHIVE-ONLY AUDIT SNAPSHOT.** This report captured May 2026 launch-risk
+> findings. Use current app docs, tests, and McRitchie Studio's June 2026
+> ecosystem audits for active procedure.
+
 **Date:** 2026-05-23
 **Companion to:** [`SECURITY_AUDIT_2026_05_23.md`](SECURITY_AUDIT_2026_05_23.md)
 **Scope:** models, controllers, DB/queries, jobs + ActionCable

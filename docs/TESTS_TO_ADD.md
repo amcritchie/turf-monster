@@ -1,5 +1,9 @@
 # Tests to Add (Audit Tier 2 #14)
 
+> **ARCHIVE-ONLY BACKLOG SNAPSHOT.** This file captured the May 2026 test punch
+> list. Use `docs/TEST_COVERAGE_STATUS.md` for current test orientation and only
+> return here for historical detail.
+
 > **Status (2026-05-23):**
 > - **Priority 1** (Vault client boundary ~20 tests) — ⏳ **NOT STARTED at Rails unit level.** `test/services/solana/vault_test.rb` does not exist yet. Devnet smoke spec (`e2e/devnet-smoke.spec.js`, ~890 lines) covers happy paths end-to-end at the Playwright level, but Rails unit coverage for edge cases (insufficient selected currency, locked contest, lamports-for-rent shortfall, sync of non-existent PDA/ATA) is still missing.
 > - **Priority 2** (Reconciler ~15 tests) — ⏳ **NOT STARTED.** `test/services/solana/reconciler_test.rb` does not exist. The Sidekiq-cron job is wired and writes to `ErrorLog` / `RECONCILER_ALERT_WEBHOOK`, but divergence-detection logic is not unit-tested.
