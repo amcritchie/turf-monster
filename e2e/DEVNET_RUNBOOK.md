@@ -74,7 +74,7 @@ The `devnet` project in `playwright.config.js` filters tests by the `@devnet` ta
 |---|-----------|-------------|
 | 1 | Alex Wallet Login | Alex logs in via KeypairProvider wallet. |
 | 2 | Alex Faucet | Alex claims $500 USDC from faucet. Seeds wallet for contest creation + entry fees. |
-| 3 | Mason Registration | Registers Mason via email/password, completes profile. |
+| 3 | Mason Registration | Registers Mason via magic link, completes profile. |
 | 4 | Mason Faucet | Mason claims $50 USDC from faucet, verifies $50.00 balance. |
 | 5 | Mack Registration | Mack connects via KeypairProvider wallet, completes profile. |
 | 6 | Mack Faucet | Mack claims $50 USDC from faucet. Seeds wallet before onchain entry. |
@@ -100,7 +100,7 @@ The `devnet` project in `playwright.config.js` filters tests by the `@devnet` ta
 | 16 | Mack 1st Entry (Standard) | Mack enters standard contest with 6 picks via standard path. |
 | 17 | Mack 2nd Entry (Standard) | Mack re-enters with different picks (cards 6-11). Tests multi-entry for Web3 users. |
 
-**Dependencies:** Tests run serially (`workers: 1`). Onboarding (1-6) seeds wallets for all later tests. Tests 8-12 depend on `sharedSmallContestUrl` (Test 7). Tests 14-17 depend on `sharedStandardContestUrl` (Test 13). Tests 4, 8, 14-15 depend on Mason credentials (Test 3). Tests use two wallets: Alex Bot (admin) and Mack (Web3 user).
+**Dependencies:** Tests run serially (`workers: 1`). Onboarding (1-6) seeds wallets for all later tests. Tests 8-12 depend on `sharedSmallContestUrl` (Test 7). Tests 14-17 depend on `sharedStandardContestUrl` (Test 13). Tests 4, 8, 14-15 depend on Mason's magic-link-created account (Test 3). Tests use two wallets: Alex Bot (admin) and Mack (Web3 user).
 
 ## Pre-Flight Checks (Automatic)
 
@@ -147,7 +147,7 @@ Devnet RPC can be flaky. If tests fail with timeout errors:
 - Check devnet status: https://status.solana.com
 
 ### Tests Skipped
-`No shared small contest URL from Test 7` or `No shared standard contest URL from Test 13` or `No Mason credentials from Test 3` — dependent tests skip if their prerequisite didn't run. Run the full suite, not individual tests in isolation.
+`No shared small contest URL from Test 7` or `No shared standard contest URL from Test 13` or `No Mason credentials from Test 3` — dependent tests skip if their prerequisite didn't run. Mason is created through the dev-only magic-link token endpoint; run the full suite, not individual tests in isolation.
 
 ### Stale Server
 If tests fail on page assertions (wrong content, missing elements):

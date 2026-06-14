@@ -1,5 +1,10 @@
 # Devnet v0.15.0 Rehearsal Runbook
 
+> **HISTORICAL REHEARSAL RUNBOOK.** This file describes the retired v0.15.0
+> vault launch shape. Do not use it as current devnet, mainnet, or Turf Vault
+> deployment procedure without reconciling it against `docs/SOLANA.md`,
+> `MAINNET_LAUNCH.md`, and `turf-vault/docs/CURRENT_DEPLOYMENT.md`.
+
 End-to-end rehearsal of the mainnet launch ritual against devnet. Do this **before** running `MAINNET_LAUNCH.md` so you catch tooling / process gaps in a no-money environment.
 
 Estimated time: ~45 minutes (most of it waiting on Squads cosign + Solana finality).
