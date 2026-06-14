@@ -39,24 +39,28 @@ Separate project at `/Users/alex/projects/turf-vault/`. Current deployment ident
 - USDC Mint (devnet test): `222Dcu2RgAXE3T8A4mGSG3kQyXaNjqePx7vva1RdWBN9` — registry **slot 0** (= `payout_mint`, the immutable settlement currency).
 - USDT Mint (devnet test): `9mxkN8KaVA8FFgDE2LEsn2UbYLPG8Xg9bf4V9MYYi8Ne` — registry **slot 1**. (Mainnet builds pin Circle USDC `EPjFWdd5…Dt1v` + Tether USDT `Es9vMFr…wNYB`.) All amounts are `u64` at 6 decimals (1 USDC = 1_000_000).
 
-### Instructions (18)
+### Instructions (22)
 
 | Instruction | Auth | What it does |
 |---|---|---|
 | `initialize` | `INIT_AUTHORITY` (mainnet); any signer on dev | One-time singleton setup: create `VaultState`, pin `payout_mint`=USDC + `treasury_authority`, register USDC (slot 0) + USDT (slot 1), init their `op_rev` ATAs, lock in `signers[3]` + `threshold`. |
+| `update_signers` | **2-of-3** | Rotate vault signer pubkeys in place; threshold remains pinned at 2; signer-continuity guard prevents bricking governance. |
 | `register_currency` | **2-of-3** | Add a mint to the next free `accepted_currencies` slot + init its `op_rev` ATA. Rejects duplicates / full registry. |
 | `deactivate_currency` | **2-of-3** | Flip a slot `active=0` (slot/`op_rev` never reclaimed → `currency_idx` stable). |
 | `pause` | **2-of-3** | Set `paused=1` → blocks **only** `enter_contest{,_with_token}` (everything else stays callable). |
 | `unpause` | **2-of-3** | Set `paused=0`. No auto-unpause. |
 | `create_user_account` | permissionless payer | Allocate `UserAccount` `[b"user", wallet]` with an on-chain-validated `username` (the wallet is *not* a signer → operator-funded onboarding). |
 | `set_username` | **user-signed** | Overwrite the caller's username (re-runs `validate_username`; uniqueness/homoglyph checks stay off-chain). |
+| `admin_create_user_account` | permissionless payer + **1-of-3** | Create a user account with a reserved-prefix waiver for operator-owned names; charset and minimum length still enforced. |
+| `admin_set_username` | **user-signed** + **1-of-3** | Set a reserved-prefix username with owner consent plus vault-signer authorization; charset and minimum length still enforced. |
 | `create_season` | **1-of-3** | Create `Season` `[b"season", id]` with an immutable per-entry `seed_schedule [u64;5]`. |
 | `create_contest` | **1-of-3** payer + **creator** | Init `Contest` + `prize_pool` ATA and SPL-transfer the creator's USDC into the pool. `sum(payout_amounts) == prize_pool`. Operator-funded contests use the admin for both slots. |
 | `set_contest_lock_time` | **1-of-3** | Set/clear `lock_timestamp` (v0.17 derived lock; `0`=no lock). Rejected once settled/cancelled or past `conclusion_timestamp`. |
 | `set_contest_conclusion_time` | **1-of-3** | Set/clear `conclusion_timestamp` (v0.18); once chain time passes it, the lock time is final. |
 | `enter_contest` | **user-signed** + **1-of-3** payer | Paid entry: SPL-transfer fee user-ATA → `op_rev` ATA, init `ContestEntry`, award seeds, bump `entry_fees`/`current_entries`. One path serves Phantom (user signs) + managed (server signs both slots). |
 | `enter_contest_with_token` | **user-signed** + **1-of-3** payer | Token-funded entry: consume an `EntryTokenAccount` (no SPL transfer), award seeds. `currency_idx = 255` sentinel; does **not** bump `entry_fees` (intentional v1 gap). |
-| `mint_entry_token` | **1-of-3** | Mint a pre-purchased free-entry voucher `[b"entry_token", owner, sequence]` (`source`: operator/Stripe/MoonPay). Not pause-gated. |
+| `mint_entry_token` | **1-of-3** | Mint a pre-purchased free-entry voucher `[b"entry_token", sha256(source_ref)]` (`source`: operator/Stripe/MoonPay). Not pause-gated. |
+| `grant_seeds` | **1-of-3** | Credit quest/referral seeds to a user's `UserAccount`; idempotent per `(wallet, kind, invitee)` guard PDA. |
 | `settle_contest` | **2-of-3** | Grade: per-winner SPL-transfer `prize_pool` → winner ATA (PDA-signed), update entry/user stats. `remaining_accounts` = triples `[user_account, entry, winner_ata]`. Cap = `sum(payouts) <= prize_pool`. |
 | `cancel_contest` | **2-of-3** | Refund the full live `prize_pool` balance → creator ATA; status→Cancelled (entry fees stay operator revenue). |
 | `close_contest` | **1-of-3** | Reclaim rent on a Settled/Cancelled contest: dust-sweep `prize_pool`→`op_rev` USDC, close both PDAs. |
@@ -71,15 +75,15 @@ Separate project at `/Users/alex/projects/turf-vault/`. Current deployment ident
 | `UserAccount` | `[b"user", wallet]` | 133 B. `username` (on-chain master), `seeds`, stat counters (`entries`/`wins`/`cashes`/`total_won`). **No balance fields** (v0.16). |
 | `Contest` | `[b"contest", contest_id]` (`contest_id = SHA256(Rails slug)`) | `prize_pool`, `entry_fee_by_currency[16]`, `entry_fees[16]` (revenue tally), `max_entries`/`current_entries`, `status`, `payout_amounts`, `lock_timestamp` (v0.17), `conclusion_timestamp` (v0.18). INIT_SPACE unchanged v0.16→v0.18 (timestamps carved from `_reserved`). |
 | `ContestEntry` | `[b"entry", contest_id, wallet, entry_num u32 LE]` | `status` (Active→Won/Lost), `rank`, `payout`, `currency_idx` (`255` = token-funded). Up to 3 per user (Rails cap). |
-| `EntryTokenAccount` | `[b"entry_token", owner, sequence u64 LE]` | Pre-purchased free-entry voucher. `source` (0=operator/1=Stripe/2=MoonPay), `consumed`. Discover via `getProgramAccounts` by owner. |
+| `EntryTokenAccount` | `[b"entry_token", sha256(source_ref)]` | Pre-purchased free-entry voucher. `source` (0=operator/1=Stripe/2=MoonPay), `source_ref_hash`, `consumed`. Discover via `getProgramAccounts` by owner. |
 | `Season` | `[b"season", season_id u32 LE]` | Immutable `seed_schedule [u64;5]` (entry N → `seed_schedule[min(N,4)]`). |
 | `prize_pool` ATA | `[b"prize_pool", contest_id]` (authority = `VaultState`) | Per-contest USDC prize pool; funded at create, paid at settle, refunded at cancel. |
 | `op_rev` ATA | `[b"op_rev", mint]` (authority = `VaultState`) | Per-currency operator revenue; entry fees land here, swept to treasury. |
 
 ### Two-level multisig auth
 
-- **1-of-3 vault signer** (`vault_state.is_signer(key)`) — routine ops: `create_contest` (payer), `set_contest_lock_time`, `set_contest_conclusion_time`, `close_contest`, `mint_entry_token`, `create_season`, and the **payer** slot of `enter_contest{,_with_token}`. Driven by the always-online Alex Bot server key.
-- **2-of-3 multisig** (`vault_state.validate_multisig(admin, cosigner)`, distinct signers) — treasury ops: `settle_contest`, `cancel_contest`, `register_currency`, `deactivate_currency`, `sweep_operator_revenue`, `pause`, `unpause`.
+- **1-of-3 vault signer** (`vault_state.is_signer(key)`) — routine ops: `create_contest` (payer), `set_contest_lock_time`, `set_contest_conclusion_time`, `close_contest`, `mint_entry_token`, `create_season`, `grant_seeds`, admin username reserved-prefix waivers, and the **payer** slot of `enter_contest{,_with_token}`. Driven by the always-online Alex Bot server key.
+- **2-of-3 multisig** (`vault_state.validate_multisig(admin, cosigner)`, distinct signers) — treasury/governance ops: `settle_contest`, `cancel_contest`, `register_currency`, `deactivate_currency`, `sweep_operator_revenue`, `pause`, `unpause`, `update_signers`.
 - **User signature** required for `set_username` and the **user** slot of `enter_contest{,_with_token}` (the user must consent to spending from / consuming their own funds — OPSEC-004).
 - `create_user_account` is permissionless (payer only); `initialize` is gated to `INIT_AUTHORITY` on mainnet builds.
 
