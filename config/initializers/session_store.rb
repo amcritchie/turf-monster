@@ -11,10 +11,11 @@
 #                                      network MITM via the hub. Pre-mainnet
 #                                      decision (2026-05-24): isolate the cookie
 #                                      entirely until the hub is hardened.
-# - domain: NOT set in prod          — scopes the cookie to turf.mcritchie.studio
-#                                      only. Hub's _studio_session cookie is no
-#                                      longer readable here, so the SSO
-#                                      `session[:sso_email]` etc. fields can't
+# - domain: NOT set in prod          — scopes the cookie to the current request
+#                                      host, e.g. app.turfmonster.media in
+#                                      production and localhost in development.
+#                                      Hub cookies are not readable here, so the
+#                                      SSO `session[:sso_email]` fields cannot
 #                                      flow in either. Combined with the
 #                                      SessionsController override that 404s
 #                                      `sso_continue` / `sso_login`, the cross-
