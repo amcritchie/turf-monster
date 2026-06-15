@@ -1,6 +1,7 @@
 test_stadium:
   slug: test-stadium
   name: Test Stadium
+  address: 1 Test Way
   location: Test City, TS
   city: Test City
   state: TS

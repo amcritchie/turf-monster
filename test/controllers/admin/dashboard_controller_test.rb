@@ -23,6 +23,7 @@ class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
     get admin_dashboard_path
     assert_response :success
     assert_select "h1", text: "Dashboard"
+    assert_select "a[href=?]", admin_models_path
     assert_select "form"
   end
 
