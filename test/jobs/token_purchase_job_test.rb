@@ -268,7 +268,7 @@ class TokenPurchaseJobTest < ActiveJob::TestCase
     assert_equal "paypal:#{purchase.id}:2", retry_vault.mint_calls.first
   end
 
-  test "stripe default: omitting purchase_type keeps the existing stripe behavior" do
+  test "stripe compatibility default: omitting purchase_type keeps legacy webhook behavior" do
     vault = FakeVault.new
     Solana::Vault.stub :new, vault do
       TokenPurchaseJob.perform_now(user_id: @user.id, pack_id: "single", wallet_address: @wallet, stripe_session_id: @sid)

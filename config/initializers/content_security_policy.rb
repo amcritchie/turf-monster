@@ -23,7 +23,7 @@ Rails.application.configure do
   # ENV read directly (not Payments / config.x.payment_provider): initializers
   # run alphabetically, so paypal.rb hasn't resolved the flag yet when this
   # file executes. Same normalization as paypal.rb.
-  paypal_provider = (ENV["PAYMENT_PROVIDER"].presence || "stripe").to_s.strip.downcase == "paypal"
+  paypal_provider = (ENV["PAYMENT_PROVIDER"].presence || "none").to_s.strip.downcase == "paypal"
   frame_sources = [:self, "https://js.stripe.com", "https://hooks.stripe.com"]
   frame_sources += ["https://*.paypal.com", "https://*.venmo.com"] if paypal_provider
 

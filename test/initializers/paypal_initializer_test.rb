@@ -58,7 +58,7 @@ class PaypalInitializerTest < ActiveSupport::TestCase
 
   test "production on the default provider ignores missing PayPal config entirely — deploy-inert" do
     load_initializer(production: true, env: NO_PAYPAL_ENV)
-    assert_equal "stripe", Rails.application.config.x.payment_provider
+    assert_equal "none", Rails.application.config.x.payment_provider
     refute Rails.application.config.x.paypal_enabled
   end
 

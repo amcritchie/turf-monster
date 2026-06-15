@@ -158,10 +158,13 @@ class TokensControllerTest < ActionDispatch::IntegrationTest
   end
 
   def toggle_stripe(value)
-    original = Rails.application.config.x.stripe_enabled
+    original_enabled = Rails.application.config.x.stripe_enabled
+    original_provider = Rails.application.config.x.payment_provider
     Rails.application.config.x.stripe_enabled = value
+    Rails.application.config.x.payment_provider = "stripe"
     yield
   ensure
-    Rails.application.config.x.stripe_enabled = original
+    Rails.application.config.x.stripe_enabled = original_enabled
+    Rails.application.config.x.payment_provider = original_provider
   end
 end

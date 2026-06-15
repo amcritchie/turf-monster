@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # bin/tm — Turf Monster local stack control: ONE command to bring the dev
-# stack (web + Sidekiq + Stripe listener) up or down.
+# stack (web + Sidekiq, with optional dormant Stripe listener) up or down.
 #
 # Unlike `bin/dev` (foreman), every process is DETACHED — it survives the
 # terminal and an agent session — and the stack's gotchas are encoded once so
@@ -11,17 +11,17 @@
 #     not optional — magic-link login enqueues there; and a stale Sidekiq keeps
 #     an old .env snapshot (e.g. SOLANA_PROGRAM_ID) and mints to a dead program.
 #   • one-shot Tailwind build (the --watch process self-destructs without a TTY)
-#   • a Stripe listener whose signing secret is verified against .env
+#   • optional Stripe listener when explicitly requested for legacy checkout
 #   • a readiness poll, so "up" means actually-serving — not merely launched
 #
 # Usage:
-#   bin/tm up [--no-stripe]   bring the stack to healthy; ADOPTS an already-
+#   bin/tm up [--stripe]      bring the stack to healthy; ADOPTS an already-
 #                             running stack (writes pidfiles) instead of bouncing
 #   bin/tm down               stop the managed stack (leaves redis/postgres up)
 #   bin/tm restart            force a clean bounce — the after-.env / gem /
 #                             migration ritual (Sidekiq snapshots .env at boot)
-#   bin/tm status             services, ports, one-Sidekiq check, secret match
-#   bin/tm logs [web|sidekiq|stripe]   tail -f a log (default: all three)
+#   bin/tm status             services, ports, one-Sidekiq check, optional Stripe status
+#   bin/tm logs [web|sidekiq|stripe]   tail -f a log (default: web + sidekiq)
 #
 # Env overrides (default to the canonical primary stack):
 #   TM_PORT=3100  TM_REDIS_DB=0   — point at an isolated stack (e.g. smoke tests)
@@ -42,7 +42,7 @@ export PATH="/opt/homebrew/opt/ruby@3.3/bin:/opt/homebrew/lib/ruby/gems/3.3.0/bi
 
 PORT="${TM_PORT:-3100}"
 REDIS_DB="${TM_REDIS_DB:-0}"
-NO_STRIPE=0
+START_STRIPE="${TM_STRIPE_LISTENER:-0}"
 
 # Children inherit these. APP_PORT keeps emailed magic-links pointing here. A
 # non-default TM_REDIS_DB points REDIS_URL at one db, isolating this stack's
@@ -193,7 +193,7 @@ start_sidekiq(){
 }
 
 start_stripe(){
-  [ "$NO_STRIPE" = 1 ] && { c_warn "stripe listener skipped (--no-stripe)"; return 0; }
+  [ "$START_STRIPE" = 1 ] || { c_ok "stripe listener dormant (use --stripe to opt in)"; return 0; }
   command -v stripe >/dev/null 2>&1 || { c_warn "stripe CLI missing — skipped (brew install stripe/stripe-cli/stripe)"; return 0; }
   local sp; sp="$(stripe_running)"
   [ -n "$sp" ] && { echo "$sp" >"$ST_PID"; c_ok "stripe listener already running (adopted pid $sp)"; return 0; }
@@ -244,7 +244,13 @@ report(){
     *) c_warn "sidekiq  $n running — run: bin/tm restart";;
   esac
   local sp; sp="$(stripe_running)"
-  [ -n "$sp" ] && c_ok "stripe   listening → $FORWARD (pid $sp)" || c_warn "stripe   not running"
+  if [ -n "$sp" ]; then
+    c_ok "stripe   listening → $FORWARD (pid $sp)"
+  elif [ "$START_STRIPE" = 1 ]; then
+    c_warn "stripe   not running"
+  else
+    c_ok "stripe   dormant"
+  fi
 }
 
 stop_one(){ # stop_one <pidfile> <cmd-substring> <label>
@@ -312,7 +318,7 @@ cmd_logs(){
     web)     tail -f "$WEB_LOG";;
     sidekiq) tail -f "$SK_LOG";;
     stripe)  tail -f "$ST_LOG";;
-    *)       tail -f "$WEB_LOG" "$SK_LOG" "$ST_LOG";;
+    *)       tail -f "$WEB_LOG" "$SK_LOG";;
   esac
 }
 
@@ -320,13 +326,14 @@ usage(){
   cat >&2 <<EOF
 bin/tm — Turf Monster local stack control
 
-  up [--no-stripe]   bring web + Sidekiq + Stripe up (adopts a running stack)
+  up [--stripe]      bring web + Sidekiq up; opt into dormant Stripe listener
   down               stop the managed stack (leaves redis/postgres)
   restart            clean bounce — run after editing .env / gems / migrations
-  status             services, ports, one-Sidekiq check, Stripe secret match
-  logs [proc]        tail -f web|sidekiq|stripe (default: all)
+  status             services, ports, one-Sidekiq check, optional Stripe status
+  logs [proc]        tail -f web|sidekiq|stripe (default: web + sidekiq)
 
   env: TM_PORT=$PORT  TM_REDIS_DB=$REDIS_DB   (override for an isolated stack)
+       TM_STRIPE_LISTENER=1                   (same as --stripe)
 EOF
 }
 
@@ -334,7 +341,8 @@ CMD="${1:-help}"; shift || true
 LOG_TARGET="all"
 for a in "$@"; do
   case "$a" in
-    --no-stripe)              NO_STRIPE=1;;
+    --stripe)                 START_STRIPE=1;;
+    --no-stripe)              START_STRIPE=0;; # backward-compatible no-op
     web|sidekiq|stripe|all)   LOG_TARGET="$a";;
   esac
 done

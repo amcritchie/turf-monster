@@ -10,7 +10,7 @@ Primary local URL:
 http://localhost:3100
 ```
 
-Start or adopt the full local stack:
+Start or adopt the normal local stack:
 
 ```bash
 bin/tm up
@@ -20,11 +20,19 @@ bin/tm up
 
 - Rails web on `3100`.
 - Sidekiq on `default` and `mailers`.
-- Stripe listener forwarding to `localhost:3100/webhooks/stripe` when the Stripe CLI and `.env` key are available.
 - Redis and Postgres preflights.
 - One-shot Tailwind build.
 - Readiness polling before reporting the URL.
-- Stripe webhook signing-secret mismatch checks.
+
+Stripe checkout is retired by default. The local Stripe listener is dormant
+unless a task explicitly revives the legacy card checkout rail:
+
+```bash
+PAYMENT_PROVIDER=stripe bin/tm up --stripe
+```
+
+That listener forwards to `localhost:3100/webhooks/stripe` and verifies the
+printed signing secret against `.env`.
 
 Useful commands:
 
@@ -32,10 +40,11 @@ Useful commands:
 bin/tm status
 bin/tm logs web
 bin/tm logs sidekiq
-bin/tm logs stripe
 bin/tm restart
 bin/tm down
 ```
+
+Use `bin/tm logs stripe` only after starting the stack with `--stripe`.
 
 Use `bin/tm restart` after changing `.env`, gems, migrations, or anything Sidekiq reads at boot.
 
@@ -57,7 +66,7 @@ Keep callback-heavy flows on the primary stack unless the external provider is c
 
 Primary `3100` is used by:
 
-- Stripe webhook forwarding.
+- Legacy Stripe webhook forwarding only when started with `bin/tm up --stripe`.
 - Google OAuth redirects.
 - MoonPay/CDP callbacks.
 - Webhooks.

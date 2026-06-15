@@ -1,16 +1,18 @@
 require "test_helper"
 
 # The auth modal's tokens-picker step + /tokens/buy switch funding modes on
-# the provider flags: Stripe packs while Stripe is enabled (current prod,
-# unchanged), the CDP Buy-USDC handoff when Stripe is off and ENABLE_CDP_RAMP
-# is on, and an honest offline card when both are off.
+# the provider flags: PayPal/Venmo when enabled, dormant Stripe packs when
+# explicitly selected, the CDP Buy-USDC handoff when card checkout is off and
+# ENABLE_CDP_RAMP is on, and an honest offline card when both are off.
 class TokensFundingModesTest < ActionDispatch::IntegrationTest
   setup do
     @stripe_was = Rails.application.config.x.stripe_enabled
+    @provider_was = Rails.application.config.x.payment_provider
   end
 
   teardown do
     Rails.application.config.x.stripe_enabled = @stripe_was
+    Rails.application.config.x.payment_provider = @provider_was
   end
 
   def with_cdp_ramp(value = "true")
@@ -33,8 +35,9 @@ class TokensFundingModesTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "picker keeps the Stripe packs byte-for-byte while stripe is enabled" do
+  test "picker keeps the Stripe packs byte-for-byte while stripe is explicitly enabled" do
     Rails.application.config.x.stripe_enabled = true
+    Rails.application.config.x.payment_provider = "stripe"
     with_cdp_ramp do
       get contests_path
       assert_response :success
@@ -61,13 +64,16 @@ class TokensFundingModesTest < ActionDispatch::IntegrationTest
 
   test "STRIPE_CHECKOUT_DISABLED flips stripe_enabled off without unsetting the key" do
     original_key = ENV["STRIPE_SECRET_KEY"]
+    original_provider = ENV["PAYMENT_PROVIDER"]
     ENV["STRIPE_SECRET_KEY"] = "sk_test_x" if original_key.blank?
+    ENV["PAYMENT_PROVIDER"] = "stripe"
     ENV["STRIPE_CHECKOUT_DISABLED"] = "true"
     load Rails.root.join("config/initializers/stripe.rb")
     refute Rails.application.config.x.stripe_enabled
   ensure
     ENV.delete("STRIPE_CHECKOUT_DISABLED")
     original_key.blank? ? ENV.delete("STRIPE_SECRET_KEY") : ENV["STRIPE_SECRET_KEY"] = original_key
+    original_provider.blank? ? ENV.delete("PAYMENT_PROVIDER") : ENV["PAYMENT_PROVIDER"] = original_provider
     load Rails.root.join("config/initializers/stripe.rb")
   end
 

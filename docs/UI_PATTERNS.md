@@ -1,5 +1,10 @@
 # UI Patterns & Branding
 
+> Payment note: Stripe-specific token-picker sections are legacy/dormant unless
+> `PAYMENT_PROVIDER=stripe` is explicitly set. The default unset provider is
+> `none`; current funding surfaces should prefer PayPal/Venmo, CDP, or direct
+> USDC entry when those flags are enabled.
+
 ## Branding & Theme
 
 - **Theme**: Dynamic — engine-generated CSS custom properties from 7 role colors (see `studio-engine/docs/NAVBAR_SETUP.md` plus this file's semantic-token notes)

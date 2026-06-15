@@ -71,8 +71,8 @@
           <%# Same gate as tokens/buy.html.erb: with the provider on "none"
               (or paypal without creds) the Stripe endpoint refuses, so the
               buttons must grey out instead of posting into a dead checkout.
-              Inert on the default deploy — provider "stripe" + key present
-              renders exactly as before (disabled: false). %>
+              Inert on the default deploy; provider "stripe" plus a key
+              intentionally revives the dormant fallback (disabled: false). %>
           <% stripe_on = Payments.stripe? && Rails.application.config.x.stripe_enabled %>
           <div class="space-y-3">
             <% StripePurchase.available_packs.each do |pack_id, pack| %>

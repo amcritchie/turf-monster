@@ -2,9 +2,9 @@
 #
 # PAYMENT_PROVIDER resolution happens here (not in app/services/payments.rb)
 # because initializers can't touch autoloaded constants; Payments reads the
-# config.x value this sets. Default "stripe" — deploying this branch with no
-# env changes leaves production behavior untouched.
-provider = (ENV["PAYMENT_PROVIDER"].presence || "stripe").to_s.strip.downcase
+# config.x value this sets. Default "none" — Stripe is now a dormant fallback
+# that must be explicitly selected with PAYMENT_PROVIDER=stripe.
+provider = (ENV["PAYMENT_PROVIDER"].presence || "none").to_s.strip.downcase
 Rails.application.config.x.payment_provider = provider
 
 Rails.application.config.x.paypal_enabled =

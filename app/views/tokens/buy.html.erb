@@ -21,8 +21,10 @@
       <div class="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-600/30 text-yellow-300 text-xs">
         <% if Payments.paypal? %>
           Checkout is disabled — <span class="font-mono">PAYMENT_PROVIDER=paypal</span> but <span class="font-mono">PAYPAL_CLIENT_ID</span> / <span class="font-mono">PAYPAL_CLIENT_SECRET</span> aren't set. Use the dev-mint buttons below or add the keys to <span class="font-mono">.env</span> and restart.
+        <% elsif Payments.provider == "stripe" %>
+          Card checkout is disabled — <span class="font-mono">PAYMENT_PROVIDER=stripe</span> but <span class="font-mono">STRIPE_SECRET_KEY</span> is not set (or <span class="font-mono">STRIPE_CHECKOUT_DISABLED</span> is true). Use the dev-mint buttons below or fix <span class="font-mono">.env</span> and restart.
         <% else %>
-          Card checkout is disabled — <span class="font-mono">STRIPE_SECRET_KEY</span> not set (or <span class="font-mono">STRIPE_CHECKOUT_DISABLED</span>). Use the dev-mint buttons below or fix <span class="font-mono">.env</span> and restart.
+          Fiat checkout is disabled — set <span class="font-mono">PAYMENT_PROVIDER=paypal</span>, <span class="font-mono">PAYMENT_PROVIDER=stripe</span>, or <span class="font-mono">ENABLE_CDP_RAMP=true</span> only when intentionally testing a provider.
         <% end %>
       </div>
     <% end %>

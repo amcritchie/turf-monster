@@ -37,7 +37,7 @@ class TokensPaypalTest < ActionDispatch::IntegrationTest
 
   test "paypal_order refuses when provider flag is not paypal (deploy-inert gate)" do
     log_in_as_with_wallet @jordan
-    # Test env default: PAYMENT_PROVIDER unset → provider "stripe".
+    # Test env default: PAYMENT_PROVIDER unset -> provider "none".
     post tokens_paypal_order_path, params: { pack: "single" }, as: :json
     assert_response :unprocessable_entity
     assert_match(/isn't enabled/, JSON.parse(response.body)["error"])

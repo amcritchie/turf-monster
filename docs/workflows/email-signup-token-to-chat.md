@@ -1,12 +1,17 @@
 # Workflow: email magic-link signup -> token -> chat
 
+> Legacy Stripe path. Stripe checkout is retired by default; this workflow is
+> still useful when explicitly reviving `PAYMENT_PROVIDER=stripe` for historical
+> compatibility or regression testing. Re-confirm whether PayPal, CDP, or direct
+> USDC entry is now the intended flow before using this as live product context.
+
 > **Code is law.** Every claim below cites `path/to/file.rb:NN` from the current
 > codebase. Re-confirm citations on edit — line numbers drift on refactor.
 
 **Trigger:** Anonymous visitor opens `/` (`GET /`)
 **Actors:** User / Rails / email transport / Stripe / Sidekiq / Solana RPC (devnet)
 **Outcome:** New `users` row, server-managed wallet generated, on-chain `UserAccount` PDA created, one Stripe-funded on-chain `EntryTokenAccount` minted and consumed, an `entries` row for the main contest in status `active` with 6 `selections`, and one visible `messages` row broadcast over ActionCable to that contest's chat stream.
-**Preconditions:** at least one contest in status `open`/`settled` exists (otherwise root falls back to `/contests`; `locked` is no longer a status — it's a derived time-gate); Stripe keys set (`Rails.application.config.x.stripe_enabled`); a `SeasonConfig` row exists with a non-zero `current_season_id` (`contests_controller.rb:297`); the chosen contest is on-chain (token entry requires `contest.onchain?` — see `contests_controller.rb:311`).
+**Preconditions:** at least one contest in status `open`/`settled` exists (otherwise root falls back to `/contests`; `locked` is no longer a status — it's a derived time-gate); `PAYMENT_PROVIDER=stripe` plus Stripe keys set (`Rails.application.config.x.stripe_enabled`); a `SeasonConfig` row exists with a non-zero `current_season_id` (`contests_controller.rb:297`); the chosen contest is on-chain (token entry requires `contest.onchain?` — see `contests_controller.rb:311`).
 
 ## Sequence
 

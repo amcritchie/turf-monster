@@ -1,10 +1,9 @@
 module ApplicationHelper
-  # Which funding flow the entry gate offers web2 users: Stripe token packs
-  # while Stripe checkout is enabled (the dormant fallback — flip
-  # STRIPE_CHECKOUT_DISABLED off to restore it wholesale), the Coinbase USDC
-  # ramp when Stripe is off and ENABLE_CDP_RAMP is on, honest offline
-  # otherwise. Routes modals/auth/_tokens vs _usdc_funding in _auth.html.erb
-  # and the /tokens/buy page treatment.
+  # Which funding flow the entry gate offers web2 users: PayPal/Venmo when
+  # explicitly selected, Stripe token packs only when the dormant fallback is
+  # explicitly re-enabled, the Coinbase USDC ramp when enabled, or an honest
+  # offline state otherwise. Routes modals/auth/_tokens vs _usdc_funding in
+  # _auth.html.erb and the /tokens/buy page treatment.
   def entry_funding_mode
     if Payments.paypal_checkout?
       :paypal

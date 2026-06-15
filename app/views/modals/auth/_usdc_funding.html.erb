@@ -2,8 +2,8 @@
   USDC funding sub-flow of the auth modal — the CDP-era replacement for the
   Stripe token picker. The original (modals/auth/_tokens.html.erb) is kept
   dormant and byte-identical: _auth.html.erb picks which one renders via
-  entry_funding_mode, so flipping STRIPE_CHECKOUT_DISABLED off restores the
-  token packs wholesale.
+  entry_funding_mode, so setting PAYMENT_PROVIDER=stripe and enabling Stripe
+  checkout restores the token packs wholesale.
 
   Mounts on the same step machine the board already drives: the entry gate
   still opens 'tokens-picker'; this partial renders USDC funding instead of

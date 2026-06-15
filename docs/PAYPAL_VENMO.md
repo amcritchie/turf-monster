@@ -2,13 +2,14 @@
 
 PayPal-rails replacement for the (blocked) Stripe account: Venmo + PayPal
 buttons backed by Orders v2. Built sandbox-first and fully flag-gated —
-`PAYMENT_PROVIDER` unset means Stripe behavior is unchanged.
+`PAYMENT_PROVIDER` unset means no fiat checkout. Stripe is a dormant legacy
+fallback and must be explicitly selected with `PAYMENT_PROVIDER=stripe`.
 
 ## Architecture (backend)
 
 | Piece | File |
 |---|---|
-| Provider flag | `app/services/payments.rb` (`Payments.provider`, default `"stripe"`) |
+| Provider flag | `app/services/payments.rb` (`Payments.provider`, default `"none"`) |
 | REST client (OAuth2 + Orders v2 + webhook verify) | `app/services/paypal/client.rb` — every call audited via `OutboundRequest` (service `paypal`) |
 | Audit model | `app/models/paypal_purchase.rb` (`pending → captured → minted`; `refunded`/`failed`) |
 | Order create / capture endpoints | `TokensController#paypal_order` / `#paypal_capture` (POST, JSON) |
@@ -121,16 +122,17 @@ Boot guards (initializer): when `PAYMENT_PROVIDER=paypal` in production,
 `PAYPAL_ENV` must be `live` and all three creds present or the app refuses to
 boot.
 
-**Rollback semantics — read before flipping back.** `PAYMENT_PROVIDER=stripe`
-(or unset) stops **new orders only**: `paypal_order` 422s, the buttons stop
-rendering. `paypal_capture` and the webhook handlers deliberately stay live so
-the in-flight pipeline drains — orders the buyer already approved still
-capture + mint, and refunds/disputes keep processing. If the rollback is
-because **fulfillment itself is broken** (money moving through a bad path),
-the hard kill is removing the creds: unset `PAYPAL_CLIENT_ID` /
+**Rollback semantics — read before flipping back.** `PAYMENT_PROVIDER=none`
+stops **new orders only**: `paypal_order` 422s and the buttons stop rendering.
+`PAYMENT_PROVIDER=stripe` intentionally revives the dormant Stripe fallback
+instead. `paypal_capture` and the webhook handlers deliberately stay live so
+the in-flight pipeline drains — orders the buyer already approved still capture
++ mint, and refunds/disputes keep processing. If the rollback is because
+**fulfillment itself is broken** (money moving through a bad path), the hard
+kill is removing the creds: unset `PAYPAL_CLIENT_ID` /
 `PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID` — capture calls then fail and
-webhook verification fails closed (400), and you reconcile stranded
-purchases manually afterwards.
+webhook verification fails closed (400), and you reconcile stranded purchases
+manually afterwards.
 
 ## Post-flip smoke test
 

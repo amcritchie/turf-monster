@@ -9,12 +9,15 @@ require "test_helper"
 class OnrampHubTest < ActionDispatch::IntegrationTest
   setup do
     @stripe_was = Rails.application.config.x.stripe_enabled
+    @provider_was = Rails.application.config.x.payment_provider
     # Force the Stripe tokens picker, which carries the "More ways" link.
     Rails.application.config.x.stripe_enabled = true
+    Rails.application.config.x.payment_provider = "stripe"
   end
 
   teardown do
     Rails.application.config.x.stripe_enabled = @stripe_was
+    Rails.application.config.x.payment_provider = @provider_was
   end
 
   test "the Get Entry Tokens picker links into the onramp hub" do

@@ -1,6 +1,6 @@
 # Fiat purchase (Stripe webhook / PayPal capture) → on-chain entry token mint
 # (turf-vault v0.9.0+). `purchase_type` picks the audit model: "stripe"
-# (default — StripePurchase, keyed by stripe_session_id) or "paypal"
+# (legacy default — StripePurchase, keyed by stripe_session_id) or "paypal"
 # (PaypalPurchase, keyed by paypal_order_id; the row always exists before the
 # job is enqueued).
 #
