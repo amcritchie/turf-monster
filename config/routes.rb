@@ -321,10 +321,13 @@ Rails.application.routes.draw do
   # widget (docs/CDP_RAMP_INTEGRATION.md §8). The routes stay drawn in every
   # env; Cdp::BaseController 404s everything unless ENABLE_CDP_RAMP is set, so
   # the env var (not a deploy) is the kill-switch. The session POSTs mint the
-  # single-use widget token; the return GETs are Coinbase's redirectUrl targets
+  # single-use widget token; OPTIONS answers strict CORS preflight for the
+  # explicitly allowlisted app origins; the return GETs are Coinbase's redirectUrl targets
   # (UX signal only — never confirmation); ramp_status is the local-state poll
   # for the return page / modal. Phase 2 adds: post "webhooks/cdp".
   scope :cdp do
+    match "onramp_sessions",  to: "cdp/base#preflight", via: :options
+    match "offramp_sessions", to: "cdp/base#preflight", via: :options
     post "onramp_sessions",  to: "cdp/ramp_sessions#create_onramp",  as: :cdp_onramp_sessions
     post "offramp_sessions", to: "cdp/ramp_sessions#create_offramp", as: :cdp_offramp_sessions
     get  "onramp/return",    to: "cdp/returns#onramp",               as: :cdp_onramp_return

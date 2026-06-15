@@ -212,6 +212,9 @@
       setStatus('Awaiting Phantom signature…');
       var txBytes = Uint8Array.from(atob(buildData.serialized_tx), function(c) { return c.charCodeAt(0); });
       var tx = solanaWeb3.Transaction.from(txBytes);
+      if (window.confirmSolanaNetworkIntent) {
+        await window.confirmSolanaNetworkIntent({ action: 'Update vault state' });
+      }
       var signed = await provider.signTransaction(tx);
 
       setStatus('Submitting to Solana…');

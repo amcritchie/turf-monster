@@ -1,0 +1,55 @@
+<div x-data="{
+       get props() { var c = $store.modals.current(); return (c && c.props) || {}; },
+       busy: false,
+       error: '',
+       short(addr) {
+         addr = addr || '';
+         return addr.length > 12 ? (addr.slice(0, 6) + '...' + addr.slice(-4)) : addr;
+       },
+       async continueSwitch() {
+         if (this.busy) return;
+         this.busy = true;
+         this.error = '';
+         try {
+           var store = Alpine.store('wallet');
+           if (!store || !store.continueSwitch) throw new Error('Wallet switch helper is still loading.');
+           await store.continueSwitch(this.props.newAddress);
+         } catch (e) {
+           this.busy = false;
+           this.error = (e && e.message) || 'Could not continue with this wallet.';
+         }
+       }
+     }">
+  <%= render 'modals/blocks/card_header',
+        icon: :external_tab,
+        title: 'Wallet Changed' do %>
+    Your active wallet changed from
+    <span class="text-heading font-mono" x-text="short(props.oldAddress)"></span>
+    to
+    <span class="text-heading font-mono" x-text="short(props.newAddress)"></span>.
+  <% end %>
+
+  <div class="rounded-lg border border-subtle bg-surface-alt p-3 text-xs text-secondary mb-4">
+    Continue to check whether this wallet already has a Turf Monster account.
+    If it is new, you will create it with a wallet signature.
+  </div>
+
+  <template x-if="error">
+    <p class="text-sm text-red-300 mb-3" x-text="error"></p>
+  </template>
+
+  <div class="grid grid-cols-2 gap-3">
+    <button type="button" class="btn btn-secondary btn-lg"
+            :disabled="busy"
+            @click="$store.modals.close()">Not now</button>
+    <button type="button" class="btn btn-primary btn-lg"
+            :disabled="busy"
+            @click="continueSwitch()">
+      <span x-show="!busy">Continue</span>
+      <span x-show="busy" class="inline-flex items-center gap-2">
+        <span class="cta-spinner" aria-hidden="true"></span>
+        Signing
+      </span>
+    </button>
+  </div>
+</div>

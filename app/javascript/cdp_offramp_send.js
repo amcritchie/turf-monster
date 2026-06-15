@@ -63,6 +63,9 @@ export async function buildAndSendOfframpUsdcTransfer(opts) {
   onStatus("Approve the transfer in your wallet...");
   var txBytes = Uint8Array.from(atob(prep.serialized_tx), function (c) { return c.charCodeAt(0); });
   var tx = solanaWeb3.Transaction.from(txBytes);
+  if (window.confirmSolanaNetworkIntent) {
+    await window.confirmSolanaNetworkIntent({ action: "Cash out USDC" });
+  }
   var signed = await provider.signTransaction(tx);
 
   // 3. Broadcast + confirm (same HTTP-poll confirmation as lock_contest).

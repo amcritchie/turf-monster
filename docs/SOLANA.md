@@ -140,6 +140,8 @@ bin/deploy
 - **Managed (web2)**: Server generates an Ed25519 keypair and stores the secret encrypted (via `MANAGED_WALLET_ENCRYPTION_KEY`), signing on behalf of the user. USDC still lives in the user's own ATA.
 - **Phantom (web3)**: User connects the Phantom browser extension (or any Wallet-Standard wallet) and signs transactions directly.
 
+Client signing paths run a network-intent guard before wallet requests. The guard compares Rails env to the app's configured Solana cluster (`production` → Mainnet, everything else → Devnet); unknown or mismatched cluster state opens the `network-guard` modal and requires an explicit checkbox acknowledgement before signing. Phantom does not expose its selected wallet network to websites, so this is an app-cluster/environment guard rather than a browser-readable Phantom-network assertion.
+
 ## Hard Escrow Contest Creation (Phantom-driven, 2026-05-18+)
 
 Contest creation transfers the prize-pool USDC from the creator's Phantom wallet into the **per-contest `prize_pool` PDA** `[b"prize_pool", contest_id]` (authority = `VaultState`) — real hard escrow, not just a number on a PDA, and **not** a shared vault balance. Dual-signer: the admin bot pays SOL rent, the creator's Phantom signs the USDC transfer.
@@ -148,10 +150,11 @@ The on-chain TX completes **before** the DB row is created, so the database alwa
 
 1. Admin fills form + submits → `POST /contests` (`ContestsController#create`)
    - Click-time prechecks: on-chain `Contest` PDA must not exist; creator's USDC must cover the prize pool. Insufficient-USDC modal includes a "Mint $500 Test USDC" recovery button.
-   - Server builds a partially-signed `create_contest` TX (admin pays SOL rent + signs as `payer`; creator will sign as `creator` for the USDC transfer). Returns the partial TX + a signed `params_token`.
-2. Client: `phantom.signTransaction(tx)` → `connection.sendRawTransaction()` → wait for confirmation.
+   - Server builds a fully unsigned `create_contest` TX with both required signature slots reserved (admin payer + creator). Returns the unsigned TX + a signed `params_token`.
+2. Client: `phantom.signTransaction(tx)` only. The browser serializes the Phantom-signed wire with the admin slot still empty and posts it back; it does not simulate, broadcast, or poll.
 3. `POST /contests/finalize` (`ContestsController#finalize`) — collection route, no `:id`.
-   - Verifies the TX via `verify_solana_transaction!` (OPSEC-010 — matches the `create_contest` discriminator + expected accounts).
+   - `Vault#assert_create_contest_cosign_safe!` semantically validates the signed wire against the server-issued payload (fee schedule, payouts, prize pool, lock timestamp, slug-derived PDA, expected accounts) before the admin key signs anything.
+   - Rails admin-cosigns, simulates, broadcasts, waits for confirmation, then verifies via `verify_solana_transaction!` (OPSEC-010 — matches the `create_contest` discriminator + expected accounts).
    - Creates the DB row with `skip_onchain_callback = true` so the legacy `Contest#create_onchain!` after_create callback doesn't double-spend.
 
 ### Legacy server-only fallback

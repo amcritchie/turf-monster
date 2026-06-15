@@ -122,9 +122,10 @@ class ContestsController < ApplicationController
 
   # Phantom-driven contest creation:
   #
-  #   step 1: POST /contests             → #create   — build partially-signed TX, no DB write
-  #   step 2: client signs in Phantom    → broadcast + confirm via web3.js
-  #   step 3: POST /contests/finalize    → #finalize — verify TX on-chain, create DB row
+  #   step 1: POST /contests             → #create   — build unsigned TX, no DB write
+  #   step 2: client signs in Phantom    → signed wire POSTed back, not broadcast
+  #   step 3: POST /contests/finalize    → #finalize — validate, admin-cosign,
+  #                                           simulate, broadcast, verify, save
   #
   # Form params get signed into a token in step 1 and echoed back in step 3
   # so the server doesn't have to trust the client's re-posted values.
@@ -146,7 +147,8 @@ class ContestsController < ApplicationController
     result = vault.build_create_contest(
       current_user.web3_solana_address,
       contest.slug,
-      **contest.onchain_params
+      **contest.onchain_params,
+      admin_signs: false
     )
 
     render json: {
@@ -162,7 +164,7 @@ class ContestsController < ApplicationController
     render_create_error(e.message)
   end
 
-  # Step 1.5 — re-issue the partially-signed create_contest TX with a FRESH
+  # Step 1.5 — re-issue the unsigned create_contest TX with a FRESH
   # blockhash immediately before the Phantom sign. The blockhash baked at
   # #create time goes stale while the user dwells in the wallet UI, which
   # surfaces as "Transaction simulation failed: Blockhash not found" /
@@ -170,12 +172,8 @@ class ContestsController < ApplicationController
   # provider.signTransaction so the TX that gets signed + broadcast carries
   # a current blockhash.
   #
-  # Because the admin co-signs server-side (build_partial_signed re-runs the
-  # admin partial-sign over the new blockhash), the re-issue MUST go through
-  # the server — we can't just overwrite the blockhash client-side without
-  # invalidating the admin signature. We reconstruct the contest from the
-  # already-issued, signed params_token (no client-trusted values) and rebuild
-  # over a fresh blockhash. The original params_token stays valid for finalize.
+  # The re-issue still goes through the server so the exact message bytes stay
+  # bound to the signed params_token (no client-trusted form values).
   def rebuild_create_tx
     payload = verify_onchain_create_payload(params[:params_token])
     raise "User mismatch — token was issued to a different user" unless payload[:user_id] == current_user.id
@@ -187,7 +185,8 @@ class ContestsController < ApplicationController
     result = vault.build_create_contest(
       current_user.web3_solana_address,
       payload[:slug],
-      **contest.onchain_params
+      **contest.onchain_params,
+      admin_signs: false
     )
 
     render json: {
@@ -210,23 +209,39 @@ class ContestsController < ApplicationController
     derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(payload[:slug]).first)
     raise "Contest PDA mismatch — slug=#{payload[:slug]}" unless params[:contest_pda] == derived_pda_b58
     raise "A contest with that slug already exists" if Contest.exists?(slug: payload[:slug])
+    raise "Missing signed transaction" if params[:signed_tx].blank?
 
-    # OPSEC-010: assert the tx is the create_contest IX targeting THIS PDA,
-    # signed by the original creator from the server-issued params_token.
+    contest = build_contest_from_payload(payload)
+    vault = Solana::Vault.new
+
+    vault.assert_create_contest_cosign_safe!(
+      params[:signed_tx],
+      wallet_address: payload[:creator_pubkey],
+      contest_slug: payload[:slug],
+      onchain_params: contest.onchain_params
+    )
+
+    tx_signature = vault.cosign_and_broadcast_create_contest(params[:signed_tx])
+
+    # OPSEC-010: assert the broadcast tx is the create_contest IX targeting
+    # THIS PDA, signed by the original creator from the server-issued token.
     verify_solana_transaction!(
-      params[:tx_signature],
+      tx_signature,
       instruction: "create_contest",
       signer: payload[:creator_pubkey],
       writable: derived_pda_b58
     )
 
-    contest = build_finalized_contest(payload, derived_pda_b58, params[:tx_signature])
+    contest = build_finalized_contest(payload, derived_pda_b58, tx_signature)
     contest.contest_image.attach(params[:contest_image]) if params[:contest_image].present?
     contest.save!
 
     render json: { success: true, redirect: contest_path(contest), slug: contest.slug }
   rescue ActiveSupport::MessageVerifier::InvalidSignature
     render_create_error("Invalid or expired form token — restart the contest creation flow.")
+  rescue Solana::Vault::UnsafeCosignError => e
+    Rails.logger.warn("[ContestsController#finalize] rejected create_contest cosign: #{e.message}")
+    render_create_error("Signed transaction did not match this contest request. Rebuild the transaction and try again.")
   rescue StandardError => e
     Rails.logger.error("[ContestsController#finalize] #{e.class}: #{e.message}")
     capture_unlogged(e)

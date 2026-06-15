@@ -828,7 +828,50 @@ module Solana
     def build_create_contest(wallet_address, contest_slug,
                              entry_fee_by_currency:, max_entries:,
                              payout_amounts:, prize_pool:, season_id: nil,
-                             lock_timestamp: 0)
+                             lock_timestamp: 0, admin_signs: true)
+      spec = create_contest_instruction(
+        wallet_address,
+        contest_slug,
+        entry_fee_by_currency: entry_fee_by_currency,
+        max_entries: max_entries,
+        payout_amounts: payout_amounts,
+        prize_pool: prize_pool,
+        season_id: season_id,
+        lock_timestamp: lock_timestamp
+      )
+
+      wallet_bytes = Keypair.decode_base58(wallet_address)
+
+      serialized =
+        if admin_signs
+          build_partial_signed(
+            accounts: spec[:accounts],
+            data: spec[:data],
+            additional_signers: [wallet_bytes],
+            # Contest-create is the flow that died on mainnet BlockhashNotFound
+            # when a flagged Phantom warning ate the ~90s blockhash window.
+            durable_nonce: durable_nonce_config
+          )
+        else
+          # Phantom-FIRST contest create: leave both admin and creator signature
+          # slots empty. The browser signs first, then the server validates,
+          # cosigns, simulates, and broadcasts. Fresh blockhash only; a durable
+          # nonce plus wallet-injected guard instructions is too brittle here.
+          build_partial_unsigned(
+            accounts: spec[:accounts],
+            data: spec[:data],
+            additional_signers: [Keypair.admin.public_key_bytes, wallet_bytes],
+            durable_nonce: nil
+          )
+        end
+
+      { serialized_tx: serialized, contest_pda: Keypair.encode_base58(spec[:contest_pda]) }
+    end
+
+    def create_contest_instruction(wallet_address, contest_slug,
+                                   entry_fee_by_currency:, max_entries:,
+                                   payout_amounts:, prize_pool:, season_id: nil,
+                                   lock_timestamp: 0)
       wallet_bytes  = Keypair.decode_base58(wallet_address)
       contest_id    = Digest::SHA256.digest(contest_slug)
       contest_pda_addr, _ = contest_pda(contest_slug)
@@ -851,7 +894,7 @@ module Solana
              Borsh.encode_u64(prize_pool) +
              Borsh.encode_i64(lock_timestamp.to_i)
 
-      serialized = build_partial_signed(
+      {
         accounts: [
           { pubkey: Keypair.admin.public_key_bytes, is_signer: true,  is_writable: true  }, # payer
           { pubkey: wallet_bytes,                   is_signer: true,  is_writable: true  }, # creator
@@ -865,16 +908,8 @@ module Solana
           { pubkey: Transaction::SYSVAR_RENT_PUBKEY, is_signer: false, is_writable: false }
         ],
         data: data,
-        additional_signers: [wallet_bytes],
-        # Contest-create is the flow that died on mainnet BlockhashNotFound (a
-        # flagged-dApp Phantom warning ate the ~90s blockhash window). When a
-        # durable nonce is configured, anchor on it so the half-signed tx can't
-        # expire while the operator clicks through Phantom. Default (unset) =
-        # recent blockhash, unchanged.
-        durable_nonce: durable_nonce_config
-      )
-
-      { serialized_tx: serialized, contest_pda: Keypair.encode_base58(contest_pda_addr) }
+        contest_pda: contest_pda_addr
+      }
     end
 
     # Server-funded create_contest — admin signs both payer and creator slots.
@@ -2038,6 +2073,97 @@ module Solana
       true
     end
 
+    # Same admin blind-cosign boundary as #assert_entry_cosign_safe!, but for
+    # contest creation. The form payload is signed server-side into
+    # params_token; the browser only returns Phantom-signed wire bytes. Before
+    # filling the admin signature slot, assert that the wire still contains
+    # exactly the create_contest instruction for that token's slug, creator,
+    # fee schedule, max entries, payouts, prize pool, and lock timestamp.
+    def assert_create_contest_cosign_safe!(signed_wire_base64, wallet_address:, contest_slug:, onchain_params:)
+      context = "create_contest:#{contest_slug}"
+      cosign_reject!(context, wallet_address, "empty_wire: no signed_tx bytes") if signed_wire_base64.blank?
+
+      spec = create_contest_instruction(wallet_address, contest_slug, **onchain_params.symbolize_keys)
+      expected_accounts = spec[:accounts].map { |meta| meta[:pubkey].b }
+      expected_data = spec[:data].b
+
+      msg =
+        begin
+          parse_wire_message(Base64.decode64(signed_wire_base64).b, entry: context, wallet_address: wallet_address)
+        rescue UnsafeCosignError
+          raise
+        rescue StandardError => e
+          cosign_reject!(context, wallet_address, "unparseable_wire: #{e.class}: #{e.message}")
+        end
+      account_keys = msg[:account_keys]
+
+      admin_key = Keypair.admin.public_key_bytes.b
+      fee_payer = account_keys[0]
+      if fee_payer != admin_key
+        cosign_reject!(context, wallet_address,
+          "fee_payer_not_admin: account[0]=#{b58(fee_payer)} expected admin=#{Keypair.admin.address}")
+      end
+
+      create_disc      = Transaction.anchor_discriminator("create_contest").b
+      turf_vault       = @program_id.b
+      system_program   = Transaction::SYSTEM_PROGRAM_ID.b
+      compute_budget   = COMPUTE_BUDGET_PROGRAM_ID.b
+      lighthouse       = LIGHTHOUSE_PROGRAM_ID.b
+      dn               = durable_nonce_config
+      configured_nonce = dn && Keypair.decode_base58(dn.fetch(:pubkey)).b
+
+      create_count = 0
+
+      msg[:instructions].each_with_index do |ix, i|
+        program_id = account_keys[ix[:program_id_index]]
+        cosign_reject!(context, wallet_address, "bad_program_index: ix #{i} program index out of range") if program_id.nil?
+        program_id = program_id.b
+
+        case program_id
+        when turf_vault
+          unless ix[:data].byteslice(0, 8) == create_disc
+            cosign_reject!(context, wallet_address,
+              "wrong_turf_vault_ix: ix #{i} disc=#{ix[:data].byteslice(0, 8).to_s.unpack1('H*')} != create_contest")
+          end
+          unless ix[:data] == expected_data
+            cosign_reject!(context, wallet_address, "create_data_mismatch: ix #{i} does not match server payload")
+          end
+          actual_accounts = ix[:account_indices].map { |idx| account_keys[idx]&.b }
+          unless actual_accounts == expected_accounts
+            cosign_reject!(context, wallet_address,
+              "create_accounts_mismatch: ix #{i} accounts=#{actual_accounts.map { |a| b58(a) }.join(',')}")
+          end
+          create_count += 1
+        when system_program
+          unless ix[:data] == SYSTEM_ADVANCE_NONCE_DATA
+            cosign_reject!(context, wallet_address,
+              "system_not_advance: ix #{i} data=#{ix[:data].to_s.unpack1('H*')} (only advanceNonceAccount allowed)")
+          end
+          if configured_nonce.nil?
+            cosign_reject!(context, wallet_address, "advance_without_config: advanceNonceAccount but no durable nonce configured")
+          end
+          nonce_slot = ix[:account_indices][0]
+          nonce_acct = nonce_slot && account_keys[nonce_slot]
+          if nonce_acct != configured_nonce
+            cosign_reject!(context, wallet_address,
+              "wrong_nonce_account: ix #{i} nonce=#{b58(nonce_acct)} expected=#{dn.fetch(:pubkey)}")
+          end
+        when compute_budget
+          # Priority-fee / CU-limit hints — allowed, carry no authority risk.
+        when lighthouse
+          # Phantom-injected transaction-protection assertions — allowed.
+        else
+          cosign_reject!(context, wallet_address, "disallowed_program: ix #{i} program=#{b58(program_id)}")
+        end
+      end
+
+      unless create_count == 1
+        cosign_reject!(context, wallet_address, "create_contest_count: found #{create_count} create_contest ixs, require exactly 1")
+      end
+
+      true
+    end
+
     # Cosign (admin) the Phantom-signed entry wire, pre-flight simulate, then
     # broadcast. Public API called by ContestsController#confirm_onchain_entry.
     # The caller MUST run #assert_entry_cosign_safe! first (audit C1) — this
@@ -2059,6 +2185,19 @@ module Solana
       if sim && sim["err"]
         logs = Array(sim["logs"]).last(6).join("\n")
         raise "Entry pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
+      end
+
+      client.send_and_confirm(patched_b64)
+    end
+
+    def cosign_and_broadcast_create_contest(signed_wire_base64)
+      patched_b64 = Transaction.cosign_wire_base64(signed_wire_base64, signer: Keypair.admin)
+
+      sim = client.simulate_transaction(patched_b64, sig_verify: false,
+                                        replace_recent_blockhash: true)
+      if sim && sim["err"]
+        logs = Array(sim["logs"]).last(6).join("\n")
+        raise "Contest-create pre-flight simulation failed: #{sim['err'].inspect}#{logs.empty? ? '' : "\n#{logs}"}"
       end
 
       client.send_and_confirm(patched_b64)

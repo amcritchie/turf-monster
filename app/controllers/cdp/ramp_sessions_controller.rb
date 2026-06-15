@@ -13,8 +13,8 @@ module Cdp
   #     country/subdivision availability check (fails closed)
   #   - per-user rack-attack throttle "cdp_sessions/user" (config/initializers/
   #     rack_attack.rb)
-  #   - NO CORS headers, ever — these are same-origin authedFetch POSTs; never
-  #     add Access-Control-Allow-Origin here.
+  #   - strict explicit CORS in Cdp::BaseController: production app origin only
+  #     by default, localhost:3100 in non-production, no wildcards.
   #
   # Tokens are single-use with a 5-minute TTL — minted at click time, never at
   # page render, never cached (§5).

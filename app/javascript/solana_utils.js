@@ -20,6 +20,46 @@ export function lockedFetch(key, url, opts) {
 // Debounced: a burst of parallel 401s only triggers one modal open.
 var _sessionExpiredHandled = false;
 var _rateLimitHandled = false;
+
+export function solanaNetworkInfo() {
+  var body = document.body || {};
+  var cluster = (body.dataset && body.dataset.solanaCluster) || '';
+  var env = (body.dataset && body.dataset.appEnvironment) || '';
+  var label = cluster === 'mainnet-beta' ? 'Mainnet' : (cluster === 'devnet' ? 'Devnet' : 'Strange Network');
+  var expected = env === 'production' ? 'mainnet-beta' : 'devnet';
+  return {
+    cluster: cluster,
+    environment: env,
+    networkLabel: label,
+    environmentLabel: env ? (env.charAt(0).toUpperCase() + env.slice(1)) : 'Unknown',
+    expectedCluster: expected,
+    mismatch: !cluster || cluster !== expected || (cluster !== 'mainnet-beta' && cluster !== 'devnet')
+  };
+}
+
+export function confirmSolanaNetworkIntent(opts) {
+  opts = opts || {};
+  var info = solanaNetworkInfo();
+  if (!info.mismatch) return Promise.resolve(true);
+
+  return new Promise(function(resolve, reject) {
+    var modals = window.Alpine && Alpine.store && Alpine.store('modals');
+    if (!modals || !modals.open) {
+      reject(new Error('Network confirmation unavailable.'));
+      return;
+    }
+    modals.open('network-guard', {
+      title: opts.title || 'Check Network',
+      action: opts.action || 'this wallet request',
+      networkLabel: info.networkLabel,
+      environmentLabel: info.environmentLabel,
+      message: (opts.action || 'This wallet request') + ' is about to use ' + info.networkLabel + '.',
+      onConfirm: function() { resolve(true); },
+      onCancel: function() { reject(new Error('Network confirmation cancelled.')); }
+    });
+  });
+}
+
 export async function authedFetch(url, opts) {
   var resp = await fetch(url, opts);
 
@@ -371,6 +411,8 @@ export const CONFETTI_COLORS = ['#4BAF50', '#8E82FE', '#06D6A0', '#FF7C47', '#FF
 // Attach to window for backward compatibility with inline scripts/onclick handlers
 window.lockedFetch = lockedFetch;
 window.authedFetch = authedFetch;
+window.solanaNetworkInfo = solanaNetworkInfo;
+window.confirmSolanaNetworkIntent = confirmSolanaNetworkIntent;
 window.refreshBalance = refreshBalance;
 window.refreshBalanceDelayed = refreshBalanceDelayed;
 window.refreshSession = refreshSession;

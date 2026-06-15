@@ -58,7 +58,7 @@ class FakeVault
   # envelope shape as the real Solana::Vault#build_create_contest.
   def build_create_contest(wallet_address, contest_slug, **_params)
     @create_contest_calls ||= []
-    @create_contest_calls << { wallet: wallet_address, slug: contest_slug }
+    @create_contest_calls << { wallet: wallet_address, slug: contest_slug, params: _params }
     { serialized_tx: "FAKE_TX_create_#{contest_slug}", contest_pda: "cpda-#{contest_slug}" }
   end
 
@@ -206,6 +206,36 @@ class FakeVault
 
   def cosign_broadcast_calls
     @cosign_broadcast_calls ||= []
+  end
+
+  attr_writer :create_cosign_broadcast_raises, :create_cosign_safe_raises,
+              :create_cosign_broadcast_signature
+
+  def assert_create_contest_cosign_safe!(signed_wire_base64, wallet_address:, contest_slug:, onchain_params:)
+    @create_cosign_safe_calls ||= []
+    @create_cosign_safe_calls << {
+      wire: signed_wire_base64,
+      wallet_address: wallet_address,
+      contest_slug: contest_slug,
+      onchain_params: onchain_params
+    }
+    raise Solana::Vault::UnsafeCosignError, @create_cosign_safe_raises if @create_cosign_safe_raises
+    true
+  end
+
+  def create_cosign_safe_calls
+    @create_cosign_safe_calls ||= []
+  end
+
+  def cosign_and_broadcast_create_contest(signed_wire_base64)
+    @create_cosign_broadcast_calls ||= []
+    @create_cosign_broadcast_calls << signed_wire_base64
+    raise StandardError, @create_cosign_broadcast_raises if @create_cosign_broadcast_raises
+    @create_cosign_broadcast_signature ||= "fake-create-cosign-broadcast-sig"
+  end
+
+  def create_cosign_broadcast_calls
+    @create_cosign_broadcast_calls ||= []
   end
 
   # Used by ContestsController#confirm_onchain_entry (audit C1). The real Vault

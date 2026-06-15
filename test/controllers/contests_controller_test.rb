@@ -1989,7 +1989,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to contest_path(survivor)
   end
 
-  # --- Phantom-driven contest creation: precheck hardening + fresh-blockhash rebuild ---
+  # --- Phantom-driven contest creation: precheck hardening + fresh unsigned rebuild ---
   #
   # #create / #rebuild_create_tx / #finalize are admin-only AND require a Phantom
   # wallet (the creator co-signs the prize-pool USDC transfer). Use a dedicated
@@ -2016,8 +2016,8 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     json
   end
 
-  # Full Phantom create → finalize flow (steps 1 + 3; the on-chain sign/broadcast
-  # in between is the client's job). Returns { create_json:, contest: } where
+  # Full Phantom create → finalize flow (steps 1 + 3; the on-chain sign in
+  # between is the client's job; cosign/broadcast is server-side). Returns { create_json:, contest: } where
   # contest is the persisted record. Solana verification is stubbed.
   def create_contest_via_phantom(name:, slug:, contest_type: "tiny", slate_id: slates(:one).id)
     create_json = run_create_via_phantom(name: name, slug: slug, contest_type: contest_type, slate_id: slate_id)
@@ -2029,7 +2029,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
           post finalize_contests_path, params: {
             params_token: create_json["params_token"],
             contest_pda:  create_json["contest_pda"],
-            tx_signature: "sig-#{slug}-#{SecureRandom.hex(2)}"
+            signed_tx:    "SIGNED_CREATE_WIRE_#{slug}"
           }, as: :json
         end
       end
@@ -2091,7 +2091,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_empty vault.create_contest_calls
   end
 
-  test "create builds the partial-signed TX when a readable balance covers the prize pool" do
+  test "create builds the unsigned TX when a readable balance covers the prize pool" do
     log_in_as(admin_phantom)
     vault = FakeVault.new(usdc_balance: 100.0) # $100 covers tiny's $45
 
@@ -2107,6 +2107,33 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "FAKE_TX_create_blockhash-cup-d", json["serialized_tx"]
     assert json["params_token"].present?, "create must issue a params_token for rebuild + finalize"
     assert_equal 1, vault.create_contest_calls.length
+    assert_equal false, vault.create_contest_calls.first[:params][:admin_signs]
+  end
+
+  test "finalize rejects a signed create tx that does not match the issued contest payload" do
+    log_in_as(admin_phantom)
+    create_json = run_create_via_phantom(name: "Unsafe Create", slug: "unsafe-create", contest_type: "tiny")
+    assert_equal true, create_json["success"], create_json.inspect
+
+    vault = FakeVault.new
+    vault.create_cosign_safe_raises = "wrong create_contest ix"
+
+    Solana::Vault.stub :new, vault do
+      Solana::Keypair.stub :encode_base58, ->(s) { s.is_a?(String) ? s : s.to_s } do
+        post finalize_contests_path, params: {
+          params_token: create_json["params_token"],
+          contest_pda:  create_json["contest_pda"],
+          signed_tx:    "MALICIOUS_CREATE_WIRE"
+        }, as: :json
+      end
+    end
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_equal false, body["success"]
+    assert_match(/did not match/i, body["error"])
+    assert_empty vault.create_cosign_broadcast_calls
+    assert_not Contest.exists?(slug: "unsafe-create")
   end
 
   # ── name/slug decouple (epic Part A) — create path keys off the manual slug ──
@@ -2211,7 +2238,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert LandingPage.exists?(slug: "survivor")
   end
 
-  test "rebuild_create_tx re-issues a fresh partial-signed TX from the create params_token" do
+  test "rebuild_create_tx re-issues a fresh unsigned TX from the create params_token" do
     log_in_as(admin_phantom)
     token = nil
     build_vault = FakeVault.new(usdc_balance: 100.0)

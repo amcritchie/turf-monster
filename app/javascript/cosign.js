@@ -60,6 +60,9 @@ window.cosignTransaction = async function(slug, serializedTx, txTypeLabel) {
     // clean "Cancelled" message (parseSolanaError maps "user rejected").
     var signed;
     try {
+      if (window.confirmSolanaNetworkIntent) {
+        await window.confirmSolanaNetworkIntent({ action: 'Cosign transaction' });
+      }
       signed = await provider.signTransaction(tx);
     } catch (rejectErr) {
       var rejMsg = rejectErr && rejectErr.message ? rejectErr.message : String(rejectErr);

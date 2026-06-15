@@ -1,0 +1,42 @@
+<div x-data="{
+       get props() { var c = $store.modals.current(); return (c && c.props) || {}; },
+       checked: false,
+       confirm() {
+         if (!this.checked) return;
+         var done = this.props.onConfirm;
+         $store.modals.close();
+         if (done) done();
+       },
+       cancel() {
+         var done = this.props.onCancel;
+         $store.modals.close();
+         if (done) done();
+       }
+     }">
+  <%= render 'modals/blocks/card_header',
+        icon_emoji: '!',
+        title_key: "props.title || 'Check Network'" do %>
+    <span x-text="props.message"></span>
+  <% end %>
+
+  <div class="rounded-lg border border-subtle bg-surface-alt p-3 mb-4 text-sm">
+    <div class="flex items-center justify-between gap-3">
+      <span class="text-secondary">App network</span>
+      <span class="font-semibold text-heading" x-text="props.networkLabel"></span>
+    </div>
+    <div class="flex items-center justify-between gap-3 mt-2">
+      <span class="text-secondary">Environment</span>
+      <span class="font-semibold text-heading" x-text="props.environmentLabel"></span>
+    </div>
+  </div>
+
+  <label class="flex items-start gap-3 rounded-lg border border-subtle p-3 mb-4 cursor-pointer">
+    <input type="checkbox" x-model="checked" class="mt-1">
+    <span class="text-sm text-secondary">I understand this wallet request will use the network shown above.</span>
+  </label>
+
+  <div class="grid grid-cols-2 gap-3">
+    <button type="button" class="btn btn-secondary btn-lg" @click="cancel()">Cancel</button>
+    <button type="button" class="btn btn-primary btn-lg" :disabled="!checked" @click="confirm()">Continue</button>
+  </div>
+</div>

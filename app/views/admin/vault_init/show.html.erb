@@ -114,7 +114,6 @@
 (function() {
   var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
   var rpcUrl = document.getElementById('cosign-config').dataset.rpcUrl;
-  var pageNetwork = <%= @network.to_json.html_safe %>;
 
   function setStatus(msg, isError) {
     var el = document.getElementById('vault-init-status');
@@ -167,18 +166,12 @@
       // signing succeeds regardless of cluster — the TX targets our RPC. If
       // Phantom is showing a different network in its UI, the user could
       // think they're authorizing devnet when this page targets mainnet.
-      // Force an explicit ack to surface the network being submitted to.
-      if (!confirm('About to submit on ' + pageNetwork.toUpperCase() + '.\n\n' +
-                   'Confirm Phantom is set to ' + pageNetwork + ' before signing.\n\n' +
-                   'Continue?')) {
-        setStatus('Cancelled.');
-        disableBtn(false);
-        return;
-      }
-
       setStatus('Awaiting Phantom signature…');
       var txBytes = Uint8Array.from(atob(buildData.serialized_tx), function(c) { return c.charCodeAt(0); });
       var tx = solanaWeb3.Transaction.from(txBytes);
+      if (window.confirmSolanaNetworkIntent) {
+        await window.confirmSolanaNetworkIntent({ action: 'Initialize vault' });
+      }
       var signed = await provider.signTransaction(tx);
 
       setStatus('Submitting to Solana…');

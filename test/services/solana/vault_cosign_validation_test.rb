@@ -5,12 +5,13 @@ require "test_helper"
 # client message), so a crafted SystemProgram.transfer{from: admin} /
 # mint_entry_token / grant_seeds would be admin-signed and broadcast.
 #
-# Vault#assert_entry_cosign_safe! now DECODES the Phantom-signed wire and
-# semantically allowlists it BEFORE any admin signature: admin fee-payer, exactly
-# one enter_contest IX bound to THIS entry's PDA, and only the durable-nonce
-# advance / ComputeBudget hints alongside. Byte-equality is intentionally NOT
-# used — the client round-trips the tx through web3.js, which may re-encode the
-# message bytes — so these tests exercise legit builds via #build_enter_contest.
+# Vault#assert_entry_cosign_safe! / #assert_create_contest_cosign_safe! now
+# DECODE the Phantom-signed wire and semantically allowlist it BEFORE any admin
+# signature: admin fee-payer, exactly one expected turf-vault IX bound to THIS
+# server-issued payload, and only the durable-nonce advance / ComputeBudget hints
+# alongside. Byte-equality is intentionally NOT used — the client round-trips the
+# tx through web3.js, which may re-encode the message bytes — so these tests
+# exercise legit builds via the public builders.
 class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
   # A real entrant wallet — MUST differ from the admin managed wallet (the
   # fee-payer): enter_contest marks BOTH admin (payer) and this wallet (user) as
@@ -39,6 +40,17 @@ class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
     c
   end
 
+  def create_params
+    {
+      entry_fee_by_currency: [19_000_000],
+      max_entries: 29,
+      payout_amounts: [300_000_000, 50_000_000],
+      prize_pool: 350_000_000,
+      season_id: 1,
+      lock_timestamp: 0
+    }
+  end
+
   def with_durable_nonce_env(pubkey)
     prev = ENV["SOLANA_DURABLE_NONCE_PUBKEY"]
     ENV["SOLANA_DURABLE_NONCE_PUBKEY"] = pubkey
@@ -57,6 +69,18 @@ class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
     out = vault.build_enter_contest(WALLET, SLUG, 0, currency_idx: 0, season_id: 1)
 
     assert vault.assert_entry_cosign_safe!(out[:serialized_tx], entry: entry_for(entry_number: 0), wallet_address: WALLET)
+  end
+
+  test "a legit create_contest (Phantom-first unsigned wire) passes" do
+    vault = Solana::Vault.new(client: fake_client)
+    out = vault.build_create_contest(WALLET, SLUG, **create_params, admin_signs: false)
+
+    assert vault.assert_create_contest_cosign_safe!(
+      out[:serialized_tx],
+      wallet_address: WALLET,
+      contest_slug: SLUG,
+      onchain_params: create_params
+    )
   end
 
   test "build_enter_contest IGNORES the durable nonce config (entries use a fresh blockhash)" do
@@ -136,6 +160,49 @@ class Solana::VaultCosignValidationTest < ActiveSupport::TestCase
       vault.assert_entry_cosign_safe!(tx.serialize_base64, entry: entry_for(entry_number: 0), wallet_address: WALLET)
     end
     assert_match(/system_not_advance/, err.message)
+  end
+
+  test "admin-fee-payer SystemProgram.transfer is rejected for create_contest cosign" do
+    vault    = Solana::Vault.new(client: fake_client)
+    admin    = Solana::Keypair.admin
+    attacker = Solana::Keypair.generate
+
+    tx = Solana::Transaction.new
+    tx.set_recent_blockhash(Solana::Keypair.generate.to_base58)
+    tx.add_signer(admin)
+    tx.add_instruction(
+      program_id: Solana::Transaction::SYSTEM_PROGRAM_ID,
+      accounts: [
+        { pubkey: admin.public_key_bytes,    is_signer: true,  is_writable: true },
+        { pubkey: attacker.public_key_bytes, is_signer: false, is_writable: true }
+      ],
+      data: [2].pack("V") + [5_000_000].pack("Q<")
+    )
+
+    err = assert_raises(Solana::Vault::UnsafeCosignError) do
+      vault.assert_create_contest_cosign_safe!(
+        tx.serialize_base64,
+        wallet_address: WALLET,
+        contest_slug: SLUG,
+        onchain_params: create_params
+      )
+    end
+    assert_match(/system_not_advance/, err.message)
+  end
+
+  test "create_contest signed wire bound to different payload is rejected" do
+    vault = Solana::Vault.new(client: fake_client)
+    out = vault.build_create_contest(WALLET, SLUG, **create_params, admin_signs: false)
+
+    err = assert_raises(Solana::Vault::UnsafeCosignError) do
+      vault.assert_create_contest_cosign_safe!(
+        out[:serialized_tx],
+        wallet_address: WALLET,
+        contest_slug: SLUG,
+        onchain_params: create_params.merge(prize_pool: 351_000_000)
+      )
+    end
+    assert_match(/create_data_mismatch/, err.message)
   end
 
   test "a turf-vault instruction that is not enter_contest is rejected" do

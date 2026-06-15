@@ -62,6 +62,9 @@ async function setContestTimeViaPhantom(slug, inSeconds, opts) {
     if (modal) modal.show("Sign Transaction", "Approve in your wallet...");
     const txBytes = Uint8Array.from(atob(prepData.serialized_tx), (c) => c.charCodeAt(0));
     const tx = solanaWeb3.Transaction.from(txBytes);
+    if (window.confirmSolanaNetworkIntent) {
+      await window.confirmSolanaNetworkIntent({ action: "Set " + opts.noun.toLowerCase() + " time" });
+    }
     const signed = await provider.signTransaction(tx);
 
     // 3. Broadcast + confirm.

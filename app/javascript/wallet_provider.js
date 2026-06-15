@@ -30,7 +30,10 @@ var PhantomProvider = {
   signTransaction: function(tx) {
     var p = this._provider();
     if (!p) return Promise.reject(new Error('Phantom not available'));
-    return p.signTransaction(tx);
+    var guard = window.confirmSolanaNetworkIntent
+      ? window.confirmSolanaNetworkIntent({ action: 'Sign transaction' })
+      : Promise.resolve(true);
+    return guard.then(function() { return p.signTransaction(tx); });
   },
 
   on: function(event, callback) {
@@ -191,8 +194,13 @@ function _makeWsAdapter(wallet) {
       var feat = wallet.features['solana:signTransaction'];
       if (!feat) return Promise.reject(new Error('Wallet cannot sign transactions'));
       if (!account) return Promise.reject(new Error('Wallet not connected'));
-      var wire = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-      return feat.signTransaction({ account: account, transaction: new Uint8Array(wire) })
+      var guard = window.confirmSolanaNetworkIntent
+        ? window.confirmSolanaNetworkIntent({ action: 'Sign transaction' })
+        : Promise.resolve(true);
+      return guard.then(function() {
+        var wire = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+        return feat.signTransaction({ account: account, transaction: new Uint8Array(wire) });
+      })
         .then(function(outputs) {
           var out = Array.isArray(outputs) ? outputs[0] : outputs;
           return solanaWeb3.Transaction.from(out.signedTransaction);

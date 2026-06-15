@@ -73,12 +73,12 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
   end
 
   def post_session(direction, catalog: FakeCatalog.new, service: FakeTokenService.new,
-                   vault: FakeBalanceVault.new, params: {})
+                   vault: FakeBalanceVault.new, params: {}, headers: {})
     path = direction == :onramp ? cdp_onramp_sessions_path : cdp_offramp_sessions_path
     Cdp::Catalog.stub :new, catalog do
       Cdp::SessionTokenService.stub :new, service do
         Solana::Vault.stub :new, vault do
-          post path, params: params, as: :json
+          post path, params: params, headers: headers, as: :json
         end
       end
     end
@@ -100,6 +100,62 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
       post cdp_onramp_sessions_path, as: :json
       assert_response :unauthorized
       assert_equal "unauthenticated", JSON.parse(response.body)["error"]
+    end
+  end
+
+  test "requires authentication without redirecting raw html clients into the app shell" do
+    with_cdp_ramp do
+      post cdp_onramp_sessions_path, headers: { "Accept" => "text/html" }
+      assert_response :unauthorized
+      assert_equal "application/json", response.media_type
+      assert_equal "unauthenticated", JSON.parse(response.body)["error"]
+      assert_nil response.headers["Location"]
+    end
+  end
+
+  test "sets explicit CORS headers for allowlisted CDP origins" do
+    with_cdp_ramp do
+      log_in_as @user
+      give_managed_wallet
+
+      post_session(:onramp, headers: { "Origin" => "https://app.turfmonster.media" })
+
+      assert_response :success
+      assert_equal "https://app.turfmonster.media", response.headers["Access-Control-Allow-Origin"]
+      assert_equal "true", response.headers["Access-Control-Allow-Credentials"]
+      assert_includes response.headers["Vary"], "Origin"
+    end
+  end
+
+  test "blocks unallowlisted CDP origins before minting a session token" do
+    with_cdp_ramp do
+      log_in_as @user
+      give_managed_wallet
+      service = FakeTokenService.new
+
+      Cdp::SessionTokenService.stub :new, service do
+        post cdp_onramp_sessions_path,
+          headers: { "Origin" => "https://evil.example" },
+          as: :json
+      end
+
+      assert_response :forbidden
+      assert_nil response.headers["Access-Control-Allow-Origin"]
+      assert_empty service.mints
+    end
+  end
+
+  test "answers allowlisted CDP preflight without authentication" do
+    with_cdp_ramp do
+      options cdp_onramp_sessions_path,
+        headers: {
+          "Origin" => "https://app.turfmonster.media",
+          "Access-Control-Request-Method" => "POST"
+        }
+
+      assert_response :no_content
+      assert_equal "https://app.turfmonster.media", response.headers["Access-Control-Allow-Origin"]
+      assert_includes response.headers["Access-Control-Allow-Methods"], "POST"
     end
   end
 
@@ -187,7 +243,8 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
       # immediately (additive to the spec's { url: }).
       assert_equal ramp.partner_user_ref, body["partner_user_ref"]
 
-      # §8: NO CORS headers, ever — same-origin authedFetch needs none.
+      # Same-origin authedFetch carries no Origin header, so no CORS header is
+      # emitted unless the browser is doing an explicit cross-origin request.
       assert_nil response.headers["Access-Control-Allow-Origin"]
     end
   end

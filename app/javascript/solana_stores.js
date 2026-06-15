@@ -9,10 +9,11 @@ function registerWalletStore() {
   if (Alpine.store('wallet')) return true;
 
   // --- Wallet Watcher Store ---
-  // Detects wallet switches and re-authenticates silently
+  // Detects wallet switches and hands the user into an explicit re-auth flow.
   Alpine.store('wallet', {
     address: null,
     watching: false,
+    pendingAddress: null,
 
     init: function() {
       // Only WEB3 (live Phantom-signature) sessions may engage Phantom. A
@@ -35,7 +36,7 @@ function registerWalletStore() {
         .then(function(resp) {
           self.address = resp.publicKey.toBase58();
           if (self.address !== serverAddr) {
-            self._reauth(self.address);
+            self._notifySwitch(self.address);
           }
         })
         .catch(function() {}); // Intentional: wallet not yet approved by user — no action needed
@@ -46,7 +47,7 @@ function registerWalletStore() {
           var newAddr = publicKey.toBase58();
           self.address = newAddr;
           if (newAddr !== self._serverAddress()) {
-            self._reauth(newAddr);
+            self._notifySwitch(newAddr);
           }
         } else {
           window.location.href = '/logout';
@@ -75,6 +76,29 @@ function registerWalletStore() {
 
     _reauthing: false,
 
+    _notifySwitch: function(pubkeyB58) {
+      if (document.visibilityState !== 'visible') return;
+      if (!pubkeyB58 || pubkeyB58 === this._serverAddress()) return;
+      this.pendingAddress = pubkeyB58;
+      try {
+        var modals = window.Alpine && Alpine.store && Alpine.store('modals');
+        if (!modals) return;
+        if (modals.isOpen && modals.isOpen('wallet-changed')) return;
+        modals.open('wallet-changed', {
+          oldAddress: this._serverAddress(),
+          newAddress: pubkeyB58
+        });
+      } catch (e) {
+        console.warn('[wallet-watcher] switch modal failed:', e);
+      }
+    },
+
+    continueSwitch: function(pubkeyB58) {
+      pubkeyB58 = pubkeyB58 || this.pendingAddress;
+      if (!pubkeyB58) return Promise.resolve();
+      return this._reauth(pubkeyB58);
+    },
+
     _reauth: function(pubkeyB58, attempt) {
       attempt = attempt || 1;
       // Every open tab receives Phantom's accountChanged, but the server
@@ -83,13 +107,13 @@ function registerWalletStore() {
       // so the prompt the user actually signs verifies against a dead nonce
       // and 401s. Only the VISIBLE tab re-auths; hidden tabs catch up via
       // the layout's visibilitychange session_state rehydrate on refocus.
-      if (document.visibilityState !== 'visible') return;
-      if (this._reauthing) return; // one prompt at a time in this tab
+      if (document.visibilityState !== 'visible') return Promise.resolve();
+      if (this._reauthing) return Promise.resolve(); // one prompt at a time in this tab
       var provider = window.walletProvider.detect();
-      if (!provider) return;
+      if (!provider) return Promise.resolve();
       this._reauthing = true;
       var self = this;
-      fetch('/auth/solana/nonce')
+      return fetch('/auth/solana/nonce')
         .then(function(r) { return r.json(); })
         .then(function(data) {
           var nonce = data.nonce;
@@ -110,6 +134,7 @@ function registerWalletStore() {
         .then(function(result) {
           self._reauthing = false;
           if (result && result.success) {
+            try { if (Alpine.store('modals').isOpen('wallet-changed')) Alpine.store('modals').close(); } catch (e) {}
             window.handleSolanaVerifySuccess(result);
             window.location.reload();
             return;
@@ -118,7 +143,7 @@ function registerWalletStore() {
           // fresh nonce — the in-flight guard above means this tab is alone
           // now, so the second attempt verifies against its own nonce.
           console.warn('[wallet-watcher] re-auth rejected (attempt ' + attempt + '):', result && result.error);
-          if (attempt < 2) { self._reauth(pubkeyB58, attempt + 1); return; }
+          if (attempt < 2) { return self._reauth(pubkeyB58, attempt + 1); }
           self._fallbackToManualConnect();
         })
         .catch(function(err) {
@@ -127,7 +152,7 @@ function registerWalletStore() {
           // no retry, no fallback (they chose to stay on the old session).
           if (err && err.code === 4001) return;
           console.warn('[wallet-watcher] re-auth failed:', err);
-          if (attempt < 2) { self._reauth(pubkeyB58, attempt + 1); return; }
+          if (attempt < 2) { return self._reauth(pubkeyB58, attempt + 1); }
           self._fallbackToManualConnect();
         });
     },
