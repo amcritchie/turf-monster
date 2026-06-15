@@ -15,6 +15,9 @@
           <% if @team.location.present? %>
             <span class="text-sm text-muted"><%= @team.location %></span>
           <% end %>
+          <% if @team.league.present? %>
+            <span class="text-sm text-muted"><%= [@team.league.upcase, @team.conference, @team.division].compact.join(" · ") %></span>
+          <% end %>
         </div>
       </div>
       <div class="ml-auto flex items-center gap-2">
@@ -27,6 +30,32 @@
       </div>
     </div>
   </div>
+
+  <% if @team.home_arena.present? || @team.hashtag.present? || @team.x_handle.present? %>
+    <div class="card p-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <% if @team.home_arena.present? %>
+          <div>
+            <p class="text-xs text-muted uppercase tracking-wide">Home Arena</p>
+            <p class="text-heading font-semibold"><%= @team.home_arena.name %></p>
+            <p class="text-xs text-muted"><%= @team.home_arena.location %></p>
+          </div>
+        <% end %>
+        <% if @team.hashtag.present? %>
+          <div>
+            <p class="text-xs text-muted uppercase tracking-wide">Hashtag</p>
+            <p class="text-heading font-mono"><%= [@team.hashtag, @team.hashtag2].compact.join(" ") %></p>
+          </div>
+        <% end %>
+        <% if @team.x_handle.present? %>
+          <div>
+            <p class="text-xs text-muted uppercase tracking-wide">X</p>
+            <p class="text-heading font-mono">@<%= @team.x_handle %></p>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
 
   <% if @team.players.any? %>
     <div class="mb-6">

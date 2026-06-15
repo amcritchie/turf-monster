@@ -2,7 +2,7 @@
     button_to emits a native form POST (with a hidden _method=delete), so the
     "Return" escape hatch works even if Alpine/Turbo never load. %>
 <% message = capture do %>
-  Logged in as <strong><%= current_user.display_name %></strong><span class="hidden sm:inline" style="opacity:0.85;"> - admin impersonation</span>
+  Acting as <strong><%= current_user.display_name %></strong><span class="hidden sm:inline" style="opacity:0.85;"> - admin impersonation</span>
 <% end %>
 <% actions = capture do %>
   <%= button_to "Return to #{true_user.display_name}",

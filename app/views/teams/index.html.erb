@@ -19,7 +19,7 @@
               class: "block card-hover p-4",
               data: {
                 team_card: true,
-                name: "#{team.name} #{team.short_name} #{team.location}".downcase
+                name: "#{team.name} #{team.short_name} #{team.location} #{team.league} #{team.division} #{team.home_arena&.name}".downcase
               } do %>
           <div class="flex items-center gap-2 mb-2">
             <% if team.color_primary.present? %>
@@ -38,8 +38,13 @@
               <% end %>
             </div>
           </div>
-          <% if team.location.present? %>
-            <p class="text-xs text-muted mt-1 truncate"><%= team.location %></p>
+          <% if team.league.present? || team.division.present? || team.location.present? %>
+            <p class="text-xs text-muted mt-1 truncate">
+              <%= [team.league&.upcase, team.division, team.location].compact.join(" · ") %>
+            </p>
+          <% end %>
+          <% if team.home_arena.present? %>
+            <p class="text-xs text-muted mt-1 truncate"><%= team.home_arena.name %></p>
           <% end %>
           <% if team.players.any? %>
             <div class="mt-2 pt-2 border-t border-subtle">
