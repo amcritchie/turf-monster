@@ -58,7 +58,9 @@ class Admin::ModelsControllerTest < ActionDispatch::IntegrationTest
     assert_match "🏈", response.body
     assert_match /&quot;slug&quot;: &quot;team-a&quot;/, response.body
     assert_match /&quot;mascot&quot;: &quot;A&quot;/, response.body
+    assert_match /&quot;logo_url&quot;: null/, response.body
     assert_match /&quot;home_arena&quot;/, response.body
+    assert_match "not set", response.body
     assert_no_match "Sport / League", response.body
   end
 
