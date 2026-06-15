@@ -42,7 +42,7 @@ bin/tm up
 
 `bin/dev` remains available for a human interactive terminal with combined logs, but it does not start the Stripe listener and is not reliable in background/no-TTY agent sessions.
 
-Seeds create 5 users, 48 World Cup teams, 72 group stage matches, and 67 players.
+Seeds create 5 users, 48 World Cup teams, 32 NFL teams, 30 NFL home arenas, 72 World Cup group matches, 256 NFL regular season games across 17 slates, and 85 players.
 
 **Required `.env` keys**: `RAILS_MASTER_KEY` (not optional — seed encrypts managed wallets via `secret_key_base`), `GOOGLE_CLIENT_ID`/`SECRET`, `AWS_ACCESS_KEY_ID`/`SECRET`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `MANAGED_WALLET_ENCRYPTION_KEY`, and mail transport credentials for local email delivery. Current 1Password item names live in McRitchie Studio's credential docs.
 
@@ -99,7 +99,8 @@ The app connects to the TurfVault Anchor program for contest escrow. Users with 
 - Rails 7.2 with ERB views, Tailwind CSS, Alpine.js
 - Shared [Studio engine](https://github.com/amcritchie/studio-engine) for auth, error handling, and theme system
 - [SolanaStudio](https://github.com/amcritchie/solana-studio) gem for Solana RPC and transaction building
-- Slug-based foreign keys for teams, games, and players
+- Slug-based foreign keys for teams, games, players, and home arenas
+- Team records carry sport/league/division metadata, rivalry/social fields, and optional `home_arena_slug` links to `Arena`
 - All monetary values stored in cents, displayed in dollars
 
 ## Development Notes

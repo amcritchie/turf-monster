@@ -1,0 +1,8 @@
+test_stadium:
+  slug: test-stadium
+  name: Test Stadium
+  location: Test City, TS
+  city: Test City
+  state: TS
+  country: USA
+  timezone: America/Denver

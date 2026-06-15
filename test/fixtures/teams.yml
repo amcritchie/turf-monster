@@ -3,6 +3,12 @@ team_a:
   short_name: TMA
   slug: team-a
   emoji: "🏳️"
+  sport: football
+  league: nfl
+  conference: Test
+  division: Test
+  rivals: []
+  home_arena_slug: test-stadium
 
 team_b:
   name: Team B
