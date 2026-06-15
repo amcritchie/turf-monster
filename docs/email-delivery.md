@@ -116,7 +116,9 @@ heroku config:set -a turf-monster-mainnet \
 heroku config:set -a turf-monster-mainnet MAIL_TRANSPORT=ses
 ```
 
-Smoke test a production magic link and confirm delivery plus DKIM/SPF/DMARC pass.
+Smoke test the provider with `bin/rails "email:smoke[approved-test-inbox@example.com]"`,
+then smoke test a production magic link and confirm delivery plus DKIM/SPF/DMARC
+pass.
 
 ### Rollback
 
@@ -133,6 +135,7 @@ Follow the shared decommission criteria before canceling Resend or dropping
 
 ## Engine Ownership
 
-Turf Monster currently uses `studio-engine 0.5.8`. Keep future shared transport,
-delivery facade, and local agent inbox changes in `studio-engine`; keep
-Turf-specific catalog entries, previews, and email copy in the app.
+Turf Monster currently uses `studio-engine 0.5.9`. Keep future shared transport,
+delivery facade, local agent inbox, and provider smoke-test changes in
+`studio-engine`; keep Turf-specific catalog entries, previews, and email copy in
+the app.
