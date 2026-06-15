@@ -5,19 +5,55 @@ data = JSON.parse(File.read(data_path))
 
 puts "  Loading NFL #{data.fetch("season")} schedule from #{data.fetch("generated_at")}"
 
+NFL_TEAM_EMOJIS = {
+  "ARI" => "🐦",
+  "ATL" => "🦅",
+  "BAL" => "🐦‍⬛",
+  "BUF" => "🦬",
+  "CAR" => "🐆",
+  "CHI" => "🐻",
+  "CIN" => "🐅",
+  "CLE" => "🐶",
+  "DAL" => "🤠",
+  "DEN" => "🐴",
+  "DET" => "🦁",
+  "GB" => "🧀",
+  "HOU" => "🐂",
+  "IND" => "🐎",
+  "JAX" => "🐆",
+  "KC" => "🏹",
+  "LAC" => "⚡",
+  "LAR" => "🐏",
+  "LV" => "☠️",
+  "MIA" => "🐬",
+  "MIN" => "🛡️",
+  "NE" => "🇺🇸",
+  "NO" => "⚜️",
+  "NYG" => "🗽",
+  "NYJ" => "✈️",
+  "PHI" => "🦅",
+  "PIT" => "⚙️",
+  "SEA" => "🌊",
+  "SF" => "⛏️",
+  "TB" => "🏴‍☠️",
+  "TEN" => "⚔️",
+  "WSH" => "🪖"
+}.freeze
+
 nfl_teams = {}
 data.fetch("teams").each do |row|
+  abbreviation = row.fetch("abbreviation")
   team = Team.find_or_initialize_by(slug: row.fetch("display_name").parameterize)
   team.assign_attributes(
     name: row.fetch("display_name"),
-    short_name: row.fetch("abbreviation"),
+    short_name: abbreviation,
     location: row.fetch("location"),
-    emoji: "\u{1F3C8}",
+    emoji: NFL_TEAM_EMOJIS.fetch(abbreviation, "\u{1F3C8}"),
     color_primary: row.fetch("color_primary"),
     color_secondary: row.fetch("color_secondary")
   )
   team.save!
-  nfl_teams[row.fetch("abbreviation")] = team
+  nfl_teams[abbreviation] = team
 end
 
 games_by_week = Hash.new { |hash, week| hash[week] = [] }
