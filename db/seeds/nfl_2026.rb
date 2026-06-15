@@ -99,6 +99,7 @@ data.fetch("teams").each do |row|
   team.assign_attributes(
     name: metadata.fetch(:name),
     short_name: metadata.fetch(:short_name),
+    mascot: row.fetch("name"),
     location: metadata.fetch(:location),
     emoji: metadata.fetch(:emoji),
     color_primary: metadata.fetch(:color_primary),

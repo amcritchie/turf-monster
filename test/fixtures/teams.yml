@@ -1,6 +1,7 @@
 team_a:
   name: Team A
   short_name: TMA
+  mascot: A
   slug: team-a
   emoji: "🏳️"
   sport: football
@@ -13,29 +14,34 @@ team_a:
 team_b:
   name: Team B
   short_name: TMB
+  mascot: B
   slug: team-b
   emoji: "🏳️"
 
 team_c:
   name: Team C
   short_name: TMC
+  mascot: C
   slug: team-c
   emoji: "🏳️"
 
 team_d:
   name: Team D
   short_name: TMD
+  mascot: D
   slug: team-d
   emoji: "🏳️"
 
 team_e:
   name: Team E
   short_name: TME
+  mascot: E
   slug: team-e
   emoji: "🏳️"
 
 team_f:
   name: Team F
   short_name: TMF
+  mascot: F
   slug: team-f
   emoji: "🏳️"
