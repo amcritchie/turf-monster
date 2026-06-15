@@ -11,9 +11,16 @@
     <% end %>
 
     <%= form_with model: @contest, url: contests_path, method: :post, id: "contest-form" do |f| %>
-      <%# Default to FIFA when no slate is prefilled (a prefilled slate sets
-          @default_sport from its sport); init() then runs selectFifa(). %>
-      <div x-data="contestLockPicker({ sport: '<%= j(@default_sport.presence || "fifa") %>' })">
+      <% slate_starts = @slates_for_contest.to_h { |slate| [slate.id, (slate.first_game_starts_at || slate.starts_at)&.iso8601] } %>
+      <% picker_options = {
+        sport: @default_sport.presence || "fifa",
+        utcIso: @contest.starts_at&.iso8601,
+        slateId: @contest.slate_id,
+        slateStarts: slate_starts
+      }.to_json %>
+      <%# The selected slate supplies the default start time; the sport pills
+          remain as manual date presets for operator overrides. %>
+      <div x-data='contestLockPicker(<%== picker_options %>)'>
       <!-- Sport selector -->
       <div class="mb-6">
         <label class="block text-sm text-secondary mb-3 font-medium">Sport</label>
@@ -74,9 +81,9 @@
         <label for="contest_slate_id" class="block text-sm text-secondary mb-2 font-medium">Slate</label>
         <%# No prompt — pre-select the first slate (earliest starts_at) by
             default; a prefilled @contest.slate_id still wins when present. %>
-        <%= f.collection_select :slate_id, Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at), :id, :name,
-          {},
-          { id: "contest_slate_id", class: "input-field" } %>
+        <%= f.collection_select :slate_id, @slates_for_contest, :id, :name,
+          { selected: @contest.slate_id },
+          { id: "contest_slate_id", class: "input-field", "@change": "selectSlate($event.target.value)" } %>
       </div>
 
       <div class="mb-6" x-data="{ format: '<%= @contest.contest_type || 'small' %>' }">
@@ -106,9 +113,9 @@
         </div>
       </div>
 
-      <!-- Locks At -->
+      <!-- Starts At -->
       <div class="mb-5">
-        <label class="block text-sm text-secondary mb-2 font-medium">Locks At</label>
+        <label class="block text-sm text-secondary mb-2 font-medium">Starts At</label>
         <input type="hidden" name="contest[starts_at]" id="contest_starts_at">
         <input type="hidden" name="contest[locks_at_date_selected]" id="locks_at_date_selected">
         <input type="hidden" name="contest[locks_at_time_selected]" id="locks_at_time_selected">
@@ -169,7 +176,7 @@
             <input type="time" x-model="lockTime" @change="sync()" class="input-field">
           </div>
         </div>
-        <p class="text-xs text-muted mt-1">When the contest locks and stops accepting entries.</p>
+        <p class="text-xs text-muted mt-1">Defaults to the selected slate's first game. Entries close when play starts.</p>
       </div>
       </div>
 

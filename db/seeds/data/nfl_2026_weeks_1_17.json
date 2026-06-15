@@ -1,0 +1,2876 @@
+{
+  "source": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260909-20270106&limit=300",
+  "generated_at": "2026-06-15",
+  "season": 2026,
+  "weeks": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+  ],
+  "teams": [
+    {
+      "abbreviation": "ARI",
+      "display_name": "Arizona Cardinals",
+      "short_display_name": "Cardinals",
+      "location": "Arizona",
+      "name": "Cardinals",
+      "color_primary": "#a40227",
+      "color_secondary": "#ffffff"
+    },
+    {
+      "abbreviation": "ATL",
+      "display_name": "Atlanta Falcons",
+      "short_display_name": "Falcons",
+      "location": "Atlanta",
+      "name": "Falcons",
+      "color_primary": "#a71930",
+      "color_secondary": "#000000"
+    },
+    {
+      "abbreviation": "BAL",
+      "display_name": "Baltimore Ravens",
+      "short_display_name": "Ravens",
+      "location": "Baltimore",
+      "name": "Ravens",
+      "color_primary": "#29126f",
+      "color_secondary": "#000000"
+    },
+    {
+      "abbreviation": "BUF",
+      "display_name": "Buffalo Bills",
+      "short_display_name": "Bills",
+      "location": "Buffalo",
+      "name": "Bills",
+      "color_primary": "#00338d",
+      "color_secondary": "#d50a0a"
+    },
+    {
+      "abbreviation": "CAR",
+      "display_name": "Carolina Panthers",
+      "short_display_name": "Panthers",
+      "location": "Carolina",
+      "name": "Panthers",
+      "color_primary": "#0085ca",
+      "color_secondary": "#000000"
+    },
+    {
+      "abbreviation": "CHI",
+      "display_name": "Chicago Bears",
+      "short_display_name": "Bears",
+      "location": "Chicago",
+      "name": "Bears",
+      "color_primary": "#0b1c3a",
+      "color_secondary": "#e64100"
+    },
+    {
+      "abbreviation": "CIN",
+      "display_name": "Cincinnati Bengals",
+      "short_display_name": "Bengals",
+      "location": "Cincinnati",
+      "name": "Bengals",
+      "color_primary": "#fb4f14",
+      "color_secondary": "#000000"
+    },
+    {
+      "abbreviation": "CLE",
+      "display_name": "Cleveland Browns",
+      "short_display_name": "Browns",
+      "location": "Cleveland",
+      "name": "Browns",
+      "color_primary": "#472a08",
+      "color_secondary": "#ff3c00"
+    },
+    {
+      "abbreviation": "DAL",
+      "display_name": "Dallas Cowboys",
+      "short_display_name": "Cowboys",
+      "location": "Dallas",
+      "name": "Cowboys",
+      "color_primary": "#002a5c",
+      "color_secondary": "#b0b7bc"
+    },
+    {
+      "abbreviation": "DEN",
+      "display_name": "Denver Broncos",
+      "short_display_name": "Broncos",
+      "location": "Denver",
+      "name": "Broncos",
+      "color_primary": "#0a2343",
+      "color_secondary": "#fc4c02"
+    },
+    {
+      "abbreviation": "DET",
+      "display_name": "Detroit Lions",
+      "short_display_name": "Lions",
+      "location": "Detroit",
+      "name": "Lions",
+      "color_primary": "#0076b6",
+      "color_secondary": "#bbbbbb"
+    },
+    {
+      "abbreviation": "GB",
+      "display_name": "Green Bay Packers",
+      "short_display_name": "Packers",
+      "location": "Green Bay",
+      "name": "Packers",
+      "color_primary": "#204e32",
+      "color_secondary": "#ffb612"
+    },
+    {
+      "abbreviation": "HOU",
+      "display_name": "Houston Texans",
+      "short_display_name": "Texans",
+      "location": "Houston",
+      "name": "Texans",
+      "color_primary": "#00143f",
+      "color_secondary": "#c41230"
+    },
+    {
+      "abbreviation": "IND",
+      "display_name": "Indianapolis Colts",
+      "short_display_name": "Colts",
+      "location": "Indianapolis",
+      "name": "Colts",
+      "color_primary": "#003b75",
+      "color_secondary": "#ffffff"
+    },
+    {
+      "abbreviation": "JAX",
+      "display_name": "Jacksonville Jaguars",
+      "short_display_name": "Jaguars",
+      "location": "Jacksonville",
+      "name": "Jaguars",
+      "color_primary": "#007487",
+      "color_secondary": "#d7a22a"
+    },
+    {
+      "abbreviation": "KC",
+      "display_name": "Kansas City Chiefs",
+      "short_display_name": "Chiefs",
+      "location": "Kansas City",
+      "name": "Chiefs",
+      "color_primary": "#e31837",
+      "color_secondary": "#ffb612"
+    },
+    {
+      "abbreviation": "LV",
+      "display_name": "Las Vegas Raiders",
+      "short_display_name": "Raiders",
+      "location": "Las Vegas",
+      "name": "Raiders",
+      "color_primary": "#000000",
+      "color_secondary": "#a5acaf"
+    },
+    {
+      "abbreviation": "LAC",
+      "display_name": "Los Angeles Chargers",
+      "short_display_name": "Chargers",
+      "location": "Los Angeles",
+      "name": "Chargers",
+      "color_primary": "#0080c6",
+      "color_secondary": "#ffc20e"
+    },
+    {
+      "abbreviation": "LAR",
+      "display_name": "Los Angeles Rams",
+      "short_display_name": "Rams",
+      "location": "Los Angeles",
+      "name": "Rams",
+      "color_primary": "#003594",
+      "color_secondary": "#ffd100"
+    },
+    {
+      "abbreviation": "MIA",
+      "display_name": "Miami Dolphins",
+      "short_display_name": "Dolphins",
+      "location": "Miami",
+      "name": "Dolphins",
+      "color_primary": "#008e97",
+      "color_secondary": "#fc4c02"
+    },
+    {
+      "abbreviation": "MIN",
+      "display_name": "Minnesota Vikings",
+      "short_display_name": "Vikings",
+      "location": "Minnesota",
+      "name": "Vikings",
+      "color_primary": "#4f2683",
+      "color_secondary": "#ffc62f"
+    },
+    {
+      "abbreviation": "NE",
+      "display_name": "New England Patriots",
+      "short_display_name": "Patriots",
+      "location": "New England",
+      "name": "Patriots",
+      "color_primary": "#002a5c",
+      "color_secondary": "#c60c30"
+    },
+    {
+      "abbreviation": "NO",
+      "display_name": "New Orleans Saints",
+      "short_display_name": "Saints",
+      "location": "New Orleans",
+      "name": "Saints",
+      "color_primary": "#d3bc8d",
+      "color_secondary": "#000000"
+    },
+    {
+      "abbreviation": "NYG",
+      "display_name": "New York Giants",
+      "short_display_name": "Giants",
+      "location": "New York",
+      "name": "Giants",
+      "color_primary": "#003c7f",
+      "color_secondary": "#c9243f"
+    },
+    {
+      "abbreviation": "NYJ",
+      "display_name": "New York Jets",
+      "short_display_name": "Jets",
+      "location": "New York",
+      "name": "Jets",
+      "color_primary": "#115740",
+      "color_secondary": "#ffffff"
+    },
+    {
+      "abbreviation": "PHI",
+      "display_name": "Philadelphia Eagles",
+      "short_display_name": "Eagles",
+      "location": "Philadelphia",
+      "name": "Eagles",
+      "color_primary": "#06424d",
+      "color_secondary": "#000000"
+    },
+    {
+      "abbreviation": "PIT",
+      "display_name": "Pittsburgh Steelers",
+      "short_display_name": "Steelers",
+      "location": "Pittsburgh",
+      "name": "Steelers",
+      "color_primary": "#000000",
+      "color_secondary": "#ffb612"
+    },
+    {
+      "abbreviation": "SF",
+      "display_name": "San Francisco 49ers",
+      "short_display_name": "49ers",
+      "location": "San Francisco",
+      "name": "49ers",
+      "color_primary": "#aa0000",
+      "color_secondary": "#b3995d"
+    },
+    {
+      "abbreviation": "SEA",
+      "display_name": "Seattle Seahawks",
+      "short_display_name": "Seahawks",
+      "location": "Seattle",
+      "name": "Seahawks",
+      "color_primary": "#002a5c",
+      "color_secondary": "#69be28"
+    },
+    {
+      "abbreviation": "TB",
+      "display_name": "Tampa Bay Buccaneers",
+      "short_display_name": "Buccaneers",
+      "location": "Tampa Bay",
+      "name": "Buccaneers",
+      "color_primary": "#bd1c36",
+      "color_secondary": "#3e3a35"
+    },
+    {
+      "abbreviation": "TEN",
+      "display_name": "Tennessee Titans",
+      "short_display_name": "Titans",
+      "location": "Tennessee",
+      "name": "Titans",
+      "color_primary": "#4495d2",
+      "color_secondary": "#001532"
+    },
+    {
+      "abbreviation": "WSH",
+      "display_name": "Washington Commanders",
+      "short_display_name": "Commanders",
+      "location": "Washington",
+      "name": "Commanders",
+      "color_primary": "#5a1414",
+      "color_secondary": "#ffb612"
+    }
+  ],
+  "games": [
+    {
+      "week": 1,
+      "espn_event_id": "401872656",
+      "starts_at": "2026-09-10T00:20:00Z",
+      "home": "SEA",
+      "away": "NE",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872657",
+      "starts_at": "2026-09-11T00:35:00Z",
+      "home": "LAR",
+      "away": "SF",
+      "venue": "Melbourne Cricket Ground",
+      "location": "Melbourne, VIC",
+      "neutral_site": true
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872660",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "HOU",
+      "away": "BUF",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872923",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "DET",
+      "away": "NO",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872659",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "IND",
+      "away": "BAL",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872925",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "CIN",
+      "away": "TB",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872658",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "PIT",
+      "away": "ATL",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872661",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "CAR",
+      "away": "CHI",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872922",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "JAX",
+      "away": "CLE",
+      "venue": "EverBank Stadium",
+      "location": "Jacksonville, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872924",
+      "starts_at": "2026-09-13T17:00:00Z",
+      "home": "TEN",
+      "away": "NYJ",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872926",
+      "starts_at": "2026-09-13T20:25:00Z",
+      "home": "LAC",
+      "away": "ARI",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872928",
+      "starts_at": "2026-09-13T20:25:00Z",
+      "home": "LV",
+      "away": "MIA",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872927",
+      "starts_at": "2026-09-13T20:25:00Z",
+      "home": "MIN",
+      "away": "GB",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872929",
+      "starts_at": "2026-09-13T20:25:00Z",
+      "home": "PHI",
+      "away": "WSH",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872930",
+      "starts_at": "2026-09-14T00:20:00Z",
+      "home": "NYG",
+      "away": "DAL",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 1,
+      "espn_event_id": "401872931",
+      "starts_at": "2026-09-15T00:15:00Z",
+      "home": "KC",
+      "away": "DEN",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872932",
+      "starts_at": "2026-09-18T00:15:00Z",
+      "home": "BUF",
+      "away": "DET",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872939",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "TEN",
+      "away": "PHI",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872936",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "NYJ",
+      "away": "GB",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872935",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "TB",
+      "away": "CLE",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872938",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "BAL",
+      "away": "NO",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872934",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "HOU",
+      "away": "CIN",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872946",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "NE",
+      "away": "PIT",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872933",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "ATL",
+      "away": "CAR",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872937",
+      "starts_at": "2026-09-20T17:00:00Z",
+      "home": "CHI",
+      "away": "MIN",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872940",
+      "starts_at": "2026-09-20T20:05:00Z",
+      "home": "DEN",
+      "away": "JAX",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872941",
+      "starts_at": "2026-09-20T20:05:00Z",
+      "home": "LAC",
+      "away": "LV",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872942",
+      "starts_at": "2026-09-20T20:25:00Z",
+      "home": "SF",
+      "away": "MIA",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872944",
+      "starts_at": "2026-09-20T20:25:00Z",
+      "home": "DAL",
+      "away": "WSH",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872943",
+      "starts_at": "2026-09-20T20:25:00Z",
+      "home": "ARI",
+      "away": "SEA",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872945",
+      "starts_at": "2026-09-21T00:20:00Z",
+      "home": "KC",
+      "away": "IND",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 2,
+      "espn_event_id": "401872947",
+      "starts_at": "2026-09-22T00:15:00Z",
+      "home": "LAR",
+      "away": "NYG",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872948",
+      "starts_at": "2026-09-25T00:15:00Z",
+      "home": "GB",
+      "away": "ATL",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872954",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "DET",
+      "away": "NYJ",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872951",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "IND",
+      "away": "HOU",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872956",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "NYG",
+      "away": "TEN",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872950",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "PIT",
+      "away": "CIN",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872955",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "WSH",
+      "away": "SEA",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872957",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "JAX",
+      "away": "NE",
+      "venue": "EverBank Stadium",
+      "location": "Jacksonville, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872952",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "MIA",
+      "away": "KC",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872953",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "BUF",
+      "away": "LAC",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872949",
+      "starts_at": "2026-09-27T17:00:00Z",
+      "home": "CLE",
+      "away": "CAR",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872958",
+      "starts_at": "2026-09-27T20:05:00Z",
+      "home": "SF",
+      "away": "ARI",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872959",
+      "starts_at": "2026-09-27T20:05:00Z",
+      "home": "TB",
+      "away": "MIN",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872960",
+      "starts_at": "2026-09-27T20:25:00Z",
+      "home": "DAL",
+      "away": "BAL",
+      "venue": "Maracanã Stadium",
+      "location": "Rio De Janeiro, Brazil",
+      "neutral_site": true
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872961",
+      "starts_at": "2026-09-27T20:25:00Z",
+      "home": "NO",
+      "away": "LV",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872962",
+      "starts_at": "2026-09-28T00:20:00Z",
+      "home": "DEN",
+      "away": "LAR",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 3,
+      "espn_event_id": "401872963",
+      "starts_at": "2026-09-29T00:15:00Z",
+      "home": "CHI",
+      "away": "PHI",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872964",
+      "starts_at": "2026-10-02T00:15:00Z",
+      "home": "CLE",
+      "away": "PIT",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872965",
+      "starts_at": "2026-10-04T13:30:00Z",
+      "home": "WSH",
+      "away": "IND",
+      "venue": "Tottenham Hotspur Stadium",
+      "location": "London, England",
+      "neutral_site": true
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872970",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "PHI",
+      "away": "LAR",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872968",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "TB",
+      "away": "GB",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872973",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "BAL",
+      "away": "TEN",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872967",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "HOU",
+      "away": "DAL",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872969",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "CIN",
+      "away": "JAX",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872971",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "BUF",
+      "away": "NE",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872972",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "CHI",
+      "away": "NYJ",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872966",
+      "starts_at": "2026-10-04T17:00:00Z",
+      "home": "NYG",
+      "away": "ARI",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872974",
+      "starts_at": "2026-10-04T20:05:00Z",
+      "home": "MIN",
+      "away": "MIA",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872977",
+      "starts_at": "2026-10-04T20:25:00Z",
+      "home": "SEA",
+      "away": "LAC",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872976",
+      "starts_at": "2026-10-04T20:25:00Z",
+      "home": "LV",
+      "away": "KC",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872975",
+      "starts_at": "2026-10-04T20:25:00Z",
+      "home": "SF",
+      "away": "DEN",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872978",
+      "starts_at": "2026-10-05T00:20:00Z",
+      "home": "CAR",
+      "away": "DET",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 4,
+      "espn_event_id": "401872979",
+      "starts_at": "2026-10-06T00:15:00Z",
+      "home": "NO",
+      "away": "ATL",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872980",
+      "starts_at": "2026-10-09T00:15:00Z",
+      "home": "DAL",
+      "away": "TB",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872981",
+      "starts_at": "2026-10-11T13:30:00Z",
+      "home": "JAX",
+      "away": "PHI",
+      "venue": "Tottenham Hotspur Stadium",
+      "location": "London, England",
+      "neutral_site": true
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872984",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "TEN",
+      "away": "HOU",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872982",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "MIA",
+      "away": "CIN",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872986",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "NE",
+      "away": "LV",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872987",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "NO",
+      "away": "MIN",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872983",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "NYJ",
+      "away": "CLE",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872985",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "PIT",
+      "away": "IND",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872988",
+      "starts_at": "2026-10-11T17:00:00Z",
+      "home": "WSH",
+      "away": "NYG",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872989",
+      "starts_at": "2026-10-11T20:05:00Z",
+      "home": "LAC",
+      "away": "DEN",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872990",
+      "starts_at": "2026-10-11T20:25:00Z",
+      "home": "GB",
+      "away": "CHI",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872991",
+      "starts_at": "2026-10-11T20:25:00Z",
+      "home": "ARI",
+      "away": "DET",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872992",
+      "starts_at": "2026-10-11T20:25:00Z",
+      "home": "SEA",
+      "away": "SF",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872993",
+      "starts_at": "2026-10-12T00:20:00Z",
+      "home": "ATL",
+      "away": "BAL",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 5,
+      "espn_event_id": "401872994",
+      "starts_at": "2026-10-13T00:15:00Z",
+      "home": "LAR",
+      "away": "BUF",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401872995",
+      "starts_at": "2026-10-16T00:15:00Z",
+      "home": "DEN",
+      "away": "SEA",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401872996",
+      "starts_at": "2026-10-18T13:30:00Z",
+      "home": "JAX",
+      "away": "HOU",
+      "venue": "Wembley Stadium",
+      "location": "London, England",
+      "neutral_site": true
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401872999",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "ATL",
+      "away": "CHI",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401872997",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "CLE",
+      "away": "BAL",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873003",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "IND",
+      "away": "TEN",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873001",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "NE",
+      "away": "NYJ",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873000",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "NYG",
+      "away": "NO",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401872998",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "PHI",
+      "away": "CAR",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873002",
+      "starts_at": "2026-10-18T17:00:00Z",
+      "home": "TB",
+      "away": "PIT",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873004",
+      "starts_at": "2026-10-18T20:05:00Z",
+      "home": "LAR",
+      "away": "ARI",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873006",
+      "starts_at": "2026-10-18T20:25:00Z",
+      "home": "KC",
+      "away": "LAC",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873005",
+      "starts_at": "2026-10-18T20:25:00Z",
+      "home": "LV",
+      "away": "BUF",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873007",
+      "starts_at": "2026-10-19T00:20:00Z",
+      "home": "GB",
+      "away": "DAL",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 6,
+      "espn_event_id": "401873008",
+      "starts_at": "2026-10-20T00:15:00Z",
+      "home": "SF",
+      "away": "WSH",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873010",
+      "starts_at": "2026-10-23T00:15:00Z",
+      "home": "CHI",
+      "away": "NE",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873011",
+      "starts_at": "2026-10-25T13:30:00Z",
+      "home": "NO",
+      "away": "PIT",
+      "venue": "Stade de France",
+      "location": "Saint-Denis, France",
+      "neutral_site": true
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873017",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "ATL",
+      "away": "SF",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873013",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "TEN",
+      "away": "CLE",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873014",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "MIN",
+      "away": "IND",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873015",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "NYJ",
+      "away": "MIA",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873018",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "CAR",
+      "away": "TB",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873012",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "BAL",
+      "away": "CIN",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873016",
+      "starts_at": "2026-10-25T17:00:00Z",
+      "home": "HOU",
+      "away": "NYG",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873019",
+      "starts_at": "2026-10-25T20:05:00Z",
+      "home": "ARI",
+      "away": "DEN",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873020",
+      "starts_at": "2026-10-25T20:25:00Z",
+      "home": "DET",
+      "away": "GB",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873021",
+      "starts_at": "2026-10-25T20:25:00Z",
+      "home": "LV",
+      "away": "LAR",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873022",
+      "starts_at": "2026-10-26T00:20:00Z",
+      "home": "SEA",
+      "away": "KC",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 7,
+      "espn_event_id": "401873009",
+      "starts_at": "2026-10-27T00:15:00Z",
+      "home": "PHI",
+      "away": "DAL",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873023",
+      "starts_at": "2026-10-30T00:15:00Z",
+      "home": "GB",
+      "away": "CAR",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873026",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "BUF",
+      "away": "BAL",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873031",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "CIN",
+      "away": "TEN",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873024",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "DAL",
+      "away": "ARI",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873030",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "DET",
+      "away": "MIN",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873029",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "NYJ",
+      "away": "LV",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873027",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "PIT",
+      "away": "CLE",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873025",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "TB",
+      "away": "ATL",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873028",
+      "starts_at": "2026-11-01T18:00:00Z",
+      "home": "JAX",
+      "away": "IND",
+      "venue": "EverBank Stadium",
+      "location": "Jacksonville, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873032",
+      "starts_at": "2026-11-01T21:05:00Z",
+      "home": "LAR",
+      "away": "LAC",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873033",
+      "starts_at": "2026-11-01T21:25:00Z",
+      "home": "DEN",
+      "away": "KC",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873034",
+      "starts_at": "2026-11-01T21:25:00Z",
+      "home": "MIA",
+      "away": "NE",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873035",
+      "starts_at": "2026-11-02T01:20:00Z",
+      "home": "WSH",
+      "away": "PHI",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 8,
+      "espn_event_id": "401873036",
+      "starts_at": "2026-11-03T01:15:00Z",
+      "home": "SEA",
+      "away": "CHI",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873037",
+      "starts_at": "2026-11-06T01:15:00Z",
+      "home": "BAL",
+      "away": "JAX",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873038",
+      "starts_at": "2026-11-08T14:30:00Z",
+      "home": "ATL",
+      "away": "CIN",
+      "venue": "Santiago Bernabéu",
+      "location": "Madrid, Spain",
+      "neutral_site": true
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873043",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "WSH",
+      "away": "LAR",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873040",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "IND",
+      "away": "DAL",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873045",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "KC",
+      "away": "NYJ",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873042",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "MIA",
+      "away": "DET",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873039",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "NO",
+      "away": "CLE",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873044",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "PHI",
+      "away": "NYG",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873041",
+      "starts_at": "2026-11-08T18:00:00Z",
+      "home": "CAR",
+      "away": "DEN",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873046",
+      "starts_at": "2026-11-08T21:05:00Z",
+      "home": "LAC",
+      "away": "HOU",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873047",
+      "starts_at": "2026-11-08T21:05:00Z",
+      "home": "SF",
+      "away": "LV",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873049",
+      "starts_at": "2026-11-08T21:25:00Z",
+      "home": "NE",
+      "away": "GB",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873048",
+      "starts_at": "2026-11-08T21:25:00Z",
+      "home": "SEA",
+      "away": "ARI",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873050",
+      "starts_at": "2026-11-09T01:20:00Z",
+      "home": "CHI",
+      "away": "TB",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 9,
+      "espn_event_id": "401873051",
+      "starts_at": "2026-11-10T01:15:00Z",
+      "home": "MIN",
+      "away": "BUF",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873052",
+      "starts_at": "2026-11-13T01:15:00Z",
+      "home": "NYG",
+      "away": "WSH",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873053",
+      "starts_at": "2026-11-15T14:30:00Z",
+      "home": "DET",
+      "away": "NE",
+      "venue": "FC Bayern Munich Stadium",
+      "location": "Munich, Germany",
+      "neutral_site": true
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873058",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "ATL",
+      "away": "KC",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873056",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "CLE",
+      "away": "HOU",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873060",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "GB",
+      "away": "MIN",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873057",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "TEN",
+      "away": "JAX",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873059",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "IND",
+      "away": "MIA",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873055",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "NO",
+      "away": "CAR",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873054",
+      "starts_at": "2026-11-15T18:00:00Z",
+      "home": "NYJ",
+      "away": "BUF",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873062",
+      "starts_at": "2026-11-15T21:05:00Z",
+      "home": "LV",
+      "away": "SEA",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873061",
+      "starts_at": "2026-11-15T21:05:00Z",
+      "home": "ARI",
+      "away": "LAR",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873063",
+      "starts_at": "2026-11-15T21:25:00Z",
+      "home": "DAL",
+      "away": "SF",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873064",
+      "starts_at": "2026-11-16T01:20:00Z",
+      "home": "CIN",
+      "away": "PIT",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 10,
+      "espn_event_id": "401873065",
+      "starts_at": "2026-11-17T01:15:00Z",
+      "home": "BAL",
+      "away": "LAC",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873066",
+      "starts_at": "2026-11-20T01:15:00Z",
+      "home": "HOU",
+      "away": "IND",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873070",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "BUF",
+      "away": "MIA",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873071",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "CHI",
+      "away": "NO",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873073",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "DAL",
+      "away": "TEN",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873072",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "DET",
+      "away": "TB",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873067",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "KC",
+      "away": "ARI",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873069",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "NYG",
+      "away": "JAX",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873068",
+      "starts_at": "2026-11-22T18:00:00Z",
+      "home": "CAR",
+      "away": "BAL",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873074",
+      "starts_at": "2026-11-22T21:05:00Z",
+      "home": "LAC",
+      "away": "NYJ",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873075",
+      "starts_at": "2026-11-22T21:25:00Z",
+      "home": "DEN",
+      "away": "LV",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873076",
+      "starts_at": "2026-11-22T21:25:00Z",
+      "home": "PHI",
+      "away": "PIT",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873077",
+      "starts_at": "2026-11-23T01:20:00Z",
+      "home": "SF",
+      "away": "MIN",
+      "venue": "Estadio Banorte",
+      "location": "Mexico City, Mexico",
+      "neutral_site": true
+    },
+    {
+      "week": 11,
+      "espn_event_id": "401873078",
+      "starts_at": "2026-11-24T01:15:00Z",
+      "home": "WSH",
+      "away": "CIN",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873079",
+      "starts_at": "2026-11-26T01:00:00Z",
+      "home": "LAR",
+      "away": "GB",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873081",
+      "starts_at": "2026-11-26T18:00:00Z",
+      "home": "DET",
+      "away": "CHI",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873080",
+      "starts_at": "2026-11-26T21:30:00Z",
+      "home": "DAL",
+      "away": "PHI",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873082",
+      "starts_at": "2026-11-27T01:20:00Z",
+      "home": "BUF",
+      "away": "KC",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873083",
+      "starts_at": "2026-11-27T20:00:00Z",
+      "home": "PIT",
+      "away": "DEN",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873087",
+      "starts_at": "2026-11-29T18:00:00Z",
+      "home": "CIN",
+      "away": "NO",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873086",
+      "starts_at": "2026-11-29T18:00:00Z",
+      "home": "CLE",
+      "away": "LV",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873088",
+      "starts_at": "2026-11-29T18:00:00Z",
+      "home": "IND",
+      "away": "NYG",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873089",
+      "starts_at": "2026-11-29T18:00:00Z",
+      "home": "MIA",
+      "away": "NYJ",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873084",
+      "starts_at": "2026-11-29T18:00:00Z",
+      "home": "MIN",
+      "away": "ATL",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873085",
+      "starts_at": "2026-11-29T18:00:00Z",
+      "home": "HOU",
+      "away": "BAL",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873090",
+      "starts_at": "2026-11-29T21:05:00Z",
+      "home": "JAX",
+      "away": "TEN",
+      "venue": "EverBank Stadium",
+      "location": "Jacksonville, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873092",
+      "starts_at": "2026-11-29T21:25:00Z",
+      "home": "ARI",
+      "away": "WSH",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873091",
+      "starts_at": "2026-11-29T21:25:00Z",
+      "home": "SF",
+      "away": "SEA",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873093",
+      "starts_at": "2026-11-30T01:20:00Z",
+      "home": "LAC",
+      "away": "NE",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 12,
+      "espn_event_id": "401873094",
+      "starts_at": "2026-12-01T01:15:00Z",
+      "home": "TB",
+      "away": "CAR",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873096",
+      "starts_at": "2026-12-04T01:15:00Z",
+      "home": "LAR",
+      "away": "KC",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873098",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "ATL",
+      "away": "DET",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873100",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "CHI",
+      "away": "JAX",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873097",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "CLE",
+      "away": "CIN",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873102",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "TEN",
+      "away": "WSH",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873099",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "NO",
+      "away": "GB",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873095",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "NYG",
+      "away": "SF",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873101",
+      "starts_at": "2026-12-06T18:00:00Z",
+      "home": "TB",
+      "away": "LAC",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873103",
+      "starts_at": "2026-12-06T21:05:00Z",
+      "home": "DEN",
+      "away": "MIA",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873104",
+      "starts_at": "2026-12-06T21:05:00Z",
+      "home": "ARI",
+      "away": "PHI",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873106",
+      "starts_at": "2026-12-06T21:25:00Z",
+      "home": "MIN",
+      "away": "CAR",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873105",
+      "starts_at": "2026-12-06T21:25:00Z",
+      "home": "NE",
+      "away": "BUF",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873107",
+      "starts_at": "2026-12-07T01:20:00Z",
+      "home": "PIT",
+      "away": "HOU",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 13,
+      "espn_event_id": "401873108",
+      "starts_at": "2026-12-08T01:15:00Z",
+      "home": "SEA",
+      "away": "DAL",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873109",
+      "starts_at": "2026-12-11T01:15:00Z",
+      "home": "NE",
+      "away": "MIN",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873110",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "CLE",
+      "away": "ATL",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873117",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "DET",
+      "away": "TEN",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873111",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "MIA",
+      "away": "CHI",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873112",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "NYJ",
+      "away": "DEN",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873114",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "PHI",
+      "away": "IND",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873113",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "WSH",
+      "away": "HOU",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873115",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "CAR",
+      "away": "NO",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873116",
+      "starts_at": "2026-12-13T18:00:00Z",
+      "home": "BAL",
+      "away": "TB",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873118",
+      "starts_at": "2026-12-13T21:05:00Z",
+      "home": "LV",
+      "away": "LAC",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873119",
+      "starts_at": "2026-12-13T21:25:00Z",
+      "home": "CIN",
+      "away": "KC",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873120",
+      "starts_at": "2026-12-13T21:25:00Z",
+      "home": "SF",
+      "away": "LAR",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873121",
+      "starts_at": "2026-12-13T21:25:00Z",
+      "home": "SEA",
+      "away": "NYG",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873122",
+      "starts_at": "2026-12-14T01:20:00Z",
+      "home": "GB",
+      "away": "BUF",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 14,
+      "espn_event_id": "401873123",
+      "starts_at": "2026-12-15T01:15:00Z",
+      "home": "JAX",
+      "away": "PIT",
+      "venue": "EverBank Stadium",
+      "location": "Jacksonville, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873124",
+      "starts_at": "2026-12-18T01:15:00Z",
+      "home": "LAC",
+      "away": "SF",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873125",
+      "starts_at": "2026-12-19T22:00:00Z",
+      "home": "PHI",
+      "away": "SEA",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873126",
+      "starts_at": "2026-12-20T01:20:00Z",
+      "home": "BUF",
+      "away": "CHI",
+      "venue": "Highmark Stadium",
+      "location": "Orchard Park, NY",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873133",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "GB",
+      "away": "MIA",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873131",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "TEN",
+      "away": "IND",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873130",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "NYG",
+      "away": "CLE",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873128",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "PIT",
+      "away": "BAL",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873134",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "TB",
+      "away": "NO",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873127",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "WSH",
+      "away": "ATL",
+      "venue": "Northwest Stadium",
+      "location": "Landover, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873129",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "CAR",
+      "away": "CIN",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873132",
+      "starts_at": "2026-12-20T18:00:00Z",
+      "home": "HOU",
+      "away": "JAX",
+      "venue": "NRG Stadium",
+      "location": "Houston, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873135",
+      "starts_at": "2026-12-20T21:05:00Z",
+      "home": "ARI",
+      "away": "NYJ",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873137",
+      "starts_at": "2026-12-20T21:25:00Z",
+      "home": "LV",
+      "away": "DEN",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873136",
+      "starts_at": "2026-12-20T21:25:00Z",
+      "home": "LAR",
+      "away": "DAL",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873138",
+      "starts_at": "2026-12-21T01:20:00Z",
+      "home": "MIN",
+      "away": "DET",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 15,
+      "espn_event_id": "401873139",
+      "starts_at": "2026-12-22T01:15:00Z",
+      "home": "KC",
+      "away": "NE",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873140",
+      "starts_at": "2026-12-25T01:15:00Z",
+      "home": "PHI",
+      "away": "HOU",
+      "venue": "Lincoln Financial Field",
+      "location": "Philadelphia, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873141",
+      "starts_at": "2026-12-25T18:00:00Z",
+      "home": "CHI",
+      "away": "GB",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873142",
+      "starts_at": "2026-12-25T21:30:00Z",
+      "home": "DEN",
+      "away": "BUF",
+      "venue": "Empower Field at Mile High",
+      "location": "Denver, CO",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873143",
+      "starts_at": "2026-12-26T01:15:00Z",
+      "home": "SEA",
+      "away": "LAR",
+      "venue": "Lumen Field",
+      "location": "Seattle, WA",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873146",
+      "starts_at": "2026-12-27T05:00:00Z",
+      "home": "ATL",
+      "away": "TB",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873145",
+      "starts_at": "2026-12-27T05:00:00Z",
+      "home": "IND",
+      "away": "CIN",
+      "venue": "Lucas Oil Stadium",
+      "location": "Indianapolis, IN",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873147",
+      "starts_at": "2026-12-27T05:00:00Z",
+      "home": "MIN",
+      "away": "WSH",
+      "venue": "U.S. Bank Stadium",
+      "location": "Minneapolis, MN",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873144",
+      "starts_at": "2026-12-27T05:00:00Z",
+      "home": "PIT",
+      "away": "CAR",
+      "venue": "Acrisure Stadium",
+      "location": "Pittsburgh, PA",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873150",
+      "starts_at": "2026-12-27T18:00:00Z",
+      "home": "MIA",
+      "away": "LAC",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873148",
+      "starts_at": "2026-12-27T18:00:00Z",
+      "home": "NO",
+      "away": "ARI",
+      "venue": "Caesars Superdome",
+      "location": "New Orleans, LA",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873151",
+      "starts_at": "2026-12-27T18:00:00Z",
+      "home": "NYJ",
+      "away": "NE",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873149",
+      "starts_at": "2026-12-27T18:00:00Z",
+      "home": "BAL",
+      "away": "CLE",
+      "venue": "M&T Bank Stadium",
+      "location": "Baltimore, MD",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873152",
+      "starts_at": "2026-12-27T21:05:00Z",
+      "home": "LV",
+      "away": "TEN",
+      "venue": "Allegiant Stadium",
+      "location": "Las Vegas, NV",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873153",
+      "starts_at": "2026-12-27T21:25:00Z",
+      "home": "KC",
+      "away": "SF",
+      "venue": "GEHA Field at Arrowhead Stadium",
+      "location": "Kansas City, MO",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873154",
+      "starts_at": "2026-12-28T01:20:00Z",
+      "home": "DAL",
+      "away": "JAX",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 16,
+      "espn_event_id": "401873155",
+      "starts_at": "2026-12-29T01:15:00Z",
+      "home": "DET",
+      "away": "NYG",
+      "venue": "Ford Field",
+      "location": "Detroit, MI",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873156",
+      "starts_at": "2027-01-01T01:15:00Z",
+      "home": "CIN",
+      "away": "BAL",
+      "venue": "Paycor Stadium",
+      "location": "Cincinnati, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873157",
+      "starts_at": "2027-01-03T05:00:00Z",
+      "home": "NE",
+      "away": "DEN",
+      "venue": "Gillette Stadium",
+      "location": "Foxborough, MA",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873158",
+      "starts_at": "2027-01-03T05:00:00Z",
+      "home": "LAC",
+      "away": "KC",
+      "venue": "SoFi Stadium",
+      "location": "Inglewood, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873159",
+      "starts_at": "2027-01-03T05:00:00Z",
+      "home": "TB",
+      "away": "LAR",
+      "venue": "Raymond James Stadium",
+      "location": "Tampa, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873160",
+      "starts_at": "2027-01-03T05:00:00Z",
+      "home": "JAX",
+      "away": "WSH",
+      "venue": "EverBank Stadium",
+      "location": "Jacksonville, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873164",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "ATL",
+      "away": "NO",
+      "venue": "Mercedes-Benz Stadium",
+      "location": "Atlanta, GA",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873162",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "CLE",
+      "away": "IND",
+      "venue": "Huntington Bank Field",
+      "location": "Cleveland, OH",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873165",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "DAL",
+      "away": "NYG",
+      "venue": "AT&T Stadium",
+      "location": "Arlington, TX",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873166",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "TEN",
+      "away": "PIT",
+      "venue": "Nissan Stadium",
+      "location": "Nashville, TN",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873161",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "MIA",
+      "away": "BUF",
+      "venue": "Hard Rock Stadium",
+      "location": "Miami Gardens, FL",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873163",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "NYJ",
+      "away": "MIN",
+      "venue": "MetLife Stadium",
+      "location": "East Rutherford, NJ",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873167",
+      "starts_at": "2027-01-03T18:00:00Z",
+      "home": "CAR",
+      "away": "SEA",
+      "venue": "Bank of America Stadium",
+      "location": "Charlotte, NC",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873168",
+      "starts_at": "2027-01-03T21:05:00Z",
+      "home": "ARI",
+      "away": "LV",
+      "venue": "State Farm Stadium",
+      "location": "Glendale, AZ",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873169",
+      "starts_at": "2027-01-03T21:25:00Z",
+      "home": "CHI",
+      "away": "DET",
+      "venue": "Soldier Field",
+      "location": "Chicago, IL",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873170",
+      "starts_at": "2027-01-04T01:20:00Z",
+      "home": "SF",
+      "away": "PHI",
+      "venue": "Levi's Stadium",
+      "location": "Santa Clara, CA",
+      "neutral_site": false
+    },
+    {
+      "week": 17,
+      "espn_event_id": "401873171",
+      "starts_at": "2027-01-05T01:15:00Z",
+      "home": "GB",
+      "away": "HOU",
+      "venue": "Lambeau Field",
+      "location": "Green Bay, WI",
+      "neutral_site": false
+    }
+  ]
+}

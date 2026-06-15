@@ -635,6 +635,9 @@ end
   puts "  Created slate: #{slate.name} (#{slate.slate_matchups.count} matchups, ranked)"
 end
 
+# ─── NFL 2026 Regular Season Weeks 1-17 ───────────────────────
+load Rails.root.join("db/seeds/nfl_2026.rb")
+
 # ─── Default Slate (formula defaults record) ──────────────────
 Slate.find_or_create_by!(name: "Default")
 puts "  Created Default slate for formula defaults"

@@ -23,4 +23,14 @@ class SlateTest < ActiveSupport::TestCase
     assert_not slate.valid?
     assert_includes slate.errors[:name], "can't be blank"
   end
+
+  test "first_game_starts_at returns the earliest linked kickoff" do
+    later = Game.create!(home_team_slug: "team-a", away_team_slug: "team-b", kickoff_at: 2.days.from_now, status: "scheduled")
+    first = Game.create!(home_team_slug: "team-c", away_team_slug: "team-d", kickoff_at: 1.day.from_now, status: "scheduled")
+    slate_matchups(:m1).update!(game_slug: later.slug)
+    slate_matchups(:m3).update!(game_slug: first.slug)
+
+    assert_equal first, @slate.first_game
+    assert_equal first.kickoff_at.to_i, @slate.first_game_starts_at.to_i
+  end
 end

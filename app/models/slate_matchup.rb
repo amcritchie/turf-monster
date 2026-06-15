@@ -44,6 +44,6 @@ class SlateMatchup < ApplicationRecord
   end
 
   def name_slug
-    "#{team_slug}-vs-#{opponent_team_slug}"
+    "#{slate.slug}-#{team_slug}-vs-#{opponent_team_slug}"
   end
 end

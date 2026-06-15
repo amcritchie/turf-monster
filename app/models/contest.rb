@@ -443,9 +443,9 @@ class Contest < ApplicationRecord
       payout_amounts:        payout_amounts,
       prize_pool:            Solana::Config.dollars_to_lamports(guaranteed / 100.0),
       season_id:             season_id || SeasonConfig.current_season_id,
-      # Derived lock (v0.17): mirror starts_at → on-chain lock_timestamp.
-      # nil starts_at → 0 = no scheduled lock (manual-only).
-      lock_timestamp:        starts_at&.to_i || 0
+      # Derived lock (v0.17): mirror the displayed start → on-chain lock_timestamp.
+      # nil starts_in_at → 0 = no scheduled lock (manual-only).
+      lock_timestamp:        starts_in_at&.to_i || 0
     }
   end
 
@@ -494,7 +494,11 @@ class Contest < ApplicationRecord
   end
 
   def locks_at
-    starts_at
+    starts_in_at
+  end
+
+  def starts_in_at
+    starts_at || slate&.first_game_starts_at || slate&.starts_at
   end
 
   # Derived lock state (v0.17). The authoritative lock lives on-chain
@@ -503,7 +507,7 @@ class Contest < ApplicationRecord
   # lock (manual-only) → never derived-locked. A settled contest reads locked.
   def locked?
     return true if settled?
-    starts_at.present? && Time.current >= starts_at
+    starts_in_at.present? && Time.current >= starts_in_at
   end
 
   # Derived conclusion state (v0.18). Mirrors the on-chain conclusion_timestamp
@@ -549,8 +553,12 @@ class Contest < ApplicationRecord
   end
 
   def lock_time_display
-    return "TBD" unless starts_at
-    starts_at.strftime("Locks %B %-d, %Y @ %-I:%M %p")
+    start_time_display
+  end
+
+  def start_time_display
+    return "TBD" unless starts_in_at
+    starts_in_at.strftime("Starts %B %-d, %Y @ %-I:%M %p")
   end
 
   def active_entry_count

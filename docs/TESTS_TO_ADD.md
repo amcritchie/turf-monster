@@ -80,8 +80,8 @@ run the relevant Rails or Playwright tests before committing.
 - Onchain settlement creates `PendingTransaction` with status `:pending`
 - Onchain settlement skipped when `onchain_settled` already true (idempotent)
 - `Contest#active_entry_count` excludes `:cart` and `:abandoned`
-- `Contest#locks_at` aliases `starts_at`
-- `Contest#lock_time_display` formats correctly for far-future + past times
+- `Contest#starts_in_at` uses contest starts_at, then slate first-game starts_at, then slate starts_at
+- `Contest#start_time_display` formats correctly for far-future + past times
 - `Contest#picks_required` always returns 6
 
 ## Priority 4 — Settlement-failure recovery paths (~10 tests)

@@ -5,6 +5,8 @@
 //   - opts.sport ('fifa' | 'nfl'): /new only — autofires the sport's default
 //     lockDate/Time and view month on init (the FIFA/NFL pills still call
 //     selectFifa()/selectNfl() directly for explicit user toggles).
+//   - opts.slateId + opts.slateStarts: /new only — hydrates the picker from the
+//     selected slate's first game kickoff before falling back to sport defaults.
 //   - opts.utcIso (ISO 8601 string): /edit only — hydrates lockDate/Time from
 //     the server-rendered contest.starts_at and skips the sport-default path.
 //
@@ -16,6 +18,8 @@ function contestLockPicker(opts) {
   opts = opts || {};
   return {
     sport: opts.sport || '',
+    slateId: opts.slateId ? String(opts.slateId) : '',
+    slateStarts: opts.slateStarts || {},
     lockDate: '',
     lockTime: '',
     calOpen: false,
@@ -31,18 +35,29 @@ function contestLockPicker(opts) {
 
     init: function() {
       if (opts.utcIso) {
-        var local = new Date(opts.utcIso);
-        if (!isNaN(local.getTime())) {
-          this.lockDate = local.getFullYear() + '-' + String(local.getMonth() + 1).padStart(2, '0') + '-' + String(local.getDate()).padStart(2, '0');
-          this.lockTime = String(local.getHours()).padStart(2, '0') + ':' + String(local.getMinutes()).padStart(2, '0');
-          this.viewYear = local.getFullYear();
-          this.viewMonth = local.getMonth();
-          this.sync();
-        }
+        this.applyUtcIso(opts.utcIso);
         return;
       }
+      if (this.slateId && this.selectSlate(this.slateId)) return;
       if (this.sport === 'fifa') this.selectFifa();
       else if (this.sport === 'nfl') this.selectNfl();
+    },
+
+    applyUtcIso: function(iso) {
+      var local = new Date(iso);
+      if (isNaN(local.getTime())) return false;
+      this.lockDate = local.getFullYear() + '-' + String(local.getMonth() + 1).padStart(2, '0') + '-' + String(local.getDate()).padStart(2, '0');
+      this.lockTime = String(local.getHours()).padStart(2, '0') + ':' + String(local.getMinutes()).padStart(2, '0');
+      this.viewYear = local.getFullYear();
+      this.viewMonth = local.getMonth();
+      this.sync();
+      return true;
+    },
+
+    selectSlate: function(id) {
+      this.slateId = String(id || '');
+      var iso = this.slateStarts[this.slateId];
+      return iso ? this.applyUtcIso(iso) : false;
     },
 
     sync: function() {
@@ -64,6 +79,7 @@ function contestLockPicker(opts) {
 
     selectFifa: function() {
       this.sport = 'fifa';
+      if (this.selectSlate(this.slateId)) return;
       this.lockDate = '2026-06-11';
       this.lockTime = '13:00';
       this.viewYear = 2026;
@@ -73,6 +89,7 @@ function contestLockPicker(opts) {
 
     selectNfl: function() {
       this.sport = 'nfl';
+      if (this.selectSlate(this.slateId)) return;
       this.lockDate = '2026-09-09';
       this.lockTime = '18:15';
       this.viewYear = 2026;

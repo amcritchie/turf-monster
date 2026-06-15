@@ -28,4 +28,12 @@ class Slate < ApplicationRecord
   def name_slug
     name.parameterize
   end
+
+  def first_game
+    slate_matchups.includes(:game).map(&:game).compact.uniq.select(&:kickoff_at).min_by(&:kickoff_at)
+  end
+
+  def first_game_starts_at
+    first_game&.kickoff_at
+  end
 end

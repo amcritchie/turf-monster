@@ -85,11 +85,11 @@
     <% end %>
   </div>
 
-  <%# Creator moved up beside the title; the lock date moved into a click
-      tooltip on the "Until Lock" countdown in the stats row below — so the old
+  <%# Creator moved up beside the title; the exact start date moved into a click
+      tooltip on the "Starts In" countdown in the stats row below — so the old
       "creator · lock date" subtitle line is gone. %>
 
-  <%# Locks countdown moved inline into the stats row (next to Entries). Only
+  <%# Start countdown moved inline into the stats row (next to Entries). Only
       the conclusion countdown lives here now. %>
   <% if @contest.concludes_at.present? && !@contest.settled? %>
     <div class="flex flex-wrap items-center gap-2">
@@ -116,29 +116,29 @@
       <span class="text-lg font-extrabold text-heading"><%= entry_count %>/<%= max %></span>
       <span class="text-xs text-muted ml-1">Entries</span>
     </div>
-    <%# Locks countdown inline next to the entries count (replaces the old
-        "+ Add Nth Entry" link). Shows "Locks in X" while open; once the derived
-        lock passes it flips to a "Watch Live" CTA (turf_totals, which has a live
-        page) or a "🔒 Entries closed" badge otherwise. Only rendered when a lock
-        time is set and the contest isn't settled. %>
-    <% if @contest.locks_at.present? && !@contest.settled? %>
+    <%# Starts countdown inline next to the entries count (replaces the old
+        "+ Add Nth Entry" link). Shows "Starts In X" while open; once the
+        derived start passes it flips to a "Watch Live" CTA (turf_totals, which
+        has a live page) or a "🔒 Entries closed" badge otherwise. Only rendered
+        when a start time is set and the contest isn't settled. %>
+    <% if @contest.starts_in_at.present? && !@contest.settled? %>
       <div class="w-px h-5 bg-subtle"></div>
-      <%# Click the lock countdown to reveal the exact lock date as a tooltip. %>
+      <%# Click the start countdown to reveal the exact start date as a tooltip. %>
       <div x-data="{ tip: false }" @click.outside="tip = false" class="relative">
         <div role="button" tabindex="0" @click="tip = !tip" @keydown.enter.prevent="tip = !tip" @keydown.space.prevent="tip = !tip"
-             class="cursor-pointer" aria-label="Show lock time" :aria-expanded="tip">
-          <%= render "contests/timestamp_countdown", target: @contest.locks_at, label: "Until Lock",
+             class="cursor-pointer" aria-label="Show start time" :aria-expanded="tip">
+          <%= render "contests/timestamp_countdown", target: @contest.starts_in_at, label: "Starts In",
                 done_label: (@contest.turf_totals? ? "Watch Live" : "🔒 Entries closed"),
                 done_href: (@contest.turf_totals? ? live_contest_path(@contest) : nil),
                 tone: "yellow", on_done_modal: "it-begins", on_done_url: contest_path(@contest),
-                wrapper_class: "", bare: true, label_after: true, emphasize: true %>
+                wrapper_class: "", bare: true, label_after: false, emphasize: true %>
         </div>
         <div x-show="tip" x-cloak
              x-transition:enter="transition ease-out duration-150"
              x-transition:enter-start="opacity-0 translate-y-1"
              x-transition:enter-end="opacity-100 translate-y-0"
              class="absolute left-0 top-full mt-1.5 z-30 whitespace-nowrap rounded-lg border border-subtle bg-surface px-3 py-1.5 text-xs font-medium text-secondary shadow-lg">
-          <%= @contest.lock_time_display %>
+          <%= @contest.start_time_display %>
         </div>
       </div>
     <% end %>
