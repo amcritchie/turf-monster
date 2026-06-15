@@ -6,7 +6,7 @@
 <% show_user = local_assigns.fetch(:show_logged_in, logged_in?) %>
 <% is_preview = local_assigns.fetch(:preview, false) %>
 
-<%# z-[125] sits ABOVE the modal host's z-[120] backdrop so the navbar
+<%# z-[130] sits ABOVE the modal host's z-[120] backdrop so the navbar
     (and especially the 🎟️ Entry badge) stays bright during a token-
     mint celebration instead of being dimmed by the modal overlay.
     The modal's escape key + X button still close it; clicking the
@@ -19,17 +19,16 @@
     the engine no longer uses inline, so the var-based override wins
     via normal cascade. %>
 <header data-navbar-root x-data="{ scrolled: false }" <%= '@scroll.window="scrolled = scrolled ? (window.scrollY > 5) : (window.scrollY > 60)"'.html_safe unless is_preview %>
-        class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[125] bg-page transition-shadow duration-300' %>"
+        class="<%= is_preview ? 'bg-page' : 'sticky top-0 z-[130] bg-page transition-shadow duration-300' %>"
         :class="scrolled && 'shadow-lg border-b border-subtle is-scrolled'">
   <% unless is_preview || Rails.env.production? %>
-    <%# Env banner — rides inside the sticky header so it stays visible and
-        never leaves a phantom gap for layout math (see --nav-h below). %>
-    <div style="background:#eab308; color:#000; font-size:12px; font-weight:700; padding:2px 12px; position:relative;">
-      <%= Rails.env.capitalize %> Environment
-      <span style="position:absolute; right:8px; top:50%; transform:translateY(-50%); display:flex; align-items:center; gap:6px;">
-        <span class="rounded" style="font-size:10px; font-weight:700; padding:1px 6px; background:rgba(0,0,0,0.2);">
-          <%= email_delivery_banner_status %>
-        </span>
+    <% environment_actions = capture do %>
+        <%= link_to email_delivery_banner_status,
+                    "/_studio/local_emails",
+                    class: "rounded",
+                    style: "font-size:10px; font-weight:700; padding:1px 6px; background:rgba(0,0,0,0.2); color:#000; text-decoration:none; cursor:pointer;",
+                    title: "Open captured emails",
+                    "aria-label": "Open captured emails" %>
         <button @click="$store.devMode = !$store.devMode; localStorage.setItem('devMode', $store.devMode)"
                 class="rounded cursor-pointer"
                 style="font-size:10px; font-weight:700; padding:1px 6px;"
@@ -37,9 +36,14 @@
         <% if Solana::Config.devnet? %>
           <span class="rounded" style="font-size:10px; font-weight:700; padding:1px 6px; background:rgba(0,0,0,0.2);">DEVNET</span>
         <% end %>
-      </span>
-    </div>
+    <% end %>
+    <%= render "shared/app_banner",
+               tone: :environment,
+               density: :compact,
+               message: "#{Rails.env.capitalize} Environment",
+               actions: environment_actions %>
   <% end %>
+  <%= render "shared/impersonation_banner" if !is_preview && impersonating? %>
   <%# .user-nav-col / .nav-title / .nav-logo / .nav-logo-link responsive
       rules live in application.tailwind.css @layer utilities (migrated
       2026-05-24, dropped the 10 !important workarounds). %>
