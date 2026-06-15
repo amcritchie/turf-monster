@@ -9,6 +9,9 @@
 <% extra_icons_html ||= nil %>
 <% show_logout_link ||= false %>
 <% div2_html        ||= nil %>
+<% gear_toggle_action = "$store.sidebars.gearOpen = !$store.sidebars.gearOpen" %>
+<% gear_expanded_attr = "$store.sidebars && $store.sidebars.gearOpen ? 'true' : 'false'" %>
+<% gear_toggle_label = current_user&.admin? ? "Toggle admin menu" : "Toggle settings menu" %>
 
 <div class="flex gap-2">
   <% if logged_in? %>
@@ -20,18 +23,23 @@
           <%= raw balance_html %>
         <% end %>
         <%= render "components/entry_token_badge" %>
-        <% account_link = defined?(account_path) ? account_path : "#" %>
         <span class="hidden md:flex items-center gap-2 ml-auto">
           <span class="hidden md:block"><%= render "components/gear_sidebar_trigger" %></span>
           <%= render "components/theme_toggle_morph" %>
         </span>
-        <%= link_to account_link, class: "dm-coral max-w-[5rem] min-[400px]:max-w-[6rem] md:max-w-[7rem] text-heading font-semibold hover:text-primary transition-all duration-300 leading-none md:ml-0 ml-auto overflow-hidden whitespace-nowrap",
-              "x-bind:class": "scrolled ? 'text-base' : 'text-lg'",
-              data: { username_display: true },
-              "x-data": "{ overflows: false, init() { this.overflows = this.$el.scrollWidth > this.$el.clientWidth } }",
-              "x-bind:style": "overflows ? '-webkit-mask-image: linear-gradient(to right, black 50%, transparent); mask-image: linear-gradient(to right, black 50%, transparent);' : ''" do %>
+        <button type="button"
+                class="dm-coral max-w-[5rem] min-[400px]:max-w-[6rem] md:max-w-[7rem] text-heading font-semibold hover:text-primary transition-all duration-300 leading-none md:ml-0 ml-auto overflow-hidden whitespace-nowrap text-left bg-transparent border-0 p-0"
+                @click.stop="<%= gear_toggle_action %>"
+                aria-label="<%= gear_toggle_label %>"
+                aria-controls="gear-sidebar gear-sidebar-mobile"
+                aria-haspopup="dialog"
+                :aria-expanded="<%= gear_expanded_attr %>"
+                data-username-display="true"
+                x-bind:class="scrolled ? 'text-base' : 'text-lg'"
+                x-data="{ overflows: false, init() { this.overflows = this.$el.scrollWidth > this.$el.clientWidth } }"
+                x-bind:style="overflows ? '-webkit-mask-image: linear-gradient(to right, black 50%, transparent); mask-image: linear-gradient(to right, black 50%, transparent);' : ''">
           <%= current_user.display_name %>
-        <% end %>
+        </button>
       </div>
       <%# Div 2 (Smaller): 5-section seeds bar + level (right) — see components/_seeds_bar %>
       <% solana_label = current_user.respond_to?(:truncated_solana) && current_user.try(:solana_connected?) ? current_user.truncated_solana : nil %>
@@ -44,10 +52,16 @@
       </div>
     </div>
     <%# Div 3 (Avatar): spans both rows %>
-    <% account_link = defined?(account_path) ? account_path : "#" %>
-    <%= link_to account_link, class: "dm-green hover:opacity-80 transition flex-shrink-0 flex items-center" do %>
+    <button type="button"
+            class="dm-green hover:opacity-80 transition flex-shrink-0 flex items-center bg-transparent border-0 p-0"
+            @click.stop="<%= gear_toggle_action %>"
+            aria-label="<%= gear_toggle_label %>"
+            aria-controls="gear-sidebar gear-sidebar-mobile"
+            aria-haspopup="dialog"
+            :aria-expanded="<%= gear_expanded_attr %>"
+            data-profile-image-toggle="true">
       <%= render "components/avatar", user: current_user, size: "nav" %>
-    <% end %>
+    </button>
   <% else %>
     <span class="hidden md:block"><%= render "components/gear_sidebar_trigger" %></span>
     <span class="hidden md:flex"><%= render "components/theme_toggle" %></span>
