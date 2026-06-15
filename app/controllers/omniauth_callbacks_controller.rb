@@ -4,20 +4,17 @@ class OmniauthCallbacksController < ApplicationController
   skip_before_action :require_authentication
   before_action :capture_oauth_popup_flag, only: [:create, :failure]
 
-  # Popup entrypoint — flags the session so the callback renders the
-  # window-closer page instead of redirecting, then hands off to OmniAuth's
-  # request phase. Reached via window.open from the Turf Totals auth modal.
+  # Popup entrypoint: flags the session so the callback renders the
+  # window-closer page, then renders an auto-submitting POST form into
+  # OmniAuth's request phase. Reached via window.open from the Turf Totals auth
+  # modal. OmniAuth request phase must stay POST-only for CSRF protection.
   def popup
     session[:oauth_popup] = true
-    # Forward the legal-age attestation into OmniAuth's request phase as a
-    # query param — OmniAuth snapshots request.GET into session
-    # ["omniauth.params"], which #create reads back as omniauth.params to
-    # enforce the attestation for brand-new signups.
-    if age_attestation_given?
-      redirect_to "/auth/google_oauth2?age_attestation=1"
-    else
-      redirect_to "/auth/google_oauth2"
-    end
+    # Forward the legal-age attestation as a query param on the POST action;
+    # OmniAuth snapshots request.GET into session["omniauth.params"], which
+    # #create reads back as omniauth.params for brand-new signup enforcement.
+    @age_attestation = age_attestation_given?
+    render :popup, layout: false
   end
 
   # OPSEC-005: Google OAuth callbacks now run through GoogleOauthValidator

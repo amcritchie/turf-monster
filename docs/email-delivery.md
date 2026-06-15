@@ -89,9 +89,10 @@ Current production status, last checked 2026-06-15:
   <team@mcritchie.studio>` until SES production access is approved.
 - Production app adoption: `studio-engine 0.5.9` is deployed on
   `turf-monster-mainnet`.
-- Last production proof: Heroku release `v88` accepted a real
-  `POST /magic_link` request and Sidekiq completed the matching
-  `EmailDeliveryJob` through Resend.
+- Last production proof: Heroku release `v90` booted with
+  `[mail] transport=Resend from=McRitchie Studio <team@mcritchie.studio>`,
+  accepted public health/contest requests, and keeps Sidekiq as the production
+  job backend for `EmailDeliveryJob`.
 
 ### Prerequisites
 

@@ -49,7 +49,7 @@ class ReferenceAttributionTest < ActionDispatch::IntegrationTest
     assert_difference "User.count", 1 do
       # The request-phase age_attestation query param reaches the callback via
       # session["omniauth.params"] (OmniAuth snapshots request.GET).
-      get "/auth/google_oauth2?age_attestation=1"
+      post "/auth/google_oauth2?age_attestation=1"
       follow_redirect!
     end
     assert_equal "friends-test", User.find_by(email: "googlenewbie@example.com").reference

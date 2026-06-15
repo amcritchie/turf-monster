@@ -17,11 +17,11 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
 
   test "google callback creates user and logs in" do
     assert_difference "User.count", 1 do
-      # Drive the REAL transport: the legal-age attestation rides the OAuth
-      # request phase as a query param (exactly what /auth/google_popup and
-      # the /signin form emit); OmniAuth snapshots request.GET into
+      # Drive the REAL transport: the legal-age attestation rides the POSTed
+      # OAuth request phase as a query param (exactly what /auth/google_popup
+      # and the /signin form emit); OmniAuth snapshots request.GET into
       # session["omniauth.params"], which the callback pops back out.
-      get "/auth/google_oauth2?age_attestation=1"
+      post "/auth/google_oauth2?age_attestation=1"
       follow_redirect!
     end
 
@@ -78,6 +78,12 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
   test "failure redirects to login" do
     get "/auth/failure"
     assert_redirected_to signin_path
+  end
+
+  test "popup entrypoint renders a POST handoff form" do
+    get "/auth/google_popup", params: { age_attestation: "1" }
+    assert_response :success
+    assert_select "form[method=post][action=?]", "/auth/google_oauth2?age_attestation=1"
   end
 
   # ── Feature 1: Google sign-in colliding with a wallet-secured account ──────

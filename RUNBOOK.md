@@ -93,12 +93,12 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 ## Contest Lifecycle Bugs
 
 **Double grade (contest already settled)**
-- Diagnosis: `Contest#grade!` called on an already-settled contest. Entries get double payouts.
-- Fix: `grade!` should check `status == "locked"` before proceeding. If double-graded, use `Contest#reset!` to clear everything and re-grade. Check `entries` table for duplicate `payout_cents` values.
+- Diagnosis: `Contest#grade!` called on an already-settled contest. Current code raises before regrading settled contests.
+- Fix: Confirm `contest.settled?` and review `entries` before changing data. If a legacy or console path double-graded, use `Contest#reset!` to clear derived scoring fields and re-grade once. Check `entries` for duplicate `payout_cents` values.
 
 **Stuck contest status**
-- Diagnosis: Contest stuck in `draft` or `locked` state. Admin buttons not appearing.
-- Fix: Admin buttons are gated by `current_user.admin?`. Verify the user has `role: "admin"`. Check contest status in console: `Contest.find_by(slug: "<slug>").status`. Manually transition if needed: `contest.update!(status: "open")`.
+- Diagnosis: Contest not visible or admin buttons not appearing. Current statuses are `pending`, `open`, and `settled`; locked is derived from `starts_at`, not stored as a status.
+- Fix: Admin buttons are gated by `current_user.admin?`. Verify the user has `role: "admin"`. Check contest status and timing in console: `contest = Contest.find_by(slug: "<slug>"); [contest.status, contest.starts_at, contest.locked?]`. Manually transition only when appropriate: `contest.update!(status: "open")`.
 
 **Payout calculation errors**
 - Diagnosis: Payouts don't add up or ties split wrong.

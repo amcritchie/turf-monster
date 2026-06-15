@@ -78,7 +78,8 @@ Routes:
 
 - `POST /auth/google_oauth2` - normal OmniAuth request phase.
 - `GET /auth/google_oauth2/callback` - callback handled by `OmniauthCallbacksController#create`.
-- `GET /auth/google_popup` - popup-mode entrypoint used by the in-contest auth modal.
+- `GET /auth/google_popup` - popup-mode entrypoint used by the in-contest auth
+  modal. It renders an auto-submitting POST form to the OmniAuth request phase.
 
 The callback re-validates Google's ID token with `GoogleOauthValidator` before
 trusting `auth.info.email`. `User.from_omniauth(auth, email_verified: true)`
