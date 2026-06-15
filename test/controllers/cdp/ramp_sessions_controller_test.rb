@@ -55,6 +55,14 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
     original.nil? ? ENV.delete("ENABLE_CDP_RAMP") : ENV["ENABLE_CDP_RAMP"] = original
   end
 
+  def with_forgery_protection
+    original = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    yield
+  ensure
+    ActionController::Base.allow_forgery_protection = original
+  end
+
   def give_managed_wallet(user = @user)
     user.update!(web2_solana_address: "ManagedWallet#{SecureRandom.hex(4)}",
                  encrypted_web2_solana_private_key: "x")
@@ -105,7 +113,10 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
 
   test "requires authentication without redirecting raw html clients into the app shell" do
     with_cdp_ramp do
-      post cdp_onramp_sessions_path, headers: { "Accept" => "text/html" }
+      with_forgery_protection do
+        post cdp_onramp_sessions_path, headers: { "Accept" => "text/html" }
+      end
+
       assert_response :unauthorized
       assert_equal "application/json", response.media_type
       assert_equal "unauthenticated", JSON.parse(response.body)["error"]
