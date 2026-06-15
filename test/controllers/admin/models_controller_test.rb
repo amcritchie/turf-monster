@@ -62,6 +62,7 @@ class Admin::ModelsControllerTest < ActionDispatch::IntegrationTest
     assert_select "table#models-arenas-table"
     assert_match "Test Stadium", response.body
     assert_match "1 Test Way", response.body
+    assert_match "schedule-only", response.body
   end
 
   test "model pages are paginated" do

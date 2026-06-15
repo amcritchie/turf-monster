@@ -7,3 +7,13 @@ test_stadium:
   state: TS
   country: USA
   timezone: America/Denver
+
+neutral_venue:
+  slug: neutral-venue
+  name: Neutral Venue
+  address: 99 Neutral Road
+  location: Neutral City, NC
+  city: Neutral City
+  state: NC
+  country: USA
+  timezone: America/New_York

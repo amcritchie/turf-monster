@@ -32,10 +32,21 @@ nfl_home_arenas = {
   "lincoln-financial-field" => { name: "Lincoln Financial Field", address: "1 Lincoln Financial Field Way", location: "Philadelphia, PA", city: "Philadelphia", state: "PA", country: "USA", timezone: "America/New_York" },
   "acrisure-stadium" => { name: "Acrisure Stadium", address: "100 Art Rooney Avenue", location: "Pittsburgh, PA", city: "Pittsburgh", state: "PA", country: "USA", timezone: "America/New_York" },
   "lumen-field" => { name: "Lumen Field", address: "800 Occidental Avenue South", location: "Seattle, WA", city: "Seattle", state: "WA", country: "USA", timezone: "America/Los_Angeles" },
-  "levis-stadium" => { name: "Levi's Stadium", address: "4900 Marie P DeBartolo Way", location: "Santa Clara, CA", city: "Santa Clara", state: "CA", country: "USA", timezone: "America/Los_Angeles" },
+  "levi-s-stadium" => { name: "Levi's Stadium", address: "4900 Marie P DeBartolo Way", location: "Santa Clara, CA", city: "Santa Clara", state: "CA", country: "USA", timezone: "America/Los_Angeles" },
   "raymond-james-stadium" => { name: "Raymond James Stadium", address: "4201 N Dale Mabry Highway", location: "Tampa, FL", city: "Tampa", state: "FL", country: "USA", timezone: "America/New_York" },
   "nissan-stadium" => { name: "Nissan Stadium", address: "1 Titans Way", location: "Nashville, TN", city: "Nashville", state: "TN", country: "USA", timezone: "America/Chicago" },
   "northwest-stadium" => { name: "Northwest Stadium", address: "1600 FedEx Way", location: "Landover, MD", city: "Landover", state: "MD", country: "USA", timezone: "America/New_York" }
+}
+
+nfl_schedule_only_arenas = {
+  "estadio-banorte" => { name: "Estadio Banorte", address: "Calzada de Tlalpan 3465, Santa Ursula Coapa, Coyoacan", location: "Mexico City, Mexico", city: "Mexico City", state: "CDMX", country: "Mexico", timezone: "America/Mexico_City" },
+  "fc-bayern-munich-stadium" => { name: "FC Bayern Munich Stadium", address: "Werner-Heisenberg-Allee 25", location: "Munich, Germany", city: "Munich", state: "Bavaria", country: "Germany", timezone: "Europe/Berlin" },
+  "maracana-stadium" => { name: "Maracana Stadium", address: "Avenida Presidente Castelo Branco, Portao 3, Maracana", location: "Rio De Janeiro, Brazil", city: "Rio De Janeiro", state: "RJ", country: "Brazil", timezone: "America/Sao_Paulo" },
+  "melbourne-cricket-ground" => { name: "Melbourne Cricket Ground", address: "120 Barassi Way", location: "Melbourne, VIC", city: "Melbourne", state: "VIC", country: "Australia", timezone: "Australia/Melbourne" },
+  "santiago-bernabeu" => { name: "Santiago Bernabeu", address: "Avenida de Concha Espina 1", location: "Madrid, Spain", city: "Madrid", state: "Community of Madrid", country: "Spain", timezone: "Europe/Madrid" },
+  "stade-de-france" => { name: "Stade de France", address: "ZAC du Cornillon Nord", location: "Saint-Denis, France", city: "Saint-Denis", state: "Ile-de-France", country: "France", timezone: "Europe/Paris" },
+  "tottenham-hotspur-stadium" => { name: "Tottenham Hotspur Stadium", address: "782 High Road", location: "London, England", city: "London", state: "England", country: "United Kingdom", timezone: "Europe/London" },
+  "wembley-stadium" => { name: "Wembley Stadium", address: "South Way", location: "London, England", city: "London", state: "England", country: "United Kingdom", timezone: "Europe/London" }
 }
 
 nfl_team_metadata = {
@@ -67,14 +78,14 @@ nfl_team_metadata = {
   "PHI" => { slug: "philadelphia-eagles", name: "Philadelphia Eagles", short_name: "PHI", location: "Philadelphia", emoji: "🦅", color_primary: "#004C54", color_secondary: "#A5ACAF", color_text_light: false, conference: "NFC", division: "East", rivals: %w[dallas-cowboys new-york-giants washington-commanders kansas-city-chiefs], team_website: "https://www.philadelphiaeagles.com", coaches_url: "https://www.philadelphiaeagles.com/team/coaches/", hashtag: "#FlyEaglesFly", home_arena_slug: "lincoln-financial-field" },
   "PIT" => { slug: "pittsburgh-steelers", name: "Pittsburgh Steelers", short_name: "PIT", location: "Pittsburgh", emoji: "⚙️", color_primary: "#FFB612", color_secondary: "#101820", color_text_light: true, conference: "AFC", division: "North", rivals: %w[baltimore-ravens cleveland-browns cincinnati-bengals dallas-cowboys], team_website: "https://www.steelers.com", coaches_url: "https://www.steelers.com/team/coaches/", hashtag: "#steelers", home_arena_slug: "acrisure-stadium" },
   "SEA" => { slug: "seattle-seahawks", name: "Seattle Seahawks", short_name: "SEA", location: "Seattle", emoji: "🦅", color_primary: "#002244", color_secondary: "#69BE28", color_text_light: false, conference: "NFC", division: "West", rivals: %w[san-francisco-49ers los-angeles-rams arizona-cardinals], team_website: "https://www.seahawks.com", coaches_url: "https://www.seahawks.com/team/coaches/", hashtag: "#seahawks", x_handle: "Seahawks", home_arena_slug: "lumen-field" },
-  "SF" => { slug: "san-francisco-49ers", name: "San Francisco 49ers", short_name: "SF", location: "San Francisco", emoji: "⛏️", color_primary: "#AA0000", color_secondary: "#B3995D", color_text_light: false, conference: "NFC", division: "West", rivals: %w[seattle-seahawks los-angeles-rams dallas-cowboys arizona-cardinals], team_website: "https://www.49ers.com", coaches_url: "https://www.49ers.com/team/coaches/", hashtag: "#FTTB", x_handle: "49ers", home_arena_slug: "levis-stadium" },
+  "SF" => { slug: "san-francisco-49ers", name: "San Francisco 49ers", short_name: "SF", location: "San Francisco", emoji: "⛏️", color_primary: "#AA0000", color_secondary: "#B3995D", color_text_light: false, conference: "NFC", division: "West", rivals: %w[seattle-seahawks los-angeles-rams dallas-cowboys arizona-cardinals], team_website: "https://www.49ers.com", coaches_url: "https://www.49ers.com/team/coaches/", hashtag: "#FTTB", x_handle: "49ers", home_arena_slug: "levi-s-stadium" },
   "TB" => { slug: "tampa-bay-buccaneers", name: "Tampa Bay Buccaneers", short_name: "TB", location: "Tampa Bay", emoji: "🏴‍☠️", color_primary: "#D50A0A", color_secondary: "#FF7900", color_text_light: false, conference: "NFC", division: "South", rivals: %w[new-orleans-saints atlanta-falcons carolina-panthers], team_website: "https://www.buccaneers.com", coaches_url: "https://www.buccaneers.com/team/coaches/", hashtag: "#WeAreTheKrewe", x_handle: "Buccaneers", home_arena_slug: "raymond-james-stadium" },
   "TEN" => { slug: "tennessee-titans", name: "Tennessee Titans", short_name: "TEN", location: "Tennessee", emoji: "⚔️", color_primary: "#0C2340", color_secondary: "#4B92DB", color_text_light: false, conference: "AFC", division: "South", rivals: %w[houston-texans indianapolis-colts jacksonville-jaguars], team_website: "https://www.tennesseetitans.com", coaches_url: "https://www.tennesseetitans.com/team/coaches/", hashtag: "#TitanUp", home_arena_slug: "nissan-stadium" },
   "WAS" => { slug: "washington-commanders", name: "Washington Commanders", short_name: "WAS", location: "Washington", emoji: "🎖️", color_primary: "#5A1414", color_secondary: "#FFB612", color_text_light: false, conference: "NFC", division: "East", rivals: %w[dallas-cowboys philadelphia-eagles new-york-giants], team_website: "https://www.commanders.com", coaches_url: "https://www.commanders.com/team/coaches/", hashtag: "#RaiseHail", home_arena_slug: "northwest-stadium" }
 }
 nfl_team_metadata["WSH"] = nfl_team_metadata.fetch("WAS")
 
-nfl_home_arenas.each do |slug, attributes|
+nfl_home_arenas.merge(nfl_schedule_only_arenas).each do |slug, attributes|
   arena = Arena.find_or_initialize_by(slug: slug)
   arena.assign_attributes(attributes)
   arena.save!
