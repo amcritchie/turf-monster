@@ -32,10 +32,13 @@ class Cdp::ReturnsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "requires authentication (HTML redirect to signin)" do
+  test "requires authentication without redirecting raw html clients into the app shell" do
     with_cdp_ramp do
       get cdp_onramp_return_path
-      assert_redirected_to signin_path
+      assert_response :unauthorized
+      assert_equal "application/json", response.media_type
+      assert_equal "unauthenticated", JSON.parse(response.body)["error"]
+      assert_nil response.headers["Location"]
     end
   end
 

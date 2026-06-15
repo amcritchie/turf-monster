@@ -7,8 +7,8 @@ module Cdp
   #
   # See docs/CDP_RAMP_INTEGRATION.md §8. Security posture (Coinbase explicitly
   # holds the developer liable for a misused session-token mint endpoint):
-  #   - require_authentication (engine default before_action; the app override
-  #     returns a clean JSON 401 for authedFetch)
+  #   - Cdp::BaseController auth (hard JSON 401 for every unauthenticated
+  #     format; no HTML redirect into a final 200 app shell)
   #   - geo gates: the state blocklist (require_geo_allowed) + the Cdp::Catalog
   #     country/subdivision availability check (fails closed)
   #   - per-user rack-attack throttle "cdp_sessions/user" (config/initializers/
