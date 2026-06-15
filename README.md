@@ -28,7 +28,7 @@ See [mcritchie-studio/docs/agents/system/house-burn-down.md](https://github.com/
 
 ## Single-app dev (when you already have the toolchain)
 
-If your machine already has Ruby 3.3.11 (via `brew install ruby@3.3`), Postgres 14, Redis, Node 20, and an `.env` in place:
+If your machine already has Ruby 3.3.11 (via `brew install ruby@3.3`), Postgres 14, Redis, Node 22, and an `.env` in place:
 
 ```bash
 git clone https://github.com/amcritchie/turf-monster.git
@@ -51,7 +51,7 @@ Seeds create 5 users, 48 World Cup teams, 72 group stage matches, and 67 players
 - Ruby **3.3.11** (use `brew install ruby@3.3`; matches `.ruby-version` and `Gemfile`)
 - PostgreSQL 14+
 - Redis (Sidekiq queue)
-- Node.js **20+** (Node 18 breaks turf-vault's `@solana/codecs-numbers` peer dep)
+- Node.js **22.x** (keeps local dev, CI, and Heroku aligned; turf-vault needs at least Node 20.18.0)
 - Bundler 2.4+
 
 ## Test
@@ -82,7 +82,7 @@ bin/deploy   # single mainnet target → turf-monster-mainnet (real funds, confi
 ```
 
 Migrations run in Heroku's release phase (Procfile `release:`), not the deploy
-script. `MAINNET_LAUNCH.md` is historical first-launch context; current deploys use `bin/deploy`. Platform: Heroku (heroku-24 stack) with buildpacks ordered `heroku/nodejs` then `heroku/ruby` so `package.json` pins Node 20 for asset builds. Required env vars include `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the active mail transport settings.
+script. `MAINNET_LAUNCH.md` is historical first-launch context; current deploys use `bin/deploy`. Platform: Heroku (heroku-24 stack) with buildpacks ordered `heroku/nodejs` then `heroku/ruby` so `package.json` pins Node 22 for asset builds. Required env vars include `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the active mail transport settings.
 
 After every deploy, run the smoke checklist in [`RUNBOOK.md`](RUNBOOK.md):
 release output, `/up`, the live contest URL, payment-provider gates, and a real

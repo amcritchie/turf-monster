@@ -29,7 +29,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 **Build warning: Heroku selected an unpinned Node**
 - Diagnosis: Heroku logs `Installing a default version ... of Node.js`.
 - Fix: Keep the root `package.json` `engines.node` pinned to the repo-supported
-  version (`20.x`). Production should have buildpacks ordered `heroku/nodejs`
+  version (`22.x`). Production should have buildpacks ordered `heroku/nodejs`
   then `heroku/ruby`; if the warning returns, check
   `heroku buildpacks --app turf-monster-mainnet` before deploying again.
 
