@@ -4,9 +4,42 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
 
 ## Heroku Deploy Failures
 
+**Post-deploy smoke checklist**
+- Diagnosis: A deploy is not done until the new release, payment flags, public
+  URLs, and email delivery path are proven.
+- Fix:
+  1. Confirm the current release: `heroku releases --app turf-monster-mainnet`.
+  2. Confirm release output has no boot failure:
+     `heroku releases:output <release> --app turf-monster-mainnet`.
+  3. Check public URLs:
+     `https://app.turfmonster.media/up` and
+     `https://app.turfmonster.media/contests/world-cup-week-3-contest`.
+  4. Confirm payment gates in a production runner: `PAYMENT_PROVIDER=none`,
+     `Payments.stripe?=false`, `Payments.paypal_checkout?=false`,
+     `AppFlags.cdp_ramp?=true`, and `AppFlags.web2_usdc_entry?=true` unless
+     the operator intentionally changed them.
+  5. Trigger a real magic-link request through `/signin`; then confirm the
+     matching `EmailDeliveryJob` finishes in worker logs. A JSON success
+     response from `/magic_link` proves only that the send intent was accepted.
+
 **Build error: Tailwind CSS compilation**
 - Diagnosis: `assets:precompile` fails. Usually a new CSS class that references undefined variables or syntax error in `application.tailwind.css`.
 - Fix: `bin/rails tailwindcss:build` locally to reproduce. Fix the CSS. Redeploy.
+
+**Build warning: Heroku selected an unpinned Node**
+- Diagnosis: Heroku logs `Installing a default version ... of Node.js`.
+- Fix: Keep the root `package.json` `engines.node` pinned to the repo-supported
+  version (`20.x`). Production should have buildpacks ordered `heroku/nodejs`
+  then `heroku/ruby`; if the warning returns, check
+  `heroku buildpacks --app turf-monster-mainnet` before deploying again.
+
+**Sentry warning: Dyno Metadata disabled**
+- Diagnosis: Release output says Sentry cannot detect releases on Heroku.
+- Fix: Heroku runtime dyno metadata should be enabled for
+  `turf-monster-mainnet`. If the warning returns, run
+  `heroku labs --app turf-monster-mainnet` and confirm
+  `runtime-dyno-metadata` is on, then restart or redeploy so dynos pick up the
+  metadata env.
 
 **Missing env vars on Heroku**
 - Diagnosis: App crashes on boot. Check `heroku logs --tail --app turf-monster-mainnet`.
@@ -17,6 +50,17 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
   `MANAGED_WALLET_ENCRYPTION_KEY` (OPSEC-015), `SOLANA_PROGRAM_ID`
   (OPSEC-012), or `EXPECTED_IDL_HASH` (OPSEC-014). Set missing values with
   `heroku config:set KEY=value --app turf-monster-mainnet`.
+
+**Magic-link request succeeds but email never arrives**
+- Diagnosis: `/magic_link` returns `{"success":true}` but Sidekiq logs show a
+  provider error, often `Resend::Error: The <domain> domain is not verified`.
+- Fix: Keep `RESEND_MAILER_FROM="McRitchie Studio <team@mcritchie.studio>"`
+  while SES is sandboxed. Confirm `mcritchie.studio` is verified in the Resend
+  account behind `RESEND_API_KEY`; the required public DNS records are:
+  `TXT resend._domainkey.mcritchie.studio`, `MX send.mcritchie.studio`, and
+  `TXT send.mcritchie.studio`. Trigger Resend verification and wait for status
+  `verified`, then retry `EmailDelivery.resend_unsent!` or request a fresh
+  magic link.
 
 **Migration fails**
 - Diagnosis: `heroku run bin/rails db:migrate --app turf-monster-mainnet` errors. Check exact SQL error in logs.

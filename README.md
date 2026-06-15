@@ -82,7 +82,13 @@ bin/deploy   # single mainnet target → turf-monster-mainnet (real funds, confi
 ```
 
 Migrations run in Heroku's release phase (Procfile `release:`), not the deploy
-script. `MAINNET_LAUNCH.md` is historical first-launch context; current deploys use `bin/deploy`. Platform: Heroku (heroku-24 stack). Required env vars include `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the active mail transport settings.
+script. `MAINNET_LAUNCH.md` is historical first-launch context; current deploys use `bin/deploy`. Platform: Heroku (heroku-24 stack) with buildpacks ordered `heroku/nodejs` then `heroku/ruby` so `package.json` pins Node 20 for asset builds. Required env vars include `RAILS_MASTER_KEY`, `RAILS_SERVE_STATIC_FILES=true`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the active mail transport settings.
+
+After every deploy, run the smoke checklist in [`RUNBOOK.md`](RUNBOOK.md):
+release output, `/up`, the live contest URL, payment-provider gates, and a real
+magic-link email job. Production email currently uses Resend fallback from
+`McRitchie Studio <team@mcritchie.studio>` until SES production access is
+approved.
 
 ## Solana Integration
 

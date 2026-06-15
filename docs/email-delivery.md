@@ -29,6 +29,9 @@ Turf uses the shared Studio engine mail transport:
 - `RESEND_MAILER_FROM` is the shared fallback sender. While SES is blocked by
   sandbox/presetup, Resend sends from `McRitchie Studio
   <team@mcritchie.studio>` instead of requiring another paid Resend domain.
+  That domain must be verified in the active Resend account; do not swap the
+  fallback sender to `team@turfmonster.media` unless `turfmonster.media` is
+  also present and verified in Resend.
 - SES transactional/auth/security/contest email uses `Turf Monster <team@turfmonster.media>`.
 - SES newsletter/marketing email uses `Alex from Turf Monster <alex@turfmonster.media>`.
 - Tests always use `:test` in memory; the transport no-ops in `Rails.env.test?`.
@@ -75,15 +78,20 @@ Use the shared checklist in
 `mcritchie-studio/docs/agents/modules/email-operations.md` first, then apply the
 Turf-specific values below.
 
-Current production status, last checked 2026-06-14:
+Current production status, last checked 2026-06-15:
 
 - SES account in `us-east-2`: sending enabled, enforcement healthy, still in
   sandbox (`ProductionAccessEnabled=false`).
 - `turfmonster.media`: verified for sending, DKIM `SUCCESS`.
-- Persistent production transport: keep Resend active until SES production
-  access is approved.
-- Production app adoption: deploy the current `studio-engine` release before
-  proving the shared `Studio::Email.deliver` provider path on Heroku.
+- Resend fallback domain: `mcritchie.studio` is verified in the Resend account
+  backing production apps.
+- Persistent production transport: keep Resend active from `McRitchie Studio
+  <team@mcritchie.studio>` until SES production access is approved.
+- Production app adoption: `studio-engine 0.5.9` is deployed on
+  `turf-monster-mainnet`.
+- Last production proof: Heroku release `v88` accepted a real
+  `POST /magic_link` request and Sidekiq completed the matching
+  `EmailDeliveryJob` through Resend.
 
 ### Prerequisites
 
@@ -119,6 +127,16 @@ heroku config:set -a turf-monster-mainnet MAIL_TRANSPORT=ses
 Smoke test the provider with `bin/rails "email:smoke[approved-test-inbox@example.com]"`,
 then smoke test a production magic link and confirm delivery plus DKIM/SPF/DMARC
 pass.
+
+For Resend fallback proof, check both sides:
+
+1. The app request returns success.
+2. The durable outbox job finishes without provider error.
+3. The message arrives in the target inbox or spam.
+
+If Resend returns "domain is not verified", verify `mcritchie.studio` in the
+Resend account before retrying; changing `RESEND_MAILER_FROM` to an unverified
+app domain only moves the failure.
 
 ### Rollback
 
