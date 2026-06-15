@@ -17,7 +17,7 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     assert_select "h2", text: "Sports"              # hub section
     assert_select "h2", text: "Admin"               # hub section
     assert_select "a[href=?]", admin_seasons_path   # a navigation link moved off the gear
-    assert_select "button", text: "Refresh Balance" # an action control moved off the gear
+    assert_select "button", text: "Refresh Balance" # an action control kept out of the gear sidebar
   end
 
   test "hub marks reviewed and flagged links" do
@@ -45,9 +45,9 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     assert_response :redirect
   end
 
-  # --- navbar gear dropdown ---
+  # --- navbar gear sidebar ---
 
-  test "navbar gear dropdown renders for admins" do
+  test "navbar gear sidebar renders for admins" do
     log_in_as(@admin)
     get faucet_path
     assert_response :success
@@ -58,7 +58,7 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href=?]", admin_landing_pages_path # Admin: Landing Pages
   end
 
-  test "navbar gear dropdown hidden from non-admins" do
+  test "navbar gear sidebar hides admin links from non-admins" do
     log_in_as(@user)
     get faucet_path
     assert_response :success

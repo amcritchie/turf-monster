@@ -58,6 +58,15 @@
   .is-scrolled .nav-title span:last-child { font-size: 1rem; }
 }
 
+/* Shared right-sidebar push cascade. Reserves room for the 320px sidebar at
+   md, then steps down to a pure overlay on wide screens. Used by the contest
+   picks sidebar and any page content that should ease out of a fixed sidebar. */
+@media (min-width:  768px) { .tm-sidebar-pushed { margin-right: 20rem; } }
+@media (min-width: 1344px) { .tm-sidebar-pushed { margin-right: 15rem; } }
+@media (min-width: 1479px) { .tm-sidebar-pushed { margin-right: 10rem; } }
+@media (min-width: 1614px) { .tm-sidebar-pushed { margin-right:  5rem; } }
+@media (min-width: 1749px) { .tm-sidebar-pushed { margin-right:    0; } }
+
 /* Toast z-index defaults from studio-engine (60/55) sit below our
    sticky navbar (z-[125] from layouts/_navbar.html.erb) and the modal
    backdrop (z-[120]). Override via the engine's CSS custom properties
@@ -68,7 +77,7 @@
   --studio-toast-blur-z: 199;
 }
 
-/* Navbar gear-menu emoji hover slide (components/_admin_dropdown via the
+/* Navbar gear-sidebar emoji hover slide (components/_gear_sidebar via the
    emoji_swap helper). Both emoji are stacked in a fixed gutter; on row hover the
    base slides off to the RIGHT + fades while the hover emoji slides in from the
    LEFT. Keyed on the row's `group` class. Reduced-motion degrades to a fade. */

@@ -22,7 +22,7 @@
         <%= render "components/entry_token_badge" %>
         <% account_link = defined?(account_path) ? account_path : "#" %>
         <span class="hidden md:flex items-center gap-2 ml-auto">
-          <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>
+          <span class="hidden md:block"><%= render "components/gear_sidebar_trigger" %></span>
           <%= render "components/theme_toggle_morph" %>
         </span>
         <%= link_to account_link, class: "dm-coral max-w-[5rem] min-[400px]:max-w-[6rem] md:max-w-[7rem] text-heading font-semibold hover:text-primary transition-all duration-300 leading-none md:ml-0 ml-auto overflow-hidden whitespace-nowrap",
@@ -49,7 +49,7 @@
       <%= render "components/avatar", user: current_user, size: "nav" %>
     <% end %>
   <% else %>
-    <span class="hidden md:block"><%= render "components/admin_dropdown" %></span>
+    <span class="hidden md:block"><%= render "components/gear_sidebar_trigger" %></span>
     <span class="hidden md:flex"><%= render "components/theme_toggle" %></span>
     <div class="flex items-center gap-3 ml-auto">
       <%# Opens the in-page auth modal (credentials step: Google + wallet + email
