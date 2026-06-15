@@ -66,7 +66,7 @@
       outside_action: "$store.sidebars.gearOpen = false",
       escape_action: "$store.sidebars.gearOpen = false",
       display_class: "hidden md:flex",
-      z_class: "z-[70]",
+      z_class: "tm-gear-sidebar-layer",
       role: "navigation",
       aria_label: current_user.admin? ? "Admin menu" : "Settings menu" %>
 
@@ -80,6 +80,6 @@
       escape_action: "$store.sidebars.gearOpen = false",
       display_class: "flex md:hidden",
       width_class: "w-full",
-      z_class: "z-[70]",
+      z_class: "tm-gear-sidebar-layer",
       role: "navigation",
       aria_label: current_user.admin? ? "Admin menu" : "Settings menu" %>
