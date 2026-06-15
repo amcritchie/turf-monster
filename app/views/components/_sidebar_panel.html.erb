@@ -10,6 +10,7 @@
       outside_action - optional Alpine expression for click-outside
       escape_action  - optional Alpine expression for Escape
       display_class  - responsive display utilities, default desktop sidebar
+      width_class    - width utility, default w-80 max-w-full
       z_class        - z-index utility, default z-40
       role           - ARIA role, default complementary
       aria_label     - label override, defaults to title
@@ -24,6 +25,7 @@
 <% outside_action = local_assigns.fetch(:outside_action, nil) %>
 <% escape_action  = local_assigns.fetch(:escape_action, nil) %>
 <% display_class  = local_assigns.fetch(:display_class, "hidden md:flex") %>
+<% width_class    = local_assigns.fetch(:width_class, "w-80 max-w-full") %>
 <% z_class        = local_assigns.fetch(:z_class, "z-40") %>
 <% panel_class    = local_assigns.fetch(:panel_class, "") %>
 <% role           = local_assigns.fetch(:role, "complementary") %>
@@ -43,7 +45,7 @@
   x-transition:leave="transition ease-in duration-200"
   x-transition:leave-start="translate-x-0"
   x-transition:leave-end="translate-x-full"
-  class="<%= display_class %> fixed right-0 w-80 max-w-full bg-surface border-l border-subtle shadow-2xl <%= z_class %> flex-col <%= panel_class %>"
+  class="<%= display_class %> fixed right-0 <%= width_class %> bg-surface border-l border-subtle shadow-2xl <%= z_class %> flex-col <%= panel_class %>"
   style="top:var(--nav-h, 6rem);height:calc(100% - var(--nav-h, 6rem))"
   role="<%= role %>"
   <% if labelledby %>aria-labelledby="<%= labelledby %>"<% elsif aria_label.present? %>aria-label="<%= aria_label %>"<% end %>>
