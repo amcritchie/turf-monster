@@ -23,7 +23,6 @@
         :class="scrolled && 'shadow-lg border-b border-subtle is-scrolled'">
   <% unless is_preview || Rails.env.production? %>
     <% environment_actions = capture do %>
-        <%= render "shared/email_status_button" %>
         <button @click="$store.devMode = !$store.devMode; localStorage.setItem('devMode', $store.devMode)"
                 class="rounded cursor-pointer"
                 style="font-size:10px; font-weight:700; padding:1px 6px;"
@@ -31,6 +30,7 @@
         <% if Solana::Config.devnet? %>
           <span class="rounded" style="font-size:10px; font-weight:700; padding:1px 6px; background:rgba(0,0,0,0.2);">DEVNET</span>
         <% end %>
+        <%= render "shared/email_status_button" %>
     <% end %>
     <%= render "shared/app_banner",
                tone: :environment,
