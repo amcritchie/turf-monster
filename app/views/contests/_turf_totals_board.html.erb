@@ -1609,7 +1609,7 @@ window.selectionBoard = function() {
 
 <div x-data="selectionBoard()" x-cloak
      @auth-magic-link-submit.window="requestMagicLink($event.detail.email, $event.detail.ageAttested)"
-     @auth-wallet-hub-open.window="openWalletConnect($event.detail && $event.detail.ageAttested)"
+     @auth-wallet-hub-open.window="openWalletConnect($event.detail && $event.detail.ageAttested); if ($event.detail) $event.detail.handled = true"
      @auth-google-click.window="loginWithGoogle($event.detail && $event.detail.ageAttested)">
 
   <!-- Blur overlay (click to dismiss) -->

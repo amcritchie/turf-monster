@@ -61,6 +61,28 @@
          if (s.indexOf && s.indexOf('tokens-') === 0) return false;
          return true;
        },
+       openWalletHub() {
+         if (!this.attested()) return;
+
+         var detail = { ageAttested: true, handled: false };
+         window.dispatchEvent(new CustomEvent('auth-wallet-hub-open', { detail: detail }));
+
+         // The contest board handles this event when it is mounted so it can
+         // save staged picks before the wallet chooser opens. When the auth
+         // modal is opened elsewhere, fall back to the generic chooser path.
+         setTimeout(function() {
+           if (detail.handled) return;
+           var modals = Alpine.store('modals');
+           var current = modals && modals.current && modals.current();
+           if (current && current.id === 'auth') {
+             modals.swap('wallet-connect', {
+               returnUrl: window.location.href,
+               backTo: 'auth',
+               ageAttested: true
+             });
+           }
+         }, 0);
+       },
        // Self-contained resend for the magic-link-sent step (login page or
        // in-contest). postMagicLink resolves rather than throwing on a non-2xx,
        // so this reads the result and surfaces visible feedback either way.
@@ -158,7 +180,7 @@
       <!-- 2. Solana — progresses to the Connect Wallet picker modal. The board
            saves the cart + passes returnUrl so the lineup survives (see
            selectionBoard#openWalletConnect). -->
-      <button @click="if (attested()) $dispatch('auth-wallet-hub-open', { ageAttested: true })" :disabled="props.submitting"
+      <button @click="openWalletHub()" :disabled="props.submitting"
               class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
         <img src="/solana-mark.svg" alt="" class="w-5 h-5" x-show="props.submitting !== 'wallet'">
         <span x-show="props.submitting === 'wallet'" class="cta-spinner" aria-hidden="true"></span>

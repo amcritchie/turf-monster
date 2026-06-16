@@ -41,3 +41,26 @@ test("resending swaps to the Link Resent confirmation and starts the cooldown", 
   await expect(page.getByText("Link Resent!")).toBeVisible();
   await expect(page.getByText(/Resend available in \d+s/)).toBeVisible();
 });
+
+test("Solana button in standalone auth modal opens the wallet chooser", async ({ page }) => {
+  await page.goto("/signin");
+
+  await page.evaluate(() => {
+    Alpine.store("modals").open("auth", {
+      step: "credentials",
+      submitting: null,
+      formError: "",
+      phantomError: "",
+      googleError: "",
+    });
+  });
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Sign in" })).toBeVisible();
+
+  await attestAge(page);
+  await dialog.getByRole("button", { name: "Solana" }).click();
+
+  await expect(dialog.getByRole("heading", { name: "Connect Wallet" })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /Phantom Install/ })).toBeVisible();
+});
