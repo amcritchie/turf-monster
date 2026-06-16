@@ -431,9 +431,8 @@
             } catch (logErr) { console.warn('[contest-create] TX inspection failed (non-fatal):', logErr); }
 
             var signedTx = await provider.signTransaction(tx);
-            console.log('[contest-create] signed by Phantom; raw byte length:', signedTx.serialize().length);
-
             var signedBytes = signedTx.serialize({ requireAllSignatures: false, verifySignatures: false });
+            console.log('[contest-create] signed by Phantom; partial wire byte length:', signedBytes.length);
             var signedBinary = '';
             var signedChunk = 0x8000;
             for (var si = 0; si < signedBytes.length; si += signedChunk) {
