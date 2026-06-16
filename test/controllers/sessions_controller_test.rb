@@ -15,6 +15,7 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match(/QA Environment/, response.body)
     assert_match(/Non-production/, response.body)
+    assert_match(/data-app-environment="qa"/, response.body)
   ensure
     original.nil? ? ENV.delete("QA_ENV") : ENV["QA_ENV"] = original
   end
