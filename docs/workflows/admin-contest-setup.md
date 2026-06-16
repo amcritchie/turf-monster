@@ -36,10 +36,10 @@ The `if needed` branch in the user's mental model maps to three distinct chain-i
 
 #### 2a. One-time vault init (rare — once per program ID)
 
-Surfaced in the navbar admin dropdown as **"Vault Init"** with a yellow `!` badge:
+Surfaced from the admin Link Hub as **"Vault Init"** when the vault is uninitialized, and from the Vault State page when an operator needs the direct init path:
 
 - Visibility check: `Admin::VaultInitController.vault_uninitialized?` (`app/controllers/admin/vault_init_controller.rb:76-82`) — calls `Solana::Vault#read_vault_state` (`app/services/solana/vault.rb:250-285`) and caches the boolean for 1 hour. Bust on successful confirm.
-- Dropdown link: `app/views/components/_admin_dropdown.html.erb:52-56`. Otherwise the link is "Vault State" (`app/views/components/_admin_dropdown.html.erb:58-63`).
+- Link Hub tile: `app/views/admin/hub.html.erb`. Vault State fallback link: `app/views/admin/vault_state/show.html.erb`.
 - Routes: `config/routes.rb:235-237` — `GET admin/vault_init`, `POST admin/vault_init/build`, `POST admin/vault_init/confirm`.
 - Flow:
   1. `Admin::VaultInitController#build` (`app/controllers/admin/vault_init_controller.rb:26-46`) validates params (`validate_init_params!` lines 90-110 — three distinct signers, threshold 1-3, creator must equal `INIT_AUTHORITY` on mainnet) and calls `Solana::Vault#build_initialize_vault` (`app/services/solana/vault.rb:217-245`). Bot fee-pays; the creator slot is left for Phantom.

@@ -264,6 +264,12 @@
 
         // Solana modal store — registered when Alpine starts
         document.addEventListener('alpine:init', function() {
+          if (!Alpine.store('sidebars')) {
+            Alpine.store('sidebars', {
+              gearOpen: false
+            });
+          }
+
           if (Alpine.store('solanaModal')) return;
 
           // Canonical session store — the single source of truth for the
@@ -802,6 +808,7 @@
     </script>
     <%= render "layouts/studio/flash" %>
     <%= render "layouts/navbar" %>
+    <%= render "components/gear_sidebar" if logged_in? %>
 
     <div class="max-w-7xl mx-auto px-4">
       <%= yield %>

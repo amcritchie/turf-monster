@@ -130,7 +130,7 @@ Scrolled state on mobile (via `.is-scrolled` ancestor):
 Logo (`.nav-logo`) + "Turf Totals" brand title (`.nav-title` with two `<span>`s), desktop nav links (`hidden md:flex`: Contests, Rules, geo badge).
 
 ### Mobile sub-navbar
-`flex md:hidden` compact row below main nav with `bg-surface-alt border-t border-subtle`. Contains: Contests, Rules, geo badge. Admin dropdown + theme toggle morph pushed right via `ml-auto`.
+`flex md:hidden` compact row below main nav with `bg-surface-alt border-t border-subtle`. Contains: Contests, Rules, geo badge. Gear sidebar trigger + theme toggle morph pushed right via `ml-auto`.
 
 ### Environment banner
 Lives in `application.html.erb`, **not** in the navbar partial. Conditional on `Solana::Config.devnet?`. Full-width yellow bar (`bg-yellow-500 text-black`) above the sticky header. Contains: centered "X Environment" label, right-aligned DEV MODE toggle + DEVNET badge. Not sticky — scrolls away naturally. The DEV MODE toggle uses `$store.devMode` (see Dev Mode section).
@@ -160,7 +160,7 @@ Extracted to `_geo_badge.html.erb` partial — shared by desktop nav and mobile 
 
 **Global JS** (in engine `_head.html.erb`): `showNavSpinner()` records `Date.now()`, `hideNavSpinner()` calculates remaining time from the 2.5s minimum and uses `setTimeout` to delay the hide. Both target `.nav-toggle-icon` and `.nav-spinner-icon` class elements.
 
-**Usage**: Gear dropdown "Refresh Balance" calls `showNavSpinner(); refreshSession().finally(function() { hideNavSpinner(); })` (refreshSession is the full navbar hydrate — balance + tokens + seeds + wallet tiles). Auto-refresh on devnet uses the same pattern.
+**Usage**: Gear sidebar "Refresh Wallet" calls `showNavSpinner(); refreshSession().finally(function() { hideNavSpinner(); })` (refreshSession is the full navbar hydrate — balance + tokens + seeds + wallet tiles). Auto-refresh on devnet uses the same pattern.
 
 ## Leaderboard (Contest Show)
 Selection badges are fixed-width (`w-28`), sorted by game kickoff time, showing turf score (e.g., `x3`) before game completes and points (goals x turf score) after. Badges float right with score rightmost (`min-width: 4.5rem`). Non-integer values show decimal portion in smaller font. Payout label (`$40.00`) appears on left (after player name) only before settling. Admin payout button says "Payout $X". After settling — paid rows get primary ring, divider line after last paid position, unpaid rows dimmed. Rank column shows actual rank (from entry.rank) when settled.
@@ -360,9 +360,12 @@ Do move pure helper logic into modules when it does not participate in early `x-
 ## Solana Modal (legacy alias)
 `shared/_solana_modal.html.erb` — Now a thin compatibility proxy over `$store.modals` (see § Modal Host above). The store name `Alpine.store('solanaModal')` is preserved for older callsites; new code should call `$store.modals` directly. Three logical states still apply (processing / success / error). `fireSuccessConfetti()` from `solana_utils.js` fires 4 confetti bursts (center, left cannon, right cannon, delayed shower) on the success state via `$watch`.
 
-## Admin Dropdowns
+## Sidebar Primitive and Gear Menu
+- **Sidebar primitive** (`components/_sidebar_panel.html.erb`): fixed right panel using `--nav-h`, shared slide transitions, default width `w-80 max-w-full`, optional width override, and optional header actions / close / click-outside / Escape behavior.
+- **Shared push class** (`.tm-sidebar-pushed` in `application.tailwind.css`): same breakpoint cascade the contest picks sidebar used before extraction — 20rem at `768px`, then 15rem / 10rem / 5rem / overlay at wider breakpoints.
+- **Contest picks sidebar** (`contests/_turf_totals_board.html.erb`): renders the desktop "Your Picks" panel through the primitive, keeps cart-specific slots/footer behavior, and still omits a close button so picks stay visible until cleared.
+- **Gear sidebar** (`components/_gear_sidebar.html.erb` + `components/_gear_sidebar_trigger.html.erb`): the gear icon, username, and profile image toggle one page-level menu using the same `md` breakpoint boundary as the contest sidebar (`hidden md:flex` desktop panel, full-width `flex md:hidden` mobile drawer). Links: My Profile, My Contests, next quest when present, How to Play, Proof of Reserves, Refresh Wallet, admin shortlist for admins (Dashboard, Contests, Users, Landing Pages), and Log out. The sidebar uses the same emoji-swap animation as the old dropdown and `.tm-gear-sidebar-layer` (`z-index:10000`) so it overlaps both the desktop contest picks sidebar (`z-40`) and the mobile bottom entry slip (`z-index:9999`) when the menu is open.
 - **Soccer dropdown** (`components/_soccer_dropdown.html.erb`): Soccer ball emoji trigger, links to Teams and Games pages.
-- **Admin dropdown** (`components/_admin_dropdown.html.erb`): Gear icon. Links: Faucet (non-prod only), Refresh Balance (triggers spinner morph), Slates, Slate Manager, Teams, Games, Formula, Formula Defaults, Treasury, Transactions, Navbar, Theme, Toast Test, Schema, Geo Settings, Error Logs, Jobs, Simulate WA, Replay Level (dispatches `navbar-replay-level` event), Reset Contest.
 
 ## Dev Mode
 - **Toggle**: DEV MODE button in the environment banner (top of page, devnet only). Highlights `bg-primary text-white` when active, subtle `bg-black/20` when off.
@@ -415,7 +418,7 @@ When SSO session available, blur overlay covers the entire card (`absolute inset
 ## Admin Preview Tools
 
 ### Navbar Review (`/admin/navbar`)
-Admin page for visually comparing the navbar at all key breakpoints without resizing the browser. Route: `get "admin/navbar"` → `admin#navbar`. Linked from admin dropdown.
+Admin page for visually comparing the navbar at all key breakpoints without resizing the browser. Route: `get "admin/navbar"` → `admin#navbar`. Linked from the admin dashboard / link hub.
 
 **Architecture**: Renders the `layouts/navbar` partial (with `preview: true`) inside `.navbar-preview` wrapper divs. Container-scoped CSS classes simulate responsive breakpoints at any viewport width — this is necessary because Tailwind/CSS media queries respond to the viewport, not the container.
 

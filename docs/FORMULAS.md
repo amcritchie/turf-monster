@@ -57,7 +57,7 @@ This avoids Alpine `$dispatch`/`$store` complexity for components that need to s
 
 `Slate#resolved_formula` returns a hash with resolved values. Sliders on the show page initialize from this. "Save Formula" button persists current slider values to the slate. "Default" slate is a config record (filtered out of index/tabs via `where.not(name: "Default")`).
 
-**Admin Formula Defaults page** (`/slates/admin_formula`) — number inputs for editing the Default slate's formula variables. Linked from admin dropdown.
+**Admin Formula Defaults page** (`/slates/admin_formula`) — number inputs for editing the Default slate's formula variables. Linked from the admin Link Hub.
 
 ## Slate Manager (`/admin/slates/:id/manage`)
 

@@ -91,8 +91,8 @@ module Admin
     # every render through to Solana.
     #
     # Fails safe to false when the RPC errored (Current.vault_state_error)
-    # so a transient blip doesn't pop the alarming "Vault Init" navbar
-    # badge on the admin dropdown.
+    # so a transient blip doesn't pop the alarming "Vault Init" navbar/admin
+    # affordance.
     def self.vault_uninitialized?
       state = Solana::Vault.cached_vault_state
       return false if Current.vault_state_error

@@ -528,7 +528,7 @@ class ApplicationController < ActionController::Base
     Rails.cache.delete(seeds_cache_key(user))
   end
 
-  # Prefetches all on-chain data the navbar (+ admin dropdown) needs in
+  # Prefetches all on-chain data the navbar (+ gear sidebar) needs in
   # parallel, so the view phase has zero blocking Solana RPCs. Fires as a
   # before_action on every HTML request for a logged-in wallet user.
   # Thin wrapper around perform_solana_preload — only the gating logic
