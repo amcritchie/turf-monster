@@ -103,6 +103,7 @@ class MagicLinksController < ApplicationController
 
   def sign_in_existing(user, result)
     reset_prior_session!
+    user.claim_parked_username!
     set_app_session(user)
     user.update!(email_verified_at: Time.current) if user.email_verified_at.blank?
     # Returning login: a quiet "welcome back" toast — no celebratory modal and no

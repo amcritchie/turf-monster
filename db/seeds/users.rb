@@ -3,16 +3,7 @@
 # Returns a hash of User objects keyed by username string.
 # Uses find_or_create_by! for idempotency.
 
-CORE_USERS = [
-  { email: "alex@mcritchie.studio",    name: "Mr. McRitchie",   username: "mcritchie", role: "admin", wallet: "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr" },
-  { email: "alexbot@mcritchie.studio", name: "Alex",            username: "alex",      role: "admin", wallet: "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" },
-  { email: "mason@mcritchie.studio",   name: "Mason McRitchie", username: "mason",    wallet: "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR" },
-  { email: "mack@mcritchie.studio",    name: "Mack McRitchie",  username: "mack",     wallet: "foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds" },
-  # turf@mcritchie.studio is the house account's STABLE identity — User.turf
-  # keys on it (User::TURF_HOUSE_EMAIL), not the renameable username. The
-  # reserved "turf" username is admin-exempt from the reserved-prefix mirror.
-  { email: User::TURF_HOUSE_EMAIL,     name: "Turf Monster",    username: "turf",     role: "admin", wallet: "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" },
-].freeze
+CORE_USERS = User::PARKED_IDENTITIES.map(&:dup).freeze
 
 def seed_core_users!
   users = {}

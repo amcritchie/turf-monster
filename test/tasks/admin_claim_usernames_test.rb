@@ -1,7 +1,7 @@
 require "test_helper"
 require "rake"
 
-# admin:claim_usernames — idempotent DB-only claim of the four kickoff
+# admin:claim_usernames — idempotent DB-only claim of parked kickoff
 # usernames by wallet address (lib/tasks/admin_usernames.rake). On-chain
 # set_username is deliberately NOT pushed (Phantom-owned wallets can't be
 # signed server-side); the task reports what's still owed.
