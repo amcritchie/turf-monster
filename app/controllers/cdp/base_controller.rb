@@ -5,6 +5,10 @@ module Cdp
   # as if it doesn't exist. PREPENDED so even unauthenticated requests see the
   # 404 (not a login redirect): a dark feature advertises no surface at all.
   class BaseController < ApplicationController
+    # CDP endpoints are API surfaces with their own hard auth/origin boundary.
+    # Let raw/scanner POSTs reach that boundary instead of Rails' HTML CSRF
+    # redirect path, which can otherwise appear as a redirect-followed 200.
+    skip_before_action :verify_authenticity_token
     skip_before_action :require_authentication
     prepend_before_action :enforce_cdp_origin_policy
     prepend_before_action :require_cdp_ramp_enabled

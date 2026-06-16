@@ -27,9 +27,23 @@ class ContestLockingTest < ActiveSupport::TestCase
     assert @contest.locked?
   end
 
-  test "locked? is false when starts_at is nil (manual-only, never auto-locks)" do
+  test "locked? is false when starts_at is nil and slate start is still future" do
     @contest.update!(starts_at: nil)
     assert_not @contest.locked?
+  end
+
+  test "starts_in_at falls back to the slate first game" do
+    first_game = Game.create!(
+      home_team_slug: "team-a",
+      away_team_slug: "team-b",
+      kickoff_at: 3.days.from_now.change(usec: 0),
+      status: "scheduled"
+    )
+    slate_matchups(:m1).update!(game_slug: first_game.slug)
+
+    @contest.update!(starts_at: nil)
+    assert_equal first_game.kickoff_at.to_i, @contest.starts_in_at.to_i
+    assert_equal first_game.kickoff_at.to_i, @contest.onchain_params[:lock_timestamp]
   end
 
   test "locked? is true for a settled contest regardless of starts_at" do
@@ -44,6 +58,8 @@ class ContestLockingTest < ActiveSupport::TestCase
   end
 
   test "onchain_params lock_timestamp is 0 when starts_at is nil" do
+    @contest.slate.update!(starts_at: nil)
+    @contest.slate.slate_matchups.update_all(game_slug: nil)
     @contest.update!(starts_at: nil)
     assert_equal 0, @contest.onchain_params[:lock_timestamp]
   end

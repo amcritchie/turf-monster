@@ -37,10 +37,13 @@ class ContestsController < ApplicationController
     contest_type = Contest.selectable_formats.key?(requested_type) ? requested_type : "medium"
 
     @contest = Contest.new(contest_type: contest_type)
+    @slates_for_contest = contest_slate_options
     if params[:slate_id].present? && (prefilled_slate = Slate.find_by(id: params[:slate_id]))
       @contest.slate_id = prefilled_slate.id
       @default_sport = sport_for_slate(prefilled_slate)
     end
+    @contest.slate ||= @slates_for_contest.first
+    @contest.starts_at ||= default_start_for_slate(@contest.slate)
   end
 
   # Admin matrix view: slates × contest types. Each cell shows how many
@@ -48,7 +51,7 @@ class ContestsController < ApplicationController
   # pre-filled with that slate + tier. Makes it visually obvious which
   # slate/tier combinations are missing contests.
   def generator
-    @slates = Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at)
+    @slates = contest_slate_options
     @contest_counts = Contest.group(:slate_id, :contest_type).count   # → {[slate_id, "medium"] => 2, ...}
     @contests_by_cell = Contest.includes(:entries).order(created_at: :desc).group_by { |c| [c.slate_id, c.contest_type] }
   end
@@ -1651,6 +1654,7 @@ class ContestsController < ApplicationController
       c.entry_fee_cents = config[:entry_fee_cents]
       c.max_entries     = config[:max_entries]
       c.status          = :open
+      c.starts_at       ||= default_start_for_slate(c.slate)
     end
   end
 
@@ -1662,6 +1666,7 @@ class ContestsController < ApplicationController
     Contest.new(
       name:         payload[:name],
       slug:         payload[:slug],
+      slate_id:     payload[:slate_id],
       contest_type: payload[:contest_type],
       starts_at:    payload[:starts_at],
       entry_fee_cents: payload[:entry_fee_cents],
@@ -1976,6 +1981,14 @@ class ContestsController < ApplicationController
 
   def contest_params
     params.require(:contest).permit(:name, :slug, :slate_id, :contest_type, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
+  end
+
+  def contest_slate_options
+    Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at)
+  end
+
+  def default_start_for_slate(slate)
+    slate&.first_game_starts_at || slate&.starts_at
   end
 
   # Best-effort sport derivation from a slate's name. Slate/Team don't carry

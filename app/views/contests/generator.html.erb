@@ -179,7 +179,7 @@
             <tr class="<%= slate_idx.even? ? 'bg-page' : 'bg-surface-alt/30' %> border-b border-subtle hover:bg-surface-alt/60 transition">
               <td class="px-4 py-4 align-top">
                 <div class="font-semibold text-heading"><%= slate.name %></div>
-                <div class="text-xs text-secondary mt-0.5">locks <%= slate.starts_at.strftime("%b %-d, %Y · %H:%M %Z") %></div>
+                <div class="text-xs text-secondary mt-0.5">starts <%= slate.starts_at.strftime("%b %-d, %Y · %H:%M %Z") %></div>
                 <div class="text-xs text-muted mt-0.5"><%= slate.slate_matchups.count %> matchups available</div>
               </td>
               <% Contest.selectable_formats.each do |tier, config| %>

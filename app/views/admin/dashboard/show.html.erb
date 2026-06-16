@@ -7,7 +7,7 @@
   </div>
 
   <%# ── Quick actions — external tools + common admin destinations ──────── %>
-  <div class="grid grid-cols-4 gap-3">
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
     <%# LogRocket — brand purple + rocket so it pops vs the neutral cards. The
         brand hex is a one-off inline style (arbitrary hexes aren't in the
         Tailwind build). %>
@@ -23,6 +23,8 @@
           icon: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" %>
     <%= render "admin/dashboard/quick_action", url: admin_pending_transactions_path, label: "Treasury", subtitle: "cosign queue",
           icon: "M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" %>
+    <%= render "admin/dashboard/quick_action", url: admin_models_path, label: "Models", subtitle: "users, teams, arenas",
+          icon: "M3.75 6.75A2.25 2.25 0 0 1 6 4.5h3.879a2.25 2.25 0 0 1 1.591.659l1.061 1.061c.422.422.994.659 1.591.659H18A2.25 2.25 0 0 1 20.25 9v8.25A2.25 2.25 0 0 1 18 19.5H6a2.25 2.25 0 0 1-2.25-2.25V6.75Z" %>
     <%= render "admin/dashboard/quick_action", url: admin_hub_path, label: "Link Hub", subtitle: "all admin links",
           icon: "M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25a2.25 2.25 0 0 1-2.25-2.25v-2.25Z" %>
   </div>

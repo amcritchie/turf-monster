@@ -365,6 +365,8 @@ Rails.application.routes.draw do
     # any global setting that doesn't fit on a per-record edit form.
     get   "dashboard", to: "dashboard#show",   as: :dashboard
     patch "dashboard", to: "dashboard#update"
+    get "models", to: "models#index", as: :models
+    get "models/:key", to: "models#show", as: :model
     # Link-preview (og:image) defaults — SiteSetting singleton. Text fields
     # save via the normal patch; the image is an immediate cropper save (its
     # own multipart endpoint, mirroring the contest banner flow).

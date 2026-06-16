@@ -48,7 +48,7 @@
       </div>
 
       <div class="mb-5" x-data="contestLockPicker({ utcIso: '<%= @contest.starts_at&.iso8601 %>' })">
-        <label class="block text-sm text-secondary mb-2 font-medium">Locks At</label>
+        <label class="block text-sm text-secondary mb-2 font-medium">Starts At</label>
         <input type="hidden" name="contest[starts_at]" id="contest_starts_at">
         <input type="hidden" name="contest[locks_at_date_selected]" id="locks_at_date_selected">
         <input type="hidden" name="contest[locks_at_time_selected]" id="locks_at_time_selected">
@@ -109,7 +109,7 @@
             <input type="time" x-model="lockTime" @change="sync()" class="input-field">
           </div>
         </div>
-        <p class="text-xs text-muted mt-1">When the contest locks and stops accepting entries.</p>
+        <p class="text-xs text-muted mt-1">When play starts and the contest stops accepting entries.</p>
       </div>
 
       <div class="mb-6">

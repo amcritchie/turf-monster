@@ -285,8 +285,9 @@ the browser or available via mobile deep link.
   combination"`. User must change at least one pick.
 - **Per-user entry limit.** `Contest#max_entries_per_user` (3 for Turf
   Totals) enforced inside `user.with_lock` at `:149`.
-- **Lock window crossed during signing.** `Entry#confirm_onchain!:135-137`
-  raises `"Contest has locked — entries closed"` after `contest.locks_at`.
+- **Start window crossed during signing.** `Entry#confirm_onchain!:135-137`
+  raises `"Contest has locked — entries closed"` after `contest.starts_in_at`
+  (the legacy `locks_at` alias still points at the same effective timestamp).
   Prelaunch audit H7 fix — closes the staggered-kickoff info-edge attack.
 - **CreateOnchainUserAccountJob failure.** Logs `[username] ...failed
   user=#{id}` and `raise`s for Sidekiq retry

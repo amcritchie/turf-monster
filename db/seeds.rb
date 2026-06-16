@@ -72,14 +72,20 @@ TEAMS_DATA = [
 
 teams = {}
 TEAMS_DATA.each do |data|
-  team = Team.find_or_create_by!(slug: data[:name].parameterize) do |t|
-    t.name = data[:name]
-    t.short_name = data[:short_name]
-    t.location = data[:location]
-    t.emoji = data[:emoji]
-    t.color_primary = data[:color_primary]
-    t.color_secondary = data[:color_secondary]
-  end
+  team = Team.find_or_initialize_by(slug: data[:name].parameterize)
+  team.assign_attributes(
+    name: data[:name],
+    short_name: data[:short_name],
+    location: data[:location],
+    emoji: data[:emoji],
+    color_primary: data[:color_primary],
+    color_secondary: data[:color_secondary],
+    sport: "soccer",
+    league: "fifa",
+    division: "Group #{data[:group]}",
+    rivals: []
+  )
+  team.save!
   teams[data[:short_name]] = team
 end
 
@@ -634,6 +640,9 @@ end
 
   puts "  Created slate: #{slate.name} (#{slate.slate_matchups.count} matchups, ranked)"
 end
+
+# ─── NFL 2026 Regular Season Weeks 1-17 ───────────────────────
+load Rails.root.join("db/seeds/nfl_2026.rb")
 
 # ─── Default Slate (formula defaults record) ──────────────────
 Slate.find_or_create_by!(name: "Default")

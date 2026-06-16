@@ -12,7 +12,7 @@
 
     Locals:
       target        (Time|nil) — the timestamp to count down to
-      label         (String)   — shown beside the digits, e.g. "Locks in"
+      label         (String)   — shown beside the digits, e.g. "Starts In"
       done_label    (String)   — shown once passed, e.g. "🔒 Entries closed"
       tone          (String)   — "yellow" (lock) | "orange" (conclusion)
       on_done_modal (String?)  — modal id to open the instant the timer crosses
@@ -24,7 +24,7 @@
       bare          (Bool?)    — drop the bordered pill (no border/bg/padding);
                                  just the inline digits + label (default false)
       label_after   (Bool?)    — render the label AFTER the digits instead of
-                                 before, e.g. "7d 14h 29m 34s Until Lock"
+                                 before, e.g. "7d 14h 29m 34s Starts In"
                                  (default false)
       emphasize     (Bool?)    — size the two leading units up to the "N/M
                                  Entries" size and hide m/s on mobile above an
@@ -111,7 +111,7 @@
       <%# Inter-unit spacing is a flex `gap` on the container, not per-unit
           margins — flex only spaces BETWEEN rendered items, so a hidden leading
           (d==0) or trailing (m/s hidden on mobile) unit leaves no stray gap
-          before "Until Lock". %>
+          before "Starts In". %>
       <span class="font-mono text-heading tabular-nums inline-flex items-baseline gap-[0.5em]">
         <% units.each do |u| %>
           <%# Units that bind :class own their own display; the rest are inline-flex. %>

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_12_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_15_000005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -40,6 +40,20 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_12_000000) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "arenas", force: :cascade do |t|
+    t.string "slug", null: false
+    t.string "name", null: false
+    t.string "location"
+    t.string "city"
+    t.string "state"
+    t.string "country"
+    t.string "timezone"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "address"
+    t.index ["slug"], name: "index_arenas_on_slug", unique: true
   end
 
   create_table "cdp_ramp_transactions", force: :cascade do |t|
@@ -502,7 +516,25 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_12_000000) do
     t.string "color_secondary"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "color_text_light", default: false, null: false
+    t.string "sport"
+    t.string "league"
+    t.string "conference"
+    t.string "division"
+    t.jsonb "rivals", default: [], null: false
+    t.string "team_website"
+    t.string "coaches_url"
+    t.string "hashtag"
+    t.string "hashtag2"
+    t.string "x_handle"
+    t.string "home_arena_slug"
+    t.string "mascot"
+    t.string "logo_url"
+    t.string "logo_path"
+    t.string "logo_source"
+    t.index ["home_arena_slug"], name: "index_teams_on_home_arena_slug"
     t.index ["slug"], name: "index_teams_on_slug", unique: true
+    t.index ["sport", "league"], name: "index_teams_on_sport_and_league"
   end
 
   create_table "theme_settings", force: :cascade do |t|

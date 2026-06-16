@@ -1,0 +1,19 @@
+test_stadium:
+  slug: test-stadium
+  name: Test Stadium
+  address: 1 Test Way
+  location: Test City, TS
+  city: Test City
+  state: TS
+  country: USA
+  timezone: America/Denver
+
+neutral_venue:
+  slug: neutral-venue
+  name: Neutral Venue
+  address: 99 Neutral Road
+  location: Neutral City, NC
+  city: Neutral City
+  state: NC
+  country: USA
+  timezone: America/New_York

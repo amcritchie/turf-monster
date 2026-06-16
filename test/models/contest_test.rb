@@ -304,14 +304,16 @@ class ContestTest < ActiveSupport::TestCase
     assert_not_equal a.slug, b.slug # slugs still distinct — that's the unique key
   end
 
-  test "lock_time_display formats starts_at" do
+  test "start_time_display formats starts_in_at" do
     @contest.starts_at = Time.new(2026, 6, 11, 12, 0, 0)
-    assert_match(/Locks June 11, 2026/, @contest.lock_time_display)
+    assert_match(/Starts June 11, 2026/, @contest.start_time_display)
+    assert_equal @contest.start_time_display, @contest.lock_time_display
   end
 
-  test "lock_time_display returns TBD when no starts_at" do
+  test "start_time_display returns TBD when no contest or slate start exists" do
     @contest.starts_at = nil
-    assert_equal "TBD", @contest.lock_time_display
+    @contest.slate.update!(starts_at: nil)
+    assert_equal "TBD", @contest.start_time_display
   end
 
   test "active_entry_count counts only active and complete entries" do

@@ -1,20 +1,20 @@
-<%# OPSEC-046 impersonation banner. Server-rendered, sticky, and deliberately
-    JS-free: button_to emits a native form POST (with a hidden _method=delete),
-    so the "Return" escape hatch works even if Alpine/Turbo never load. Rendered
-    by application.html.erb only when impersonating?. Colours are inline (amber→red
-    gradient) so they survive regardless of Tailwind's used-class compilation.
-    z-[130] sits above the navbar's z-[125] so the bar is always reachable. %>
-<div class="sticky top-0 z-[130] w-full"
-     style="background: linear-gradient(90deg, #b91c1c 0%, #d97706 100%); color: #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.25);">
-  <div class="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm">
-    <span class="min-w-0 truncate">
-      Acting as <strong><%= current_user.display_name %></strong><span class="hidden sm:inline" style="opacity:0.85;"> &mdash; admin impersonation</span>
-    </span>
-    <%= button_to "Return to #{true_user.display_name}",
-                  admin_stop_impersonating_path,
-                  method: :delete,
-                  form_class: "shrink-0",
-                  class: "inline-flex items-center font-semibold rounded px-3 py-1 whitespace-nowrap",
-                  style: "background:#ffffff; color:#b91c1c;" %>
-  </div>
-</div>
+<%# OPSEC-046 impersonation banner. Server-rendered and deliberately JS-free:
+    button_to emits a native form POST (with a hidden _method=delete), so the
+    "Return" escape hatch works even if Alpine/Turbo never load. %>
+<% message = capture do %>
+  Acting as <strong><%= current_user.display_name %></strong><span class="hidden sm:inline" style="opacity:0.85;"> - admin impersonation</span>
+<% end %>
+<% actions = capture do %>
+  <%= button_to "Return to #{true_user.display_name}",
+                admin_stop_impersonating_path,
+                method: :delete,
+                form_class: "shrink-0",
+                class: "inline-flex items-center font-semibold rounded px-3 py-1 whitespace-nowrap",
+                style: "background:#ffffff; color:#b91c1c;" %>
+<% end %>
+
+<%= render "shared/app_banner",
+           tone: :impersonation,
+           density: :normal,
+           message: message,
+           actions: actions %>
