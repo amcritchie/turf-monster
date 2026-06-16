@@ -43,7 +43,7 @@ mint=open, yellow=locked (DERIVED time-gate, not a status — `Contest#locked?`)
 
 ## Button System
 
-CSS component classes in `application.tailwind.css`:
+CSS component classes in `app/assets/tailwind/application.css`:
 - `.btn` (base), `.btn-primary` (green/white), `.btn-secondary` (violet/white), `.btn-outline` (border/transparent), `.btn-warning` (orange/white), `.btn-danger` (red), `.btn-google` (white/hardcoded gray-700 — uses `color: #374151` for dark mode compat)
 - Size modifiers: `.btn-sm`, `.btn-lg`
 - Disabled state built into `.btn` base
@@ -81,7 +81,7 @@ Uses `outline` (not border) for selection highlight — avoids layout shift. Dyn
 - Params: `default_text`, `hold_text`, `success_text`, `error_text`, `duration`, `hold_id`, `guard`, `on_success`, `validate`, `validate_at`
 - The `on_success` callback sets the final state via `setHoldSuccess()` or `setHoldError()`
 - Renders in both desktop + mobile cart (2 DOM elements, differentiated by `hold_id`)
-- **CSS**: All hold button styles (`.hold-btn`, state classes, keyframes) live in `application.tailwind.css` using CSS variables (`--color-cta`, `--color-danger`, `--color-page`). Duration passed via inline `style="--duration: Xms"`.
+- **CSS**: All hold button styles (`.hold-btn`, state classes, keyframes) live in `app/assets/tailwind/application.css` using CSS variables (`--color-cta`, `--color-danger`, `--color-page`). Duration passed via inline `style="--duration: Xms"`.
 - **JS**: Inline in the partial (uses ERB interpolation for callbacks). Not extracted to importmap.
 
 ### Hold Validation
@@ -373,7 +373,7 @@ Do move pure helper logic into modules when it does not participate in early `x-
 - **Body class**: `<body>` gets `.dev-mode` class when active — use `.dev-mode .your-class` for CSS-only debug visuals
 
 ### Debug Color Classes (`dm-*`)
-Reusable CSS classes in `application.tailwind.css` that show colored backgrounds only when dev mode is active. Each uses 75% opacity so overlapping components blend visually. Just add the class to any element — no Alpine bindings needed.
+Reusable CSS classes in `app/assets/tailwind/application.css` that show colored backgrounds only when dev mode is active. Each uses 75% opacity so overlapping components blend visually. Just add the class to any element — no Alpine bindings needed.
 
 | Class | Color | RGB |
 |-------|-------|-----|
@@ -394,7 +394,7 @@ Reusable CSS classes in `application.tailwind.css` that show colored backgrounds
 - **Current uses**:
   - Debug color classes (`dm-*`): layout boundary visualization on navbar/user nav components (see table above)
   - Hidden UI reveals: leaderboard entry debug details, seeds bar "Replay" link, XP slate "Replay" link (all via `x-show="$store.devMode"`)
-  - CSS hook: `.dev-mode .nudge-debug { display: block; }` in `application.tailwind.css`
+  - CSS hook: `.dev-mode .nudge-debug { display: block; }` in `app/assets/tailwind/application.css`
 - **Adding new debug tools**: Use `x-show="$store.devMode" x-cloak` for Alpine-toggled elements. For layout debugging, add a `dm-*` class to the element — no other changes needed.
 
 ## Seeds XP Bar (`_slate_progress_xp.html.erb`)
@@ -409,7 +409,7 @@ Reusable CSS classes in `application.tailwind.css` that show colored backgrounds
 - Entry confirmation dispatches `navbar-seeds-update` custom event with seeds detail
 
 ## Login Page SSO
-When SSO session available, blur overlay covers the entire card (`absolute inset-0 z-10, rounded-2xl`). The SSO "Continue as" button sits above the blur (`relative z-20`). Click-to-reveal fades out the blur (500ms transition) and focuses the email field. Uses `.backdrop-overlay` CSS class (defined in `application.tailwind.css`).
+When SSO session available, blur overlay covers the entire card (`absolute inset-0 z-10, rounded-2xl`). The SSO "Continue as" button sits above the blur (`relative z-20`). Click-to-reveal fades out the blur (500ms transition) and focuses the email field. Uses `.backdrop-overlay` CSS class (defined in `app/assets/tailwind/application.css`).
 
 ## Contest Show Layout
 - Seeds progress bar and invite card rendered side-by-side on desktop (`flex gap-4 flex-wrap items-stretch` with `flex-1 basis-[300px]`), stacked on mobile.

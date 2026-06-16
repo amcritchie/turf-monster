@@ -69,7 +69,7 @@ group :test do
   gem "simplecov", require: false
 end
 gem "dotenv-rails", groups: [:development, :test]
-gem "tailwindcss-rails", "~> 2.7"
+gem "tailwindcss-rails", "~> 4.5"
 # Sidekiq + scheduled jobs (Reconciler cron, ATA ensure jobs, deposit jobs)
 gem "sidekiq-cron", "~> 1.12"
 
@@ -78,7 +78,7 @@ gem "sidekiq-cron", "~> 1.12"
 gem "sentry-ruby"
 gem "sentry-rails"
 
-gem "studio-engine", "~> 0.5"
+gem "studio-engine", "~> 0.6"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
 # 0.4.7 adds Solana::Transaction.cosign_wire + Client#simulate_transaction for the

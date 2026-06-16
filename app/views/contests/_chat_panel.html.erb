@@ -8,7 +8,7 @@
 <% can_post = logged_in? && contest.chat_enabled? && contest.chat_participant?(current_user) %>
 
 <%# .chat-admin*, .chat-message-in, .chat-kbd, .chat-live-ping, .chat-scroll-fade
-    + their @keyframes live in application.tailwind.css (migrated 2026-05-24). %>
+    + their @keyframes live in app/assets/tailwind/application.css (migrated 2026-05-24). %>
 <%# chatPanelPop — one-shot scale pulse to draw attention to the chat when the
     contest quest card lands on its "send your first message" step (the questCard
     factory dispatches quest-chat-active). Reuses the seedsCardPop easing/shape so
