@@ -228,12 +228,13 @@ class User < ApplicationRecord
     username.present?
   end
 
-  def claim_parked_username!
-    return false unless assign_parked_username
+  def claim_parked_identity!
+    return false unless assign_parked_identity
 
     save! if persisted?
     true
   end
+  alias_method :claim_parked_username!, :claim_parked_identity!
 
   # Username changes are on-chain instructions against the UserAccount PDA,
   # so we need a connected wallet. We ALSO gate on contest_entered? — the
@@ -590,7 +591,7 @@ class User < ApplicationRecord
   # "pick a username" step (the username's master record is on-chain).
   def ensure_username
     return if username.present?
-    return if assign_parked_username
+    return if assign_parked_identity && username.present?
 
     # Studio::UsernameGenerator emits "fruit-animal(-animal)" names that can
     # exceed the model's 30-char limit (length: { in: 3..30 }) — which
@@ -605,14 +606,36 @@ class User < ApplicationRecord
     self.username = (candidate || Studio::UsernameGenerator.generate.to_s)[0, 30]
   end
 
-  def assign_parked_username
-    parked = User.parked_username_for(email: email, wallet: web3_solana_address.presence || web2_solana_address)
-    return false if parked.blank?
-    return false if username.present? && username.casecmp?(parked)
-    return false if User.reserved_username?(parked) && !admin?
-    return false unless User.username_available_for?(parked, user: self)
+  def assign_parked_identity
+    identity = User.parked_identity_for(email: email, wallet: web3_solana_address.presence || web2_solana_address)
+    return false unless identity
 
-    self.username = parked
+    changed = false
+    parked_role = identity[:role].presence
+    if parked_role.present? && role != parked_role
+      self.role = parked_role
+      changed = true
+    end
+
+    parked_name = identity[:name].presence
+    if parked_name.present? && (name.blank? || name == "anon")
+      self.name = parked_name
+      changed = true
+    end
+
+    parked_email = identity[:email].presence
+    if parked_email.present? && email.blank? && User.where("LOWER(email) = ?", parked_email.downcase).where.not(id: id).none?
+      self.email = parked_email
+      changed = true
+    end
+
+    parked_username = identity[:username].presence
+    return changed if parked_username.blank?
+    return changed if username.present? && username.casecmp?(parked_username)
+    return changed if User.reserved_username?(parked_username) && role != "admin"
+    return changed unless User.username_available_for?(parked_username, user: self)
+
+    self.username = parked_username
     true
   end
 

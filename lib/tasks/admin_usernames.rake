@@ -20,7 +20,7 @@ namespace :admin do
   desc "Idempotently claim parked kickoff usernames in the DB by wallet (DRY_RUN=1 to preview)"
   task claim_usernames: :environment do
     kickoff = User::PARKED_IDENTITIES.each_with_object({}) do |identity, claims|
-      claims[identity.fetch(:wallet)] = identity.fetch(:username)
+      claims[identity.fetch(:wallet)] = identity
     end.freeze
 
     dry_run = ENV["DRY_RUN"].present?
@@ -29,7 +29,8 @@ namespace :admin do
 
     onchain_owed = []
 
-    kickoff.each do |wallet, username|
+    kickoff.each do |wallet, identity|
+      username = identity.fetch(:username)
       label = "#{username.ljust(10)} #{wallet[0, 4]}…#{wallet[-4, 4]}"
 
       user = User.find_by(web3_solana_address: wallet) || User.find_by(web2_solana_address: wallet)
@@ -39,7 +40,11 @@ namespace :admin do
       end
 
       if user.username&.casecmp?(username)
-        puts "  OK      #{label} — already claimed by #{user.slug}"
+        changed = false
+        changed = user.claim_parked_identity! unless dry_run
+        verb = changed ? "CLAIMED" : "OK"
+        detail = changed ? "identity fields repaired for #{user.slug}" : "already claimed by #{user.slug}"
+        puts "  #{verb.ljust(7)} #{label} — #{detail}"
         onchain_owed << [user, username]
         next
       end
@@ -58,7 +63,7 @@ namespace :admin do
 
       begin
         previous = user.username
-        user.update!(username: username)
+        user.claim_parked_identity!
         puts "  CLAIMED #{label} — #{user.slug}: \"#{previous}\" -> \"#{username}\""
         onchain_owed << [user, username]
       rescue StandardError => e

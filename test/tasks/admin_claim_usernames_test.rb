@@ -43,8 +43,10 @@ class AdminClaimUsernamesTaskTest < ActiveSupport::TestCase
 
     assert_equal "mcritchie", @alex.reload.username
     assert_equal "alex",      @bot.reload.username
-    assert_equal "mason",     @mason.reload.username # already claimed, untouched
+    assert_equal "mason",     @mason.reload.username # already claimed
     assert_equal "turf",      @house.reload.username
+    assert_equal "admin",     @alex.role
+    assert_equal "admin",     @bot.role
 
     assert_match(/CLAIMED\s+mcritchie/, out)
     assert_match(/CLAIMED\s+alex/, out)
@@ -52,6 +54,19 @@ class AdminClaimUsernamesTaskTest < ActiveSupport::TestCase
     assert_match(/On-chain set_username still owed/, out)
     assert_match(/v0\.25 admin init path/, out)            # house account's path
     assert_match(/owner signs via \/account/, out)         # Phantom-owned rows
+  end
+
+  test "repairs parked role and email when username was already claimed" do
+    users(:alex).update!(email: "fixture-admin@example.com")
+    user = User.create!(username: "mcritchie", web3_solana_address: ALEX_WALLET)
+
+    out = run_task
+
+    assert_match(/CLAIMED\s+mcritchie/, out)
+    user.reload
+    assert_equal "admin", user.role
+    assert_equal "alex@mcritchie.studio", user.email
+    assert_equal "Mr. McRitchie", user.name
   end
 
   test "second run is a no-op (idempotent)" do

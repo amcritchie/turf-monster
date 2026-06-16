@@ -29,15 +29,19 @@ class UserTest < ActiveSupport::TestCase
     user = User.create!(web3_solana_address: wallet)
 
     assert_equal "mcritchie", user.username
+    assert_equal "admin", user.role
+    assert_equal "Mr. McRitchie", user.name
   end
 
   test "new email account claims parked username before generating a random one" do
     user = User.create!(email: "alexbot@mcritchie.studio")
 
     assert_equal "alex", user.username
+    assert_equal "admin", user.role
+    assert_equal "Alex", user.name
   end
 
-  test "existing bad username can be repaired from parked wallet claim" do
+  test "existing bad identity can be repaired from parked wallet claim" do
     wallet = User.parked_identity_for(email: "alex@mcritchie.studio").fetch(:wallet)
     user = User.create!(email: "fresh-admin-wallet@example.com",
                         username: "dawning-cypress",
@@ -45,6 +49,8 @@ class UserTest < ActiveSupport::TestCase
 
     assert user.claim_parked_username!
     assert_equal "mcritchie", user.reload.username
+    assert_equal "admin", user.role
+    assert_equal "Mr. McRitchie", user.name
   end
 
   test "parked username falls back to generated username when claim is already taken" do
@@ -55,6 +61,7 @@ class UserTest < ActiveSupport::TestCase
 
     assert user.username.present?
     refute_equal "mcritchie", user.username
+    assert_equal "admin", user.role
   end
 
   test "auto-generated username is capped at the 30-char model limit even when the generator returns a long name" do
