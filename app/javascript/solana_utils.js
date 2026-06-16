@@ -27,11 +27,12 @@ export function solanaNetworkInfo() {
   var env = (body.dataset && body.dataset.appEnvironment) || '';
   var label = cluster === 'mainnet-beta' ? 'Mainnet' : (cluster === 'devnet' ? 'Devnet' : 'Strange Network');
   var expected = env === 'production' ? 'mainnet-beta' : 'devnet';
+  var envLabels = { qa: 'QA', production: 'Production', development: 'Development', test: 'Test' };
   return {
     cluster: cluster,
     environment: env,
     networkLabel: label,
-    environmentLabel: env ? (env.charAt(0).toUpperCase() + env.slice(1)) : 'Unknown',
+    environmentLabel: envLabels[env] || (env ? (env.charAt(0).toUpperCase() + env.slice(1)) : 'Unknown'),
     expectedCluster: expected,
     mismatch: !cluster || cluster !== expected || (cluster !== 'mainnet-beta' && cluster !== 'devnet')
   };

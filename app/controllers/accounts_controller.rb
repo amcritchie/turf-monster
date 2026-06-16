@@ -484,8 +484,10 @@ class AccountsController < ApplicationController
     user.update_column(:username_changed_at, Time.current)
     return nil unless user.solana_connected?
 
-    result = Solana::Vault.new.grant_seeds(
-      wallet_address: user.solana_address, amount: Solana::Vault.new.seeds_for_quest(:username), kind: :username
+    vault = nil
+    vault = Solana::Vault.new
+    result = vault.grant_seeds(
+      wallet_address: user.solana_address, amount: vault.seeds_for_quest(:username), kind: :username
     )
     {
       seeds_earned: result[:seeds_earned],
@@ -493,7 +495,36 @@ class AccountsController < ApplicationController
       seeds_level:  result[:seeds_level]
     }
   rescue => e
+    if seed_grant_already_exists_error?(e)
+      payload = current_seed_payload(user, vault: vault)
+      if payload
+        Rails.logger.info "[quest][username] seed grant already existed for user=#{user.id}; returned seed snapshot"
+        return payload
+      end
+    end
+
     Rails.logger.warn "[quest][username] seed grant deferred for user=#{user.id} " \
+                      "(#{e.class}: #{e.message.to_s[0, 140]})"
+    nil
+  end
+
+  def seed_grant_already_exists_error?(error)
+    message = "#{error.class}: #{error.message}"
+    message.match?(/custom program error:\s*0x0\b|account .*already in use|already initialized|AccountAlreadyInitialized/i)
+  end
+
+  def current_seed_payload(user, vault: nil)
+    return nil unless user.solana_connected?
+
+    vault ||= Solana::Vault.new
+    seeds_total = vault.sync_balance(user.solana_address)&.dig(:seeds).to_i
+    {
+      seeds_total: seeds_total,
+      seeds_level: User.level_for(seeds_total),
+      seeds_reconciled: true
+    }
+  rescue => e
+    Rails.logger.warn "[quest][username] seed snapshot failed for user=#{user.id} " \
                       "(#{e.class}: #{e.message.to_s[0, 140]})"
     nil
   end

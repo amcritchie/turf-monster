@@ -2508,6 +2508,10 @@ module Solana
 
     def decode_season(account)
       data = Base64.decode64(account.dig("account", "data", 0))
+      if data.bytesize < SEASON_LEN
+        raise "Season account #{account['pubkey']} has #{data.bytesize} bytes; expected #{SEASON_LEN}"
+      end
+
       offset = 8
       season_id, offset = Borsh.decode_u32(data, offset)
       name_bytes = data[offset, 32]; offset += 32

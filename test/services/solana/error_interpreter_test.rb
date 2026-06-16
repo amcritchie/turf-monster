@@ -86,6 +86,13 @@ class Solana::ErrorInterpreterTest < ActiveSupport::TestCase
     assert r[:log]
   end
 
+  test "0xbbb AccountDidNotDeserialize on season tells admin to create a valid-season contest" do
+    r = interp("AnchorError caused by account: season. Error Code: AccountDidNotDeserialize. Error Number: 3003.")
+    assert_nil r[:blocker]
+    assert r[:log]
+    assert_match(/on-chain season is unavailable/i, r[:message])
+  end
+
   test "network errors return toast, no blocker" do
     r = interp("blockhash not found")
     assert_nil r[:blocker]

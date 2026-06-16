@@ -6,6 +6,18 @@ class User < ApplicationRecord
   # on this email, never the username.
   TURF_HOUSE_EMAIL = "turf@mcritchie.studio".freeze
 
+  # Stable identities whose usernames are parked before the generic generator
+  # runs. These are keyed by verified email or wallet ownership so a fresh DB,
+  # QA reset, or unseeded wallet login does not mint a random fruit-animal name
+  # for a known operator wallet/email.
+  PARKED_IDENTITIES = [
+    { email: "alex@mcritchie.studio",    name: "Mr. McRitchie",   username: "mcritchie", role: "admin", wallet: "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr" },
+    { email: "alexbot@mcritchie.studio", name: "Alex",            username: "alex",      role: "admin", wallet: "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" },
+    { email: "mason@mcritchie.studio",   name: "Mason McRitchie", username: "mason",     role: "user",  wallet: "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR" },
+    { email: "mack@mcritchie.studio",    name: "Mack McRitchie",  username: "mack",      role: "user",  wallet: "foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds" },
+    { email: TURF_HOUSE_EMAIL,           name: "Turf Monster",    username: "turf",      role: "admin", wallet: "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" }
+  ].freeze
+
   # Rails mirror of turf-vault's on-chain reserved-prefix list — keep in sync
   # with RESERVED_PREFIXES in turf-vault
   # programs/turf_vault/src/instructions/set_username.rs (v0.15.1, audit C2).
@@ -84,6 +96,29 @@ class User < ApplicationRecord
     str.present? && str.match?(URI::MailTo::EMAIL_REGEXP) && str.match?(/\.[a-zA-Z]{2,}\z/)
   end
 
+  def self.parked_identity_for(email: nil, wallet: nil)
+    normalized_email = email.to_s.strip.downcase.presence
+    normalized_wallet = wallet.to_s.strip.presence
+    return nil if normalized_email.blank? && normalized_wallet.blank?
+
+    PARKED_IDENTITIES.find do |identity|
+      (normalized_email.present? && identity[:email].to_s.downcase == normalized_email) ||
+        (normalized_wallet.present? && identity[:wallet].to_s == normalized_wallet)
+    end
+  end
+
+  def self.parked_username_for(email: nil, wallet: nil)
+    parked_identity_for(email: email, wallet: wallet)&.fetch(:username, nil)
+  end
+
+  def self.username_available_for?(username, user: nil)
+    return false if username.blank?
+
+    scope = where("LOWER(username) = ?", username.to_s.downcase)
+    scope = scope.where.not(id: user.id) if user&.id
+    !scope.exists?
+  end
+
   # OPSEC-005: from_omniauth now refuses to silently link a freshly-arrived
   # Google identity to an unverified-email password user. Caller must pass
   # `email_verified: true` (set by GoogleOauthValidator after re-checking
@@ -100,7 +135,10 @@ class User < ApplicationRecord
   def self.from_omniauth(auth, email_verified: false)
     # Returning Google user — already linked by (provider, uid)
     user = find_by(provider: auth.provider, uid: auth.uid)
-    return user if user
+    if user
+      user.claim_parked_username!
+      return user
+    end
 
     return :email_not_verified unless email_verified
 
@@ -116,6 +154,7 @@ class User < ApplicationRecord
         uid: auth.uid,
         email_verified_at: existing.email_verified_at || Time.current
       )
+      existing.claim_parked_username!
       return existing
     end
 
@@ -188,6 +227,14 @@ class User < ApplicationRecord
   def profile_complete?
     username.present?
   end
+
+  def claim_parked_identity!
+    return false unless assign_parked_identity
+
+    save! if persisted?
+    true
+  end
+  alias_method :claim_parked_username!, :claim_parked_identity!
 
   # Username changes are on-chain instructions against the UserAccount PDA,
   # so we need a connected wallet. We ALSO gate on contest_entered? — the
@@ -544,6 +591,8 @@ class User < ApplicationRecord
   # "pick a username" step (the username's master record is on-chain).
   def ensure_username
     return if username.present?
+    return if assign_parked_identity && username.present?
+
     # Studio::UsernameGenerator emits "fruit-animal(-animal)" names that can
     # exceed the model's 30-char limit (length: { in: 3..30 }) — which
     # intermittently broke signups + CI (a generated name happened to be >30).
@@ -555,6 +604,39 @@ class User < ApplicationRecord
     candidate = (1..5).lazy.map { Studio::UsernameGenerator.generate.to_s }
                       .find { |n| n.length.between?(3, 30) && !User.reserved_username?(n) }
     self.username = (candidate || Studio::UsernameGenerator.generate.to_s)[0, 30]
+  end
+
+  def assign_parked_identity
+    identity = User.parked_identity_for(email: email, wallet: web3_solana_address.presence || web2_solana_address)
+    return false unless identity
+
+    changed = false
+    parked_role = identity[:role].presence
+    if parked_role.present? && role != parked_role
+      self.role = parked_role
+      changed = true
+    end
+
+    parked_name = identity[:name].presence
+    if parked_name.present? && (name.blank? || name == "anon")
+      self.name = parked_name
+      changed = true
+    end
+
+    parked_email = identity[:email].presence
+    if parked_email.present? && email.blank? && User.where("LOWER(email) = ?", parked_email.downcase).where.not(id: id).none?
+      self.email = parked_email
+      changed = true
+    end
+
+    parked_username = identity[:username].presence
+    return changed if parked_username.blank?
+    return changed if username.present? && username.casecmp?(parked_username)
+    return changed if User.reserved_username?(parked_username) && role != "admin"
+    return changed unless User.username_available_for?(parked_username, user: self)
+
+    self.username = parked_username
+    true
   end
 
   # Eager on-chain UserAccount creation at signup — see CreateOnchainUserAccountJob.

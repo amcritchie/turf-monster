@@ -20,6 +20,26 @@
 //   initialSaving:   gallery-only — start in the "Saving…" state for the
 //                    modals-index preview (no real request runs)
 
+function seedFanoutPayloadPresent(data) {
+  return !!(data && (
+    data.seeds_earned ||
+    data.seeds_total !== undefined && data.seeds_total !== null
+  ));
+}
+
+function applySeedFanout(data, opts) {
+  if (!seedFanoutPayloadPresent(data)) return;
+  try {
+    if (window.applyStateFanoutWhenReady) {
+      window.applyStateFanoutWhenReady("seeds", data, opts);
+    } else if (window.StateFanout) {
+      window.StateFanout.apply("seeds", data, opts);
+    }
+  } catch (e) {
+    // never block on an animation hiccup
+  }
+}
+
 function usernameRenameForm(opts) {
   opts = opts || {};
   return {
@@ -96,9 +116,7 @@ function usernameRenameForm(opts) {
         window.completeQuest(data, { to: "chat" }); // unified celebration: badge confetti → bar → advance
         try { this.$store.modals.close(); } catch (e) {}
       } else {
-        if (data && data.seeds_earned && window.StateFanout) {
-          try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) { /* never block on an animation hiccup */ }
-        }
+        applySeedFanout(data, { source: "quest-username", dispatchDelay: 200 });
         try {
           this.$store.modals.swap("quest-success", {
             seeds_earned: data && data.seeds_earned,

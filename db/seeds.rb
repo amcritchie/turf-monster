@@ -663,9 +663,6 @@ SEASON_ID = 1
 SEASON_NAME = "World Cup 2026"
 SEASON_SCHEDULE = Solana::Vault::SEASON_DEFAULT_SCHEDULE # [25, 19, 14, 10, 7]
 
-SeasonConfig.set_current!(SEASON_ID)
-puts "  Set SeasonConfig.current_season_id = #{SEASON_ID}"
-
 begin
   vault = Solana::Vault.new
   if vault.get_season(SEASON_ID)
@@ -675,10 +672,23 @@ begin
     puts "  Created on-chain Season #{SEASON_ID} \"#{SEASON_NAME}\" #{SEASON_SCHEDULE.inspect}"
     puts "    TX: #{result[:signature]}"
   end
+
+  SeasonConfig.set_current!(SEASON_ID)
+  puts "  Set SeasonConfig.current_season_id = #{SEASON_ID}"
 rescue => e
   puts "  ⚠️  Could not bootstrap on-chain Season: #{e.message}"
-  puts "     Deploy turf-vault first: cd ../turf-vault && anchor deploy --provider.cluster devnet"
-  puts "     Then re-run `bin/rails db:seed` to finish the on-chain bootstrap."
+  fallback_season = begin
+    Array(vault&.list_seasons).max_by { |s| s[:season_id].to_i }
+  rescue
+    nil
+  end
+  if fallback_season
+    SeasonConfig.set_current!(fallback_season[:season_id])
+    puts "     Using existing on-chain Season #{fallback_season[:season_id]} as current instead."
+  else
+    puts "     Deploy turf-vault first: cd ../turf-vault && anchor deploy --provider.cluster devnet"
+    puts "     Then re-run `bin/rails db:seed` to finish the on-chain bootstrap."
+  end
 end
 
 # ─── Landing pages (marketing funnels) ───────────────────────

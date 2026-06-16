@@ -106,6 +106,18 @@ module Solana
         )
       end
 
+      # AccountDidNotDeserialize (3003 / 0xbbb) on the pinned season means the
+      # contest was created against a missing/old Season PDA. The user cannot
+      # repair that with a wallet retry; an admin needs to select/create a valid
+      # season and create a fresh contest.
+      if stripped.match?(/account:\s*season/i) &&
+         stripped.match?(/0xbbb|\b3003\b|accountdidnotdeserialize/i)
+        return ok(
+          message: "This contest's on-chain season is unavailable. Create a new contest after selecting a valid season.",
+          log: true
+        )
+      end
+
       # AccountDidNotDeserialize (3003 / 0xbbb) — IDL drift. Operational
       # smoke alarm. User can't fix it; we log and show a generic message.
       if stripped.match?(/0xbbb|\b3003\b|accountdidnotdeserialize/i)

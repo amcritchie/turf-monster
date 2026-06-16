@@ -51,6 +51,7 @@ class SolanaSessionsController < ApplicationController
 
     rescue_and_log(target: user) do
       user.save! if user.new_record?
+      user.claim_parked_username!
       cookies.delete(:reference) if is_new
       set_app_session(user)
       session[:onchain] = true

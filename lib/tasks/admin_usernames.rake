@@ -1,6 +1,6 @@
 # Kickoff username claims — Track 1 (DB-only, no program changes).
 #
-# Idempotently claims the four kickoff usernames in the DB for the rows
+# Idempotently claims the parked kickoff usernames in the DB for the rows
 # holding the matching wallet addresses (web3_solana_address first — these
 # are Phantom-owned wallets — falling back to web2_solana_address).
 #
@@ -17,14 +17,11 @@
 #   bin/rails admin:claim_usernames            # apply
 #   DRY_RUN=1 bin/rails admin:claim_usernames  # report only, no writes
 namespace :admin do
-  desc "Idempotently claim the kickoff usernames (alex/mcritchie/mason/turf) in the DB by wallet (DRY_RUN=1 to preview)"
+  desc "Idempotently claim parked kickoff usernames in the DB by wallet (DRY_RUN=1 to preview)"
   task claim_usernames: :environment do
-    kickoff = {
-      "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" => "alex",
-      "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr" => "mcritchie",
-      "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR" => "mason",
-      "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" => "turf"
-    }.freeze
+    kickoff = User::PARKED_IDENTITIES.each_with_object({}) do |identity, claims|
+      claims[identity.fetch(:wallet)] = identity
+    end.freeze
 
     dry_run = ENV["DRY_RUN"].present?
     puts dry_run ? "admin:claim_usernames — DRY RUN (no writes)" : "admin:claim_usernames"
@@ -32,7 +29,8 @@ namespace :admin do
 
     onchain_owed = []
 
-    kickoff.each do |wallet, username|
+    kickoff.each do |wallet, identity|
+      username = identity.fetch(:username)
       label = "#{username.ljust(10)} #{wallet[0, 4]}…#{wallet[-4, 4]}"
 
       user = User.find_by(web3_solana_address: wallet) || User.find_by(web2_solana_address: wallet)
@@ -42,7 +40,11 @@ namespace :admin do
       end
 
       if user.username&.casecmp?(username)
-        puts "  OK      #{label} — already claimed by #{user.slug}"
+        changed = false
+        changed = user.claim_parked_identity! unless dry_run
+        verb = changed ? "CLAIMED" : "OK"
+        detail = changed ? "identity fields repaired for #{user.slug}" : "already claimed by #{user.slug}"
+        puts "  #{verb.ljust(7)} #{label} — #{detail}"
         onchain_owed << [user, username]
         next
       end
@@ -61,7 +63,7 @@ namespace :admin do
 
       begin
         previous = user.username
-        user.update!(username: username)
+        user.claim_parked_identity!
         puts "  CLAIMED #{label} — #{user.slug}: \"#{previous}\" -> \"#{username}\""
         onchain_owed << [user, username]
       rescue StandardError => e
