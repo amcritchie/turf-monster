@@ -2039,6 +2039,24 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     json
   end
 
+  test "new contest form shows readable on-chain seasons" do
+    log_in_as(admin_phantom)
+    SeasonConfig.set_current!(2)
+    vault = FakeVault.new(seasons: [
+      { season_id: 2, name: "Season 2" },
+      { season_id: 3, name: "Season 3" }
+    ])
+
+    Solana::Vault.stub :new, vault do
+      get new_contest_path
+    end
+
+    assert_response :success
+    assert_select "select#contest_season_id"
+    assert_select "option[selected][value='2']", text: /Season 2 \(Current\)/
+    assert_select "option[value='3']", text: "Season 3"
+  end
+
   # Full Phantom create → finalize flow (steps 1 + 3; the on-chain sign in
   # between is the client's job; cosign/broadcast is server-side). Returns { create_json:, contest: } where
   # contest is the persisted record. Solana verification is stubbed.
@@ -2150,6 +2168,23 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert json["params_token"].present?, "create must issue a params_token for rebuild + finalize"
     assert_equal 1, vault.create_contest_calls.length
     assert_equal false, vault.create_contest_calls.first[:params][:admin_signs]
+    assert_equal 2, vault.create_contest_calls.first[:params][:season_id]
+  end
+
+  test "create uses the season selected in the form" do
+    log_in_as(admin_phantom)
+    SeasonConfig.set_current!(1)
+    vault = FakeVault.new(usdc_balance: 100.0, season: { season_id: 2 })
+
+    Solana::Vault.stub :new, vault do
+      post contests_path,
+        params: { contest: { name: "Selected Season Cup", slate_id: slates(:one).id, contest_type: "tiny", season_id: 2 } },
+        as: :json
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert_equal true, json["success"]
     assert_equal 2, vault.create_contest_calls.first[:params][:season_id]
   end
 

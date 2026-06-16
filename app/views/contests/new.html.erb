@@ -86,6 +86,28 @@
           { id: "contest_slate_id", class: "input-field", "@change": "selectSlate($event.target.value)" } %>
       </div>
 
+      <div class="mb-5">
+        <label for="contest_season_id" class="block text-sm text-secondary mb-2 font-medium">Season</label>
+        <% season_choices = Array(@season_options).map do |season|
+             season_id = season[:season_id].to_i
+             name = season[:name].presence || "Season #{season_id}"
+             label = season_id == SeasonConfig.current_season_id.to_i ? "#{name} (Current)" : name
+             [label, season_id]
+           end %>
+        <% if season_choices.any? %>
+          <%= f.select :season_id,
+            options_for_select(season_choices, @contest.season_id),
+            {},
+            { id: "contest_season_id", class: "input-field" } %>
+        <% else %>
+          <%= f.number_field :season_id, id: "contest_season_id", class: "input-field", min: 1,
+            placeholder: "Set a season at /admin/seasons" %>
+        <% end %>
+        <p class="text-xs text-muted mt-1">
+          Entries use this on-chain season's seed schedule. Use a readable devnet season for QA contests.
+        </p>
+      </div>
+
       <div class="mb-6" x-data="{ format: '<%= @contest.contest_type || 'small' %>' }">
         <label class="block text-sm text-secondary mb-3 font-medium">Format</label>
         <%= f.hidden_field :contest_type, "x-model": "format" %>

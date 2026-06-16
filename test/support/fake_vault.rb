@@ -21,7 +21,7 @@ class FakeVault
 
   def initialize(fail_after: nil, starting_sequence: 0, tokens: [], signature_statuses: {},
                  usdc_balance: nil, usdc_balance_raises: false, account_infos: {}, signatures: {},
-                 send_raises: nil, season: { season_id: 1 }, season_raises: nil)
+                 send_raises: nil, season: { season_id: 1 }, season_raises: nil, seasons: nil)
     @fail_after = fail_after
     @starting_sequence = starting_sequence
     @tokens = tokens
@@ -33,6 +33,7 @@ class FakeVault
     @send_raises = send_raises               # send_transaction fault (offramp send tests)
     @season = season
     @season_raises = season_raises
+    @seasons = seasons || Array(season)
     @mint_calls = []
     @transfer_calls = []
     @enter_calls = []
@@ -86,6 +87,10 @@ class FakeVault
     raise @season_raises if @season_raises
 
     @season
+  end
+
+  def list_seasons(commitment: "confirmed")
+    @seasons
   end
 
   # Used by ApplicationController#fetch_navbar_hydrate (USDC/USDT/SOL read).

@@ -44,6 +44,8 @@ class ContestsController < ApplicationController
     end
     @contest.slate ||= @slates_for_contest.first
     @contest.starts_at ||= default_start_for_slate(@contest.slate)
+    @contest.season_id ||= SeasonConfig.current_season_id
+    @season_options = onchain_season_options_for_form
   end
 
   # Admin matrix view: slates × contest types. Each cell shows how many
@@ -1769,6 +1771,21 @@ class ContestsController < ApplicationController
     "Season #{sid} is not readable on-chain. Set a valid season at /admin/seasons before creating on-chain contests."
   end
 
+  def onchain_season_options_for_form
+    seasons = Array(Solana::Vault.new.list_seasons)
+    return seasons if seasons.any?
+
+    current_id = SeasonConfig.current_season_id.to_i
+    current_id.positive? ? [{ season_id: current_id, name: "Season #{current_id}" }] : []
+  rescue StandardError => e
+    Rails.logger.warn(
+      "[ContestsController#onchain_season_options_for_form] failed " \
+      "error=#{e.class}: #{e.message}"
+    )
+    current_id = SeasonConfig.current_season_id.to_i
+    current_id.positive? ? [{ season_id: current_id, name: "Season #{current_id}" }] : []
+  end
+
   def insufficient_usdc_error(contest, creator, vault)
     prize_cents = contest.guaranteed_prize_cents
     return nil unless prize_cents.positive?
@@ -2021,7 +2038,7 @@ class ContestsController < ApplicationController
   end
 
   def contest_params
-    params.require(:contest).permit(:name, :slug, :slate_id, :contest_type, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
+    params.require(:contest).permit(:name, :slug, :slate_id, :contest_type, :season_id, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
   end
 
   def contest_slate_options
