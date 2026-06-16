@@ -53,6 +53,30 @@ class AccountsUsernameSeedsTest < ActionDispatch::IntegrationTest
     assert_equal 1, fake.grant_calls.length, "exactly one grant across two renames"
   end
 
+  test "an already-existing on-chain username grant returns a seed snapshot for navbar reconciliation" do
+    log_in_as @user
+    fake = FakeVault.new
+    fake.grant_seeds_error = RuntimeError.new(
+      "Transaction simulation failed: Error processing Instruction 0: custom program error: 0x0"
+    )
+    fake.sync_balance_seeds = 460
+
+    Solana::Vault.stub :new, fake do
+      post update_username_account_path, params: { username: "renamed-snapshot" }, as: :json
+    end
+
+    assert_response :success
+    body = response.parsed_body
+    assert body["success"]
+    assert_equal "renamed-snapshot", @user.reload.username
+    assert_nil body["seeds_earned"], "a duplicate on-chain grant must not claim a fresh award"
+    assert_equal 460, body["seeds_total"], "the client can reconcile the navbar from the latest total"
+    assert_equal User.level_for(460), body["seeds_level"]
+    assert_equal true, body["seeds_reconciled"]
+    assert @user.username_changed_at.present?, "the username quest still completes"
+    assert_equal 1, fake.grant_calls.length
+  end
+
   test "the plain account update cannot change the username (off-chain bypass blocked)" do
     # account_params permits only :name and :email — a username smuggled through
     # PATCH /account is dropped, so it can't bypass the on-chain rename, the

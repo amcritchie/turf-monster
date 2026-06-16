@@ -44,7 +44,10 @@ export function apply(stateType, payload, opts) {
 //   (phantom-direct), and any future flow that awards seeds (e.g.
 //   level-up promos, referral rewards).
 // Payload (from the server JSON response):
-//   { seeds_earned, seeds_total, seeds_level? }
+//   { seeds_earned?, seeds_total, seeds_level? }
+//   - `seeds_earned` is preferred for a precise animation delta.
+//   - `seeds_total` alone is accepted as a reconciliation snapshot; the handler
+//     derives a positive delta from the cached navbar total when possible.
 //   - `seeds_level` is optional; the handler derives it when missing.
 // Required opts:
 //   - seedsPerLevel — currently 100 (User::SEEDS_PER_LEVEL). Passed through
@@ -58,21 +61,41 @@ export function apply(stateType, payload, opts) {
 //   navbar-seeds-update — detail varies by level-up flag; the seeds_bar's
 //   handleSeedsUpdate() handler reads `levelUp`, `level`/`oldLevel`/
 //   `newLevel`, `oldPct`, and `progress`.
+function cachedSeedsTotal() {
+  try {
+    var cached = JSON.parse(localStorage.getItem("seedsNavbar") || "null");
+    if (!cached || cached.seeds_total === undefined || cached.seeds_total === null) return null;
+    var total = Number(cached.seeds_total);
+    return Number.isFinite(total) ? total : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 register("seeds", function (d, source, opts) {
-  if (!d || !d.seeds_earned) {
+  d = d || {};
+  const hasEarned = d.seeds_earned !== undefined && d.seeds_earned !== null;
+  const hasTotal = d.seeds_total !== undefined && d.seeds_total !== null;
+
+  if (!hasEarned && !hasTotal) {
     console.log("[state-fanout][seeds] skipped", {
       source: source,
-      reason: "no seeds_earned",
+      reason: "no seed payload",
       payload: d
     });
     return;
   }
 
   const perLevel = opts.seedsPerLevel || 100;
-  const total = d.seeds_total || 0;
-  const earned = d.seeds_earned || 0;
+  const total = Number(d.seeds_total || 0);
+  const cachedTotal = cachedSeedsTotal();
+  const earned = hasEarned
+    ? Number(d.seeds_earned || 0)
+    : Math.max(0, total - (cachedTotal === null ? total : cachedTotal));
   const level = d.seeds_level || (Math.floor(total / perLevel) + 1);
-  const oldSeeds = Math.max(0, total - earned);
+  const oldSeeds = earned > 0
+    ? Math.max(0, total - earned)
+    : Math.max(0, cachedTotal === null ? total : cachedTotal);
   const oldLevel = Math.floor(oldSeeds / perLevel) + 1;
   const newPct = Math.round((total % perLevel) / perLevel * 100);
   const towardNext = total % perLevel;
@@ -83,6 +106,7 @@ register("seeds", function (d, source, opts) {
     source: source,
     earned: earned,
     total: total,
+    cachedTotal: cachedTotal,
     oldLevel: oldLevel,
     newLevel: level,
     leveledUp: leveledUp,

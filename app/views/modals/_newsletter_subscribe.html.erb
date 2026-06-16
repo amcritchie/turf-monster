@@ -39,8 +39,8 @@
            if (!resp) { this.saving = false; return; }
            var data = await resp.json();
            if (!data.success) throw new Error(data.error || 'Could not join the newsletter.');
-           if (data.seeds_earned && window.StateFanout) {
-             try { window.StateFanout.apply('seeds', data, { source: 'newsletter-modal', dispatchDelay: 300 }); } catch (e) {}
+           if (window.seedFanoutPayloadPresent && window.seedFanoutPayloadPresent(data)) {
+             window.applyStateFanoutWhenReady('seeds', data, { source: 'newsletter-modal', dispatchDelay: 300 });
            }
            try { window.dispatchEvent(new CustomEvent('newsletter-state-changed', { detail: { subscribed: true } })); } catch (e) {}
            this.$store.modals.swap('newsletter-success', { seeds_earned: data.seeds_earned || 0 });

@@ -356,8 +356,11 @@ class FakeVault
 
   # --- Reading on-chain state (seeds + balance helpers) ---
 
+  attr_writer :sync_balance_seeds
+
   def sync_balance(_wallet)
-    { balance_dollars: 0.0, seeds: 0, level: 1 }
+    seeds = (@sync_balance_seeds || 0).to_i
+    { balance_dollars: 0.0, seeds: seeds, level: User.level_for(seeds) }
   end
 
   def seeds_for_entry(_entry_number)
@@ -499,11 +502,13 @@ class FakeVault
   #
   #   quest_seed_reward → override what seeds_for_quest returns (default 25)
   #   grant_seeds_total → override the running on-chain total (default = amount)
-  attr_writer :quest_seed_reward, :grant_seeds_total
+  attr_writer :quest_seed_reward, :grant_seeds_total, :grant_seeds_error
 
   def grant_seeds(wallet_address:, amount:, kind:, invitee: nil)
     @grant_calls ||= []
     @grant_calls << { wallet: wallet_address, amount: amount, kind: kind, invitee: invitee }
+    raise @grant_seeds_error if @grant_seeds_error
+
     total = (@grant_seeds_total || amount).to_i
     {
       signature:    "fake-grant-#{kind}-#{SecureRandom.hex(2)}",

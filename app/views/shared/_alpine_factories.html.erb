@@ -19,6 +19,33 @@
   Add a new factory: paste it below as `window.factoryName = function(...) {...}`.
 %>
 <script>
+  window.seedFanoutPayloadPresent = function (payload) {
+    return !!(payload && (
+      payload.seeds_earned ||
+      payload.seeds_total !== undefined && payload.seeds_total !== null
+    ));
+  };
+
+  window.applyStateFanoutWhenReady = function (stateType, payload, opts) {
+    opts = opts || {};
+    var attempts = opts.readyAttempts || 8;
+    var delay = opts.readyDelay || 100;
+    var fanoutOpts = {};
+    Object.keys(opts).forEach(function (key) {
+      if (key !== "readyAttempts" && key !== "readyDelay") fanoutOpts[key] = opts[key];
+    });
+
+    function run(remaining) {
+      if (window.StateFanout && typeof window.StateFanout.apply === "function") {
+        try { window.StateFanout.apply(stateType, payload, fanoutOpts); } catch (e) {}
+        return;
+      }
+      if (remaining > 0) setTimeout(function () { run(remaining - 1); }, delay);
+    }
+
+    run(attempts);
+  };
+
   // === questNewsletter — contest quest mission 2 (newsletter join) =====
   window.questNewsletter = function (opts) {
     opts = opts || {};
@@ -71,8 +98,9 @@
   //   2. seeds bar progresses (+ level-up animation) via StateFanout
   //   3. after the bar settles, the quest card advances — current fades + slides
   //      right, next fades in + pops (quest-advance event + _quest_card CSS)
-  // Confetti + advance fire even on a deferred grant (the quest IS done); only
-  // the bar tick-up is gated on seeds_earned.
+  // Confetti + advance fire even on a deferred grant (the quest IS done); the
+  // bar tick-up runs when the server returns either a fresh award or a seed
+  // snapshot that is ahead of the navbar cache.
   window.completeQuest = function (payload, opts) {
     opts = opts || {};
     // Beat the celebration out so it doesn't all fire the instant the modal
@@ -82,9 +110,9 @@
     setTimeout(function () { try { window.fireQuestBadgeConfetti(); } catch (e) {} }, BEAT);
     // beat 2 (+0.6s) — seeds bar climbs (+ level-up). StateFanout's own delay is
     // 0 now; the beat owns the timing.
-    if (payload && payload.seeds_earned && window.StateFanout) {
+    if (window.seedFanoutPayloadPresent(payload)) {
       setTimeout(function () {
-        try { window.StateFanout.apply("seeds", payload, { source: "quest-complete", dispatchDelay: 0 }); } catch (e) {}
+        window.applyStateFanoutWhenReady("seeds", payload, { source: "quest-complete", dispatchDelay: 0 });
       }, BEAT * 2);
     }
     // beat 3 — after the bar settles (advanceDelay), advance the card: current
@@ -565,8 +593,8 @@
           window.completeQuest(data, { to: "chat" }); // unified celebration: badge confetti → bar → advance
           try { this.$store.modals.close(); } catch (e) {}
         } else {
-          if (data && data.seeds_earned && window.StateFanout) {
-            try { window.StateFanout.apply("seeds", data, { source: "quest-username", dispatchDelay: 200 }); } catch (e) {}
+          if (window.seedFanoutPayloadPresent(data)) {
+            window.applyStateFanoutWhenReady("seeds", data, { source: "quest-username", dispatchDelay: 200 });
           }
           try {
             this.$store.modals.swap("quest-success", {
