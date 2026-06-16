@@ -6,6 +6,19 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "signin page shows the QA non-production banner when QA_ENV is enabled" do
+    original = ENV["QA_ENV"]
+    ENV["QA_ENV"] = "true"
+
+    get signin_path
+
+    assert_response :success
+    assert_match(/QA Environment/, response.body)
+    assert_match(/Non-production/, response.body)
+  ensure
+    original.nil? ? ENV.delete("QA_ENV") : ENV["QA_ENV"] = original
+  end
+
   # An already-logged-in viewer hitting /signin is bounced to their account by
   # redirect_if_authenticated, instead of a dead-end form. (/login + /signup
   # 301 to /signin first, so the guard lives on /signin.)

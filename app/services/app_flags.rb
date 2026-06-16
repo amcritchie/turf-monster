@@ -23,6 +23,12 @@ module AppFlags
     ENV["ENABLE_CDP_RAMP"].to_s.strip.downcase == "true"
   end
 
+  # True for stable QA apps that run Rails in production mode but must still
+  # identify themselves as non-production review targets.
+  def self.qa_environment?
+    ENV["QA_ENV"].to_s.strip.downcase == "true"
+  end
+
   # True when the legal-age attestation checkbox gates account creation
   # (signin page, auth modal, wallet-connect modal — shared/_age_attestation).
   # Parked OFF for the first contest (operator call, 2026-06-10); set
