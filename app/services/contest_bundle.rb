@@ -101,10 +101,11 @@ module ContestBundle
   # broadcast the create_contest TX, persist the Contest (skipping the
   # server-funded on-chain callback — the on-chain PDA already exists) and
   # its LandingPage. Idempotent.
-  def self.finalize_phantom!(key, creator, contest_pda, tx_signature)
+  def self.finalize_phantom!(key, creator, contest_pda, tx_signature, season_id: nil)
     spec = spec_for(key)
     contest = Contest.find_or_create_by!(slug: spec[:contest][:slug]) do |c|
       apply_contest_attrs(c, spec[:contest], creator)
+      c.season_id             = season_id if season_id.present?
       c.onchain_contest_id    = contest_pda
       c.onchain_tx_signature  = tx_signature
       # generate_bundle built the TX from onchain_params — the USDT fee
@@ -138,6 +139,7 @@ module ContestBundle
     contest.max_entries     = format[:max_entries]
     contest.starts_at       = slate&.starts_at
     contest.user            = creator
+    contest.season_id      ||= SeasonConfig.current_season_id
     contest
   end
 

@@ -13,6 +13,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     @m4 = slate_matchups(:m4)
     @m5 = slate_matchups(:m5)
     @m6 = slate_matchups(:m6)
+    SeasonConfig.set_current!(1)
   end
 
   # --- update_banner tests ---
@@ -1023,6 +1024,28 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "enter_contest", ptx.tx_type
     assert_equal entry, ptx.target
     assert_equal @user.web3_solana_address, ptx.initiator_address
+  end
+
+  test "prepare_entry rejects an on-chain contest pinned to an unavailable season before signing" do
+    @user.update!(web3_solana_address: "Web3PrepBadSeason#{SecureRandom.hex(4)}")
+    @contest.update!(onchain_contest_id: "onchain_bad_season", season_id: 7)
+
+    log_in_as_onchain(@user)
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    vault = FakeVault.new(season: nil)
+    assert_no_difference "PendingTransaction.count" do
+      Solana::Vault.stub :new, vault do
+        post prepare_entry_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_equal false, body["success"]
+    assert_match(/Season 7 is not initialized/i, body["error"])
+    assert_empty vault.enter_calls
   end
 
   test "prepare_entry rejects when the session was not Phantom-authenticated" do
@@ -2091,9 +2114,28 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_empty vault.create_contest_calls
   end
 
+  test "create blocks before Phantom signing when the current on-chain season is unavailable" do
+    log_in_as(admin_phantom)
+    SeasonConfig.set_current!(7)
+    vault = FakeVault.new(usdc_balance: 100.0, season: nil)
+
+    Solana::Vault.stub :new, vault do
+      post contests_path,
+        params: { contest: { name: "Season Missing Cup", slate_id: slates(:one).id, contest_type: "tiny" } },
+        as: :json
+    end
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_equal false, json["success"]
+    assert_match(/Season 7 is not initialized/i, json["error"])
+    assert_empty vault.create_contest_calls
+  end
+
   test "create builds the unsigned TX when a readable balance covers the prize pool" do
     log_in_as(admin_phantom)
-    vault = FakeVault.new(usdc_balance: 100.0) # $100 covers tiny's $45
+    SeasonConfig.set_current!(2)
+    vault = FakeVault.new(usdc_balance: 100.0, season: { season_id: 2 }) # $100 covers tiny's $45
 
     Solana::Vault.stub :new, vault do
       post contests_path,
@@ -2108,6 +2150,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert json["params_token"].present?, "create must issue a params_token for rebuild + finalize"
     assert_equal 1, vault.create_contest_calls.length
     assert_equal false, vault.create_contest_calls.first[:params][:admin_signs]
+    assert_equal 2, vault.create_contest_calls.first[:params][:season_id]
   end
 
   test "finalize rejects a signed create tx that does not match the issued contest payload" do
@@ -2240,8 +2283,9 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
 
   test "rebuild_create_tx re-issues a fresh unsigned TX from the create params_token" do
     log_in_as(admin_phantom)
+    SeasonConfig.set_current!(2)
     token = nil
-    build_vault = FakeVault.new(usdc_balance: 100.0)
+    build_vault = FakeVault.new(usdc_balance: 100.0, season: { season_id: 2 })
 
     Solana::Vault.stub :new, build_vault do
       post contests_path,
@@ -2251,10 +2295,12 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     end
     assert token.present?
 
+    SeasonConfig.set_current!(3)
     # The rebuild call must NOT re-run the precheck (no balance read) — it
-    # only re-issues the admin-cosigned TX over a fresh blockhash. A vault with
-    # NO balance configured (would block in precheck) still succeeds here.
-    rebuild_vault = FakeVault.new
+    # only re-issues the admin-cosigned TX over a fresh blockhash, using the
+    # season id bound into the signed create token. A vault with NO balance
+    # configured (would block in precheck) still succeeds here.
+    rebuild_vault = FakeVault.new(season: { season_id: 2 })
     Solana::Vault.stub :new, rebuild_vault do
       post rebuild_create_tx_contests_path, params: { params_token: token }, as: :json
     end
@@ -2264,6 +2310,7 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal true, json["success"]
     assert_equal "FAKE_TX_create_blockhash-cup-e", json["serialized_tx"]
     assert_equal 1, rebuild_vault.create_contest_calls.length
+    assert_equal 2, rebuild_vault.create_contest_calls.first[:params][:season_id]
   end
 
   test "rebuild_create_tx rejects a token issued to a different user" do

@@ -98,7 +98,10 @@ class ContestsController < ApplicationController
     key = payload[:key]
     raise "Unknown bundle" unless ContestBundle::ALL.key?(key)
 
-    derived_pda_b58 = Solana::Keypair.encode_base58(Solana::Vault.new.contest_pda(payload[:slug]).first)
+    vault = Solana::Vault.new
+    ensure_onchain_season_ready!(payload[:season_id], vault: vault)
+
+    derived_pda_b58 = Solana::Keypair.encode_base58(vault.contest_pda(payload[:slug]).first)
     raise "Contest PDA mismatch — slug=#{payload[:slug]}" unless params[:contest_pda] == derived_pda_b58
 
     verify_solana_transaction!(
@@ -108,7 +111,8 @@ class ContestsController < ApplicationController
       writable: derived_pda_b58
     )
 
-    result = ContestBundle.finalize_phantom!(key, current_user, derived_pda_b58, params[:tx_signature])
+    result = ContestBundle.finalize_phantom!(key, current_user, derived_pda_b58, params[:tx_signature],
+                                             season_id: payload[:season_id])
     render json: {
       success:  true,
       redirect: generator_contests_path,
@@ -185,6 +189,7 @@ class ContestsController < ApplicationController
     contest = build_contest_from_payload(payload)
 
     vault  = Solana::Vault.new
+    ensure_onchain_season_ready!(contest.season_id, vault: vault)
     result = vault.build_create_contest(
       current_user.web3_solana_address,
       payload[:slug],
@@ -216,6 +221,7 @@ class ContestsController < ApplicationController
 
     contest = build_contest_from_payload(payload)
     vault = Solana::Vault.new
+    ensure_onchain_season_ready!(contest.season_id, vault: vault)
 
     vault.assert_create_contest_cosign_safe!(
       params[:signed_tx],
@@ -693,6 +699,7 @@ class ContestsController < ApplicationController
       end
 
       vault = Solana::Vault.new
+      ensure_onchain_season_ready!(@contest.season_id, vault: vault)
 
       # Assign entry slot by probing the chain for a free index — guards against
       # the orphaned-PDA collision a contest Reset leaves behind (the System
@@ -1655,6 +1662,7 @@ class ContestsController < ApplicationController
       c.max_entries     = config[:max_entries]
       c.status          = :open
       c.starts_at       ||= default_start_for_slate(c.slate)
+      c.season_id       ||= SeasonConfig.current_season_id
     end
   end
 
@@ -1671,7 +1679,8 @@ class ContestsController < ApplicationController
       starts_at:    payload[:starts_at],
       entry_fee_cents: payload[:entry_fee_cents],
       max_entries:     payload[:max_entries],
-      status:          :open
+      status:          :open,
+      season_id:       payload[:season_id]
     )
   end
 
@@ -1691,6 +1700,7 @@ class ContestsController < ApplicationController
       user:                       current_user,
       onchain_contest_id:         derived_pda_b58,
       onchain_tx_signature:       tx_signature,
+      season_id:                  payload[:season_id],
       # The create_contest TX just verified was built from onchain_params,
       # which funds entry_fee_by_currency slot 1 (USDT) alongside slot 0.
       accepts_usdt:               true
@@ -1727,7 +1737,36 @@ class ContestsController < ApplicationController
       return "On-chain Contest PDA #{pda_b58.first(8)}… already exists for this slug. Pick a different slug."
     end
 
+    if (season_error = onchain_season_error(contest.season_id, vault: vault))
+      return season_error
+    end
+
     insufficient_usdc_error(contest, creator, vault)
+  end
+
+  def ensure_onchain_season_ready!(season_id, vault:)
+    if (error = onchain_season_error(season_id, vault: vault))
+      raise error
+    end
+  end
+
+  def onchain_season_error(season_id, vault:)
+    sid = season_id.to_i
+    return "No active season configured. Set one at /admin/seasons before creating on-chain contests." if sid.zero?
+
+    season = vault.get_season(sid)
+    return nil if season.present? && season[:season_id].to_i == sid
+    if season.present?
+      return "Season #{sid} returned on-chain season #{season[:season_id].inspect}. Set a valid season at /admin/seasons before creating on-chain contests."
+    end
+
+    "Season #{sid} is not initialized on-chain. Set a valid season at /admin/seasons before creating on-chain contests."
+  rescue StandardError => e
+    Rails.logger.warn(
+      "[ContestsController#onchain_season_error] season_id=#{sid} unreadable " \
+      "error=#{e.class}: #{e.message}"
+    )
+    "Season #{sid} is not readable on-chain. Set a valid season at /admin/seasons before creating on-chain contests."
   end
 
   def insufficient_usdc_error(contest, creator, vault)
@@ -1787,6 +1826,7 @@ class ContestsController < ApplicationController
       locks_at_timezone_selected: contest.locks_at_timezone_selected,
       entry_fee_cents:            contest.entry_fee_cents,
       max_entries:                contest.max_entries,
+      season_id:                  contest.season_id,
       user_id:                    creator.id,
       creator_pubkey:             creator.web3_solana_address
     }
@@ -1811,6 +1851,7 @@ class ContestsController < ApplicationController
          .generate({
            key:            key,
            slug:           contest.slug,
+           season_id:      contest.season_id,
            user_id:        creator.id,
            creator_pubkey: creator.web3_solana_address
          }, expires_in: ONCHAIN_BUNDLE_TOKEN_TTL)
