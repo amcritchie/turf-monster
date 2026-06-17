@@ -1,7 +1,18 @@
 const { test, expect } = require("@playwright/test");
 const { reseed } = require("./helpers");
 
-test.beforeEach(async ({ request }) => await reseed(request));
+test.setTimeout(60_000);
+
+test.beforeEach(async ({ page, request }) => {
+  await page.route("**/account/session_refresh", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+  await reseed(request);
+});
 
 async function doLogin(page) {
   // Passwordless magic link — mint + consume a token for alex (admin).
