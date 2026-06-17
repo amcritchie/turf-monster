@@ -24,7 +24,7 @@
 <% plural_suffix = free_entries == 1 ? "" : "s" %>
 
 <%# .free-entry-badge / .free-entry-punch / @keyframes free-entry-punch
-    live in application.tailwind.css (migrated 2026-05-24).
+    live in app/assets/tailwind/application.css (migrated 2026-05-24).
     entryTokenBadge() Alpine factory is in app/javascript/entry_token_badge.js. %>
 <div class="relative leading-none" x-data="entryTokenBadge({ initialCount: <%= free_entries %> })">
   <button type="button"

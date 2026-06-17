@@ -19,7 +19,7 @@
     The modal's escape key + X button still close it; clicking the
     navbar no longer counts as "click outside" — acceptable trade. %>
 
-<%# Toast z-index override now lives in application.tailwind.css as CSS
+<%# Toast z-index override now lives in app/assets/tailwind/application.css as CSS
     custom properties (--studio-toast-z / --studio-toast-blur-z), read
     by studio-engine 0.4.10+. The previous inline <style> block here
     needed !important to beat the engine's old inline `style="z-index:60"`;
@@ -44,7 +44,7 @@
   <% end %>
   <%= render "shared/impersonation_banner" if !is_preview && impersonating? %>
   <%# .user-nav-col / .nav-title / .nav-logo / .nav-logo-link responsive
-      rules live in application.tailwind.css @layer utilities (migrated
+      rules live in app/assets/tailwind/application.css @layer utilities (migrated
       2026-05-24, dropped the 10 !important workarounds). %>
   <div class="flex items-center <%= is_preview ? 'py-6' : 'transition-all duration-300' %>"
        <%= ":class=\"scrolled ? 'py-2' : 'py-6'\"".html_safe unless is_preview %>>

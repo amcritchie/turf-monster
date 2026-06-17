@@ -23,7 +23,7 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
      response from `/magic_link` proves only that the send intent was accepted.
 
 **Build error: Tailwind CSS compilation**
-- Diagnosis: `assets:precompile` fails. Usually a new CSS class that references undefined variables or syntax error in `application.tailwind.css`.
+- Diagnosis: `assets:precompile` fails. Usually a new CSS class that references undefined variables or syntax error in `app/assets/tailwind/application.css`.
 - Fix: `bin/rails tailwindcss:build` locally to reproduce. Fix the CSS. Redeploy.
 
 **Build warning: Heroku selected an unpinned Node**

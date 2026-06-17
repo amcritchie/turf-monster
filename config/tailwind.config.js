@@ -26,7 +26,7 @@ const safelist = brandColors.flatMap(color => [
 
 // Level badge variants — referenced via `level-badge-<%= lvl %>` so Tailwind's
 // content scanner can't see them statically. CSS lives in
-// app/assets/stylesheets/application.tailwind.css under "── Level Badges ──".
+// app/assets/tailwind/application.css under "── Level Badges ──".
 for (let i = 1; i <= 10; i++) safelist.push(`level-badge-${i}`)
 ;['classic-5', 'classic-6'].forEach(v => safelist.push(`level-badge-${v}`))
 
