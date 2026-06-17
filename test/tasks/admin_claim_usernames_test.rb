@@ -23,8 +23,8 @@ class AdminClaimUsernamesTaskTest < ActiveSupport::TestCase
     # Mirrors prod: Alex's row holds "mcritchiee" and should become "mcritchie".
     @alex  = User.create!(email: "human@mcritchie.studio", name: "Mr. McRitchie", role: "admin",
                           username: "mcritchiee", web3_solana_address: ALEX_WALLET)
-    @bot   = User.create!(email: "bot@mcritchie.studio", name: "Alex Bot", role: "admin",
-                          username: "alex-bot-auto", web3_solana_address: ALEX_BOT_WALLET)
+    @team  = User.create!(email: "team@mcritchie.studio", name: "Team McRitchie", role: "admin",
+                          username: "team-auto", web3_solana_address: ALEX_BOT_WALLET)
     @mason = User.create!(email: "mason-task@mcritchie.studio", name: "Mason",
                           username: "mason", web3_solana_address: MASON_WALLET)
     @house = User.create!(email: User::TURF_HOUSE_EMAIL, name: "Turf Monster", role: "admin",
@@ -42,11 +42,11 @@ class AdminClaimUsernamesTaskTest < ActiveSupport::TestCase
     out = run_task
 
     assert_equal "mcritchie", @alex.reload.username
-    assert_equal "alex",      @bot.reload.username
+    assert_equal "alex",      @team.reload.username
     assert_equal "mason",     @mason.reload.username # already claimed
     assert_equal "turf",      @house.reload.username
     assert_equal "admin",     @alex.role
-    assert_equal "admin",     @bot.role
+    assert_equal "admin",     @team.role
 
     assert_match(/CLAIMED\s+mcritchie/, out)
     assert_match(/CLAIMED\s+alex/, out)
@@ -97,7 +97,7 @@ class AdminClaimUsernamesTaskTest < ActiveSupport::TestCase
     assert_match(/DRY RUN/, out)
     assert_match(/CLAIM\s+mcritchie/, out)
     assert_equal "mcritchiee", @alex.reload.username
-    assert_equal "alex-bot-auto", @bot.reload.username
+    assert_equal "team-auto", @team.reload.username
   end
 
   test "wallets with no matching user are reported as SKIP" do

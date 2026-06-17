@@ -34,11 +34,11 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test "new email account claims parked username before generating a random one" do
-    user = User.create!(email: "bot@mcritchie.studio")
+    user = User.create!(email: "team@mcritchie.studio")
 
     assert_equal "alex", user.username
     assert_equal "admin", user.role
-    assert_equal "Alex", user.name
+    assert_equal "Team McRitchie", user.name
   end
 
   test "existing bad identity can be repaired from parked wallet claim" do

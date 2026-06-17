@@ -12,7 +12,7 @@ class User < ApplicationRecord
   # for a known operator wallet/email.
   PARKED_IDENTITIES = [
     { email: "alex@mcritchie.studio",    name: "Mr. McRitchie",   username: "mcritchie", role: "admin", wallet: "7ZDJp7FUHhuceAqcW9CHe81hCiaMTjgWAXfprBM59Tcr" },
-    { email: "bot@mcritchie.studio",     name: "Alex",            username: "alex",      role: "admin", wallet: "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" },
+    { email: "team@mcritchie.studio",    name: "Team McRitchie",  username: "alex",      role: "admin", wallet: "8K81w4e6UcB7TiANhM9N8sAgijJvTxxybRi8AENRaRYd" },
     { email: "mason@mcritchie.studio",   name: "Mason McRitchie", username: "mason",     role: "user",  wallet: "CytJS23p1zCM2wvUUngiDePtbMB484ebD7bK4nDqWjrR" },
     { email: "mack@mcritchie.studio",    name: "Mack McRitchie",  username: "mack",      role: "user",  wallet: "foUuRyeibadQoGdKXZ9pBGDqmkb1jY1jYsu8dZ29nds" },
     { email: TURF_HOUSE_EMAIL,           name: "Turf Monster",    username: "turf",      role: "admin", wallet: "BLSBw8fXHzZc5pbaYCKMpMSsrtXBTbWXpUPVzMrXx9oo" }
