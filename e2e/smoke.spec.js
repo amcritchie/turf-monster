@@ -1,6 +1,12 @@
 const { test, expect } = require("@playwright/test");
 const { login, attestAge } = require("./helpers");
 
+function selectableMatchupCards(page) {
+  return page.locator(
+    '[x-data*="selectionBoard"] button[role="checkbox"]:not([disabled])'
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Index page
 // ---------------------------------------------------------------------------
@@ -10,7 +16,7 @@ test("index page loads with contest and matchup cards", async ({ page }) => {
   // / redirects to /contests/:slug; the inline matchup board renders for guests
   await expect(page.locator("body")).toContainText("Your Picks");
   // Matchup cards rendered as buttons with team names
-  const matchupCards = page.locator("button.bg-surface");
+  const matchupCards = selectableMatchupCards(page);
   await expect(matchupCards.first()).toBeVisible();
   // Should show multiplier values
   await expect(page.locator("body")).toContainText("/ Goal");
@@ -22,7 +28,7 @@ test("index page loads with contest and matchup cards", async ({ page }) => {
 
 test("guest clicking matchup card does not crash the page", async ({ page }) => {
   await page.goto("/");
-  const firstCard = page.locator("button.bg-surface").first();
+  const firstCard = selectableMatchupCards(page).first();
   await firstCard.click();
 
   // Toggle is an Alpine.js fetch — guest gets a 302/auth error but page stays.
@@ -37,11 +43,9 @@ test("login with valid credentials", async ({ page }) => {
   await login(page, "alex@mcritchie.studio", "password");
   // Username should appear in header nav. The human operator's username is
   // `mcritchie` after the 2026-06-02 naming flip (the bare `alex` username now
-  // belongs to the server bot). .filter({ hasText: "mcritchie" }) skips the
-  // dropdown's "Account" link (same href, different text) so the assertion
-  // isn't sensitive to nav DOM ordering between the dropdown and the chip.
+  // belongs to the server bot).
   await expect(
-    page.locator('a[href="/account"]').filter({ hasText: "mcritchie" }).first()
+    page.locator("[data-username-display]").filter({ hasText: "mcritchie" })
   ).toBeVisible();
 });
 
@@ -75,7 +79,7 @@ test("logged-in user can toggle selection and see cart update", async ({ page })
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
-  const firstCard = page.locator("button.bg-surface").first();
+  const firstCard = selectableMatchupCards(page).first();
   await firstCard.click();
 
   // Cart should show 1 selection
@@ -105,7 +109,7 @@ test("selection persists after page reload", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
-  const firstCard = page.locator("button.bg-surface").first();
+  const firstCard = selectableMatchupCards(page).first();
 
   // Click and wait for the toggle_selection response to ensure server persists
   const [toggleResponse] = await Promise.all([
@@ -139,7 +143,7 @@ test("selecting 6 matchups shows Hold to Confirm button", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("networkidle");
 
-  const cards = page.locator("button.bg-surface");
+  const cards = selectableMatchupCards(page);
 
   await cards.nth(0).click();
   await expect(page.locator("body")).toContainText("1 / 6");
@@ -198,7 +202,7 @@ test("user can start a second entry after confirming the first", async ({ page }
   await page.waitForLoadState("networkidle");
 
   // Select 6 matchups
-  const cards = page.locator("button.bg-surface");
+  const cards = selectableMatchupCards(page);
   for (let i = 0; i < 6; i++) {
     const blurOverlay = page.locator("div.fixed.inset-0.z-20.cursor-pointer");
     if (await blurOverlay.isVisible({ timeout: 300 }).catch(() => false)) {
