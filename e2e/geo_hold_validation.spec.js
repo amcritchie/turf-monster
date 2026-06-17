@@ -91,7 +91,7 @@ test("hold-to-confirm aborts at 1s with geo blocked modal", async ({ page }) => 
   await page.reload();
   await page.waitForLoadState("networkidle");
 
-  const cards = page.locator("button.bg-surface");
+  const cards = page.locator('[x-data*="selectionBoard"] button[role="checkbox"]:not([disabled])');
   for (let i = 0; i < 6; i++) {
     const blurOverlay = page.locator("div.fixed.inset-0.z-20.cursor-pointer");
     if (await blurOverlay.isVisible({ timeout: 300 }).catch(() => false)) {
