@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { login } = require("./helpers");
+const { login, reseed } = require("./helpers");
 
 // World Cup Survivor — entry + per-round pick flow.
 // The seeded survivor contest is the free roll and is not on-chain, so entry
@@ -7,6 +7,27 @@ const { login } = require("./helpers");
 // separately).
 
 const CONTEST = "/contests/world-cup-survivor";
+
+test.beforeEach(async ({ request }) => await reseed(request));
+
+async function verifyAge(page) {
+  const response = await page.evaluate(async () => {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+    const r = await fetch("/age/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrf,
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ date_of_birth: "1980-01-01" }),
+    });
+    return { ok: r.ok, body: await r.json() };
+  });
+
+  expect(response.ok).toBeTruthy();
+  expect(response.body.verified).toBeTruthy();
+}
 
 test("survivor contest page renders the board for a guest", async ({ page }) => {
   await page.goto(CONTEST);
@@ -23,6 +44,7 @@ test("a logged-in user can enter and make a round-1 pick", async ({ page }) => {
   // Enter via the API — the entry flow itself is unit- and devnet-tested; this
   // spec is about the page + picker UI.
   await page.goto(CONTEST);
+  await verifyAge(page);
   const entered = await page.evaluate(async () => {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
     const r = await fetch("/contests/world-cup-survivor/enter", {

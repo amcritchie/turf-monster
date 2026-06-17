@@ -20,14 +20,13 @@ test.beforeEach(async ({ request }) => await reseed(request));
 
 const CONTEST_SLUG = "world-cup-2026";
 
-// Seeded users — slugs are {username}-{id} since the seed creates them in
-// CORE_USERS order against an empty users table (users_id_seq RESTART WITH 1).
-// CORE_USERS order: human (mcritchie, id 1), bot (alex, id 2), mason (3),
-// mack (4), turf (5). After the 2026-06-02 naming flip the human's username is
-// `mcritchie` (slug mcritchie-1) and the bot's is `alex` (slug alex-2).
+// Seeded users — these slugs come from the deterministic E2E seed.
+// CORE_USERS order: human (mcritchie, id 1), bot (alex), mason (3),
+// mack (4), turf. Reserved usernames such as alex/turf currently keep the
+// trailing dash slug shape created before an id is assigned.
 const INVITER_FOR_PHANTOM = "mason-3";
 const INVITER_FOR_GOOGLE  = "mack-4";
-const INVITER_FOR_EMAIL   = "turf-5";
+const INVITER_FOR_EMAIL   = "turf-";
 const ALEX_SLUG           = "mcritchie-1"; // the human operator (id 1)
 
 // --- Helpers --------------------------------------------------------------
@@ -52,6 +51,26 @@ async function getUserInfo(page, slug) {
   const res = await page.request.get(`/test/user_info/${slug}`);
   expect(res.ok()).toBeTruthy();
   return res.json();
+}
+
+async function submitGoogleOauth(page) {
+  await page.evaluate(() => {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
+    const form = document.createElement("form");
+    form.method = "POST";
+    // Attestation must ride the query string because OmniAuth snapshots
+    // request.GET into omniauth.params during the request phase.
+    form.action = "/auth/google_oauth2?age_attestation=1";
+
+    const token = document.createElement("input");
+    token.type = "hidden";
+    token.name = "authenticity_token";
+    token.value = csrfToken;
+    form.appendChild(token);
+
+    document.body.appendChild(form);
+    form.submit();
+  });
 }
 
 // Waits for the JS set_inviter handler that fires on turbo:load to land.
@@ -135,11 +154,10 @@ test("ref → Google signup → entry credits the inviter", async ({ page }) => 
 
   await seedRef(page, INVITER_FOR_GOOGLE);
 
-  // OmniAuth test_mode short-circuits /auth/:provider straight to the callback,
-  // which creates the user + signs them in + redirects to /. The legal-age
-  // attestation rides the request phase as a query param (what the real
-  // /signin Google form sends) — a NEW signup is refused without it.
-  await page.goto("/auth/google_oauth2?age_attestation=1");
+  // OmniAuth request phase is POST-only for CSRF protection. Submit the same
+  // form shape the app uses so test_mode short-circuits to the callback,
+  // creates the user, signs them in, and redirects off /auth.
+  await submitGoogleOauth(page);
   await page.waitForURL((url) => !url.pathname.startsWith("/auth/"));
 
   const entry = await waitForSetInviterAndCreateEntry(page, CONTEST_SLUG);

@@ -1,7 +1,16 @@
 const { test, expect } = require("@playwright/test");
 const { loginAdmin, reseed } = require("./helpers");
 
-test.beforeEach(async ({ request }) => await reseed(request));
+test.beforeEach(async ({ page, request }) => {
+  await page.route("**/account/session_refresh", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+  await reseed(request);
+});
 
 test.describe("Geo Settings", () => {
   test("geo settings page loads for admin", async ({ page }) => {
@@ -37,11 +46,10 @@ test.describe("Geo Settings", () => {
     await expect(page.locator("body")).toContainText("Simulating WA");
 
     // Now the override is active — find the "Clear GEO Override" button (has btn-danger class)
-    await page.locator("button.btn-danger:has-text('Clear GEO Override')").click();
-    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Clear GEO Override" }).click();
 
     // Verify cleared
-    await expect(page.locator("body")).toContainText("GEO override cleared");
+    await expect(page.getByText("GEO override cleared.")).toBeVisible();
   });
 
   test("geo badge shows in navbar when logged in", async ({ page }) => {
@@ -80,8 +88,8 @@ test.describe("Geo Settings", () => {
     // before teardown (GeoSetting is global; reseed does not reset it, so an
     // un-awaited write here leaks geo-blocking into later specs).
     await page.goto("/admin/geo");
-    await page.locator("button.btn-danger:has-text('Clear GEO Override')").click();
-    await expect(page.locator("body")).toContainText("GEO override cleared");
+    await page.getByRole("button", { name: "Clear GEO Override" }).click();
+    await expect(page.getByText("GEO override cleared.")).toBeVisible();
 
     // Disable geoblocking — assert the flash so the DB write completes deterministically.
     await page.goto("/admin/geo");

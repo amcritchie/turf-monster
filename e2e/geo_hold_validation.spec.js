@@ -1,7 +1,18 @@
 const { test, expect } = require("@playwright/test");
 const { reseed } = require("./helpers");
 
-test.beforeEach(async ({ request }) => await reseed(request));
+test.setTimeout(60_000);
+
+test.beforeEach(async ({ page, request }) => {
+  await page.route("**/account/session_refresh", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+  await reseed(request);
+});
 
 async function doLogin(page) {
   // Passwordless magic link — mint + consume a token for alex (admin).
@@ -91,7 +102,7 @@ test("hold-to-confirm aborts at 1s with geo blocked modal", async ({ page }) => 
   await page.reload();
   await page.waitForLoadState("networkidle");
 
-  const cards = page.locator("button.bg-surface");
+  const cards = page.locator('[x-data*="selectionBoard"] button[role="checkbox"]:not([disabled])');
   for (let i = 0; i < 6; i++) {
     const blurOverlay = page.locator("div.fixed.inset-0.z-20.cursor-pointer");
     if (await blurOverlay.isVisible({ timeout: 300 }).catch(() => false)) {

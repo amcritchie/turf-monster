@@ -34,7 +34,7 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test "new email account claims parked username before generating a random one" do
-    user = User.create!(email: "alexbot@mcritchie.studio")
+    user = User.create!(email: "bot@mcritchie.studio")
 
     assert_equal "alex", user.username
     assert_equal "admin", user.role

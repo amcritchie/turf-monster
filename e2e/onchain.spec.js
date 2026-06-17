@@ -64,9 +64,9 @@ test("phantom sign-in with existing user", async ({ page }) => {
   // The human operator's username should appear in the nav (nav shows username,
   // not display name). After the 2026-06-02 naming flip the human's username is
   // `mcritchie` (the bare `alex` username now belongs to the server bot).
-  // Filter by hasText to ignore the dropdown's same-href "Account" link.
+  // Filter by hasText on the current nav display hook.
   await expect(
-    page.locator('a[href="/account"]').filter({ hasText: "mcritchie" }).first()
+    page.locator("[data-username-display]").filter({ hasText: "mcritchie" }).first()
   ).toBeVisible();
 
   // "Sign in" link should NOT be visible (proves we're authenticated)
@@ -100,7 +100,7 @@ test("phantom sign-in creates new user", async ({ page }) => {
   // — which uniquely separates the chip from the dropdown's same-href
   // "Account" link.
   const usernameChip = page
-    .locator('a[href="/account"]')
+    .locator("[data-username-display]")
     .filter({ hasText: "-" })
     .first();
   await expect(usernameChip).toBeVisible({ timeout: 3000 });
