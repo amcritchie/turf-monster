@@ -1,5 +1,7 @@
 # Security Audit — Adversarial (Lazarus-persona) Review
 
+> **ARCHIVE-ONLY AUDIT SNAPSHOT.** This adversarial May 2026 report predates later TX verification, LogRocket/session replay, auth, Solana, and release hardening. Start from `docs/SECURITY_REVIEW.md`, current app docs, and current code before reviving any finding below.
+
 **Date:** 2026-05-31  
 **Scope:** `turf-monster` (Rails app) · `turf-vault` (Anchor program) · `solana-studio` (crypto gem)  
 **Predecessor:** [`SECURITY_AUDIT_2026_05_23.md`](SECURITY_AUDIT_2026_05_23.md)  
