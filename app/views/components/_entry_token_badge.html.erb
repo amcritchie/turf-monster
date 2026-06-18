@@ -26,7 +26,7 @@
 <%# .free-entry-badge / .free-entry-punch / @keyframes free-entry-punch
     live in app/assets/tailwind/application.css (migrated 2026-05-24).
     entryTokenBadge() Alpine factory is in app/javascript/entry_token_badge.js. %>
-<div class="relative leading-none" x-data="entryTokenBadge({ initialCount: <%= free_entries %> })">
+<div class="relative flex-shrink-0 leading-none" x-data="entryTokenBadge({ initialCount: <%= free_entries %> })">
   <button type="button"
           @click="toggle()"
           title="<%= free_entries %> unconsumed entry token<%= plural_suffix %>"
@@ -35,7 +35,7 @@
           data-free-entry-badge="true"
           data-token-count="<%= free_entries %>">
     <span style="font-size: 16px; line-height: 1;">🎟️</span>
-    <span>Entry</span>
+    <span class="hidden min-[1120px]:inline">Entry</span>
   </button>
   <div x-show="open"
        @click.outside="close()"

@@ -1308,6 +1308,8 @@
    !important workarounds the inline block needed are dropped. */
   .user-nav-col {
     width: 14rem;
+    max-width: min(20rem, calc(100vw - 1rem));
+    box-sizing: border-box;
   }
   .nav-title {
     display: flex;
@@ -1321,7 +1323,7 @@
   }
   @media (min-width: 768px) {
     .user-nav-col {
-      width: 20rem;
+      width: clamp(16rem, 24vw, 20rem);
     }
   }
   @media (max-width: 767px) {
