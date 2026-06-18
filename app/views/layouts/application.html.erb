@@ -262,6 +262,8 @@
           try { return await resp.json(); } catch (e) { return { success: resp.ok }; }
         };
 
+        var gearSidebarSyncVersion = 0;
+
         function ensureGearSidebarStore() {
           if (!window.Alpine) return null;
 
@@ -281,9 +283,46 @@
         function closeGearSidebar() {
           var sidebars = ensureGearSidebarStore();
           if (sidebars) sidebars.gearOpen = false;
+          syncGearSidebarPanels(false);
         }
 
-        function toggleGearSidebar(event) {
+        function gearSidebarPanels() {
+          return document.querySelectorAll('#gear-sidebar, #gear-sidebar-mobile');
+        }
+
+        function applyGearSidebarPanelState(open) {
+          gearSidebarPanels().forEach(function(panel) {
+            if (open) {
+              panel.style.removeProperty('display');
+              panel.removeAttribute('aria-hidden');
+            } else {
+              panel.style.display = 'none';
+              panel.setAttribute('aria-hidden', 'true');
+            }
+          });
+        }
+
+        function syncGearSidebarPanels(open) {
+          var version = ++gearSidebarSyncVersion;
+          applyGearSidebarPanelState(open);
+          requestAnimationFrame(function() {
+            if (version === gearSidebarSyncVersion) applyGearSidebarPanelState(open);
+          });
+          setTimeout(function() {
+            if (version === gearSidebarSyncVersion) applyGearSidebarPanelState(open);
+          }, 0);
+        }
+
+        function handleGearSidebarClick(event) {
+          var closeTrigger = event.target.closest('[data-sidebar-panel-close="gear-sidebar"], [data-sidebar-panel-close="gear-sidebar-mobile"]');
+          if (closeTrigger) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            closeGearSidebar();
+            return;
+          }
+
           var trigger = event.target.closest('[data-gear-sidebar-trigger], [data-username-display], [data-profile-image-toggle]');
           if (!trigger) return;
           if (!trigger.matches('[aria-controls~="gear-sidebar"]')) return;
@@ -293,20 +332,34 @@
 
           event.preventDefault();
           event.stopPropagation();
+          event.stopImmediatePropagation();
           sidebars.gearOpen = !sidebars.gearOpen;
+          syncGearSidebarPanels(sidebars.gearOpen);
+        }
+
+        function handleGearSidebarKeydown(event) {
+          if (event.key === 'Escape') closeGearSidebar();
         }
 
         if (!window.__turfGearSidebarTriggerBridge) {
           window.__turfGearSidebarTriggerBridge = true;
-          document.addEventListener('turbo:load', ensureGearSidebarStore);
+          document.addEventListener('alpine:init', function() {
+            var sidebars = ensureGearSidebarStore();
+            syncGearSidebarPanels(!!(sidebars && sidebars.gearOpen));
+          });
+          document.addEventListener('turbo:load', function() {
+            var sidebars = ensureGearSidebarStore();
+            syncGearSidebarPanels(!!(sidebars && sidebars.gearOpen));
+          });
           document.addEventListener('turbo:before-cache', closeGearSidebar);
           window.addEventListener('pageshow', function(event) {
             if (event.persisted) closeGearSidebar();
           });
-          document.addEventListener('click', toggleGearSidebar, true);
+          document.addEventListener('click', handleGearSidebarClick, true);
+          document.addEventListener('keydown', handleGearSidebarKeydown, true);
         }
 
-        ensureGearSidebarStore();
+        syncGearSidebarPanels(!!(ensureGearSidebarStore() || {}).gearOpen);
 
         // Solana modal store — registered when Alpine starts
         document.addEventListener('alpine:init', function() {
