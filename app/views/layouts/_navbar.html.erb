@@ -46,18 +46,18 @@
   <%# .user-nav-col / .nav-title / .nav-logo / .nav-logo-link responsive
       rules live in app/assets/tailwind/application.css @layer utilities (migrated
       2026-05-24, dropped the 10 !important workarounds). %>
-  <div class="flex items-center <%= is_preview ? 'py-6' : 'transition-all duration-300' %>"
+  <div class="flex items-center min-w-0 <%= is_preview ? 'py-6' : 'transition-all duration-300' %>"
        <%= ":class=\"scrolled ? 'py-2' : 'py-6'\"".html_safe unless is_preview %>>
     <%# Left side: logo + nav %>
-    <div class="flex-1 px-4">
-      <div class="flex items-center gap-6">
+    <div class="flex-1 min-w-0 px-4">
+      <div class="flex items-center gap-6 min-w-0">
         <%= link_to root_path, class: "nav-logo-link inline-flex items-center gap-3 group" do %>
           <img src="/icon-192.png" alt="Turf Totals" width="48" height="48" class="nav-logo rounded-full shadow-lg <%= is_preview ? 'w-12 h-12' : 'group-hover:scale-105 transition-all duration-300' %>"
                <%= "x-bind:class=\"scrolled ? 'w-8 h-8' : 'w-12 h-12'\"".html_safe unless is_preview %>>
           <h1 class="nav-title font-extrabold text-heading tracking-tight <%= is_preview ? 'text-3xl' : 'transition-all duration-300' %>"
               <%= "x-bind:class=\"scrolled ? 'text-xl' : 'text-3xl'\"".html_safe unless is_preview %>><span class="dm-salmon">Turf</span><span class="dm-yellow text-primary">Totals</span></h1>
         <% end %>
-        <nav class="dm-teal hidden md:flex items-center gap-4">
+        <nav class="dm-teal hidden md:flex items-center gap-4 min-w-0">
           <%= link_to "Contests", contests_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
           <%= link_to "Rules", turf_totals_v1_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
           <%= link_to "Reserves", proof_of_reserves_path, class: "text-secondary hover:text-primary text-sm font-medium transition" %>
@@ -86,9 +86,9 @@
       <%# Balance link — USDC + USDT combined (display_balance). Free-entry
           tokens are surfaced by the 🎟️ badge in _user_nav (next to the
           balance), not by a second balance-style link here. %>
-      <%= link_to wallet_path, class: "dm-blue font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %><% unless balance_loading %>$<%= balance_dollars.to_i %><% end %><% end %>
+      <%= link_to wallet_path, class: "dm-blue flex-shrink-0 font-mono text-primary hover:text-primary-600 transition-all duration-300 font-bold leading-none mr-1 #{'hidden' if hide_balance}", "x-bind:class": "scrolled ? 'text-lg' : 'text-xl'", data: { balance_display: true } do %><% unless balance_loading %>$<%= balance_dollars.to_i %><% end %><% end %>
     <% end if show_user %>
-    <div class="user-nav-col dm-purple flex-shrink-0 pl-0 pr-4 md:px-4">
+    <div class="user-nav-col dm-purple flex-shrink-0 min-w-0 pl-0 pr-4 md:px-4">
       <% if show_user %>
         <%= render "components/user_nav", balance_html: balance_html %>
       <% else %>
