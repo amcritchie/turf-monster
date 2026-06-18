@@ -257,7 +257,7 @@ test("contest show page loads with the matchup board", async ({ page }) => {
   // root became the contest itself — there's no landing CTA to click anymore.)
   await page.goto("/contests/world-cup-2026");
 
-  await expect(page.locator("body")).toContainText("World Cup 2026");
+  await expect(page.locator("body")).toContainText("NFL 2026 Week 17");
   // A guest sees the inline matchup board, whose Turf Score column is "Advantage".
   await expect(page.locator("body")).toContainText("Advantage");
 });
