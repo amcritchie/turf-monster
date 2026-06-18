@@ -6,6 +6,8 @@
 
 <% link_class  = "group flex items-center gap-3 px-4 py-3 text-sm text-body hover:text-heading hover:bg-surface-alt transition font-medium" %>
 <% muted_class = "group flex items-center gap-3 px-4 py-3 text-sm text-body hover:text-heading hover:bg-surface-alt transition" %>
+<% close_action = "$store.sidebars.gearOpen = false" %>
+<% close_after_link = "setTimeout(function(){ Alpine.store('sidebars').gearOpen = false }, 0)" %>
 
 <% emoji_swap = ->(base, hover) {
      content_tag(:span, class: "nav-emoji-swap flex-shrink-0") do
@@ -16,44 +18,44 @@
 
 <% body_html = capture do %>
   <nav class="flex-1 min-h-0 overflow-y-auto py-2" aria-label="Settings links">
-    <%= link_to account_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("🙂", "✏️") %><span>My Profile</span><% end %>
-    <%= link_to my_contests_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("🏆", "⚔️") %><span>My Contests</span><% end %>
+    <%= link_to account_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("🙂", "✏️") %><span>My Profile</span><% end %>
+    <%= link_to my_contests_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("🏆", "⚔️") %><span>My Contests</span><% end %>
 
     <% nq = current_user.respond_to?(:next_quest) ? current_user.next_quest : nil %>
     <% if nq %>
       <% quest_contest_path = SeasonConfig.main_contest ? contest_path(SeasonConfig.main_contest) : contests_path %>
       <% case nq
          when :join %>
-        <%= link_to quest_contest_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("⚽️", "⚔️") %><span>Join contest</span><% end %>
+        <%= link_to quest_contest_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("⚽️", "⚔️") %><span>Join contest</span><% end %>
       <% when :username %>
-        <button type="button" @click="$store.sidebars.gearOpen = false; $store.modals.open('username')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("🤖", "✨") %><span>Pick a username</span></button>
+        <button type="button" @click="<%= close_action %>; $store.modals.open('username')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("🤖", "✨") %><span>Pick a username</span></button>
       <% when :chat %>
-        <%= link_to quest_contest_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("💬", "👋🏻") %><span>Send a message</span><% end %>
+        <%= link_to quest_contest_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("💬", "👋🏻") %><span>Send a message</span><% end %>
       <% when :newsletter %>
-        <button type="button" @click="$store.sidebars.gearOpen = false; $store.modals.open('newsletter-subscribe')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("📭", "📬") %><span>Join newsletter</span></button>
+        <button type="button" @click="<%= close_action %>; $store.modals.open('newsletter-subscribe')" class="<%= link_class %> w-full text-left"><%= emoji_swap.("📭", "📬") %><span>Join newsletter</span></button>
       <% when :invite %>
-        <%= link_to quest_contest_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("🤝", "🎁") %><span>Invite a friend</span><% end %>
+        <%= link_to quest_contest_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("🤝", "🎁") %><span>Invite a friend</span><% end %>
       <% end %>
     <% end %>
 
-    <%= link_to help_how_to_play_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("🎮", "🤔") %><span>How to Play</span><% end %>
-    <%= link_to proof_of_reserves_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("🪎", "🏦") %><span>Proof of Reserves</span><% end %>
+    <%= link_to help_how_to_play_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("🎮", "🤔") %><span>How to Play</span><% end %>
+    <%= link_to proof_of_reserves_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("🪎", "🏦") %><span>Proof of Reserves</span><% end %>
 
     <button type="button"
-            @click="$store.sidebars.gearOpen = false; if (window.showNavSpinner) window.showNavSpinner(); if (window.refreshSession) { window.refreshSession().finally(function() { if (window.hideNavSpinner) window.hideNavSpinner(); }); }"
+            @click="<%= close_action %>; if (window.showNavSpinner) window.showNavSpinner(); if (window.refreshSession) { window.refreshSession().finally(function() { if (window.hideNavSpinner) window.hideNavSpinner(); }); }"
             class="<%= link_class %> w-full text-left"><%= emoji_swap.("👛", "♻️") %><span>Refresh Wallet</span></button>
 
     <% if current_user.admin? %>
       <div class="border-t border-subtle my-2"></div>
       <div class="label-upper font-bold px-4 py-1 text-muted">Admin</div>
-      <%= link_to admin_dashboard_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("💻", "🔬") %><span>Dashboard</span><% end %>
-      <%= link_to contests_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("✚", "✨") %><span>Contests</span><% end %>
-      <%= link_to admin_users_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("👥", "🏟️") %><span>Users</span><% end %>
-      <%= link_to admin_landing_pages_path, class: link_class, "@click": "$store.sidebars.gearOpen = false" do %><%= emoji_swap.("🪂", "🖼️") %><span>Landing Pages</span><% end %>
+      <%= link_to admin_dashboard_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("💻", "🔬") %><span>Dashboard</span><% end %>
+      <%= link_to contests_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("✚", "✨") %><span>Contests</span><% end %>
+      <%= link_to admin_users_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("👥", "🏟️") %><span>Users</span><% end %>
+      <%= link_to admin_landing_pages_path, class: link_class, "@click": close_after_link do %><%= emoji_swap.("🪂", "🖼️") %><span>Landing Pages</span><% end %>
     <% end %>
 
     <div class="border-t border-subtle my-2"></div>
-    <%= link_to logout_path, class: muted_class, data: { turbo: false }, onclick: "try{localStorage.removeItem('pendingContestEntry')}catch(e){}" do %><%= emoji_swap.("👋🏻", "⏏️") %><span>Log out</span><% end %>
+    <%= link_to logout_path, class: muted_class, data: { turbo: false }, onclick: "try{localStorage.removeItem('pendingContestEntry')}catch(e){}", "@click": close_after_link do %><%= emoji_swap.("👋🏻", "⏏️") %><span>Log out</span><% end %>
   </nav>
 <% end %>
 
@@ -62,9 +64,9 @@
       title: current_user.admin? ? "Admin Menu" : "Settings",
       open: "$store.sidebars.gearOpen",
       body_html: body_html,
-      close_action: "$store.sidebars.gearOpen = false",
-      outside_action: "$store.sidebars.gearOpen = false",
-      escape_action: "$store.sidebars.gearOpen = false",
+      close_action: close_action,
+      outside_action: close_action,
+      escape_action: close_action,
       display_class: "hidden md:flex",
       z_class: "tm-gear-sidebar-layer",
       role: "navigation",
@@ -75,9 +77,9 @@
       title: current_user.admin? ? "Admin Menu" : "Settings",
       open: "$store.sidebars.gearOpen",
       body_html: body_html,
-      close_action: "$store.sidebars.gearOpen = false",
-      outside_action: "$store.sidebars.gearOpen = false",
-      escape_action: "$store.sidebars.gearOpen = false",
+      close_action: close_action,
+      outside_action: close_action,
+      escape_action: close_action,
       display_class: "flex md:hidden",
       width_class: "w-full",
       z_class: "tm-gear-sidebar-layer",
