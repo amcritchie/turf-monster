@@ -7,17 +7,18 @@
 #
 # Layering model (changed 2026-05-28):
 #   1. Load db/seeds.rb (canonical). Idempotent — creates the 3 real
-#      "World Cup 2026 Group N" slates with DraftKings-driven rankings,
-#      72 real-kickoff Games, all 48 Teams. Re-running is safe.
+#      "World Cup 2026 Group N" slates with DraftKings-driven rankings and
+#      "NFL 2026 Week N" slates. Re-running is safe.
 #   2. Wipe test-volatile rows (Entry, Selection, Contest, SurvivorRound,
 #      TransactionLog, GeoSetting, etc.) and User. Leaves Team / Slate /
 #      SlateMatchup / Game intact — those belong to db/seeds.rb.
 #   3. ALTER SEQUENCE users_id_seq → 1, then re-seed core users so the
 #      inviter slugs referrals.spec.js hardcodes (mason-3, mack-4, turf-5)
 #      stay stable across reseeds.
-#   4. Build the e2e fixture contests (world-cup-2026, world-cup-survivor)
-#      pointing at the canonical Group-1 slate. skip_onchain_callback so
-#      they stay off-chain (real on-chain entry coverage is in
+#   4. Build the e2e fixture contests (world-cup-2026, world-cup-survivor).
+#      The standard contest keeps its legacy slug but points at NFL Week 17,
+#      which stays pickable through early January 2027. skip_onchain_callback so
+#      the fixtures stay off-chain (real on-chain entry coverage is in
 #      e2e/devnet-smoke.spec.js, which sets up its own fresh PDAs).
 #
 # Before this change e2e/seed.rb was destructive — it deleted Slate +
@@ -74,16 +75,19 @@ users = seed_core_users!
 # creator of the e2e fixture contest below.
 human = users["mcritchie"]
 
-# ── Step 4: build e2e fixture contests on the canonical Group-1 slate ─
-slate = Slate.find_by!(name: "World Cup 2026 Group 1")
+# ── Step 4: build e2e fixture contests ────────────────────────────────
+# Keep the legacy contest slug used throughout the specs, but use the late NFL
+# slate/name so matchup buttons remain selectable for this QA cycle without
+# rewriting canonical World Cup kickoff dates.
+slate = Slate.find_by!(name: "NFL 2026 Week 17")
 
 contest = Contest.new(
-  name: "World Cup 2026",
+  name: "NFL 2026 Week 17",
   entry_fee_cents: 1900,
   status: "open",
   max_entries: 30,
   contest_type: "standard",
-  starts_at: 1.week.from_now,
+  starts_at: slate.first_game_starts_at || slate.starts_at || 1.week.from_now,
   slate: slate,
   rank: 100
 )
@@ -102,7 +106,7 @@ contest.update!(onchain_contest_id: nil)
 SeasonConfig.set_main_contest!(contest)
 
 # ── World Cup Survivor ───────────────────────────────────────────────
-# 8 global rounds; round 1 reuses Group-1's Matchday-1 games as its fixtures.
+# 8 global rounds; round 1 reuses the standard fixture slate's games.
 survivor_rounds = [
   [1, "Group Matchday 1", "group"],   [2, "Group Matchday 2", "group"],
   [3, "Group Matchday 3", "group"],   [4, "Round of 32", "knockout"],
@@ -113,10 +117,10 @@ survivor_rounds = [
                         picks_lock_at: 2.weeks.from_now + num.days)
 end
 
-# Attach round 1 to the Group-1 Games (Matchday 1 fixtures).
-group_1_team_slugs = slate.slate_matchups.pluck(:team_slug).uniq
-Game.where(home_team_slug: group_1_team_slugs)
-    .or(Game.where(away_team_slug: group_1_team_slugs))
+# Attach round 1 to the standard fixture games.
+fixture_team_slugs = slate.slate_matchups.pluck(:team_slug).uniq
+Game.where(home_team_slug: fixture_team_slugs)
+    .or(Game.where(away_team_slug: fixture_team_slugs))
     .update_all(survivor_round_id: survivor_rounds.first.id)
 
 survivor = Contest.new(

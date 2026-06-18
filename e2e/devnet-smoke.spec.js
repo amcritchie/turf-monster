@@ -209,13 +209,11 @@ test.afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: select the first available slate in the contest form
+// Helper: select the late NFL fixture slate in the contest form
 // ---------------------------------------------------------------------------
 
-async function selectFirstSlate(page) {
-  const options = page.locator("#contest_slate_id option:not([value=''])");
-  const first = await options.first().getAttribute("value");
-  await page.selectOption("#contest_slate_id", first);
+async function selectE2eSlate(page) {
+  await page.selectOption("#contest_slate_id", { label: "NFL 2026 Week 17" });
 }
 
 // ---------------------------------------------------------------------------
@@ -547,7 +545,7 @@ test("@devnet 7 — small contest: create 3-entry onchain contest", async ({
   await withDevnetRetry(page, "Test 7 contest create", async (pg) => {
     await pg.goto("/contests/new");
     await pg.fill("#contest_name", contestName);
-    await selectFirstSlate(pg);
+    await selectE2eSlate(pg);
     // Small format is selected by default — no need to change
     await pg.getByRole("button", { name: "Create Contest" }).click();
     await pg.waitForURL(/\/contests\/(?!new)/, { timeout: 90000 });
@@ -714,7 +712,7 @@ test("@devnet 13 — standard contest: create 30-entry contest", async ({
   await page.goto("/contests/new");
   await page.waitForLoadState("networkidle");
   await page.fill("#contest_name", contestName);
-  await selectFirstSlate(page);
+  await selectE2eSlate(page);
 
   // Click the Standard format card (second card)
   await page.locator(".cursor-pointer.rounded-lg").filter({ hasText: /standard/i }).click();
