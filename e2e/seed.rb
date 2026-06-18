@@ -76,13 +76,13 @@ users = seed_core_users!
 human = users["mcritchie"]
 
 # ── Step 4: build e2e fixture contests ────────────────────────────────
-# Keep the legacy contest name/slug used throughout the specs, but use the late
-# NFL slate so matchup buttons remain selectable for this QA cycle without
+# Keep the legacy contest slug used throughout the specs, but use the late NFL
+# slate/name so matchup buttons remain selectable for this QA cycle without
 # rewriting canonical World Cup kickoff dates.
 slate = Slate.find_by!(name: "NFL 2026 Week 17")
 
 contest = Contest.new(
-  name: "World Cup 2026",
+  name: "NFL 2026 Week 17",
   entry_fee_cents: 1900,
   status: "open",
   max_entries: 30,

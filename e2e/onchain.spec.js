@@ -168,7 +168,7 @@ test.fixme("onchain entry via Phantom with mocked devnet", async ({ page }) => {
   await page.waitForURL(/\/contests\//, { timeout: 10000 });
 
   // Contest show page should load
-  await expect(page.locator("body")).toContainText("World Cup 2026");
+  await expect(page.locator("body")).toContainText("NFL 2026 Week 17");
 });
 
 // ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ test.fixme("admin creates onchain contest", async ({ page }) => {
   // Fill the form with unique name
   const contestName = `E2E Contest ${Date.now().toString(36)}`;
   await page.fill("#contest_name", contestName);
-  await page.selectOption("#contest_slate_id", { label: "World Cup 2026" });
+  await page.selectOption("#contest_slate_id", { label: "NFL 2026 Week 17" });
 
   // Click "Create Contest" (inside x-if="hasWallet" — mock makes it visible)
   await page.getByRole("button", { name: "Create Contest" }).click();
