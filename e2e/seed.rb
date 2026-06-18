@@ -77,13 +77,33 @@ human = users["mcritchie"]
 # ── Step 4: build e2e fixture contests on the canonical Group-1 slate ─
 slate = Slate.find_by!(name: "World Cup 2026 Group 1")
 
+# The canonical World Cup dates are real 2026 dates. Once the calendar passes a
+# seeded fixture's kickoff, SlateMatchup#locked? disables the selection buttons
+# and the browser suite can no longer pick cards. E2E owns this database, so
+# keep the fixture slate date-independent by shifting its games into the future
+# while preserving their relative spacing.
+fixture_games = slate.slate_matchups.includes(:game).map(&:game).compact.uniq
+if fixture_games.any?
+  first_fixture_kickoff = fixture_games.map(&:kickoff_at).compact.min
+  if first_fixture_kickoff.present?
+    target_first_kickoff = 1.week.from_now.change(usec: 0)
+    fixture_games.each do |game|
+      next unless game.kickoff_at
+
+      offset = game.kickoff_at - first_fixture_kickoff
+      game.update!(kickoff_at: target_first_kickoff + offset)
+    end
+    slate.update!(starts_at: target_first_kickoff)
+  end
+end
+
 contest = Contest.new(
   name: "World Cup 2026",
   entry_fee_cents: 1900,
   status: "open",
   max_entries: 30,
   contest_type: "standard",
-  starts_at: 1.week.from_now,
+  starts_at: slate.first_game_starts_at || slate.starts_at || 1.week.from_now,
   slate: slate,
   rank: 100
 )
