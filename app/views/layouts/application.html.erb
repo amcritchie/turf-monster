@@ -262,13 +262,55 @@
           try { return await resp.json(); } catch (e) { return { success: resp.ok }; }
         };
 
+        function ensureGearSidebarStore() {
+          if (!window.Alpine) return null;
+
+          var sidebars = Alpine.store('sidebars');
+          if (!sidebars) {
+            Alpine.store('sidebars', { gearOpen: false });
+            return Alpine.store('sidebars');
+          }
+
+          if (typeof sidebars.gearOpen === 'undefined') {
+            sidebars.gearOpen = false;
+          }
+
+          return sidebars;
+        }
+
+        function closeGearSidebar() {
+          var sidebars = ensureGearSidebarStore();
+          if (sidebars) sidebars.gearOpen = false;
+        }
+
+        function toggleGearSidebar(event) {
+          var trigger = event.target.closest('[data-gear-sidebar-trigger], [data-username-display], [data-profile-image-toggle]');
+          if (!trigger) return;
+          if (!trigger.matches('[aria-controls~="gear-sidebar"]')) return;
+
+          var sidebars = ensureGearSidebarStore();
+          if (!sidebars) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+          sidebars.gearOpen = !sidebars.gearOpen;
+        }
+
+        if (!window.__turfGearSidebarTriggerBridge) {
+          window.__turfGearSidebarTriggerBridge = true;
+          document.addEventListener('turbo:load', ensureGearSidebarStore);
+          document.addEventListener('turbo:before-cache', closeGearSidebar);
+          window.addEventListener('pageshow', function(event) {
+            if (event.persisted) closeGearSidebar();
+          });
+          document.addEventListener('click', toggleGearSidebar, true);
+        }
+
+        ensureGearSidebarStore();
+
         // Solana modal store — registered when Alpine starts
         document.addEventListener('alpine:init', function() {
-          if (!Alpine.store('sidebars')) {
-            Alpine.store('sidebars', {
-              gearOpen: false
-            });
-          }
+          ensureGearSidebarStore();
 
           if (Alpine.store('solanaModal')) return;
 

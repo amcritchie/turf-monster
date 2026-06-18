@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { loginAdmin, reseed } = require("./helpers");
 
 // ---------------------------------------------------------------------------
 // Page navigation — verify key pages load without errors
@@ -45,4 +46,24 @@ test("error logs page loads", async ({ page }) => {
 test("turf totals page loads", async ({ page }) => {
   await page.goto("/turf-totals-v1");
   await expect(page.locator("body")).toBeVisible();
+});
+
+test("gear sidebar reopens after browser back", async ({ page, request }) => {
+  await reseed(request);
+  await loginAdmin(page);
+  await page.goto("/contests");
+  await page.waitForFunction(() => window.Alpine && Alpine.store("sidebars"));
+
+  await page.locator("button[data-gear-sidebar-trigger]").first().click();
+  await expect(page.locator("#gear-sidebar")).toBeVisible();
+
+  await page.locator('#gear-sidebar a[href="/account"]').click();
+  await expect(page).toHaveURL("/account");
+
+  await page.goBack();
+  await expect(page).toHaveURL("/contests");
+  await page.waitForFunction(() => window.Alpine && Alpine.store("sidebars"));
+
+  await page.locator("button[data-gear-sidebar-trigger]").first().click();
+  await expect(page.locator("#gear-sidebar")).toBeVisible();
 });
