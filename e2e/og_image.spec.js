@@ -21,9 +21,16 @@ test.describe("Admin link-preview (og:image) uploader", () => {
     await page.locator('input[type="file"][accept="image/*"]').setInputFiles(OG_IMAGE);
     await expect(page.locator(".cropper-container")).toBeVisible();
 
-    // Crop & Save -> loading card -> success toast -> refreshed preview <img>.
+    // Crop & Save -> loading card -> Turbo upload response -> success toast -> refreshed preview <img>.
+    const imageSave = page.waitForResponse((response) =>
+      ["PATCH", "POST"].includes(response.request().method()) &&
+      response.url().includes("/admin/dashboard/link_preview_image")
+    );
     await page.getByRole("button", { name: /Crop.*Save/ }).click();
-    await expect(page.getByText("Image updated")).toBeVisible();
+    await expect(page.getByText("Saving image")).toBeVisible();
+    const imageResponse = await imageSave;
+    expect(imageResponse.ok()).toBeTruthy();
+    await expect(page.getByText("Image updated")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#default-og-image-preview img")).toBeVisible();
   });
 });

@@ -61,7 +61,8 @@
             <button type="button"
                     @click="<%= close_action %>"
                     class="flex items-center justify-center w-8 h-8 rounded-full text-secondary hover:text-heading hover:bg-surface-alt transition"
-                    aria-label="Close sidebar">
+                    aria-label="Close sidebar"
+                    data-sidebar-panel-close="<%= id %>">
               <span class="text-xl leading-none">&times;</span>
             </button>
           <% end %>

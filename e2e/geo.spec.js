@@ -1,6 +1,16 @@
 const { test, expect } = require("@playwright/test");
 const { loginAdmin, reseed } = require("./helpers");
 
+async function waitForGeoWrite(page, action) {
+  const responsePromise = page.waitForResponse((response) => {
+    const method = response.request().method();
+    return ["PATCH", "POST"].includes(method) && response.url().includes("/admin/geo");
+  });
+  await action();
+  const response = await responsePromise;
+  expect(response.status()).toBeLessThan(400);
+}
+
 test.beforeEach(async ({ page, request }) => {
   await page.route("**/account/session_refresh", async (route) => {
     await route.fulfill({
@@ -27,11 +37,10 @@ test.describe("Geo Settings", () => {
     await page.goto("/admin/geo");
 
     // Click "Simulate WA" button on the geo page (the .btn one, not the navbar dropdown)
-    await page.locator("button.btn:has-text('Simulate WA')").click();
-    await page.waitForLoadState("networkidle");
+    await waitForGeoWrite(page, () => page.locator("button.btn:has-text('Simulate WA')").click());
 
     // Verify notice
-    await expect(page.locator("body")).toContainText("Simulating WA");
+    await expect(page.locator("body")).toContainText("Simulating WA", { timeout: 15_000 });
   });
 
   test("admin can clear geo override", async ({ page }) => {
@@ -39,17 +48,16 @@ test.describe("Geo Settings", () => {
     await page.goto("/admin/geo");
 
     // Toggle on first
-    await page.locator("button.btn:has-text('Simulate WA')").click();
-    await page.waitForLoadState("networkidle");
+    await waitForGeoWrite(page, () => page.locator("button.btn:has-text('Simulate WA')").click());
 
     // After toggle ON, the page should show "Simulating WA" notice
-    await expect(page.locator("body")).toContainText("Simulating WA");
+    await expect(page.locator("body")).toContainText("Simulating WA", { timeout: 15_000 });
 
     // Now the override is active — find the "Clear GEO Override" button (has btn-danger class)
-    await page.getByRole("button", { name: "Clear GEO Override" }).click();
+    await waitForGeoWrite(page, () => page.getByRole("button", { name: "Clear GEO Override" }).click());
 
     // Verify cleared
-    await expect(page.getByText("GEO override cleared.")).toBeVisible();
+    await expect(page.getByText("GEO override cleared.")).toBeVisible({ timeout: 15_000 });
   });
 
   test("geo badge shows in navbar when logged in", async ({ page }) => {
@@ -65,16 +73,16 @@ test.describe("Geo Settings", () => {
     // Enable geoblocking
     await page.goto("/admin/geo");
     await page.getByRole("checkbox", { name: "Enable Geo-Blocking" }).check();
-    await page.locator('input[value="Save Settings"]').click();
+    await waitForGeoWrite(page, () => page.locator('input[value="Save Settings"]').click());
     // Web-first assertion replaces waitForLoadState("networkidle"): the navbar
     // hydrates on every page load (refreshSession + ActionCable), so the network
     // is never reliably idle and networkidle flakes under shard load. toContainText
     // auto-polls through the post-redirect navigation until the flash appears.
-    await expect(page.locator("body")).toContainText("Geo settings updated");
+    await expect(page.locator("body")).toContainText("Geo settings updated", { timeout: 15_000 });
 
     // Simulate WA state — click the .btn on the geo page (not the navbar dropdown)
-    await page.locator("button.btn-outline:has-text('Simulate WA')").click();
-    await expect(page.locator("body")).toContainText("Simulating WA");
+    await waitForGeoWrite(page, () => page.locator("button.btn-outline:has-text('Simulate WA')").click());
+    await expect(page.locator("body")).toContainText("Simulating WA", { timeout: 15_000 });
 
     // Try to toggle a selection — should be blocked (geo-restricted action)
     const contestSlug = await page.evaluate(async () => {
@@ -88,13 +96,13 @@ test.describe("Geo Settings", () => {
     // before teardown (GeoSetting is global; reseed does not reset it, so an
     // un-awaited write here leaks geo-blocking into later specs).
     await page.goto("/admin/geo");
-    await page.getByRole("button", { name: "Clear GEO Override" }).click();
-    await expect(page.getByText("GEO override cleared.")).toBeVisible();
+    await waitForGeoWrite(page, () => page.getByRole("button", { name: "Clear GEO Override" }).click());
+    await expect(page.getByText("GEO override cleared.")).toBeVisible({ timeout: 15_000 });
 
     // Disable geoblocking — assert the flash so the DB write completes deterministically.
     await page.goto("/admin/geo");
     await page.getByRole("checkbox", { name: "Enable Geo-Blocking" }).uncheck();
-    await page.locator('input[value="Save Settings"]').click();
-    await expect(page.locator("body")).toContainText("Geo settings updated");
+    await waitForGeoWrite(page, () => page.locator('input[value="Save Settings"]').click());
+    await expect(page.locator("body")).toContainText("Geo settings updated", { timeout: 15_000 });
   });
 });

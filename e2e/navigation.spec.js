@@ -48,22 +48,40 @@ test("turf totals page loads", async ({ page }) => {
   await expect(page.locator("body")).toBeVisible();
 });
 
-test("gear sidebar reopens after browser back", async ({ page, request }) => {
-  await reseed(request);
-  await loginAdmin(page);
-  await page.goto("/contests");
-  await page.waitForFunction(() => window.Alpine && Alpine.store("sidebars"));
+const signedInSidebarRoutes = [
+  { route: "/contests", destination: "/account" },
+  { route: "/account", destination: "/contests" },
+  { route: "/contests/my", destination: "/account" },
+];
 
-  await page.locator("button[data-gear-sidebar-trigger]").first().click();
-  await expect(page.locator("#gear-sidebar")).toBeVisible();
+const gearSidebarTriggers = [
+  "button[data-gear-sidebar-trigger]",
+  "button[data-username-display]",
+  "button[data-profile-image-toggle]",
+];
 
-  await page.locator('#gear-sidebar a[href="/account"]').click();
-  await expect(page).toHaveURL("/account");
+for (const { route, destination } of signedInSidebarRoutes) {
+  test(`gear sidebar reopens after browser back from ${route}`, async ({ page, request }) => {
+    await reseed(request);
+    await loginAdmin(page);
+    await page.goto(route);
+    await page.waitForFunction(() => window.Alpine && Alpine.store("sidebars"));
 
-  await page.goBack();
-  await expect(page).toHaveURL("/contests");
-  await page.waitForFunction(() => window.Alpine && Alpine.store("sidebars"));
+    await page.locator("button[data-gear-sidebar-trigger]").first().click();
+    await expect(page.locator("#gear-sidebar")).toBeVisible();
 
-  await page.locator("button[data-gear-sidebar-trigger]").first().click();
-  await expect(page.locator("#gear-sidebar")).toBeVisible();
-});
+    await page.locator(`#gear-sidebar a[href="${destination}"]`).first().click();
+    await expect(page).toHaveURL(destination, { timeout: 15_000 });
+
+    await page.goBack();
+    await expect(page).toHaveURL(route);
+    await page.waitForFunction(() => window.Alpine && Alpine.store("sidebars"));
+
+    for (const trigger of gearSidebarTriggers) {
+      await page.locator(trigger).first().click();
+      await expect(page.locator("#gear-sidebar")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#gear-sidebar")).toBeHidden();
+    }
+  });
+}
