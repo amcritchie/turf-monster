@@ -67,7 +67,10 @@ test("gear sidebar reopens after browser back from signed-in routes", async ({ p
     await expect(page.locator("#gear-sidebar")).toBeVisible();
 
     const destination = route === "/account" ? "/contests" : "/account";
-    await page.locator(`#gear-sidebar a[href="${destination}"]`).first().click();
+    await Promise.all([
+      page.waitForURL(destination),
+      page.locator(`#gear-sidebar a[href="${destination}"]`).first().click(),
+    ]);
     await expect(page).toHaveURL(destination);
 
     await page.goBack();

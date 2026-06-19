@@ -351,6 +351,7 @@
             var sidebars = ensureGearSidebarStore();
             syncGearSidebarPanels(!!(sidebars && sidebars.gearOpen));
           });
+          document.addEventListener('turbo:before-visit', closeGearSidebar);
           document.addEventListener('turbo:before-cache', closeGearSidebar);
           window.addEventListener('pageshow', function(event) {
             if (event.persisted) closeGearSidebar();
