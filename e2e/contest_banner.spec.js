@@ -23,10 +23,15 @@ test.describe("Contest banner editor (edit screen)", () => {
     await page.mouse.click(5, 5);
     await expect(page.locator(".cropper-container")).toBeVisible();
 
-    // Crop & Save -> loading card -> success toast -> refreshed preview.
+    // Crop & Save -> loading card -> Turbo upload response -> success toast -> refreshed preview.
+    const bannerSave = page.waitForResponse((response) =>
+      ["PATCH", "POST"].includes(response.request().method()) && response.url().includes("/banner")
+    );
     await page.getByRole("button", { name: /Crop.*Save/ }).click();
     await expect(page.getByText("Saving banner")).toBeVisible();
-    await expect(page.getByText("Banner updated")).toBeVisible();
+    const bannerResponse = await bannerSave;
+    expect(bannerResponse.ok()).toBeTruthy();
+    await expect(page.getByText("Banner updated")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#contest-banner-preview img")).toBeVisible();
   });
 
@@ -35,9 +40,10 @@ test.describe("Contest banner editor (edit screen)", () => {
     await page.goto("/contests/world-cup-2026");
 
     await page.getByRole("button", { name: "Contest actions" }).click();
-    await page.getByRole("link", { name: "Edit Contest" }).click();
-
-    await expect(page).toHaveURL(/\/edit$/);
+    await Promise.all([
+      page.waitForURL(/\/edit$/),
+      page.getByRole("link", { name: "Edit Contest" }).click(),
+    ]);
     await expect(page.getByRole("button", { name: "Edit banner" })).toBeVisible();
   });
 });
