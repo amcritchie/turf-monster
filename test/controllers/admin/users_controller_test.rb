@@ -49,4 +49,12 @@ class Admin::UsersControllerTest < ActionDispatch::IntegrationTest
     assert_select "th", text: "Seeds"
     assert_match(/Lv&nbsp;3/, response.body)
   end
+
+  test "loads shared sticky table header assets" do
+    log_in_as(@admin)
+    get admin_users_path
+    assert_response :success
+    assert_select "link[href*='studio/sticky_table_header']"
+    assert_select "script[src*='studio/sticky_table_header']"
+  end
 end
