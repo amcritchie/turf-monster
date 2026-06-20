@@ -1,51 +1,31 @@
 <%# locals: (records:) %>
-<div class="overflow-x-auto">
-  <table id="models-games-table" class="w-full min-w-[920px] text-sm">
-    <thead class="bg-surface-alt text-muted text-xs uppercase tracking-wide">
-      <tr>
-        <th class="px-4 py-3 text-left font-semibold">Matchup</th>
-        <th class="px-4 py-3 text-left font-semibold">Kickoff</th>
-        <th class="px-4 py-3 text-left font-semibold">Venue</th>
-        <th class="px-4 py-3 text-left font-semibold">Status</th>
-        <th class="px-4 py-3 text-left font-semibold">Score</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-subtle">
-      <% records.each do |game| %>
-        <tr class="hover:bg-surface-alt/60 transition">
-          <td class="px-4 py-3">
-            <div class="font-semibold text-heading">
-              <%= game.home_team&.name || game.home_team_slug %>
-              <span class="text-muted font-normal">vs</span>
-              <%= game.away_team&.name || game.away_team_slug %>
-            </div>
-            <div class="text-xs text-muted font-mono truncate"><%= game.slug %></div>
-          </td>
-          <td class="px-4 py-3 text-muted whitespace-nowrap">
-            <%= game.kickoff_at ? game.kickoff_at.strftime("%b %-d, %Y %-l:%M %p") : "—" %>
-          </td>
-          <td class="px-4 py-3 text-secondary"><%= game.venue.presence || "—" %></td>
-          <td class="px-4 py-3">
-            <span class="inline-flex items-center px-2 py-1 rounded text-[11px] font-bold uppercase <%= game.status == "completed" ? 'bg-primary/15 text-primary' : 'bg-surface-alt text-secondary' %>">
-              <%= game.status %>
-            </span>
-          </td>
-          <td class="px-4 py-3 font-mono whitespace-nowrap">
-            <% if game.home_score.present? || game.away_score.present? %>
-              <span class="text-heading"><%= game.home_score || 0 %></span>
-              <span class="text-muted">–</span>
-              <span class="text-heading"><%= game.away_score || 0 %></span>
-            <% else %>
-              <span class="text-muted">—</span>
-            <% end %>
-          </td>
-        </tr>
-      <% end %>
-      <% if records.empty? %>
-        <tr>
-          <td colspan="5" class="px-4 py-10 text-center text-muted">No games found.</td>
-        </tr>
-      <% end %>
-    </tbody>
-  </table>
-</div>
+<%= admin_model_table(records, key: "games", min_width: 920,
+      headers: ["Matchup", "Kickoff", "Venue", "Status", "Score"],
+      empty: "No games found.") do |game| %>
+  <td class="px-4 py-3">
+    <div class="font-semibold text-heading">
+      <%= game.home_team&.name || game.home_team_slug %>
+      <span class="text-muted font-normal">vs</span>
+      <%= game.away_team&.name || game.away_team_slug %>
+    </div>
+    <div class="text-xs text-muted font-mono truncate"><%= game.slug %></div>
+  </td>
+  <td class="px-4 py-3 text-muted whitespace-nowrap">
+    <%= game.kickoff_at ? game.kickoff_at.strftime("%b %-d, %Y %-l:%M %p") : "—" %>
+  </td>
+  <td class="px-4 py-3 text-secondary"><%= game.venue.presence || "—" %></td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-1 rounded text-[11px] font-bold uppercase <%= game.status == "completed" ? 'bg-primary/15 text-primary' : 'bg-surface-alt text-secondary' %>">
+      <%= game.status %>
+    </span>
+  </td>
+  <td class="px-4 py-3 font-mono whitespace-nowrap">
+    <% if game.home_score.present? || game.away_score.present? %>
+      <span class="text-heading"><%= game.home_score || 0 %></span>
+      <span class="text-muted">–</span>
+      <span class="text-heading"><%= game.away_score || 0 %></span>
+    <% else %>
+      <span class="text-muted">—</span>
+    <% end %>
+  </td>
+<% end %>
