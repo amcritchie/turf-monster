@@ -1,62 +1,38 @@
 <%# locals: (records:) %>
-<div class="overflow-x-auto">
-  <table id="models-entries-table" class="w-full min-w-[920px] text-sm">
-    <thead class="bg-surface-alt text-muted text-xs uppercase tracking-wide">
-      <tr>
-        <th class="px-4 py-3 text-left font-semibold">Entry</th>
-        <th class="px-4 py-3 text-left font-semibold">User</th>
-        <th class="px-4 py-3 text-left font-semibold">Contest</th>
-        <th class="px-4 py-3 text-left font-semibold">Status</th>
-        <th class="px-4 py-3 text-left font-semibold">Score</th>
-        <th class="px-4 py-3 text-left font-semibold">Rank</th>
-        <th class="px-4 py-3 text-left font-semibold">Payout</th>
-        <th class="px-4 py-3 text-left font-semibold">On-Chain</th>
-        <th class="px-4 py-3 text-left font-semibold">Created</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-subtle">
-      <% records.each do |entry| %>
-        <tr class="hover:bg-surface-alt/60 transition">
-          <td class="px-4 py-3">
-            <div class="font-semibold text-heading">#<%= entry.id %><%= " · slot #{entry.entry_number}" if entry.entry_number.present? %></div>
-            <div class="text-xs text-muted font-mono truncate"><%= entry.slug %></div>
-          </td>
-          <td class="px-4 py-3">
-            <div class="font-semibold text-heading truncate"><%= entry.user&.display_name || "—" %></div>
-            <div class="text-xs text-muted truncate"><%= entry.user&.email.presence || entry.user&.truncated_solana %></div>
-          </td>
-          <td class="px-4 py-3 text-secondary truncate"><%= entry.contest&.name || "—" %></td>
-          <td class="px-4 py-3">
-            <span class="inline-flex items-center px-2 py-1 rounded text-[11px] font-bold uppercase <%= entry.complete? ? 'bg-primary/15 text-primary' : entry.active? ? 'bg-surface-alt text-secondary' : 'bg-surface-alt text-muted' %>">
-              <%= entry.status %>
-            </span>
-          </td>
-          <td class="px-4 py-3 font-mono text-heading whitespace-nowrap"><%= entry.score %></td>
-          <td class="px-4 py-3 font-mono text-secondary whitespace-nowrap"><%= entry.rank.presence || "—" %></td>
-          <td class="px-4 py-3 font-mono whitespace-nowrap">
-            <% if entry.payout_cents.to_i.positive? %>
-              <span class="text-primary"><%= number_to_currency(entry.payout_cents / 100.0) %></span>
-            <% else %>
-              <span class="text-muted">—</span>
-            <% end %>
-          </td>
-          <td class="px-4 py-3">
-            <% if entry.onchain_tx_signature.present? %>
-              <span class="inline-flex items-center px-2 py-0.5 rounded bg-primary/15 text-xs text-primary">on-chain</span>
-            <% else %>
-              <span class="inline-flex items-center px-2 py-0.5 rounded bg-surface-alt text-xs text-muted">off-chain</span>
-            <% end %>
-          </td>
-          <td class="px-4 py-3 text-muted whitespace-nowrap">
-            <%= entry.created_at ? "#{time_ago_in_words(entry.created_at)} ago" : "—" %>
-          </td>
-        </tr>
-      <% end %>
-      <% if records.empty? %>
-        <tr>
-          <td colspan="9" class="px-4 py-10 text-center text-muted">No entries found.</td>
-        </tr>
-      <% end %>
-    </tbody>
-  </table>
-</div>
+<%= admin_model_table(records, key: "entries", min_width: 920,
+      headers: ["Entry", "User", "Contest", "Status", "Score", "Rank", "Payout", "On-Chain", "Created"],
+      empty: "No entries found.") do |entry| %>
+  <td class="px-4 py-3">
+    <div class="font-semibold text-heading">#<%= entry.id %><%= " · slot #{entry.entry_number}" if entry.entry_number.present? %></div>
+    <div class="text-xs text-muted font-mono truncate"><%= entry.slug %></div>
+  </td>
+  <td class="px-4 py-3">
+    <div class="font-semibold text-heading truncate"><%= entry.user&.display_name || "—" %></div>
+    <div class="text-xs text-muted truncate"><%= entry.user&.email.presence || entry.user&.truncated_solana %></div>
+  </td>
+  <td class="px-4 py-3 text-secondary truncate"><%= entry.contest&.name || "—" %></td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-1 rounded text-[11px] font-bold uppercase <%= entry.complete? ? 'bg-primary/15 text-primary' : entry.active? ? 'bg-surface-alt text-secondary' : 'bg-surface-alt text-muted' %>">
+      <%= entry.status %>
+    </span>
+  </td>
+  <td class="px-4 py-3 font-mono text-heading whitespace-nowrap"><%= entry.score %></td>
+  <td class="px-4 py-3 font-mono text-secondary whitespace-nowrap"><%= entry.rank.presence || "—" %></td>
+  <td class="px-4 py-3 font-mono whitespace-nowrap">
+    <% if entry.payout_cents.to_i.positive? %>
+      <span class="text-primary"><%= number_to_currency(entry.payout_cents / 100.0) %></span>
+    <% else %>
+      <span class="text-muted">—</span>
+    <% end %>
+  </td>
+  <td class="px-4 py-3">
+    <% if entry.onchain_tx_signature.present? %>
+      <span class="inline-flex items-center px-2 py-0.5 rounded bg-primary/15 text-xs text-primary">on-chain</span>
+    <% else %>
+      <span class="inline-flex items-center px-2 py-0.5 rounded bg-surface-alt text-xs text-muted">off-chain</span>
+    <% end %>
+  </td>
+  <td class="px-4 py-3 text-muted whitespace-nowrap">
+    <%= entry.created_at ? "#{time_ago_in_words(entry.created_at)} ago" : "—" %>
+  </td>
+<% end %>
