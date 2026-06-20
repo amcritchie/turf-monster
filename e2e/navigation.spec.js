@@ -3,21 +3,27 @@ const { loginAdmin, reseed } = require("./helpers");
 
 // ---------------------------------------------------------------------------
 // Page navigation — verify key pages load without errors
+//
+// The lightweight page-load checks are tagged @smoke: they are core navigation
+// in the fast "general" e2e lane (`npm run test:smoke` / `--grep @smoke`). The
+// login-driven gear-sidebar back-nav loop below is intentionally LEFT OUT of
+// @smoke — it's heavier and belongs to the comprehensive lane. See
+// docs/LOCAL_STACK.md "Two e2e lanes".
 // ---------------------------------------------------------------------------
 
-test("teams page loads", async ({ page }) => {
+test("teams page loads @smoke", async ({ page }) => {
   await page.goto("/teams");
   await expect(page.locator("body")).toBeVisible();
   // Should have some team content from seeds
   await expect(page.locator("body")).toContainText(/team/i);
 });
 
-test("games page loads", async ({ page }) => {
+test("games page loads @smoke", async ({ page }) => {
   await page.goto("/games");
   await expect(page.locator("body")).toBeVisible();
 });
 
-test("signin page loads with magic-link + wallet options", async ({ page }) => {
+test("signin page loads with magic-link + wallet options @smoke", async ({ page }) => {
   await page.goto("/signin");
   await expect(page.locator('input[name="email"]')).toBeVisible();
   // Passwordless now — email magic link + Google + wallet hub, no password.
@@ -29,7 +35,7 @@ test("signin page loads with magic-link + wallet options", async ({ page }) => {
 
 // Unified auth: /login + /signup are one create-or-login flow, so they both
 // 301-redirect to the canonical /signin page.
-test("legacy /login + /signup redirect to /signin", async ({ page }) => {
+test("legacy /login + /signup redirect to /signin @smoke", async ({ page }) => {
   await page.goto("/login");
   await expect(page).toHaveURL(/\/signin/);
 
@@ -38,12 +44,12 @@ test("legacy /login + /signup redirect to /signin", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Email Link" })).toBeVisible();
 });
 
-test("error logs page loads", async ({ page }) => {
+test("error logs page loads @smoke", async ({ page }) => {
   await page.goto("/error_logs");
   await expect(page.locator("body")).toBeVisible();
 });
 
-test("turf totals page loads", async ({ page }) => {
+test("turf totals page loads @smoke", async ({ page }) => {
   await page.goto("/turf-totals-v1");
   await expect(page.locator("body")).toBeVisible();
 });
