@@ -16,6 +16,10 @@ module Admin
       "arenas" => {
         label: "Arenas",
         description: "Venues seeded for teams and schedule QA"
+      },
+      "games" => {
+        label: "Games",
+        description: "Matchups, kickoff times, venues, and live scores"
       }
     }.freeze
 
@@ -29,6 +33,8 @@ module Admin
         Team.includes(:home_arena).order(team_sort_order)
       when "arenas"
         Arena.includes(:home_teams).order(:name)
+      when "games"
+        Game.includes(:home_team, :away_team).order(Arel.sql("kickoff_at DESC NULLS LAST"))
       else
         raise ArgumentError, "Unknown admin model key: #{key.inspect}"
       end

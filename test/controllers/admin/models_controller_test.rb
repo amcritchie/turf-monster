@@ -24,9 +24,11 @@ class Admin::ModelsControllerTest < ActionDispatch::IntegrationTest
     assert_select "table#models-users-table"
     assert_select "table#models-teams-table"
     assert_select "table#models-arenas-table"
+    assert_select "table#models-games-table"
     assert_select "a[href=?]", admin_model_path("users")
     assert_select "a[href=?]", admin_model_path("teams")
     assert_select "a[href=?]", admin_model_path("arenas")
+    assert_select "a[href=?]", admin_model_path("games")
     assert_match @admin.email, response.body
     assert_match "Team A", response.body
     assert_match "Test Stadium", response.body
@@ -90,6 +92,17 @@ class Admin::ModelsControllerTest < ActionDispatch::IntegrationTest
     assert_match "Test Stadium", response.body
     assert_match "1 Test Way", response.body
     assert_match "schedule-only", response.body
+  end
+
+  test "admin can browse games model page" do
+    log_in_as @admin
+    get admin_model_path("games")
+
+    assert_response :success
+    assert_select "h1", "Games"
+    assert_select "table#models-games-table"
+    assert_match "Team A", response.body
+    assert_match "completed", response.body
   end
 
   test "model pages are paginated" do
