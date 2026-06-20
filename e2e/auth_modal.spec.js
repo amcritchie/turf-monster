@@ -13,9 +13,12 @@ const { reseed, attestAge } = require("./helpers");
 // reseed clears rack-attack counters + volatile state between tests (when run
 // locally against the dev :3100 server, rack-attack IS on; CI's test-env server
 // has it off — either way reseed keeps runs isolated).
+//
+// Tagged @smoke: core auth, part of the fast "general" e2e lane
+// (`npm run test:smoke` / `--grep @smoke`). See docs/LOCAL_STACK.md.
 test.beforeEach(async ({ request }) => await reseed(request));
 
-test("requesting a magic link from the login form opens the Check your inbox modal", async ({ page }) => {
+test("requesting a magic link from the login form opens the Check your inbox modal @smoke", async ({ page }) => {
   await page.goto("/signin");
   await page.fill('input[name="email"]', `authmodal-${Date.now()}@example.com`);
   await attestAge(page);
@@ -27,7 +30,7 @@ test("requesting a magic link from the login form opens the Check your inbox mod
   await expect(page.locator('button:has-text("Resend link")')).toBeVisible();
 });
 
-test("resending swaps to the Link Resent confirmation and starts the cooldown", async ({ page }) => {
+test("resending swaps to the Link Resent confirmation and starts the cooldown @smoke", async ({ page }) => {
   await page.goto("/signin");
   await page.fill('input[name="email"]', `authmodal-resend-${Date.now()}@example.com`);
   await attestAge(page);
@@ -42,7 +45,7 @@ test("resending swaps to the Link Resent confirmation and starts the cooldown", 
   await expect(page.getByText(/Resend available in \d+s/)).toBeVisible();
 });
 
-test("Solana button in standalone auth modal opens the wallet chooser", async ({ page }) => {
+test("Solana button in standalone auth modal opens the wallet chooser @smoke", async ({ page }) => {
   await page.goto("/signin");
 
   await page.evaluate(() => {

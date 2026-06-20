@@ -60,6 +60,41 @@ Rails unit/integration tests run against the test database and use `Rails.cache`
 
 Playwright specs run against a live dev server from `playwright.config.js`. Seed with `bin/rails runner e2e/seed.rb` against the dev database unless a spec explicitly provisions its own isolated server/database pair.
 
+### Two e2e lanes
+
+The Playwright suite is split into two lanes by a `@smoke` tag embedded in the
+test title (same title-tag convention as `@devnet`):
+
+- **General / smoke lane** — the fast, core happy-path specs: auth (`auth_modal`,
+  `magic_link`), account update (`account_avatar`), and navigation page-loads
+  (`navigation`). Run it **often** while developing:
+  - `npm run test:smoke` (= `npx playwright test --grep @smoke`)
+  - `npm run test:smoke:parallel` (= `bin/e2e-parallel -- --grep @smoke`)
+- **Comprehensive lane** — everything else (on-chain, quests, referrals, geo,
+  survivor, the login-driven gear-sidebar back-nav loop, etc.). Run it at **PR
+  review and after a release is cut**:
+  - `npm run test:comprehensive` (= `npx playwright test --grep-invert @smoke`)
+  - `npm test` / `npm run test:parallel` still run the FULL suite (both lanes).
+
+To add a spec to the smoke lane, append ` @smoke` to its `test(...)` title.
+
+`@devnet` specs hit the deployed devnet program and run in their own Playwright
+project (nightly CI); they are excluded from the default `chromium` project.
+
+### Running the parallel launcher (`bin/e2e-parallel`)
+
+`bin/e2e-parallel [N]` runs the suite across N isolated test-env stacks. Env knobs:
+
+- `E2E_BASE_PORT` — first stack port (default `3101`).
+- `E2E_UP_TIMEOUT` — seconds to wait for each stack's `/up` (default `180`; raise
+  on a loaded machine).
+- `E2E_KILL_STRAY=1` — in the port preflight, kill any process already listening
+  on a target port instead of aborting (default: report + abort).
+- `E2E_PARALLEL_SEED=1` — restore the fully-parallel prepare+seed+boot. By
+  default the prepare+seed step is **serialized** (it can hit Solana RPC; N
+  concurrent seeds contend and can blow the `/up` probe), and only the server
+  boot is parallelized.
+
 ## Callback Rule
 
 Keep callback-heavy flows on the primary stack unless the external provider is configured for a worktree port.

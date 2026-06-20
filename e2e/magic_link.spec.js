@@ -9,10 +9,13 @@ const { reseed } = require("./helpers");
 // the token on the server; it AUTO-SUBMITS the consume form via JS on load, so a
 // real browser signs in with no manual tap. So the browser flow is just:
 // goto(url) -> the page auto-redirects off /magic_link, signed in.
+//
+// Tagged @smoke: core auth, part of the fast "general" e2e lane
+// (`npm run test:smoke` / `--grep @smoke`). See docs/LOCAL_STACK.md.
 
 test.beforeEach(async ({ request }) => await reseed(request));
 
-test("magic link creates a new account and logs the visitor in", async ({ page }) => {
+test("magic link creates a new account and logs the visitor in @smoke", async ({ page }) => {
   const email = `ml-${Date.now().toString(36)}@example.com`;
   const resp = await page.request.post("/test/magic_link_token", { data: { email } });
   expect(resp.ok()).toBeTruthy();
@@ -28,7 +31,7 @@ test("magic link creates a new account and logs the visitor in", async ({ page }
   await expect(page).toHaveURL(/\/account/);
 });
 
-test("a scanner prefetch GET does not burn the token; the human can still sign in", async ({ page }) => {
+test("a scanner prefetch GET does not burn the token; the human can still sign in @smoke", async ({ page }) => {
   const email = `ml-pf-${Date.now().toString(36)}@example.com`;
   const resp = await page.request.post("/test/magic_link_token", { data: { email } });
   const { url } = await resp.json();
@@ -46,7 +49,7 @@ test("a scanner prefetch GET does not burn the token; the human can still sign i
   await expect(page).toHaveURL(/\/account/);
 });
 
-test("an invalid magic-link token is rejected on confirm", async ({ page }) => {
+test("an invalid magic-link token is rejected on confirm @smoke", async ({ page }) => {
   // The GET interstitial is inert and renders even for a garbage token; the
   // auto-submit then POSTs it, the consume rejects it, and we bounce to /signin.
   await page.goto("/magic_link/bogus.token.value");
@@ -54,7 +57,7 @@ test("an invalid magic-link token is rejected on confirm", async ({ page }) => {
   await expect(page.locator("body")).toContainText(/invalid|expired/i);
 });
 
-test("the wallet hub offers install options when no wallet is present", async ({ page }) => {
+test("the wallet hub offers install options when no wallet is present @smoke", async ({ page }) => {
   await page.goto("/signin");
   await page.locator('button:has-text("Solana")').click();
   // No injected wallet in headless Chromium → featured install links appear.
@@ -65,7 +68,7 @@ test("the wallet hub offers install options when no wallet is present", async ({
   await expect(page.locator('a[href*="solflare.com"]')).toBeVisible();
 });
 
-test("the hub does not surface the keypair test provider", async ({ page }) => {
+test("the hub does not surface the keypair test provider @smoke", async ({ page }) => {
   // The Playwright keypair provider is for signing, never a user-pickable
   // wallet — available() must exclude it (returns [] in headless).
   await page.addInitScript(() => {

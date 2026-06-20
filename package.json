@@ -8,7 +8,10 @@
     "test": "npx playwright test",
     "test:headed": "npx playwright test --headed",
     "test:ui": "npx playwright test --ui",
+    "test:smoke": "npx playwright test --grep @smoke",
+    "test:comprehensive": "npx playwright test --grep-invert @smoke",
     "test:parallel": "bin/e2e-parallel",
+    "test:smoke:parallel": "bin/e2e-parallel -- --grep @smoke",
     "scrape": "node scripts/scrape_draftkings.js",
     "scrape:headed": "node scripts/scrape_draftkings.js --headed"
   },

@@ -10,10 +10,13 @@ const IMG = path.join(__dirname, "..", "test", "fixtures", "files", "banner_wide
 // dismissible — the reload's closeAllDismissible() clears it and the server
 // flash toasts. The regression guard is that the card both appears AND clears
 // (a non-dismissible card would survive the reload and stick on screen).
+//
+// Tagged @smoke: core account-update flow, part of the fast "general" e2e lane
+// (`npm run test:smoke` / `--grep @smoke`). See docs/LOCAL_STACK.md.
 test.beforeEach(async ({ request }) => await reseed(request));
 
 test.describe("Account avatar upload", () => {
-  test("shows the loading card while saving, then clears on reload", async ({ page }) => {
+  test("shows the loading card while saving, then clears on reload @smoke", async ({ page }) => {
     await loginAdmin(page);
     await page.goto("/account");
 
