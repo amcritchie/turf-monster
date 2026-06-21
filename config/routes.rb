@@ -125,11 +125,13 @@ Rails.application.routes.draw do
   Studio.routes(self)
 
   # Referral / invite links (Studio::Link, kind: referral). /l is this app's
-  # landing-page namespace, so invite links live at /i/<token>; the engine's
-  # Studio::LinksController dispatches a referral to an attribution cookie +
-  # redirect to its target. Helpers: link_url(token:) / link_consume_path.
-  get  "i/:token", to: "studio/links#show",    as: :link,         constraints: { token: %r{[^/]+} }
-  post "i/:token", to: "studio/links#consume", as: :link_consume, constraints: { token: %r{[^/]+} }
+  # landing-page namespace, so invite links live at /i/<token>. GET-only and
+  # handled by InvitesController, which serves REFERRAL-kind links ONLY (cookie +
+  # redirect). Deliberately NOT the engine's Studio::LinksController#consume:
+  # routing a magic_link-kind token through it would create an account via the
+  # engine's generic sign_up_new, bypassing the legal-age gate in
+  # MagicLinksController#sign_up_new — a forbidden second sign-in path.
+  get "i/:token", to: "invites#show", as: :link, constraints: { token: %r{[^/]+} }
 
   # Solana wallet auth
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"

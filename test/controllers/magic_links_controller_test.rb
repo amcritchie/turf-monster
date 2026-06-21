@@ -258,4 +258,18 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal existing.id, session[Studio.session_key],
                  "login is unaffected — attestation gates account CREATION only"
   end
+
+  # Carry-forward of the deleted MagicLink service test: a link past its TTL is
+  # rejected on consume (Studio::Link expiry).
+  test "an expired magic link is rejected on consume" do
+    token = magic_token(email: "expired-ml@example.com")
+    travel(Studio.magic_link_ttl + 1.minute) do
+      assert_no_difference "User.count" do
+        post magic_link_consume_path(token: token)
+      end
+    end
+    assert_redirected_to signin_path
+    assert_match(/invalid or has expired/i, flash[:alert])
+    assert_nil session[Studio.session_key]
+  end
 end

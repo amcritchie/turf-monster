@@ -40,4 +40,22 @@ class ReferralLinkTest < ActionDispatch::IntegrationTest
     assert_match %r{/i/[A-Za-z0-9_-]+}, response.body, "share card should show the /i/<token> invite URL"
     assert_no_match %r{/contests/[\w-]+\?ref=}, response.body, "the old /contests/<slug>?ref= share link should be gone"
   end
+
+  # Security: /i is referral-ONLY. A magic-link token must NOT be consumable here
+  # (that would create an account via the engine's gateless sign_up_new, bypassing
+  # the legal-age attestation gate). It is rejected with no session + no signup.
+  test "a magic-link token is rejected at /i (no second sign-in path)" do
+    token = magic_token(email: "sneaky@example.com")
+    assert_no_difference "User.count" do
+      get link_path(token) # GET /i/<magic token>
+    end
+    assert_redirected_to root_path
+    assert_nil session[Studio.session_key], "no session may be established via /i"
+    assert_nil magic_link_for("sneaky@example.com")&.consumed_at, "the magic link must not be burned"
+  end
+
+  test "POST /i is not routable (no consume verb on the invite path)" do
+    post "/i/anything"
+    assert_response :not_found
+  end
 end
