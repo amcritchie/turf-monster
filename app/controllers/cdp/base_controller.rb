@@ -57,7 +57,11 @@ module Cdp
       configured = ENV["CDP_ALLOWED_ORIGINS"].to_s.split(",").map(&:strip).reject(&:blank?)
       return configured if configured.any?
 
-      origins = ["https://app.turfmonster.media"]
+      hosts = TurfMonster::HostConfig.public_hosts(
+        app_host: ENV.fetch("APP_HOST", "turfmonster.media"),
+        aliases: TurfMonster::HostConfig.aliases(ENV.fetch("APP_HOST_ALIASES", ""))
+      )
+      origins = hosts.map { |host| "https://#{host}" }
       origins << "http://localhost:3100" unless Rails.env.production?
       origins
     end

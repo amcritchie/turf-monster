@@ -3,7 +3,7 @@
 Canonical answers for high-risk merchant processor applications (Corepay /
 PayKings / Durango, 2026-06). Keep every application consistent with this
 sheet — underwriters cross-check answers against each other and against the
-live site (https://app.turfmonster.media).
+live site (https://turfmonster.media).
 
 `[OPERATOR FILL]` marks blanks the operator must complete before submitting.
 
@@ -31,7 +31,7 @@ Longer form, if the application allows:
 |---|---|
 | Legal entity | [OPERATOR FILL — legal entity name + state of formation] |
 | DBA | Turf Totals / Turf Monster |
-| Website | https://app.turfmonster.media |
+| Website | https://turfmonster.media |
 | Business address | [OPERATOR FILL — must match the address published on /contact, /about, and the footer] |
 | Owner / principal | [OPERATOR FILL] |
 | Support email | alex@turfmonster.media |
@@ -86,7 +86,7 @@ Notes for the operator:
 ## States served / excluded
 
 > Paid entry is blocked by IP geolocation in: WA, ID, MT, LA, AZ, HI, NV, CA.
-> The list is published at https://app.turfmonster.media/state-eligibility and
+> The list is published at https://turfmonster.media/state-eligibility and
 > in our Terms of Service, and is rendered from the same configuration the
 > enforcement system reads. Age eligibility (18+; 19+ AL/NE; 21+ IA/MA/VA) is
 > attested at account creation and recorded with a timestamp.
@@ -100,10 +100,10 @@ the live GeoSetting row consistently.)
 - Age attestation at signup, recorded per-account (`users.age_attested_at`).
 - IP-geolocation state blocking on contest entry and fund movement.
 - Responsible gaming page with 1-800-GAMBLER + NCPG links and a self-exclusion
-  / deposit-limit policy: https://app.turfmonster.media/responsible-gaming
+  / deposit-limit policy: https://turfmonster.media/responsible-gaming
 - AML/KYC policy: see `docs/underwriting/AML_KYC_POLICY.md`.
 - One account per person (Terms-enforced; duplicate accounts suspended).
 - Card purchases buy contest-entry credits only — cards never fund a
   withdrawable balance or purchase cryptocurrency. Prizes are USD-denominated
   and settled in USDC.
-- Transparency hub for payout verification: https://app.turfmonster.media/transparency
+- Transparency hub for payout verification: https://turfmonster.media/transparency

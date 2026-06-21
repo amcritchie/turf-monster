@@ -15,7 +15,7 @@ class ApplicationMailer < ActionMailer::Base
   # Absolute URL for a branded email banner, served from the app's OWN asset
   # pipeline (app/assets/images/emails/*.png) — no external bucket, version-
   # controlled with the code. The host comes from action_mailer.asset_host (set
-  # per env: app.turfmonster.media in prod, localhost in dev); falls back to the
+  # per env: turfmonster.media in prod, localhost in dev); falls back to the
   # mailer's default_url_options host. Hosted (not a CID attachment) so it
   # renders in the inbox AND the admin email-manager preview.
   def email_banner_url(filename)

@@ -12,7 +12,7 @@
 #                                      decision (2026-05-24): isolate the cookie
 #                                      entirely until the hub is hardened.
 # - domain: NOT set in prod          — scopes the cookie to the current request
-#                                      host, e.g. app.turfmonster.media in
+#                                      host, e.g. turfmonster.media in
 #                                      production and localhost in development.
 #                                      Hub cookies are not readable here, so the
 #                                      SSO `session[:sso_email]` fields cannot

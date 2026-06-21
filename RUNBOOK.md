@@ -12,8 +12,9 @@ Troubleshooting guide for autonomous agents. Format: problem, diagnosis, fix.
   2. Confirm release output has no boot failure:
      `heroku releases:output <release> --app turf-monster-mainnet`.
   3. Check public URLs:
-     `https://app.turfmonster.media/up` and
-     `https://app.turfmonster.media/contests/world-cup-week-3-contest`.
+     `https://turfmonster.media/up`,
+     `https://turfmonster.media/contests/world-cup-week-3-contest`, and
+     legacy alias `https://app.turfmonster.media/up`.
   4. Confirm payment gates in a production runner: `PAYMENT_PROVIDER=none`,
      `Payments.stripe?=false`, `Payments.paypal_checkout?=false`,
      `AppFlags.cdp_ramp?=true`, and `AppFlags.web2_usdc_entry?=true` unless

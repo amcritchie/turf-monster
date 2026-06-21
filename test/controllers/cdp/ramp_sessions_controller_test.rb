@@ -55,6 +55,14 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
     original.nil? ? ENV.delete("ENABLE_CDP_RAMP") : ENV["ENABLE_CDP_RAMP"] = original
   end
 
+  def with_env(overrides)
+    saved = overrides.keys.index_with { |key| ENV[key] }
+    overrides.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+    yield
+  ensure
+    saved.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
+
   def with_forgery_protection
     original = ActionController::Base.allow_forgery_protection
     ActionController::Base.allow_forgery_protection = true
@@ -129,12 +137,29 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
       log_in_as @user
       give_managed_wallet
 
-      post_session(:onramp, headers: { "Origin" => "https://app.turfmonster.media" })
+      post_session(:onramp, headers: { "Origin" => "https://turfmonster.media" })
 
       assert_response :success
-      assert_equal "https://app.turfmonster.media", response.headers["Access-Control-Allow-Origin"]
+      assert_equal "https://turfmonster.media", response.headers["Access-Control-Allow-Origin"]
       assert_equal "true", response.headers["Access-Control-Allow-Credentials"]
       assert_includes response.headers["Vary"], "Origin"
+    end
+  end
+
+  test "sets explicit CORS headers for APP_HOST and APP_HOST_ALIASES origins" do
+    with_env("APP_HOST" => "turfmonster.media", "APP_HOST_ALIASES" => "app.turfmonster.media") do
+      with_cdp_ramp do
+        log_in_as @user
+        give_managed_wallet
+
+        post_session(:onramp, headers: { "Origin" => "https://turfmonster.media" })
+        assert_response :success
+        assert_equal "https://turfmonster.media", response.headers["Access-Control-Allow-Origin"]
+
+        post_session(:onramp, headers: { "Origin" => "https://app.turfmonster.media" })
+        assert_response :success
+        assert_equal "https://app.turfmonster.media", response.headers["Access-Control-Allow-Origin"]
+      end
     end
   end
 
@@ -160,12 +185,12 @@ class Cdp::RampSessionsControllerTest < ActionDispatch::IntegrationTest
     with_cdp_ramp do
       options cdp_onramp_sessions_path,
         headers: {
-          "Origin" => "https://app.turfmonster.media",
+          "Origin" => "https://turfmonster.media",
           "Access-Control-Request-Method" => "POST"
         }
 
       assert_response :no_content
-      assert_equal "https://app.turfmonster.media", response.headers["Access-Control-Allow-Origin"]
+      assert_equal "https://turfmonster.media", response.headers["Access-Control-Allow-Origin"]
       assert_includes response.headers["Access-Control-Allow-Methods"], "POST"
     end
   end

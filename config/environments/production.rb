@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require Rails.root.join("lib/turf_monster/host_config").to_s
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
@@ -42,16 +43,16 @@ Rails.application.configure do
   # Mount Action Cable outside main process or domain.
   # config.action_cable.mount_path = nil
   # config.action_cable.url = "wss://example.com/cable"
-  # APP_HOST is the canonical public hostname for this deployment. Defaults to
-  # the mainnet public host (the only prod app since the devnet-prod target was
-  # decommissioned); the mainnet app also sets APP_HOST=app.turfmonster.media
-  # explicitly, so the default is just a sane fallback.
+  # APP_HOST is the canonical public hostname for this deployment. APP_HOST_ALIASES
+  # keeps legacy domains accepted while provider allowlists are updated.
   # Drives: ActionCable origin allowlist, mailer/OAuth-callback default_url_options,
   # and the host-authorization allowlist below.
-  app_host = ENV.fetch("APP_HOST", "app.turfmonster.media")
+  app_host = ENV.fetch("APP_HOST", "turfmonster.media")
+  app_host_aliases = TurfMonster::HostConfig.aliases(ENV.fetch("APP_HOST_ALIASES", ""))
+  app_hosts = TurfMonster::HostConfig.public_hosts(app_host:, aliases: app_host_aliases)
 
-  # ActionCable (contest chat) — restrict WebSocket origins to the app host.
-  config.action_cable.allowed_request_origins = [ %r{\Ahttps://#{Regexp.escape(app_host)}\z} ]
+  # ActionCable (contest chat) — restrict WebSocket origins to app-owned hosts.
+  config.action_cable.allowed_request_origins = TurfMonster::HostConfig.allowed_https_origins(app_hosts)
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   # Can be used together with config.force_ssl for Strict-Transport-Security and secure cookies.
@@ -149,16 +150,14 @@ Rails.application.configure do
   # attackers replay Stripe-signed webhook payloads against the dyno's direct
   # *.herokuapp.com URL (bypassing CDN/WAF allowlists) and enables DNS-rebinding
   # to reach the app under a foreign origin's cookie scope.
-  # Primary public host (app_host) + this app's direct Heroku dyno host. The
-  # dyno host is parameterized via DYNO_HOST so the Heroku app authorizes its
-  # own *.herokuapp.com without a code change; the mainnet app sets
-  # DYNO_HOST=turf-monster-mainnet-*.herokuapp.com explicitly, and the default
-  # below is the mainnet dyno host as a fallback. (Avoid the HEROKU_* namespace,
-  # which the platform reserves and may clobber.)
+  # Primary public hosts (APP_HOST + APP_HOST_ALIASES) + this app's direct Heroku
+  # dyno host. The dyno host is parameterized via DYNO_HOST so the Heroku app
+  # authorizes its own *.herokuapp.com without a code change. Avoid the HEROKU_*
+  # namespace, which the platform reserves and may clobber.
   config.hosts = [
-    app_host,                                                                  # primary public URL
+    *app_hosts,                                                                # public URLs
     ENV.fetch("DYNO_HOST", "turf-monster-mainnet-1c0aa8261ff8.herokuapp.com"), # direct Heroku dyno URL (health checks, etc.)
-  ]
+  ].uniq
   # /up is the Rails health-check endpoint Heroku polls — Heroku's load balancer
   # may use internal addressing, so exclude it from host authorization to avoid
   # false-positive health-check failures.

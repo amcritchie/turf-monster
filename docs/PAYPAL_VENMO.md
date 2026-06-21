@@ -96,7 +96,7 @@ anything live:
 1. developer.paypal.com → Apps & Credentials → **Live** tab → Create App.
    Capture **Client ID** + **Secret**.
 2. Same app → Webhooks → Add webhook:
-   `https://app.turfmonster.media/webhooks/paypal`, subscribed to:
+   `https://turfmonster.media/webhooks/paypal`, subscribed to:
    `PAYMENT.CAPTURE.COMPLETED`, `CHECKOUT.ORDER.APPROVED`,
    `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.REFUNDED`,
    `CUSTOMER.DISPUTE.CREATED`.
