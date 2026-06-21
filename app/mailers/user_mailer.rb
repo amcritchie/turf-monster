@@ -25,7 +25,9 @@ class UserMailer < ApplicationMailer
     @contest = contest
     @email = email
     @magic_url = magic_link_url(token: token)
-    @banner_url = email_banner_url("magic-link-banner.jpg")
+    # Admin-managed banner (Studio::EmailImage) with the versioned asset as the
+    # fallback until an operator uploads one. Manage at /admin/email_images.
+    @banner_url = Studio::EmailImage.url(:magic_link) || email_banner_url("magic-link-banner.jpg")
     @banner_alt = "Your Magic Link"
     mail(to: email, subject: "🐊🪄 Turf Totals Sign-in Link")
   end

@@ -13,6 +13,17 @@ Studio.validate_user_contract = false
 # (studio-engine >= 0.5.1)
 Studio.draw_auth_routes = false
 
+# Use the unified Studio::Link store for magic links (short tokens, shared model).
+# turf-monster keeps its own rich /magic_link route + controller (contest landing,
+# age-gate, picks) — now backed by Studio::Link.
+Studio.magic_link_store = :database
+
+# Don't let the engine draw /l/<token> — turf-monster already owns /l/:slug for
+# marketing landing pages (config/routes.rb, drawn before Studio.routes). This app
+# mounts the engine's Studio::LinksController at /i/<token> for referral links
+# instead (see config/routes.rb).
+Studio.draw_link_routes = false
+
 Studio.configure do |config|
   config.app_name = "Turf Monster"
   config.sticky_table_headers = true

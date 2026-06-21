@@ -36,7 +36,7 @@ class AgeAttestationFlagTest < ActionDispatch::IntegrationTest
   end
 
   test "magic-link signup succeeds without the attestation and stamps no age_attested_at" do
-    token = MagicLink.generate(email: "flagoff-ml@example.com", age_attested: false)
+    token = Studio::Link.create_magic_link(email: "flagoff-ml@example.com", age_attested: false).token
     assert_difference "User.count", 1 do
       post magic_link_consume_path(token: token)
     end

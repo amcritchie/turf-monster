@@ -124,6 +124,13 @@ Rails.application.routes.draw do
 
   Studio.routes(self)
 
+  # Referral / invite links (Studio::Link, kind: referral). /l is this app's
+  # landing-page namespace, so invite links live at /i/<token>; the engine's
+  # Studio::LinksController dispatches a referral to an attribution cookie +
+  # redirect to its target. Helpers: link_url(token:) / link_consume_path.
+  get  "i/:token", to: "studio/links#show",    as: :link,         constraints: { token: %r{[^/]+} }
+  post "i/:token", to: "studio/links#consume", as: :link_consume, constraints: { token: %r{[^/]+} }
+
   # Solana wallet auth
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"
   post "auth/solana/verify", to: "solana_sessions#verify"
