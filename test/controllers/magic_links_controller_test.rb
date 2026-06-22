@@ -37,7 +37,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   # consumed the single-use token the human's first real click would already
   # see "link already used". The GET only renders a one-button page.
   test "confirm GET renders the interstitial WITHOUT consuming or signing in" do
-    token = MagicLink.generate(email: "brand-new@example.com")
+    token = magic_token(email: "brand-new@example.com")
     assert_no_difference "User.count", "GET must not create the account (scanner pre-fetch)" do
       get magic_link_path(token: token)
     end
@@ -58,7 +58,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   # scanner pre-fetch (GET) and assert the human's later POST still signs in,
   # which can only happen if the GET left the link unconsumed.
   test "a scanner prefetch GET does not burn the token; the human's POST still signs in" do
-    token = MagicLink.generate(email: users(:alex).email)
+    token = magic_token(email: users(:alex).email)
 
     # 1. Scanner / Gmail-proxy pre-fetches the emailed URL.
     get magic_link_path(token: token)
@@ -72,7 +72,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "single-use still holds: a second POST with the same token is rejected" do
-    token = MagicLink.generate(email: users(:alex).email)
+    token = magic_token(email: users(:alex).email)
 
     post magic_link_consume_path(token: token)
     assert_equal users(:alex).id, session[Studio.session_key]
@@ -88,7 +88,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   # the modal auto-redirects to the entry-tokens upsell client-side. It does NOT
   # redirect straight to tokens_buy_path nor set a :notice toast anymore.
   test "consume creates a passwordless, email-verified account and shows the welcome modal" do
-    token = MagicLink.generate(email: "brand-new@example.com", age_attested: true)
+    token = magic_token(email: "brand-new@example.com", age_attested: true)
     assert_difference "User.count", 1 do
       post magic_link_consume_path(token: token)
     end
@@ -112,7 +112,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "consume lands a new signup on the contest return_to with an auth toast + tokens picker" do
-    token = MagicLink.generate(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3", age_attested: true)
+    token = magic_token(email: "newpicker@example.com", return_to: "/contests/the-cup?picks=1,2,3", age_attested: true)
     post magic_link_consume_path(token: token)
     assert_redirected_to "/contests/the-cup?picks=1,2,3"
     # New user on a SPECIFIC contest: a toast confirms auth; the board opens the
@@ -125,7 +125,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
 
   test "consume logs in an existing user on a safe return_to with a welcome-back toast" do
     existing = users(:alex)
-    token = MagicLink.generate(email: existing.email, return_to: "/account")
+    token = magic_token(email: existing.email, return_to: "/account")
     assert_no_difference "User.count" do
       post magic_link_consume_path(token: token)
     end
@@ -142,7 +142,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   test "consume verifies an existing but never-verified email" do
     existing = users(:alex)
     existing.update!(email_verified_at: nil)
-    token = MagicLink.generate(email: existing.email)
+    token = magic_token(email: existing.email)
     post magic_link_consume_path(token: token)
     assert existing.reload.email_verified_at.present?
   end
@@ -159,7 +159,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal true, session[:onchain], "precondition: prior session is a live web3 session"
 
     email_user = users(:jordan)
-    token = MagicLink.generate(email: email_user.email)
+    token = magic_token(email: email_user.email)
     post magic_link_consume_path(token: token)
 
     # New session belongs to the magic-link user, not the prior web3 user.
@@ -185,10 +185,10 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     # consume runs (the real detect_geo_state path). A prior consume establishes
     # + rotates a real session so the next consume runs with session writes
     # already present in the jar.
-    post magic_link_consume_path(token: MagicLink.generate(email: "warmup@example.com", age_attested: true))
+    post magic_link_consume_path(token: magic_token(email: "warmup@example.com", age_attested: true))
     # Now a genuinely new email; the jar already holds a rotated session.
     assert_difference "User.count", 1 do
-      post magic_link_consume_path(token: MagicLink.generate(email: "fresh-browser@example.com", age_attested: true))
+      post magic_link_consume_path(token: magic_token(email: "fresh-browser@example.com", age_attested: true))
     end
     user = User.find_by(email: "fresh-browser@example.com")
     assert_equal user.id, session[Studio.session_key], "new user must be logged in after reset_session"
@@ -205,7 +205,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
     log_in_as(prior)
     assert_equal prior.id, session[Studio.session_key], "precondition: logged in as the prior user"
 
-    token = MagicLink.generate(email: "switcheroo@example.com", age_attested: true)
+    token = magic_token(email: "switcheroo@example.com", age_attested: true)
     assert_difference "User.count", 1 do
       post magic_link_consume_path(token: token)
     end
@@ -220,7 +220,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "consume sanitizes a protocol-relative return_to (open-redirect guard)" do
-    token = MagicLink.generate(email: users(:alex).email, return_to: "//evil.com/x")
+    token = magic_token(email: users(:alex).email, return_to: "//evil.com/x")
     post magic_link_consume_path(token: token)
     # The evil path is dropped to nil → falls back to the safe featured contest.
     assert_redirected_to contest_path(contests(:one))
@@ -231,7 +231,7 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
   # legal-age attestation (the checkbox on the auth card / auth modal). The
   # attestation rides in the magic-link row; consume is the enforcement point.
   test "consume REFUSES to create an account without the legal-age attestation" do
-    token = MagicLink.generate(email: "underage-unknown@example.com")
+    token = magic_token(email: "underage-unknown@example.com")
     assert_no_difference "User.count" do
       post magic_link_consume_path(token: token)
     end
@@ -242,20 +242,34 @@ class MagicLinksControllerTest < ActionDispatch::IntegrationTest
 
   test "create threads the age_attestation param into the magic-link row" do
     post magic_link_request_path, params: { email: "attest@example.com", age_attestation: "1" }
-    assert MagicLink.find_by(email: "attest@example.com").age_attested?,
+    assert magic_link_for("attest@example.com").age_attested?,
            "the request checkbox must persist onto the link row"
 
     post magic_link_request_path, params: { email: "no-attest@example.com" }
-    assert_not MagicLink.find_by(email: "no-attest@example.com").age_attested?,
+    assert_not magic_link_for("no-attest@example.com").age_attested?,
                "absent checkbox must not be treated as attested"
   end
 
   test "existing users still log in via links that carry no attestation (grandfathered)" do
     existing = users(:alex)
     assert_nil existing.age_attested_at
-    token = MagicLink.generate(email: existing.email)
+    token = magic_token(email: existing.email)
     post magic_link_consume_path(token: token)
     assert_equal existing.id, session[Studio.session_key],
                  "login is unaffected — attestation gates account CREATION only"
+  end
+
+  # Carry-forward of the deleted MagicLink service test: a link past its TTL is
+  # rejected on consume (Studio::Link expiry).
+  test "an expired magic link is rejected on consume" do
+    token = magic_token(email: "expired-ml@example.com")
+    travel(Studio.magic_link_ttl + 1.minute) do
+      assert_no_difference "User.count" do
+        post magic_link_consume_path(token: token)
+      end
+    end
+    assert_redirected_to signin_path
+    assert_match(/invalid or has expired/i, flash[:alert])
+    assert_nil session[Studio.session_key]
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_15_000005) do
+ActiveRecord::Schema[7.2].define(version: 2026_06_21_120001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -229,8 +229,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_15_000005) do
   end
 
   create_table "image_caches", force: :cascade do |t|
-    t.string "owner_type", null: false
-    t.bigint "owner_id", null: false
+    t.string "owner_type"
+    t.bigint "owner_id"
     t.string "purpose", null: false
     t.string "variant", null: false
     t.string "s3_key", null: false
@@ -474,6 +474,21 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_15_000005) do
     t.index ["slug"], name: "index_stripe_purchases_on_slug", unique: true
     t.index ["stripe_session_id"], name: "index_stripe_purchases_on_stripe_session_id", unique: true
     t.index ["user_id"], name: "index_stripe_purchases_on_user_id"
+  end
+
+  create_table "studio_links", force: :cascade do |t|
+    t.string "token", null: false
+    t.string "kind", null: false
+    t.string "linkable_type"
+    t.bigint "linkable_id"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "expires_at"
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["kind"], name: "index_studio_links_on_kind"
+    t.index ["linkable_type", "linkable_id", "kind"], name: "idx_studio_links_owner_kind"
+    t.index ["token"], name: "index_studio_links_on_token", unique: true
   end
 
   create_table "survivor_picks", force: :cascade do |t|

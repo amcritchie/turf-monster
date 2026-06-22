@@ -107,9 +107,21 @@ class ActionDispatch::IntegrationTest
   def log_in_as(user)
     raise ArgumentError, "log_in_as requires a user with an email (use log_in_as_onchain for wallet users)" if user.email.blank?
     verified_before = user.email_verified_at
-    token = MagicLink.generate(email: user.email)
+    token = Studio::Link.create_magic_link(email: user.email).token
     post magic_link_consume_path(token: token)
     user.update_column(:email_verified_at, verified_before) if user.reload.email_verified_at != verified_before
+  end
+
+  # Mint a magic-link token string. Studio::Link replaced the app-local MagicLink
+  # model whose .generate returned a token directly; this keeps tests terse.
+  def magic_token(**attrs)
+    Studio::Link.create_magic_link(**attrs).token
+  end
+
+  # The magic-link Studio::Link for an email (email now rides in metadata, not a
+  # column, so find_by(email:) no longer works).
+  def magic_link_for(email)
+    Studio::Link.magic_links.detect { |link| link.email == email.to_s.strip.downcase }
   end
 
   # Log in via Solana wallet auth — sets session[:onchain] = true

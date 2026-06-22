@@ -68,8 +68,9 @@ class MainContestCallSitesTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get account_path
     assert_response :success
-    # The widget renders the share URL inline; check it points at the main contest's slug.
-    assert_includes response.body, "/contests/#{main.slug}?ref="
+    # The widget renders a tokenized /i invite whose Studio::Link targets the main contest.
+    link = Studio::Link.referral_for(@admin, target: "/contests/#{main.slug}")
+    assert_includes response.body, "/i/#{link.token}"
   end
 
   test "GET /account widget falls back to most-recent open when no main is set" do
@@ -79,7 +80,8 @@ class MainContestCallSitesTest < ActionDispatch::IntegrationTest
     log_in_as(@admin)
     get account_path
     assert_response :success
-    assert_includes response.body, "/contests/#{newer.slug}?ref="
+    link = Studio::Link.referral_for(@admin, target: "/contests/#{newer.slug}")
+    assert_includes response.body, "/i/#{link.token}"
   end
 
   # --- /faucet CTA ---

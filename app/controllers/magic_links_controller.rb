@@ -27,8 +27,8 @@ class MagicLinksController < ApplicationController
       # The legal-age checkbox is checked at request time; the attestation
       # rides in the link row because the ACCOUNT is created at consume time
       # (possibly in a different browser). sign_up_new enforces it.
-      token = MagicLink.generate(email: email, return_to: resolved_return_to,
-                                 age_attested: age_attestation_given?)
+      token = Studio::Link.create_magic_link(email: email, return_to: resolved_return_to,
+                                             age_attested: age_attestation_given?).token
       Studio::Email.deliver(UserMailer, :magic_link, email, token, to: email, contest: @magic_contest)
     end
     respond_to do |format|
@@ -74,10 +74,10 @@ class MagicLinksController < ApplicationController
   # (a scanner won't POST a CSRF-protected form). Mirrors the prior GET behavior.
   def consume
     response.set_header("Referrer-Policy", "strict-origin")
-    result = MagicLink.consume(params[:token])
+    result = Studio::Link.consume!(params[:token])
     user = User.find_by(email: result.email)
     user ? sign_in_existing(user, result) : sign_up_new(result)
-  rescue MagicLink::InvalidToken
+  rescue Studio::Link::InvalidToken
     redirect_to signin_path, alert: "That sign-in link is invalid or has expired. Request a fresh one below."
   end
 

@@ -11,7 +11,7 @@ module Studio
     end
 
     test "shows recent local emails with magic-link proof URLs" do
-      token = MagicLink.generate(email: users(:alex).email, age_attested: true)
+      token = Studio::Link.create_magic_link(email: users(:alex).email, age_attested: true).token
       ::EmailDelivery.deliver(UserMailer, :magic_link, users(:alex).email, token, to: users(:alex).email, contest: contests(:one))
 
       get studio_local_emails_path
@@ -23,7 +23,7 @@ module Studio
     end
 
     test "json includes action URLs for agents" do
-      token = MagicLink.generate(email: users(:alex).email, age_attested: true)
+      token = Studio::Link.create_magic_link(email: users(:alex).email, age_attested: true).token
       ::EmailDelivery.deliver(UserMailer, :magic_link, users(:alex).email, token, to: users(:alex).email, contest: contests(:one))
 
       get studio_local_emails_path(format: :json)

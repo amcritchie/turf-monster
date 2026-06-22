@@ -1,5 +1,5 @@
 <%
-  invite_url = "#{request.base_url}/contests/#{@contest.slug}?ref=#{current_user.slug}"
+  invite_url = referral_link_url("/contests/#{@contest.slug}")
   share_title = "Weekly World Cup DFS ⚽️ - Turf Totals"
   encoded_url = ERB::Util.url_encode(invite_url)
   encoded_title = ERB::Util.url_encode(share_title)

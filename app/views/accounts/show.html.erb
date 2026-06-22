@@ -284,7 +284,7 @@
   <%# -- Bring Friends / referral widget -- %>
   <%
     referral_target_path = @referral_share_contest ? contest_path(@referral_share_contest) : root_path
-    referral_url = "#{request.base_url}#{referral_target_path}?ref=#{current_user.slug}"
+    referral_url = referral_link_url(referral_target_path)
     referral_share_title = "Weekly World Cup DFS ⚽️ - Turf Totals"
     referral_encoded_url   = ERB::Util.url_encode(referral_url)
     referral_encoded_title = ERB::Util.url_encode(referral_share_title)

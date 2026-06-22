@@ -1,4 +1,14 @@
 module ApplicationHelper
+  # The current user's referral/invite URL landing on `target` (a same-origin
+  # path, e.g. a contest). One stable Studio::Link per (user, target); the
+  # tokenized /i/<token> replaces the old /contests/<slug>?ref=<slug> share link.
+  # nil for a logged-out viewer.
+  def referral_link_url(target)
+    return unless current_user
+
+    link_url(token: Studio::Link.referral_for(current_user, target: target).token)
+  end
+
   # Which funding flow the entry gate offers web2 users: PayPal/Venmo when
   # explicitly selected, Stripe token packs only when the dormant fallback is
   # explicitly re-enabled, the Coinbase USDC ramp when enabled, or an honest
