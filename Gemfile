@@ -78,10 +78,10 @@ gem "sidekiq-cron", "~> 1.12"
 gem "sentry-ruby"
 gem "sentry-rails"
 
-# Temporary: point at the standard-link-model engine branch to exercise
-# Studio::Link end-to-end before the gem is published. Revert to a published
-# version (~> 0.8) on adoption once the engine release ships.
-gem "studio-engine", github: "amcritchie/studio-engine", branch: "feat/standard-link-model"
+# Shared Rails engine: auth, theme, error logs, SSO, and the unified
+# Studio::Link store (short tokens for magic links + referral invites).
+# 0.8.0 publishes the standard Studio::Link model adopted here.
+gem "studio-engine", "~> 0.8"
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
 # 0.4.7 adds Solana::Transaction.cosign_wire + Client#simulate_transaction for the

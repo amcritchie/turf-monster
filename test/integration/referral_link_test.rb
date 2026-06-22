@@ -1,7 +1,7 @@
 require "test_helper"
 
 # The /i/<token> referral cutover (Studio::Link, kind: referral) replacing the
-# old /contests/<slug>?ref=<slug> share link. The engine's Studio::LinksController
+# old /contests/<slug>?ref=<slug> share link. The app-owned InvitesController#show
 # handles the dispatch; this proves it works through turf-monster's own routing,
 # attribution cookie, and signup attribution.
 class ReferralLinkTest < ActionDispatch::IntegrationTest
