@@ -2,7 +2,9 @@
 
 Sports pick'em game for the FIFA World Cup 2026. Players select 6 team matchups with multipliers per entry, scored by actual goals. Features Solana blockchain integration for contest escrow and prize distribution.
 
-**Live**: https://app.turfmonster.media
+**Live**: https://turfmonster.media
+
+Legacy alias: https://app.turfmonster.media
 
 Turf Monster is a **satellite product app** in the [McRitchie Studio](https://github.com/amcritchie/mcritchie-studio) ecosystem. McRitchie Studio owns the shared recovery scripts and agent-neutral docs.
 

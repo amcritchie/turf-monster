@@ -4,7 +4,7 @@ class Cdp::OnrampUrlTest < ActiveSupport::TestCase
   REQUIRED = {
     session_token: "sess-token",
     partner_user_ref: "tm-1-42",
-    redirect_url: "https://app.turfmonster.media/cdp/onramp/return"
+    redirect_url: "https://turfmonster.media/cdp/onramp/return"
   }.freeze
 
   test "builds the hosted buy URL with USDC-on-Solana defaults" do
