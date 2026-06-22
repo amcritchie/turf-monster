@@ -102,8 +102,10 @@ Rails.application.routes.draw do
   get "help/phantom",      to: "help#phantom",     as: :help_phantom
   get "help/glossary",     to: "help#glossary",    as: :help_glossary
 
-  # Landing pages — public funnel pages (admin-managed via Admin::LandingPagesController)
-  get "l/:slug", to: "landing_pages#show", as: :landing_page
+  # Landing pages — public funnel pages (admin-managed via Admin::LandingPagesController).
+  # Live at /lp/:slug now that /l/<token> is the unified Studio::Link entry point
+  # (below). Old /l/:slug links 301 to /lp via Studio::LinksController#show fallback.
+  get "lp/:slug", to: "landing_pages#show", as: :landing_page
 
   # Phantom deep link callback — must be before Studio.routes to avoid
   # matching OmniAuth's /auth/:provider/callback wildcard
@@ -124,14 +126,16 @@ Rails.application.routes.draw do
 
   Studio.routes(self)
 
-  # Referral / invite links (Studio::Link, kind: referral). /l is this app's
-  # landing-page namespace, so invite links live at /i/<token>. GET-only and
-  # handled by InvitesController, which serves REFERRAL-kind links ONLY (cookie +
-  # redirect). Deliberately NOT the engine's Studio::LinksController#consume:
-  # routing a magic_link-kind token through it would create an account via the
-  # engine's generic sign_up_new, bypassing the legal-age gate in
-  # MagicLinksController#sign_up_new — a forbidden second sign-in path.
-  get "i/:token", to: "invites#show", as: :link, constraints: { token: %r{[^/]+} }
+  # Unified Studio::Link entry point — /l/<token> for BOTH magic-link sign-in and
+  # referral invites (landing pages moved to /lp). Handled by this app's OWN
+  # Studio::LinksController, NOT the engine's: magic-link consume goes through
+  # turf's GATED sign_up_new (legal-age attestation, contest landing), and
+  # referral is GET-only (attribution cookie + redirect). draw_link_routes stays
+  # false so the engine doesn't also draw its gateless /l consume.
+  get  "l/:token", to: "studio/links#show",    as: :link,         constraints: { token: %r{[^/]+} }
+  post "l/:token", to: "studio/links#consume", as: :link_consume, constraints: { token: %r{[^/]+} }
+  # Back-compat: invite links already shared as /i/<token> 301 to the new /l.
+  get  "i/:token", to: redirect("/l/%{token}"), constraints: { token: %r{[^/]+} }
 
   # Solana wallet auth
   get  "auth/solana/nonce",  to: "solana_sessions#nonce"

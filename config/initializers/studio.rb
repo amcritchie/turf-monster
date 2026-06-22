@@ -18,11 +18,12 @@ Studio.draw_auth_routes = false
 # age-gate, picks) — now backed by Studio::Link.
 Studio.magic_link_store = :database
 
-# Don't let the engine draw a /l consume route — turf-monster already owns /l/:slug
-# for marketing landing pages (config/routes.rb, drawn before Studio.routes). With
-# draw_link_routes disabled the engine draws no link-consume route at all; this app
-# instead mounts its own InvitesController at /i/<token> for referral links only
-# (see config/routes.rb).
+# Don't let the engine draw its /l routes — turf needs its OWN gated handler.
+# This app draws /l/<token> -> its own Studio::LinksController (config/routes.rb),
+# whose magic-link consume goes through turf's legal-age-gated sign_up_new, NOT the
+# engine's gateless one. Landing pages moved to /lp so /l is the unified
+# Studio::Link entry point (magic + referral). Engine drawing /l too would re-add
+# the gateless consume path.
 Studio.draw_link_routes = false
 
 Studio.configure do |config|
