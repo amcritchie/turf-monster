@@ -24,7 +24,7 @@ class UserMailer < ApplicationMailer
   def magic_link(email, token, contest: nil)
     @contest = contest
     @email = email
-    @magic_url = magic_link_url(token: token)
+    @magic_url = link_url(token: token) # unified /l/<token> (Studio::LinksController)
     # Admin-managed banner (Studio::EmailImage) with the versioned asset as the
     # fallback until an operator uploads one. Manage at /admin/email_images.
     @banner_url = Studio::EmailImage.url(:magic_link) || email_banner_url("magic-link-banner.jpg")

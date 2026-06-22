@@ -256,7 +256,7 @@ class TestController < ApplicationController
     # age_attested: the e2e login backdoor models a user who checked the
     # legal-age box on the auth card (consume refuses NEW accounts without it).
     token = Studio::Link.create_magic_link(email: params[:email].to_s, return_to: return_to, age_attested: true).token
-    render json: { ok: true, token: token, url: magic_link_path(token: token) }
+    render json: { ok: true, token: token, url: link_path(token: token) }
   end
 
   # Read-only JSON view of a user's referral state so specs can assert

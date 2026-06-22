@@ -12,7 +12,7 @@ class LinkPreviewBrowserGuardTest < ActionDispatch::IntegrationTest
   MODERN     = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15".freeze
 
   test "landing page serves og tags to an old-browser link-preview fetcher" do
-    get "/l/#{landing_pages(:launch).slug}", headers: { "HTTP_USER_AGENT" => OLD_SAFARI }
+    get landing_page_path(landing_pages(:launch)), headers: { "HTTP_USER_AGENT" => OLD_SAFARI }
     assert_response :success
     assert_match %r{<meta property="og:image"}, response.body
   end

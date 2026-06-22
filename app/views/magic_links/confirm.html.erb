@@ -17,7 +17,8 @@
 
   <div id="magic-fallback" style="display:none;margin-top:2rem;color:#cdd9c9;">
     <p style="margin:0 0 1rem;font-size:15px;">Taking longer than expected?</p>
-    <%= button_to magic_link_consume_path(token: @token),
+    <% consume_path = @consume_path || magic_link_consume_path(token: @token) %>
+    <%= button_to consume_path,
           method: :post,
           form: { id: "magic-consume-form", data: { turbo: "false" } },
           style: "display:inline-block;padding:14px 34px;font-size:16px;font-weight:700;color:#ffffff;background:#4BAF50;border:none;border-radius:10px;cursor:pointer;" do %>
