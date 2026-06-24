@@ -30,6 +30,15 @@ class GeoSetting < ApplicationRecord
     setting.persisted? && setting.enabled? && setting.banned_states.include?(state_code)
   end
 
+  # The gate is LIVE — a provisioned, enabled row. When false the blocklist
+  # isn't enforcing at all, so nothing is geo-restricted (and the controller's
+  # fail-closed-on-undetectable-US path stays off, preserving the operator
+  # kill-switch). Same persisted? + enabled? preconditions .blocked? applies.
+  def self.enforcing?
+    setting = current
+    setting.persisted? && setting.enabled?
+  end
+
   def name_slug
     "geo-#{app_name.parameterize}"
   end

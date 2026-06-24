@@ -85,7 +85,7 @@
     </div>
     <% if AppFlags.cdp_ramp? && @user.solana_connected? && geo_blocked? %>
       <p class="text-xs text-muted mt-2" data-cdp-geo-note>
-        Buying USDC with Coinbase isn't available in your state (<%= geo_state %>).
+        Buying USDC with Coinbase isn't available in your state<%= " (#{geo_state})" if geo_state.present? %>.
       </p>
     <% end %>
   </div>
@@ -116,7 +116,7 @@
       </div>
       <% if geo_blocked? %>
         <p class="text-xs text-muted mt-2" data-cdp-geo-note>
-          Cashing out with Coinbase isn't available in your state (<%= geo_state %>).
+          Cashing out with Coinbase isn't available in your state<%= " (#{geo_state})" if geo_state.present? %>.
         </p>
       <% else %>
         <p class="text-xs text-muted mt-2" x-show="$store.session.usdcCents === 0" x-cloak>
