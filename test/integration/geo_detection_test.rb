@@ -5,12 +5,14 @@ require "test_helper"
 # the real detect_geo_state -> normalize_state_code -> GeoSetting blocklist
 # pipeline fires end-to-end through GET /geo/check.
 #
-# The shipped bug (config/initializers/geocoder.rb without use_https) was that
-# the lookup ITSELF returned nothing — ipinfo 301-redirects plain HTTP to a
-# non-JSON body and Geocoder won't follow it — so geo_state stayed blank, the
-# CDP ramp catalog fell to its US-needs-a-subdivision fail-closed branch, and
-# the state blocklist silently stopped enforcing. The "no result" case below
-# pins that exact failure mode.
+# COMPLIANCE: the legal-state blocklist FAILS CLOSED. When the gate is enabled
+# but the lookup yields no subdivision (a VPN/proxy to an unknown IP, an ipinfo
+# outage, or the 3s timeout), geo_state goes blank and geo_country defaults to
+# "US" — which could mask a banned state. Such an undetectable US location is
+# BLOCKED, never waved through (mirrors Cdp::Catalog's US+nil-subdivision
+# fail-closed on the payments path). The earlier http-301 lookup regression
+# made this path the norm; the fix here is that an undetectable US location can
+# no longer evade the block by breaking geolocation.
 class GeoDetectionTest < ActionDispatch::IntegrationTest
   GeoResult = Struct.new(:country_code, :state_code, :region_code, :region, keyword_init: true)
 
@@ -41,12 +43,54 @@ class GeoDetectionTest < ActionDispatch::IntegrationTest
     assert_equal true, body["blocked"], "the WA blocklist must enforce when geo resolves"
   end
 
-  test "a failed lookup (the http-301 regression) leaves state blank and the blocklist silently open" do
+  test "an undetectable US location fails CLOSED (geo_check reports blocked)" do
+    # The http-301 regression made EVERY lookup return nothing — geo_state went
+    # blank, geo_country defaulted to "US", and the blocklist used to silently
+    # fall open. With the gate enabled, an undetectable US location must now
+    # report blocked: true so a banned-state user can't evade by breaking geo.
     Geocoder.stub :search, [] do
       get geo_check_path
     end
     body = JSON.parse(response.body)
-    assert_nil body["state"]
-    assert_equal false, body["blocked"], "documents why the broken lookup was a compliance hazard, not just a UX bug"
+    assert_nil body["state"], "an undetectable lookup still has no resolved state"
+    assert_equal true, body["blocked"],
+      "US + undetectable subdivision must fail CLOSED, not open (compliance)"
+  end
+
+  # ── require_geo_allowed enforcement on a real gated action ──────────────────
+
+  test "an undetectable US location is blocked on a geo-gated entry action (fail closed)" do
+    # The actual exposure: a banned-state user forces geolocation to fail
+    # (VPN to an unknown IP / ipinfo outage) so geo_state is blank and
+    # geo_country defaults to US. The require_geo_allowed before_action must
+    # block the money/entry path, not permit it. Stub wraps login too, so the
+    # cached geo session is the undetectable one for the gated POST.
+    Geocoder.stub :search, [] do
+      log_in_as users(:alex)
+
+      post toggle_selection_contest_path(contests(:one)),
+        params: { matchup_id: slate_matchups(:m1).id }, as: :json
+      assert_response :forbidden,
+        "an undetectable US location must be blocked on a geo-gated action"
+
+      post enter_contest_path(contests(:one))
+      assert_redirected_to root_path,
+        "the html entry path must bounce an undetectable US location to root"
+    end
+  end
+
+  test "a resolved allowed state passes the geo gate on a gated action" do
+    # Positive control: a resolved, non-banned US state (CO) is NOT over-blocked
+    # by the fail-closed path — the gated action proceeds normally.
+    SeasonConfig.set_current!(1)
+    allowed = GeoResult.new(country_code: "US", state_code: "CO", region_code: nil, region: "Colorado")
+    Geocoder.stub :search, [allowed] do
+      log_in_as users(:alex)
+
+      post toggle_selection_contest_path(contests(:one)),
+        params: { matchup_id: slate_matchups(:m1).id }, as: :json
+    end
+    assert_response :success,
+      "a resolved allowed state must clear require_geo_allowed (no over-blocking)"
   end
 end

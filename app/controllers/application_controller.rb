@@ -369,7 +369,24 @@ class ApplicationController < ActionController::Base
     session[:geo_country].presence || "US"
   end
 
+  # Legal-state gate. Two ways to be blocked:
+  #   1. the resolved state is on the published exclusion list, OR
+  #   2. FAIL CLOSED — the gate is live but this is a US visitor whose
+  #      subdivision is undetectable (a VPN/proxy to an unknown IP, an ipinfo
+  #      outage, or the 3s lookup timeout). geo_country defaults to "US" (the
+  #      product is US-centric), so a blank state under US could be a banned
+  #      state masked by a failed lookup — we must not wave it through. Mirrors
+  #      Cdp::Catalog#available?'s US+nil-subdivision fail-closed on the
+  #      payments path.
+  #
+  # The fail-closed branch is gated on GeoSetting.enforcing? so a disabled gate
+  # still blocks nothing (the operator kill-switch). A *resolved* non-US country
+  # with a blank state stays allowed — only the US+blank ambiguity flips closed.
+  # The blocklist delegation is left intact (GeoSetting.blocked?) so existing
+  # callers/stubs of that API are unchanged.
   def geo_blocked?
+    return true if GeoSetting.enforcing? && geo_country == "US" && geo_state.blank?
+
     GeoSetting.blocked?(geo_state)
   end
 
@@ -628,11 +645,15 @@ class ApplicationController < ActionController::Base
   end
 
   def require_geo_allowed
-    if geo_blocked?
-      respond_to do |format|
-        format.html { redirect_to root_path, alert: "This feature is not available in your state (#{geo_state})." }
-        format.json { render json: { error: "Restricted in #{geo_state}" }, status: :forbidden }
-      end
+    return unless geo_blocked?
+
+    # geo_state is blank on the fail-closed (undetectable US) path — omit the
+    # empty "( )" so the copy reads cleanly in both the resolved-state and
+    # undetectable cases.
+    state_note = geo_state.present? ? " (#{geo_state})" : ""
+    respond_to do |format|
+      format.html { redirect_to root_path, alert: "This feature is not available in your state#{state_note}." }
+      format.json { render json: { error: "Restricted#{state_note}" }, status: :forbidden }
     end
   end
 

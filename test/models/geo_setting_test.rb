@@ -22,4 +22,14 @@ class GeoSettingTest < ActiveSupport::TestCase
     assert GeoSetting.blocked?("CA")
     assert_not GeoSetting.blocked?("CO")
   end
+
+  test "enforcing? is true only for a provisioned + enabled row" do
+    assert_not GeoSetting.enforcing?, "no row → the gate is off"
+
+    setting = GeoSetting.create!(app_name: Studio.app_name, enabled: false, banned_states: %w[CA])
+    assert_not GeoSetting.enforcing?, "persisted but disabled → the gate is off"
+
+    setting.update!(enabled: true)
+    assert GeoSetting.enforcing?, "persisted + enabled → the gate is live (fail-closed applies)"
+  end
 end
