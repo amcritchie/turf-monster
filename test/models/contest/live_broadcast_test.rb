@@ -1,4 +1,8 @@
 require "test_helper"
+# turbo-rails 2.x only require-s this helper lazily inside its on_load(:action_cable)
+# hook, which has not fired when this file loads — so require it explicitly before
+# the include below (otherwise: uninitialized constant Turbo::Broadcastable::TestHelper).
+require "turbo/broadcastable/test_helper"
 
 class Contest::LiveBroadcastTest < ActiveSupport::TestCase
   include Turbo::Broadcastable::TestHelper
