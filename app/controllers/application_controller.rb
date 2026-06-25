@@ -329,11 +329,34 @@ class ApplicationController < ActionController::Base
     (cached.to_f * 100).round
   end
 
+  # Freshness windows for the session-cached IP -> state lookup.
+  GEO_TTL = 24.hours          # a *resolved* state is trusted for a day
+  GEO_RETRY_TTL = 5.minutes   # a *blank* result is re-attempted within minutes
+
+  # Should detect_geo_state re-run the ipinfo lookup? A resolved state is trusted
+  # for GEO_TTL; a BLANK result (an ipinfo timeout / rate-limit / outage, or an
+  # IP ipinfo can't place) is only trusted for GEO_RETRY_TTL so a transient
+  # failure self-heals on the next request instead of caching "no state" for a
+  # full day. The old 24h-for-everything rule let one bad lookup fail the CDP
+  # ramp closed — locking an allowed-state user out of the only funding rail
+  # (Stripe is disabled) until the IP changed or 24h elapsed. Pure + injectable
+  # `now` so the TTL policy is unit-testable. Compared as strings to match the
+  # session-stored Time#to_s timestamps (UTC, lexicographically chronological).
+  def self.geo_stale?(detected_at:, state_present:, now: Time.current)
+    return true if detected_at.blank?
+
+    ttl = state_present ? GEO_TTL : GEO_RETRY_TTL
+    detected_at < (now - ttl).to_s
+  end
+
   def detect_geo_state
     return if session[:geo_override].present?
 
     ip_changed = session[:geo_ip] != request.remote_ip
-    stale = session[:geo_detected_at].blank? || session[:geo_detected_at] < 24.hours.ago.to_s
+    stale = self.class.geo_stale?(
+      detected_at: session[:geo_detected_at],
+      state_present: session[:geo_state].present?
+    )
 
     if ip_changed || stale
       result = Geocoder.search(request.remote_ip).first

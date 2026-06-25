@@ -93,4 +93,39 @@ class GeoDetectionTest < ActionDispatch::IntegrationTest
     assert_response :success,
       "a resolved allowed state must clear require_geo_allowed (no over-blocking)"
   end
+
+  # ── stale-blank self-heal (the funding lock-out fix) ────────────────────────
+
+  test "a transient blank lookup self-heals within minutes instead of sticking for a day" do
+    # Regression: a user in an ALLOWED state (CO) first hits the site during an
+    # ipinfo hiccup, so the lookup returns nothing and the gate fails closed.
+    # Minutes later ipinfo recovers. The before_action must re-detect rather than
+    # serve the day-long stale blank — otherwise "Buy USDC" stays disabled for an
+    # allowed-state user (the bug Mr. McRitchie hit in Colorado on production).
+    SeasonConfig.set_current!(1)
+    colorado = GeoResult.new(country_code: "US", state_code: "CO", region_code: nil, region: "Colorado")
+
+    # 1) First contact during an ipinfo outage -> blank state -> fail closed.
+    Geocoder.stub :search, [] do
+      log_in_as users(:alex)
+
+      post toggle_selection_contest_path(contests(:one)),
+        params: { matchup_id: slate_matchups(:m1).id }, as: :json
+      assert_response :forbidden,
+        "an undetectable US location must fail closed on first contact"
+    end
+
+    # 2) Only minutes pass — far less than the 24h the buggy code trusted — and
+    #    ipinfo now resolves Colorado. The before_action must re-detect, so the
+    #    allowed-state user clears the gate. Under the bug this stayed :forbidden.
+    travel(ApplicationController::GEO_RETRY_TTL + 1.minute) do
+      Geocoder.stub :search, [colorado] do
+        post toggle_selection_contest_path(contests(:one)),
+          params: { matchup_id: slate_matchups(:m1).id }, as: :json
+      end
+    end
+    assert_response :success,
+      "after the short retry window a recovered lookup must clear the gate " \
+      "(no 24h stale-blank lock-out)"
+  end
 end

@@ -24,4 +24,40 @@ class GeocoderInitializerTest < ActiveSupport::TestCase
     assert url.start_with?("https://"),
            "ipinfo lookup must use https (plain http 301-redirects to a non-JSON body); got #{url}"
   end
+
+  # IPINFO_API_TOKEN lifts the anonymous rate limit that otherwise makes lookups
+  # return no region under load — failing the CDP ramp closed for every US user.
+  # Reloading the initializer with the env var set proves it is wired through to
+  # the lookup's token param.
+  test "IPINFO_API_TOKEN from the environment is forwarded to the ipinfo lookup" do
+    previous = ENV["IPINFO_API_TOKEN"]
+    ENV["IPINFO_API_TOKEN"] = "test-ipinfo-token-123"
+    load Rails.root.join("config/initializers/geocoder.rb").to_s
+
+    url = Geocoder::Lookup.get(:ipinfo_io).send(:query_url, Geocoder::Query.new("8.8.8.8"))
+    assert_includes url, "token=test-ipinfo-token-123",
+                    "a configured IPINFO_API_TOKEN must be sent to ipinfo as the token param"
+  ensure
+    if previous.nil?
+      ENV.delete("IPINFO_API_TOKEN")
+    else
+      ENV["IPINFO_API_TOKEN"] = previous
+    end
+    # Restore the real (token-less in test) configuration for later tests.
+    load Rails.root.join("config/initializers/geocoder.rb").to_s
+  end
+
+  test "no IPINFO_API_TOKEN leaves the anonymous lookup intact (safe no-op)" do
+    previous = ENV["IPINFO_API_TOKEN"]
+    ENV.delete("IPINFO_API_TOKEN")
+    load Rails.root.join("config/initializers/geocoder.rb").to_s
+
+    url = Geocoder::Lookup.get(:ipinfo_io).send(:query_url, Geocoder::Query.new("8.8.8.8"))
+    assert url.start_with?("https://"),
+           "the token-less lookup must still build a valid https URL (today's anonymous behavior)"
+    refute_includes url, "test-ipinfo-token-123"
+  ensure
+    ENV["IPINFO_API_TOKEN"] = previous unless previous.nil?
+    load Rails.root.join("config/initializers/geocoder.rb").to_s
+  end
 end
