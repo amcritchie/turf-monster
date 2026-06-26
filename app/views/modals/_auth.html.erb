@@ -83,6 +83,82 @@
            }
          }, 0);
        },
+       // Google + email dispatch to the contest board when one is mounted (it
+       // preserves the staged lineup across the round trip). Everywhere else the
+       // navbar 'Sign in' opens this modal with NO board to hear the event, so
+       // run a self-contained fallback here — mirroring openWalletHub()'s
+       // handled-flag pattern and the standalone /signin auth card. window.open
+       // must stay synchronous inside the click (deferring it = popup blocked),
+       // so we check handled right after the synchronous dispatch (no setTimeout).
+       loginGoogle() {
+         if (!this.attested()) return;
+         var detail = { ageAttested: true, handled: false };
+         window.dispatchEvent(new CustomEvent('auth-google-click', { detail: detail }));
+         if (detail.handled) return;
+         this.openGooglePopup();
+       },
+       openGooglePopup() {
+         var p = this.props;
+         if (p) p.googleError = '';
+         var popup = window.open('/auth/google_popup?age_attestation=1', 'tt_google_oauth',
+           'width=500,height=650,menubar=no,toolbar=no,location=no');
+         if (!popup) { this.googleFullPageRedirect(); return; }
+         if (p) p.submitting = 'google';
+         var self = this;
+         var poll = null;
+         var onMessage = function (e) {
+           if (e.origin !== window.location.origin) return;
+           if (!e.data || e.data.source !== 'tt-oauth') return;
+           window.removeEventListener('message', onMessage);
+           if (poll) clearInterval(poll);
+           try { popup.close(); } catch (_) {}
+           var pp = self.props;
+           if (e.data.status === 'success') {
+             var s = Alpine.store('session');
+             if (s) { s.loggedIn = true; s.mode = 'web2'; }
+             window.location.reload();
+           } else if (pp) { pp.googleError = e.data.error || 'Google sign-in failed.'; pp.submitting = null; }
+         };
+         window.addEventListener('message', onMessage);
+         poll = setInterval(function () {
+           if (popup.closed) { clearInterval(poll); window.removeEventListener('message', onMessage); var pp = self.props; if (pp) pp.submitting = null; }
+         }, 500);
+       },
+       googleFullPageRedirect() {
+         var form = document.createElement('form');
+         form.method = 'POST';
+         form.action = '/auth/google_oauth2?age_attestation=1';
+         var meta = document.querySelector('meta[name=csrf-token]');
+         var t = document.createElement('input');
+         t.type = 'hidden';
+         t.name = 'authenticity_token';
+         t.value = meta ? meta.content : '';
+         form.appendChild(t);
+         document.body.appendChild(form);
+         form.submit();
+       },
+       submitMagicLink() {
+         if (!this.attested()) return;
+         var detail = { email: this.email, ageAttested: true, handled: false };
+         window.dispatchEvent(new CustomEvent('auth-magic-link-submit', { detail: detail }));
+         if (detail.handled) return;
+         this.sendMagicLinkStandalone();
+       },
+       async sendMagicLinkStandalone() {
+         var p = this.props;
+         if (!p || p.submitting) return;
+         p.formError = '';
+         if (!this.email) { p.formError = 'Enter your email.'; return; }
+         p.submitting = 'magic-link';
+         try {
+           var data = await window.postMagicLink(this.email, { ageAttested: true });
+           if (!data || !data.success) { p.formError = (data && data.error) || 'Could not send the link. Try again.'; p.submitting = null; return; }
+           Alpine.store('modals').advance({ step: 'magic-link-sent', sentEmail: this.email, submitting: null, formError: '' });
+         } catch (e) {
+           var p2 = this.props;
+           if (p2) { p2.formError = 'Network error. Try again.'; p2.submitting = null; }
+         }
+       },
        // Self-contained resend for the magic-link-sent step (login page or
        // in-contest). postMagicLink resolves rather than throwing on a non-2xx,
        // so this reads the result and surfaces visible feedback either way.
@@ -165,8 +241,10 @@
         </div>
       <% end %>
 
-      <!-- 1. Google OAuth — opens a popup; the closer page postMessages the result -->
-      <button @click="if (attested()) $dispatch('auth-google-click', { ageAttested: true })"
+      <!-- 1. Google OAuth — opens a popup; the closer page postMessages the result.
+           loginGoogle() dispatches to the contest board when present, else runs
+           the popup itself, so this works on non-board pages (navbar Sign in). -->
+      <button @click="loginGoogle()"
               :disabled="props.submitting"
               class="btn btn-neutral btn-lg w-full gap-3 mb-3 disabled:cursor-wait">
         <span x-show="props.submitting !== 'google'" class="inline-flex"><%= render "components/google_logo" %></span>
@@ -195,9 +273,10 @@
         <div class="relative flex justify-center text-sm"><span class="bg-surface px-3 text-secondary">or</span></div>
       </div>
 
-      <!-- 3. Email magic link — no password. Dispatches the request; the board
-           emails a one-tap link and advances to the 'magic-link-sent' step. -->
-      <form @submit.prevent="if (attested()) $dispatch('auth-magic-link-submit', { email: email, ageAttested: true })" novalidate>
+      <!-- 3. Email magic link — no password. submitMagicLink() hands off to the
+           contest board when present, else sends the link itself, so this works
+           on non-board pages (navbar Sign in) too. -->
+      <form @submit.prevent="submitMagicLink()" novalidate>
         <div class="mb-3">
           <label class="block text-xs text-secondary mb-1 font-medium">Email</label>
           <%# Live client-side validity decorator (UX only — never blocks

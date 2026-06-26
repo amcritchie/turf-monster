@@ -67,3 +67,51 @@ test("Solana button in standalone auth modal opens the wallet chooser @smoke", a
   await expect(dialog.getByRole("heading", { name: "Connect Wallet" })).toBeVisible();
   await expect(dialog.getByRole("link", { name: /Phantom Install/ })).toBeVisible();
 });
+
+// Regression: the navbar "Sign in" CTA opens this same modal on EVERY page, but
+// its Google + email buttons used to only work when a contest board was mounted
+// to catch their dispatched events. On a non-board page (/signin has no board)
+// both were silent no-ops — the production bug. The modal now runs the action
+// itself when no board handles the event. /signin is our no-board host.
+test("Google in the auth modal works on a page with NO contest board @smoke", async ({ page, context }) => {
+  // Stub the OAuth popup target so it loads a no-op page (no postMessage back, so
+  // the opener does not reload mid-assertion). We only assert the popup opened.
+  await context.route("**/auth/google_popup**", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>oauth</title>" }),
+  );
+
+  await page.goto("/signin");
+  await page.evaluate(() => {
+    Alpine.store("modals").open("auth", {
+      step: "credentials", submitting: null, formError: "", phantomError: "", googleError: "",
+    });
+  });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await attestAge(page);
+
+  const [popup] = await Promise.all([
+    page.waitForEvent("popup"),
+    dialog.getByRole("button", { name: "Google" }).click(),
+  ]);
+  await expect(popup).toHaveURL(/\/auth\/google_popup/);
+});
+
+test("Email link in the auth modal works on a page with NO contest board @smoke", async ({ page }) => {
+  await page.goto("/signin");
+  await page.evaluate(() => {
+    Alpine.store("modals").open("auth", {
+      step: "credentials", submitting: null, formError: "", phantomError: "", googleError: "",
+    });
+  });
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await attestAge(page);
+
+  await dialog
+    .locator('input[placeholder="you@example.com"]')
+    .fill(`modal-noboard-${Date.now()}@example.com`);
+  await dialog.getByRole("button", { name: "Email Link" }).click();
+
+  await expect(dialog.getByText("Check your inbox")).toBeVisible();
+});
