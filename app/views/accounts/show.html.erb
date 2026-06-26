@@ -214,6 +214,9 @@
             Refreshing…
           </span>
         </button>
+        <%# Buy USDC (Coinbase CDP onramp) — same flow as /wallet, for both
+            managed (web2) and Phantom (web3) wallets; sized to this row. %>
+        <%= render "shared/buy_usdc_button", button_class: "btn btn-primary btn-sm" %>
         <% if @user.can_use_managed_withdraw? %>
           <%= link_to "Cash out", "#{wallet_path}#cash-out", class: "btn btn-outline btn-sm" %>
         <% elsif @user.self_custodied? %>
@@ -226,6 +229,7 @@
           </a>
         <% end %>
       </div>
+      <%= render "shared/buy_usdc_geo_note" %>
       </div><%# /walletRefresh %>
     <% else %>
       <div class="mb-6">

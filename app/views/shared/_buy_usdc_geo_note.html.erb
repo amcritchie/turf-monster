@@ -1,0 +1,9 @@
+<%# The geo-blocked explainer that pairs with shared/buy_usdc_button. Kept a
+    separate partial because the note must sit BELOW the button row — a <p>
+    dropped inside a flex row would become a stray flex item. Same gating as the
+    button so the two always agree. %>
+<% if AppFlags.cdp_ramp? && current_user&.solana_connected? && geo_blocked? %>
+  <p class="text-xs text-muted mt-2" data-cdp-geo-note>
+    Buying USDC with Coinbase isn't available in your state<%= " (#{geo_state})" if geo_state.present? %>.
+  </p>
+<% end %>
