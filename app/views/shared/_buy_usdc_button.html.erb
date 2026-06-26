@@ -8,7 +8,7 @@
     and /wallet. Pass button_class to size it for the surrounding row
     (e.g. "btn btn-primary btn-sm"). %>
 <% if AppFlags.cdp_ramp? && current_user&.solana_connected? %>
-  <% buy_usdc_label = capture do %><span class="inline-flex items-center gap-1.5">Buy USDC<img src="/usdc-mark.svg" alt="" aria-hidden="true" class="w-4 h-4"></span><% end %>
+  <% buy_usdc_label = capture do %><span class="inline-flex items-center gap-1.5"><img src="/usdc-mark.svg" alt="" aria-hidden="true" class="w-4 h-4">Buy USDC</span><% end %>
   <% if geo_blocked? %>
     <button type="button" disabled data-cdp-buy-button
             class="<%= button_class %> opacity-50 cursor-not-allowed"><%= buy_usdc_label %></button>
