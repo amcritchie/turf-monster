@@ -201,6 +201,9 @@
           see only Refresh — they cash out in their own wallet app. The actual
           withdraw form lives at /wallet — #cash-out auto-opens it. %>
       <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <%# Buy USDC (Coinbase CDP onramp) — primary CTA, first in the row;
+            outline style matches Refresh; serves both web2 + web3 wallets. %>
+        <%= render "shared/buy_usdc_button", button_class: "btn btn-outline btn-sm" %>
         <button type="button" @click="refresh()" :disabled="refreshing"
                 class="btn btn-outline btn-sm">
           <span x-show="!refreshing" class="inline-flex items-center gap-1.5">
@@ -214,9 +217,6 @@
             Refreshing…
           </span>
         </button>
-        <%# Buy USDC (Coinbase CDP onramp) — same flow as /wallet, for both
-            managed (web2) and Phantom (web3) wallets; sized to this row. %>
-        <%= render "shared/buy_usdc_button", button_class: "btn btn-primary btn-sm" %>
         <% if @user.can_use_managed_withdraw? %>
           <%= link_to "Cash out", "#{wallet_path}#cash-out", class: "btn btn-outline btn-sm" %>
         <% elsif @user.self_custodied? %>
