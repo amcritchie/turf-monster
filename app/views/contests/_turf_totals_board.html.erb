@@ -1597,9 +1597,9 @@ window.selectionBoard = function() {
 </script>
 
 <div x-data="selectionBoard()" x-cloak
-     @auth-magic-link-submit.window="requestMagicLink($event.detail.email, $event.detail.ageAttested)"
+     @auth-magic-link-submit.window="requestMagicLink($event.detail.email, $event.detail.ageAttested); if ($event.detail) $event.detail.handled = true"
      @auth-wallet-hub-open.window="openWalletConnect($event.detail && $event.detail.ageAttested); if ($event.detail) $event.detail.handled = true"
-     @auth-google-click.window="loginWithGoogle($event.detail && $event.detail.ageAttested)">
+     @auth-google-click.window="loginWithGoogle($event.detail && $event.detail.ageAttested); if ($event.detail) $event.detail.handled = true">
 
   <!-- Blur overlay (click to dismiss) -->
   <div x-show="selectionCount === <%= @contest.picks_required %> && !blurDismissed"
