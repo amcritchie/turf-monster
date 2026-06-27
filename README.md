@@ -44,7 +44,7 @@ bin/tm up
 
 `bin/dev` remains available for a human interactive terminal with combined logs, but it does not start the Stripe listener and is not reliable in background/no-TTY agent sessions.
 
-Seeds create 5 users, 48 World Cup teams, 32 NFL teams, 38 NFL schedule venues, 72 World Cup group matches, 256 NFL regular season games across 17 slates, and 85 players.
+Seeds create 5 users, 48 World Cup teams plus knockout-slot placeholders, 32 NFL teams, 38 NFL schedule venues, 104 World Cup matches (72 group-stage, 32 knockout), 256 NFL regular season games across 17 slates, and 85 players.
 
 **Required `.env` keys**: `RAILS_MASTER_KEY` (not optional — seed encrypts managed wallets via `secret_key_base`), `GOOGLE_CLIENT_ID`/`SECRET`, `AWS_ACCESS_KEY_ID`/`SECRET`, `SOLANA_ADMIN_KEY`, `SOLANA_RPC_URL`, `MANAGED_WALLET_ENCRYPTION_KEY`, and mail transport credentials for local email delivery. Current 1Password item names live in McRitchie Studio's credential docs.
 

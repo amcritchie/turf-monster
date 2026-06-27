@@ -7,8 +7,9 @@
 #
 # Layering model (changed 2026-05-28):
 #   1. Load db/seeds.rb (canonical). Idempotent — creates the 3 real
-#      "World Cup 2026 Group N" slates with DraftKings-driven rankings and
-#      "NFL 2026 Week N" slates. Re-running is safe.
+#      "World Cup 2026 Group N" slates, the 6 knockout-stage World Cup slates
+#      with bracket placeholders, and the "NFL 2026 Week N" slates.
+#      Re-running is safe.
 #   2. Wipe test-volatile rows (Entry, Selection, Contest, SurvivorRound,
 #      TransactionLog, GeoSetting, etc.) and User. Leaves Team / Slate /
 #      SlateMatchup / Game intact — those belong to db/seeds.rb.
