@@ -146,7 +146,7 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Prelaunch audit C4 (2026-05-24): enable DNS-rebinding + Host-header
-  # protection. Without this, Rails 7 accepts any Host header, which lets
+  # protection. Without this explicit allowlist, Host-header mistakes can let
   # attackers replay Stripe-signed webhook payloads against the dyno's direct
   # *.herokuapp.com URL (bypassing CDN/WAF allowlists) and enables DNS-rebinding
   # to reach the app under a foreign origin's cookie scope.

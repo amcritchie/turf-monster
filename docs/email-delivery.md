@@ -87,8 +87,8 @@ Current production status, last checked 2026-06-15:
   backing production apps.
 - Persistent production transport: keep Resend active from `McRitchie Studio
   <team@mcritchie.studio>` until SES production access is approved.
-- Production app adoption: `studio-engine 0.5.9` is deployed on
-  `turf-monster-mainnet`.
+- Current app adoption: `Gemfile.lock` resolves `studio-engine 0.11.0`.
+  Confirm the deployed Heroku release before using this line as production proof.
 - Last production proof: Heroku release `v90` booted with
   `[mail] transport=Resend from=McRitchie Studio <team@mcritchie.studio>`,
   accepted public health/contest requests, and keeps Sidekiq as the production
@@ -154,7 +154,7 @@ Follow the shared decommission criteria before canceling Resend or dropping
 
 ## Engine Ownership
 
-Turf Monster currently uses `studio-engine 0.5.9`. Keep future shared transport,
+Turf Monster currently uses `studio-engine 0.11.0`. Keep future shared transport,
 delivery facade, local agent inbox, and provider smoke-test changes in
 `studio-engine`; keep Turf-specific catalog entries, previews, and email copy in
 the app.
