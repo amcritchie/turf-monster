@@ -65,7 +65,7 @@ Within each group of 4 teams (A, B, C, D):
 
 The app's seed data includes:
 - **48 teams** with emoji, colors, group assignments
-- **44 knockout-slot placeholder teams** for unresolved bracket positions
+- **32 knockout-slot placeholder teams** for unresolved advancement positions
 - **104 tournament games**: 72 group-stage games plus 32 elimination-round fixtures
 - **67 notable players** across 21 teams
 - **24 Matchday 1 props** with goal lines (1.5–2.5 range)
@@ -94,7 +94,7 @@ These are ranked by expected scoring output. Strong offenses against weak defens
 The fixture list is sourced from FIFA's FDCP season calendar for competition
 `17`, season `285023`. Known teams use the existing team records by FIFA
 abbreviation; unresolved bracket positions use placeholder teams such as
-`W101` or `Best 3rd C/E/F/H/I` so games and slate matchups can be created
+`W101` or `Runner-up Match 101` so games and slate matchups can be created
 before the full bracket is settled.
 
 ## World Cup Survivor (parallel contest format)

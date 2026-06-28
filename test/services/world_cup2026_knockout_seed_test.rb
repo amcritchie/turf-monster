@@ -23,7 +23,16 @@ class WorldCup2026KnockoutSeedTest < ActiveSupport::TestCase
     assert_equal Time.iso8601("2026-06-28T19:00:00Z"), round_of_32.first_game_starts_at
     assert_equal Time.iso8601("2026-07-19T19:00:00Z"), final.first_game_starts_at
 
-    assert Team.exists?(short_name: "3CEFHI", name: "Best 3rd C/E/F/H/I")
+    assert_equal %w[MEX ECU], fixture_codes(79)
+    assert_equal %w[ENG COD], fixture_codes(80)
+    assert_equal %w[BEL SEN], fixture_codes(82)
+    assert_equal %w[POR CRO], fixture_codes(83)
+    assert_equal %w[ESP AUT], fixture_codes(84)
+    assert_equal %w[SUI ALG], fixture_codes(85)
+    assert_equal %w[COL GHA], fixture_codes(87)
+
+    assert_equal 32, WorldCup2026KnockoutSeed.placeholder_codes.size
+    refute_includes WorldCup2026KnockoutSeed.placeholder_codes, "3CEFHI"
     assert Team.exists?(short_name: "W101", name: "Winner Match 101")
     assert_equal "Knockout Slot", Team.find_by!(short_name: "RU101").division
   end
@@ -42,7 +51,45 @@ class WorldCup2026KnockoutSeedTest < ActiveSupport::TestCase
     end
   end
 
+  test "reseeding removes stale unresolved round of 32 placeholders" do
+    slate = Slate.create!(name: "World Cup 2026 Round of 32")
+    stale_team = Team.create!(
+      name: "Best 3rd C/E/F/H/I",
+      short_name: "3CEFHI",
+      location: "World Cup bracket",
+      emoji: "🏆",
+      color_primary: "#111827",
+      color_secondary: "#FACC15",
+      sport: "soccer",
+      league: "fifa",
+      division: "Knockout Slot",
+      rivals: []
+    )
+    mexico = @teams_by_code.fetch("MEX")
+    stale_game = Game.create!(
+      home_team_slug: mexico.slug,
+      away_team_slug: stale_team.slug,
+      kickoff_at: Time.iso8601("2026-07-01T01:00:00Z"),
+      venue: "Mexico City Stadium, Mexico City",
+      status: "scheduled"
+    )
+    SlateMatchup.create!(slate: slate, team_slug: stale_team.slug, opponent_team_slug: mexico.slug, game_slug: stale_game.slug)
+
+    WorldCup2026KnockoutSeed.call(teams_by_code: @teams_by_code, ranking_odds: {})
+
+    assert_equal 32, slate.reload.slate_matchups.count
+    assert_equal %w[MEX ECU], fixture_codes(79)
+    refute SlateMatchup.exists?(team_slug: stale_team.slug)
+    refute Game.exists?(slug: stale_game.slug)
+    refute Team.exists?(short_name: "3CEFHI")
+  end
+
   private
+
+  def fixture_codes(match_number)
+    fixture = WorldCup2026KnockoutSeed::FIXTURES.find { |candidate| candidate[:match] == match_number }
+    [fixture[:home], fixture[:away]]
+  end
 
   def seed_real_knockout_teams!
     WorldCup2026KnockoutSeed.required_real_team_codes.each do |code|

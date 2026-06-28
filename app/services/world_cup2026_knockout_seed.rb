@@ -16,18 +16,6 @@ class WorldCup2026KnockoutSeed
   ].freeze
 
   PLACEHOLDER_LABELS = {
-    "1K" => "Group K winner",
-    "1L" => "Group L winner",
-    "2J" => "Group J runner-up",
-    "2K" => "Group K runner-up",
-    "2L" => "Group L runner-up",
-    "3AEHIJ" => "Best 3rd A/E/H/I/J",
-    "3BEFIJ" => "Best 3rd B/E/F/I/J",
-    "3CEFHI" => "Best 3rd C/E/F/H/I",
-    "3CDFGH" => "Best 3rd C/D/F/G/H",
-    "3DEIJL" => "Best 3rd D/E/I/J/L",
-    "3EFGIJ" => "Best 3rd E/F/G/I/J",
-    "3EHIJK" => "Best 3rd E/H/I/J/K",
     "W73" => "Winner Match 73",
     "W74" => "Winner Match 74",
     "W75" => "Winner Match 75",
@@ -62,6 +50,11 @@ class WorldCup2026KnockoutSeed
     "RU102" => "Runner-up Match 102"
   }.freeze
 
+  OBSOLETE_PLACEHOLDER_CODES = %w[
+    1K 1L 2J 2K 2L
+    3AEHIJ 3BEFIJ 3CEFHI 3CDFGH 3DEIJL 3EFGIJ 3EHIJK
+  ].freeze
+
   FIXTURES = [
     { match: 73, stage: "Round of 32", kickoff_at: "2026-06-28T19:00:00Z", venue: "Los Angeles Stadium, Los Angeles", home: "RSA", away: "CAN" },
     { match: 74, stage: "Round of 32", kickoff_at: "2026-06-29T20:30:00Z", venue: "Boston Stadium, Boston", home: "GER", away: "PAR" },
@@ -69,15 +62,15 @@ class WorldCup2026KnockoutSeed
     { match: 76, stage: "Round of 32", kickoff_at: "2026-06-29T17:00:00Z", venue: "Houston Stadium, Houston", home: "BRA", away: "JPN" },
     { match: 77, stage: "Round of 32", kickoff_at: "2026-06-30T21:00:00Z", venue: "New York/New Jersey Stadium, New Jersey", home: "FRA", away: "SWE" },
     { match: 78, stage: "Round of 32", kickoff_at: "2026-06-30T17:00:00Z", venue: "Dallas Stadium, Dallas", home: "CIV", away: "NOR" },
-    { match: 79, stage: "Round of 32", kickoff_at: "2026-07-01T01:00:00Z", venue: "Mexico City Stadium, Mexico City", home: "MEX", away: "3CEFHI" },
-    { match: 80, stage: "Round of 32", kickoff_at: "2026-07-01T16:00:00Z", venue: "Atlanta Stadium, Atlanta", home: "1L", away: "3EHIJK" },
+    { match: 79, stage: "Round of 32", kickoff_at: "2026-07-01T01:00:00Z", venue: "Mexico City Stadium, Mexico City", home: "MEX", away: "ECU" },
+    { match: 80, stage: "Round of 32", kickoff_at: "2026-07-01T16:00:00Z", venue: "Atlanta Stadium, Atlanta", home: "ENG", away: "COD" },
     { match: 81, stage: "Round of 32", kickoff_at: "2026-07-02T00:00:00Z", venue: "San Francisco Bay Area Stadium, San Francisco Bay Area", home: "USA", away: "BIH" },
-    { match: 82, stage: "Round of 32", kickoff_at: "2026-07-01T20:00:00Z", venue: "Seattle Stadium, Seattle", home: "BEL", away: "3AEHIJ" },
-    { match: 83, stage: "Round of 32", kickoff_at: "2026-07-02T23:00:00Z", venue: "Toronto Stadium, Toronto", home: "2K", away: "2L" },
-    { match: 84, stage: "Round of 32", kickoff_at: "2026-07-02T19:00:00Z", venue: "Los Angeles Stadium, Los Angeles", home: "ESP", away: "2J" },
-    { match: 85, stage: "Round of 32", kickoff_at: "2026-07-03T03:00:00Z", venue: "BC Place Vancouver, Vancouver", home: "SUI", away: "3EFGIJ" },
+    { match: 82, stage: "Round of 32", kickoff_at: "2026-07-01T20:00:00Z", venue: "Seattle Stadium, Seattle", home: "BEL", away: "SEN" },
+    { match: 83, stage: "Round of 32", kickoff_at: "2026-07-02T23:00:00Z", venue: "Toronto Stadium, Toronto", home: "POR", away: "CRO" },
+    { match: 84, stage: "Round of 32", kickoff_at: "2026-07-02T19:00:00Z", venue: "Los Angeles Stadium, Los Angeles", home: "ESP", away: "AUT" },
+    { match: 85, stage: "Round of 32", kickoff_at: "2026-07-03T03:00:00Z", venue: "BC Place Vancouver, Vancouver", home: "SUI", away: "ALG" },
     { match: 86, stage: "Round of 32", kickoff_at: "2026-07-03T22:00:00Z", venue: "Miami Stadium, Miami", home: "ARG", away: "CPV" },
-    { match: 87, stage: "Round of 32", kickoff_at: "2026-07-04T01:30:00Z", venue: "Kansas City Stadium, Kansas City", home: "1K", away: "3DEIJL" },
+    { match: 87, stage: "Round of 32", kickoff_at: "2026-07-04T01:30:00Z", venue: "Kansas City Stadium, Kansas City", home: "COL", away: "GHA" },
     { match: 88, stage: "Round of 32", kickoff_at: "2026-07-03T18:00:00Z", venue: "Dallas Stadium, Dallas", home: "AUS", away: "EGY" },
     { match: 89, stage: "Round of 16", kickoff_at: "2026-07-04T21:00:00Z", venue: "Philadelphia Stadium, Philadelphia", home: "W74", away: "W77" },
     { match: 90, stage: "Round of 16", kickoff_at: "2026-07-04T17:00:00Z", venue: "Houston Stadium, Houston", home: "W73", away: "W75" },
@@ -122,6 +115,8 @@ class WorldCup2026KnockoutSeed
     seed_placeholder_teams!
     games_by_fixture = seed_games!
     seed_slates!(games_by_fixture)
+    remove_obsolete_placeholder_games!
+    remove_obsolete_placeholder_teams!
   end
 
   private
@@ -176,6 +171,7 @@ class WorldCup2026KnockoutSeed
         seed_matchup!(slate: slate, team_code: fixture[:away], opponent_code: fixture[:home], game: game)
       end
 
+      remove_stale_matchups!(slate, fixtures)
       rank_matchups!(slate)
     end
   end
@@ -196,6 +192,51 @@ class WorldCup2026KnockoutSeed
     sorted.each_with_index do |matchup, index|
       matchup.update!(rank: index + 1, turf_score: SlateMatchup.turf_score_for(index + 1, sorted.size))
     end
+  end
+
+  def remove_stale_matchups!(slate, fixtures)
+    expected_team_slugs = fixtures.flat_map do |fixture|
+      [team_for!(fixture[:home]).slug, team_for!(fixture[:away]).slug]
+    end
+    stale_matchups = slate.slate_matchups.where.not(team_slug: expected_team_slugs)
+    protected_matchups = stale_matchups.select { |matchup| matchup.selections.exists? }
+
+    if protected_matchups.any?
+      names = protected_matchups.map { |matchup| matchup.team.name }.to_sentence
+      raise "Cannot remove stale World Cup knockout matchup selections for #{names}"
+    end
+
+    stale_matchups.destroy_all
+  end
+
+  def remove_obsolete_placeholder_games!
+    obsolete_slugs = obsolete_placeholder_slugs
+    return if obsolete_slugs.empty?
+
+    stale_games = Game.where(home_team_slug: obsolete_slugs).or(Game.where(away_team_slug: obsolete_slugs))
+    protected_games = stale_games.select do |game|
+      game.goals.exists? || SlateMatchup.where(game_slug: game.slug).exists?
+    end
+
+    if protected_games.any?
+      names = protected_games.map(&:slug).to_sentence
+      raise "Cannot remove stale World Cup knockout games with activity: #{names}"
+    end
+
+    stale_games.destroy_all
+  end
+
+  def remove_obsolete_placeholder_teams!
+    Team.where(short_name: OBSOLETE_PLACEHOLDER_CODES).find_each do |team|
+      next if team.home_games.exists? || team.away_games.exists?
+      next if SlateMatchup.where(team_slug: team.slug).or(SlateMatchup.where(opponent_team_slug: team.slug)).exists?
+
+      team.destroy!
+    end
+  end
+
+  def obsolete_placeholder_slugs
+    Team.where(short_name: OBSOLETE_PLACEHOLDER_CODES).pluck(:slug)
   end
 
   def team_for!(code)
