@@ -5,6 +5,20 @@ require "time"
 # https://api.fifa.com/api/v3/calendar/matches?language=en&idSeason=285023&count=200
 class WorldCup2026KnockoutSeed
   SOURCE_URL = "https://api.fifa.com/api/v3/calendar/matches?language=en&idSeason=285023&count=200".freeze
+  DEFAULT_RANKING_ODDS = {
+    "ESP" => 450,   "FRA" => 600,   "ENG" => 600,   "BRA" => 850,
+    "ARG" => 850,   "POR" => 1100,  "GER" => 1400,  "NED" => 2000,
+    "NOR" => 2800,  "BEL" => 3500,  "COL" => 4000,  "JPN" => 5000,
+    "MAR" => 6000,  "URU" => 6500,  "USA" => 6500,  "TUR" => 6500,
+    "MEX" => 7000,  "SWE" => 8000,  "ECU" => 8000,  "CRO" => 9000,
+    "SUI" => 10_000, "SEN" => 10_000, "AUT" => 10_000, "CZE" => 15_000,
+    "CAN" => 20_000, "PAR" => 20_000, "SCO" => 20_000, "CIV" => 25_000,
+    "BIH" => 25_000, "EGY" => 30_000, "IRN" => 30_000, "ALG" => 35_000,
+    "KOR" => 35_000, "GHA" => 35_000, "AUS" => 45_000, "TUN" => 50_000,
+    "COD" => 70_000, "RSA" => 80_000, "KSA" => 100_000, "PAN" => 100_000,
+    "NZL" => 100_000, "QAT" => 100_000, "CPV" => 100_000, "IRQ" => 100_000,
+    "UZB" => 150_000, "JOR" => 150_000, "HAI" => 150_000, "CUW" => 150_000
+  }.freeze
 
   SLATES = [
     { stage: "Round of 32", name: "World Cup 2026 Round of 32" },
@@ -106,7 +120,18 @@ class WorldCup2026KnockoutSeed
     FIXTURES.flat_map { |fixture| [fixture[:home], fixture[:away]] }.uniq
   end
 
-  def initialize(teams_by_code:, ranking_odds: {})
+  def self.call_from_database!(ranking_odds: DEFAULT_RANKING_ODDS)
+    teams_by_code = Team.where(short_name: required_real_team_codes).index_by(&:short_name)
+    missing_codes = required_real_team_codes - teams_by_code.keys
+
+    if missing_codes.any?
+      raise KeyError, "Missing World Cup teams for knockout seed codes: #{missing_codes.to_sentence}"
+    end
+
+    call(teams_by_code: teams_by_code, ranking_odds: ranking_odds)
+  end
+
+  def initialize(teams_by_code:, ranking_odds: DEFAULT_RANKING_ODDS)
     @teams_by_code = teams_by_code.stringify_keys
     @ranking_odds = ranking_odds.stringify_keys
   end

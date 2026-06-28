@@ -97,6 +97,10 @@ abbreviation; unresolved bracket positions use placeholder teams such as
 `W101` or `Runner-up Match 101` so games and slate matchups can be created
 before the full bracket is settled.
 
+For deploys that need to apply only this data change, run the narrow idempotent
+task `bin/rails wc:seed_knockout`; do not run the full `db:seed` as a
+post-deploy hook.
+
 ## World Cup Survivor (parallel contest format)
 
 Single-elimination survivor pick. Players pick ONE team per `SurvivorRound`; that team must win to advance. A wrong pick eliminates the entry permanently. Last survivor(s) take the prize.
