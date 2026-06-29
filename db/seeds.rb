@@ -641,6 +641,9 @@ end
   puts "  Created slate: #{slate.name} (#{slate.slate_matchups.count} matchups, ranked)"
 end
 
+WorldCup2026KnockoutSeed.call(teams_by_code: teams, ranking_odds: GENERAL_DK_ODDS)
+puts "  Created World Cup knockout slates (#{WorldCup2026KnockoutSeed::FIXTURES.size} games)"
+
 # ─── NFL 2026 Regular Season Weeks 1-17 ───────────────────────
 load Rails.root.join("db/seeds/nfl_2026.rb")
 

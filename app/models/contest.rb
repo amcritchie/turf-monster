@@ -20,6 +20,7 @@ class Contest < ApplicationRecord
   # slug OR on the PDA. 64-byte cap matches the future on-chain fixed `slug`.
   NAME_MAX_BYTES = 96
   SLUG_MAX_BYTES = 64
+  TURF_TOTALS_DEFAULT_PICKS_REQUIRED = 6
   SLUG_FORMAT = /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/
   validates :slug, presence: true, uniqueness: true, format: { with: SLUG_FORMAT, message: "must be lowercase letters, numbers, and hyphens" }
   validate :slug_within_byte_limit
@@ -94,7 +95,9 @@ class Contest < ApplicationRecord
   end
 
   def picks_required
-    world_cup_survivor? ? 0 : 6
+    return 0 if world_cup_survivor?
+
+    self.class.picks_required_for_slate(slate)
   end
 
   def max_entries_per_user
@@ -155,6 +158,13 @@ class Contest < ApplicationRecord
   # grading keep working for a contest created while the flag was on.
   def self.selectable_formats
     AppFlags.test_scaffolding? ? FORMATS : FORMATS.except(*TEST_FORMAT_KEYS)
+  end
+
+  def self.picks_required_for_slate(slate)
+    matchup_count = slate&.slate_matchups&.count.to_i
+    return TURF_TOTALS_DEFAULT_PICKS_REQUIRED if matchup_count.zero?
+
+    [matchup_count, TURF_TOTALS_DEFAULT_PICKS_REQUIRED].min
   end
 
   def format_config
@@ -324,7 +334,7 @@ class Contest < ApplicationRecord
       loop do
         attempts += 1
         break if attempts > slots * 100
-        # Pick 5 random non-locked matchups
+        # Pick the contest's required number of non-locked matchups.
         available = matchups.reject(&:locked?).map(&:id)
         next if available.size < picks_required
         combo = available.sample(picks_required).sort

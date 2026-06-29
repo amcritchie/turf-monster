@@ -1,4 +1,11 @@
 namespace :wc do
+  desc "Seed only the idempotent World Cup 2026 knockout slates and matchups"
+  task seed_knockout: :environment do
+    WorldCup2026KnockoutSeed.call_from_database!
+    puts "wc:seed_knockout done (#{WorldCup2026KnockoutSeed::FIXTURES.size} games, " \
+      "#{WorldCup2026KnockoutSeed.placeholder_codes.size} advancement placeholders)."
+  end
+
   # Prep a slate for REAL scoring: wipe simulated game results off the shared
   # fixtures while preserving (freezing) one or more alpha/test contests so their
   # leaderboards survive. Games are shared across every contest on a slate, so a

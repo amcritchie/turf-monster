@@ -98,8 +98,23 @@ class ContestTest < ActiveSupport::TestCase
     assert_equal 2 * @contest.entry_fee_cents, @contest.pool_cents
   end
 
-  test "picks_required returns 6" do
+  test "picks_required returns 6 for full Turf Totals slates" do
     assert_equal 6, @contest.picks_required
+  end
+
+  test "picks_required contracts to short Turf Totals slate size" do
+    slate = Slate.create!(name: "Two Match Knockout Slate", starts_at: 2.days.from_now)
+    SlateMatchup.create!(slate: slate, team_slug: "team-a", opponent_team_slug: "team-b", rank: 1, turf_score: 1.0, status: "pending")
+    SlateMatchup.create!(slate: slate, team_slug: "team-b", opponent_team_slug: "team-a", rank: 2, turf_score: 1.2, status: "pending")
+    contest = Contest.create!(
+      name: "Two Match Knockout Contest",
+      slug: "two-match-knockout-contest",
+      slate: slate,
+      status: :open,
+      contest_type: "standard"
+    )
+
+    assert_equal 2, contest.picks_required
   end
 
   test "max_entries_per_user returns 3" do

@@ -9,10 +9,11 @@ module LandingPagesHelper
         ["Win or draw to survive", "A loss eliminates you. The last player standing takes the prize."]
       ]
     else
+      required_picks = contest&.picks_required || Contest::TURF_TOTALS_DEFAULT_PICKS_REQUIRED
       [
-        ["Pick 6 teams", "Choose six World Cup team matchups for your entry."],
+        ["Pick #{required_picks} teams", "Choose #{required_picks} World Cup team matchups for your entry."],
         ["Create Account", "Sign up with email or Google — it only takes a few seconds."],
-        ["Submit Entry", "Confirm your six picks and submit your entry."],
+        ["Submit Entry", "Confirm your #{required_picks} picks and submit your entry."],
         ["Contest Locks", "The contest locks and games are simulated Wednesday the 27th at 8 PM MST."]
       ]
     end

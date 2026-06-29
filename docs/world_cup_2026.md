@@ -65,7 +65,8 @@ Within each group of 4 teams (A, B, C, D):
 
 The app's seed data includes:
 - **48 teams** with emoji, colors, group assignments
-- **72 group stage games** with exact kickoff times (ET/EDT), venues, home/away
+- **31 knockout-slot placeholder teams** for unresolved advancement positions
+- **104 tournament games**: 72 group-stage games plus 32 elimination-round fixtures
 - **67 notable players** across 21 teams
 - **24 Matchday 1 props** with goal lines (1.5–2.5 range)
 
@@ -78,6 +79,31 @@ Each matchday produces **48 offensive matchups** (one per team). For Turf Totals
 - Offensive matchup 2: Serbia's offense vs USA's defense
 
 These are ranked by expected scoring output. Strong offenses against weak defenses rank high (low multiplier). Weak offenses against strong defenses rank low (high multiplier).
+
+### Knockout Slates
+
+`WorldCup2026KnockoutSeed` adds one slate per elimination stage:
+
+- World Cup 2026 Round of 32
+- World Cup 2026 Round of 16
+- World Cup 2026 Quarter-finals
+- World Cup 2026 Semi-finals
+- World Cup 2026 Third Place
+- World Cup 2026 Final
+
+The fixture list is sourced from FIFA's FDCP season calendar for competition
+`17`, season `285023`. Known teams use the existing team records by FIFA
+abbreviation; unresolved bracket positions use placeholder teams such as
+`W101` or `Runner-up Match 101` so games and slate matchups can be created
+before the full bracket is settled.
+
+For deploys that need to apply only this data change, run the narrow idempotent
+task `bin/rails wc:seed_knockout`; do not run the full `db:seed` as a
+post-deploy hook.
+
+Turf Totals contests normally require 6 picks. Short knockout slates require all
+available matchup cards instead, so semi-final contests require 4 picks and the
+third-place/final contests require 2 picks.
 
 ## World Cup Survivor (parallel contest format)
 

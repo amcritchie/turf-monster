@@ -80,6 +80,28 @@ class EntryTest < ActiveSupport::TestCase
     assert entry.reload.cart?
   end
 
+  test "confirm! accepts every matchup on a short knockout slate" do
+    contest, matchups = create_short_slate_contest
+    entry = contest.entries.create!(user: @user, status: :cart)
+    matchups.each { |matchup| entry.selections.create!(slate_matchup: matchup) }
+
+    entry.confirm!(tx_signature: "short-knockout-paid")
+
+    assert entry.active?
+    assert_equal 2, entry.selections.count
+  end
+
+  test "confirm! rejects partial picks on a short knockout slate" do
+    contest, matchups = create_short_slate_contest
+    entry = contest.entries.create!(user: @user, status: :cart)
+    entry.selections.create!(slate_matchup: matchups.first)
+
+    error = assert_raises(RuntimeError) { entry.confirm!(tx_signature: "short-knockout-paid") }
+
+    assert_match(/Exactly 2 selections required/, error.message)
+    assert entry.reload.cart?
+  end
+
   test "confirm! rejects for non-open contest" do
     @contest.update!(status: "settled")
     entry = @contest.entries.create!(user: @user, status: :cart)
@@ -292,6 +314,17 @@ class EntryTest < ActiveSupport::TestCase
     assert_equal 6, entry.reload.selections.count
   end
 
+  test "update_picks! uses the short knockout slate pick count" do
+    contest, matchups = create_short_slate_contest
+    entry = contest.entries.create!(user: @user, status: :active)
+    matchups.each { |matchup| entry.selections.create!(slate_matchup: matchup) }
+
+    error = assert_raises(RuntimeError) { entry.update_picks!([matchups.first.id]) }
+
+    assert_match(/Exactly 2 selections required/, error.message)
+    assert_equal 2, entry.reload.selections.count
+  end
+
   test "update_picks! rejects when adding a locked matchup" do
     entry = build_active_entry([@m1, @m2, @m3, @m4, @m5, @m6])
 
@@ -373,6 +406,28 @@ class EntryTest < ActiveSupport::TestCase
       status: "pending",
       game_slug: game_slug
     )
+  end
+
+  def create_short_slate_contest
+    slate = Slate.create!(
+      name: "Short Knockout Slate #{SecureRandom.hex(3)}",
+      starts_at: 2.days.from_now
+    )
+    matchups = [
+      SlateMatchup.create!(slate: slate, team_slug: "team-a", opponent_team_slug: "team-b", rank: 1, turf_score: 1.0, status: "pending"),
+      SlateMatchup.create!(slate: slate, team_slug: "team-b", opponent_team_slug: "team-a", rank: 2, turf_score: 1.2, status: "pending")
+    ]
+    contest = Contest.create!(
+      name: "Short Knockout Contest #{SecureRandom.hex(3)}",
+      slug: "short-knockout-contest-#{SecureRandom.hex(4)}",
+      slate: slate,
+      contest_type: "standard",
+      entry_fee_cents: 19_00,
+      max_entries: 29,
+      status: :open,
+      starts_at: 2.days.from_now
+    )
+    [contest, matchups]
   end
 
 end
