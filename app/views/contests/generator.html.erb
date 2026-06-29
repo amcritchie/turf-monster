@@ -176,11 +176,14 @@
         </thead>
         <tbody>
           <% @slates.each_with_index do |slate, slate_idx| %>
+            <% matchup_count = slate.slate_matchups.count %>
+            <% picks_required = Contest.picks_required_for_slate(slate) %>
             <tr class="<%= slate_idx.even? ? 'bg-page' : 'bg-surface-alt/30' %> border-b border-subtle hover:bg-surface-alt/60 transition">
               <td class="px-4 py-4 align-top">
                 <div class="font-semibold text-heading"><%= slate.name %></div>
                 <div class="text-xs text-secondary mt-0.5">starts <%= slate.starts_at.strftime("%b %-d, %Y · %H:%M %Z") %></div>
-                <div class="text-xs text-muted mt-0.5"><%= slate.slate_matchups.count %> matchups available</div>
+                <div class="text-xs text-muted mt-0.5"><%= matchup_count %> matchups available</div>
+                <div class="text-xs text-muted mt-0.5"><%= picks_required %> picks required</div>
               </td>
               <% Contest.selectable_formats.each do |tier, config| %>
                 <%

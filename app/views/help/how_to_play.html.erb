@@ -8,7 +8,7 @@
   <div class="card p-6 mb-8">
     <h2 class="text-heading font-bold text-lg mb-3">30-Second Summary</h2>
     <ol class="list-decimal list-inside space-y-2 text-body">
-      <li><strong>Pick 6 team matchups</strong> from the available slate.</li>
+      <li><strong>Pick the required team matchups</strong> from the available slate.</li>
       <li>Each matchup has a <strong>Turf Score</strong> based on team ranking &mdash; lower-ranked teams have higher Turf Scores.</li>
       <li><strong>Hold to confirm</strong> your entry (entry fee is deducted from your balance).</li>
       <li>When games are played, your score = <strong>goals scored &times; Turf Score</strong> for each pick.</li>
@@ -23,7 +23,7 @@
         <svg class="w-5 h-5 text-secondary transition-transform" :class="open === 'picks' && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </button>
       <div x-show="open === 'picks'" x-collapse class="px-4 pb-4 text-body">
-        <p>Each contest shows a slate of team matchups. Tap a team to add it to your picks. You need exactly <strong>6 picks</strong> to enter.</p>
+        <p>Each contest shows a slate of team matchups. Tap a team to add it to your picks. Most contests require <strong>6 picks</strong>; short knockout slates require every available matchup.</p>
         <p class="mt-2">You can enter the same contest multiple times with different pick combinations.</p>
       </div>
     </div>
@@ -50,9 +50,9 @@
         <svg class="w-5 h-5 text-secondary transition-transform" :class="open === 'scoring' && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </button>
       <div x-show="open === 'scoring'" x-collapse class="px-4 pb-4 text-body">
-        <p>For each of your 6 picks:</p>
+        <p>For each pick:</p>
         <p class="my-2 text-heading font-mono font-bold text-center">Points = Goals Scored &times; Turf Score</p>
-        <p>Your entry score is the sum of all 6 selection scores. Entries are ranked by total score, highest first. Ties receive the same rank.</p>
+        <p>Your entry score is the sum of your selection scores. Entries are ranked by total score, highest first. Ties receive the same rank.</p>
       </div>
     </div>
 

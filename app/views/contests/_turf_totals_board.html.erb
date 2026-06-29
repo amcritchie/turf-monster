@@ -680,6 +680,7 @@ window.selectionBoard = function() {
       Alpine.store('modals').open('auth', {
         step:          'credentials',
         mode:          'signup',
+        picksRequired: this.picksRequired,
         submitting:    null,    // null | 'signup' | 'login' | 'phantom' | 'google'
         formError:     '',
         phantomError:  '',

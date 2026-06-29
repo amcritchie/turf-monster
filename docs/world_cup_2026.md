@@ -101,6 +101,10 @@ For deploys that need to apply only this data change, run the narrow idempotent
 task `bin/rails wc:seed_knockout`; do not run the full `db:seed` as a
 post-deploy hook.
 
+Turf Totals contests normally require 6 picks. Short knockout slates require all
+available matchup cards instead, so semi-final contests require 4 picks and the
+third-place/final contests require 2 picks.
+
 ## World Cup Survivor (parallel contest format)
 
 Single-elimination survivor pick. Players pick ONE team per `SurvivorRound`; that team must win to advance. A wrong pick eliminates the entry permanently. Last survivor(s) take the prize.

@@ -16,6 +16,7 @@ class ContestKnockoutSlatesTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "World Cup 2026 Round of 32"
     assert_includes response.body, "World Cup 2026 Final"
     assert_includes response.body, "32 matchups available"
+    assert_includes response.body, "2 picks required"
   end
 
   test "new contest defaults to selected knockout slate kickoff" do
@@ -28,6 +29,27 @@ class ContestKnockoutSlatesTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "World Cup 2026 Round of 32"
     assert_includes response.body, "2026-06-28T19:00:00Z"
+  end
+
+  test "seeded final slate contests are enterable with every available matchup" do
+    slate = Slate.find_by!(name: "World Cup 2026 Final")
+    contest = Contest.create!(
+      name: "World Cup Final Test",
+      slug: "world-cup-final-test",
+      slate: slate,
+      contest_type: "standard",
+      entry_fee_cents: 19_00,
+      max_entries: 29,
+      status: :open,
+      starts_at: slate.starts_at
+    )
+    entry = contest.entries.create!(user: users(:sam), status: :cart)
+    slate.slate_matchups.each { |matchup| entry.selections.create!(slate_matchup: matchup) }
+
+    entry.confirm!(tx_signature: "world-cup-final-paid")
+
+    assert_equal 2, contest.picks_required
+    assert entry.reload.active?
   end
 
   private

@@ -232,7 +232,8 @@
                 aria-label="Close">&times;</button>
       </div>
       <%= render "modals/blocks/progress_pill", current: 1, total: 3 %>
-      <p class="text-xs text-secondary mb-4 text-center">Your 6 picks are saved — sign in to submit your lineup.</p>
+      <p class="text-xs text-secondary mb-4 text-center"
+         x-text="'Your ' + ((props && props.picksRequired) || 6) + ' picks are saved — sign in to submit your lineup.'"></p>
 
       <%# Legal-age attestation — gates Google / Solana / email below. %>
       <% if AppFlags.age_attestation? %>

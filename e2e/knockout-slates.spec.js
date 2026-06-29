@@ -10,6 +10,8 @@ test.describe("World Cup knockout slates", () => {
 
     const roundOf32 = page.getByRole("row", { name: /World Cup 2026 Round of 32/ });
     await expect(roundOf32).toContainText("32 matchups available");
-    await expect(page.getByRole("row", { name: /World Cup 2026 Final/ })).toContainText("2 matchups available");
+    const final = page.getByRole("row", { name: /World Cup 2026 Final/ });
+    await expect(final).toContainText("2 matchups available");
+    await expect(final).toContainText("2 picks required");
   });
 });
