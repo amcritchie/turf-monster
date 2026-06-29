@@ -13,8 +13,8 @@
 #   - Transactional email providers are server-side only
 #
 # Inline scripts/styles are used by Alpine and several inline blocks in the
-# ERB layouts. Rails 7's `:strict_dynamic` + nonce approach would be ideal
-# but requires a refactor of inline script use. For v1 we allow 'unsafe-inline'
+# ERB layouts. A strict nonce-based CSP would be ideal but requires a refactor
+# of inline script use. For v1 we allow 'unsafe-inline'
 # on script-src/style-src — narrowed via nonce in a follow-up. Report-only
 # in dev so we surface accidental violations without blocking; enforced in
 # production.

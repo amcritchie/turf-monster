@@ -8,13 +8,13 @@ Legacy alias: https://app.turfmonster.media
 
 Turf Monster is a **satellite product app** in the [McRitchie Studio](https://github.com/amcritchie/mcritchie-studio) ecosystem. McRitchie Studio owns the shared recovery scripts and agent-neutral docs.
 
-> **Part of the McRitchie ecosystem** — see [`ECOSYSTEM.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/ECOSYSTEM.md) for the 5-repo map; [`house-burn-down.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/house-burn-down.md) for fresh-Mac recovery.
+> **Part of the McRitchie ecosystem** — see [`ECOSYSTEM.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/ECOSYSTEM.md) for the repo map; [`house-burn-down.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/house-burn-down.md) for fresh-Mac recovery.
 
 ---
 
 ## Standing up a fresh Mac? Start at the flagship.
 
-The canonical way to install Turf Monster + all 4 sibling repos + the toolchain is from McRitchie Studio's `bin/ecosystem-build` script. It clones this repo, restores `.env` from Heroku, pulls `SOLANA_ADMIN_KEY` from 1Password, runs `db:create db:migrate db:seed`, and boots the server on port 3100 — all idempotent.
+The canonical way to install Turf Monster + the ecosystem repos + the toolchain is from McRitchie Studio's `bin/ecosystem-build` script. It clones this repo, restores `.env` from Heroku, pulls `SOLANA_ADMIN_KEY` from 1Password, runs `db:create db:migrate db:seed`, and boots the server on port 3100 — all idempotent.
 
 ```bash
 git clone https://github.com/amcritchie/mcritchie-studio.git ~/projects/mcritchie-studio
