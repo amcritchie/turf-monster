@@ -55,6 +55,20 @@ class WorldCup2026KnockoutSeedTest < ActiveSupport::TestCase
     end
   end
 
+  test "reseeding preserves completed knockout game status and scores" do
+    WorldCup2026KnockoutSeed.call(teams_by_code: @teams_by_code, ranking_odds: {})
+
+    game = seeded_game_for_fixture(73)
+    game.update!(status: "completed", home_score: 0, away_score: 1)
+
+    WorldCup2026KnockoutSeed.call(teams_by_code: @teams_by_code, ranking_odds: {})
+
+    game.reload
+    assert_equal "completed", game.status
+    assert_equal 0, game.home_score
+    assert_equal 1, game.away_score
+  end
+
   test "reseeding removes stale unresolved round of 32 placeholders" do
     slate = Slate.create!(name: "World Cup 2026 Round of 32")
     stale_team = Team.create!(
@@ -142,6 +156,13 @@ class WorldCup2026KnockoutSeedTest < ActiveSupport::TestCase
   def fixture_codes(match_number)
     fixture = WorldCup2026KnockoutSeed::FIXTURES.find { |candidate| candidate[:match] == match_number }
     [fixture[:home], fixture[:away]]
+  end
+
+  def seeded_game_for_fixture(match_number)
+    home_code, away_code = fixture_codes(match_number)
+    home_team = Team.find_by!(short_name: home_code)
+    away_team = Team.find_by!(short_name: away_code)
+    Game.find_by!(home_team_slug: home_team.slug, away_team_slug: away_team.slug)
   end
 
   def seed_real_knockout_teams!

@@ -175,9 +175,9 @@ class WorldCup2026KnockoutSeed
       away_team = team_for!(fixture[:away])
 
       Game.find_or_initialize_by(home_team_slug: home_team.slug, away_team_slug: away_team.slug).tap do |game|
+        game.status = "scheduled" if game.new_record?
         game.kickoff_at = Time.iso8601(fixture[:kickoff_at])
         game.venue = fixture[:venue]
-        game.status = "scheduled"
         game.save!
       end
     end
