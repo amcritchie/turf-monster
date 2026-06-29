@@ -65,7 +65,7 @@ Within each group of 4 teams (A, B, C, D):
 
 The app's seed data includes:
 - **48 teams** with emoji, colors, group assignments
-- **32 knockout-slot placeholder teams** for unresolved advancement positions
+- **31 knockout-slot placeholder teams** for unresolved advancement positions
 - **104 tournament games**: 72 group-stage games plus 32 elimination-round fixtures
 - **67 notable players** across 21 teams
 - **24 Matchday 1 props** with goal lines (1.5–2.5 range)

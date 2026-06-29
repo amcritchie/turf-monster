@@ -30,7 +30,6 @@ class WorldCup2026KnockoutSeed
   ].freeze
 
   PLACEHOLDER_LABELS = {
-    "W73" => "Winner Match 73",
     "W74" => "Winner Match 74",
     "W75" => "Winner Match 75",
     "W76" => "Winner Match 76",
@@ -67,6 +66,7 @@ class WorldCup2026KnockoutSeed
   OBSOLETE_PLACEHOLDER_CODES = %w[
     1K 1L 2J 2K 2L
     3AEHIJ 3BEFIJ 3CEFHI 3CDFGH 3DEIJL 3EFGIJ 3EHIJK
+    W73
   ].freeze
 
   FIXTURES = [
@@ -87,7 +87,7 @@ class WorldCup2026KnockoutSeed
     { match: 87, stage: "Round of 32", kickoff_at: "2026-07-04T01:30:00Z", venue: "Kansas City Stadium, Kansas City", home: "COL", away: "GHA" },
     { match: 88, stage: "Round of 32", kickoff_at: "2026-07-03T18:00:00Z", venue: "Dallas Stadium, Dallas", home: "AUS", away: "EGY" },
     { match: 89, stage: "Round of 16", kickoff_at: "2026-07-04T21:00:00Z", venue: "Philadelphia Stadium, Philadelphia", home: "W74", away: "W77" },
-    { match: 90, stage: "Round of 16", kickoff_at: "2026-07-04T17:00:00Z", venue: "Houston Stadium, Houston", home: "W73", away: "W75" },
+    { match: 90, stage: "Round of 16", kickoff_at: "2026-07-04T17:00:00Z", venue: "Houston Stadium, Houston", home: "CAN", away: "W75" },
     { match: 91, stage: "Round of 16", kickoff_at: "2026-07-05T20:00:00Z", venue: "New York/New Jersey Stadium, New Jersey", home: "W76", away: "W78" },
     { match: 92, stage: "Round of 16", kickoff_at: "2026-07-06T00:00:00Z", venue: "Mexico City Stadium, Mexico City", home: "W79", away: "W80" },
     { match: 93, stage: "Round of 16", kickoff_at: "2026-07-06T19:00:00Z", venue: "Dallas Stadium, Dallas", home: "W83", away: "W84" },
