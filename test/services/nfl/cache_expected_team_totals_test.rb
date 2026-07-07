@@ -29,6 +29,13 @@ class Nfl::CacheExpectedTeamTotalsTest < ActiveSupport::TestCase
     assert_equal BigDecimal("22.00"), away_projection.expected_points
     assert_equal "Team A Lookahead", home_projection.source_text
     assert_equal 2, slate.slate_matchups.where(game_slug: game.slug).count
+
+    home_matchup = slate.slate_matchups.find_by!(team_slug: "team-a")
+    away_matchup = slate.slate_matchups.find_by!(team_slug: "team-b")
+    assert_equal BigDecimal("25.0"), home_matchup.dk_goals_expectation
+    assert_equal BigDecimal("22.0"), away_matchup.dk_goals_expectation
+    assert_equal 1, home_matchup.rank
+    assert_equal 2, away_matchup.rank
   end
 
   test "re-running cache updates rows without duplicating projections" do

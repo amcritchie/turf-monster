@@ -2,7 +2,8 @@ namespace :nfl do
   desc "Cache expected NFL team totals from the baseline sportsbook CSV"
   task expected_team_totals_cache: :environment do
     year = ENV.fetch("YEAR", Nfl::CacheExpectedTeamTotals::DEFAULT_YEAR)
-    path = ENV["PATH"].presence || Nfl::CacheExpectedTeamTotals::DEFAULT_PATH
+    path = ENV["CSV_PATH"].presence || Nfl::CacheExpectedTeamTotals::DEFAULT_PATH
+    load Rails.root.join("db/seeds/nfl_2026.rb") unless ENV["SKIP_SCHEDULE"] == "1"
     result = Nfl::CacheExpectedTeamTotals.call(year: year, path: path)
     puts "Cached NFL #{result.year} expected team totals: " \
          "#{result.rows} games, #{result.projections_upserted} team rows, " \

@@ -74,7 +74,16 @@ module Nfl
         home_spread: home_spread_for(row)
       )
 
-      ensure_matchups!(slate: slate, game: game, home_team: home_team, away_team: away_team)
+      ensure_matchups!(
+        slate: slate,
+        game: game,
+        home_team: home_team,
+        away_team: away_team,
+        expected_points_by_team_slug: {
+          away_team.slug => expected.fetch(:away),
+          home_team.slug => expected.fetch(:home)
+        }
+      )
 
       upsert_projection!(
         row: row,
@@ -121,13 +130,14 @@ module Nfl
       slate
     end
 
-    def ensure_matchups!(slate:, game:, home_team:, away_team:)
+    def ensure_matchups!(slate:, game:, home_team:, away_team:, expected_points_by_team_slug:)
       [[home_team, away_team], [away_team, home_team]].each do |team, opponent|
         matchup = SlateMatchup.find_or_initialize_by(slate: slate, team_slug: team.slug)
         @matchups_created += 1 if matchup.new_record?
         matchup.assign_attributes(
           opponent_team_slug: opponent.slug,
-          game_slug: game.slug
+          game_slug: game.slug,
+          dk_goals_expectation: expected_points_by_team_slug.fetch(team.slug).round(1)
         )
         matchup.save!
       end
@@ -137,7 +147,13 @@ module Nfl
 
     def rank_slate_matchups!(slate)
       matchups = slate.slate_matchups.includes(:team, :game).to_a
-      sorted = matchups.sort_by { |matchup| [matchup.game&.kickoff_at || Time.zone.local(@year, 9, 1), matchup.team.name] }
+      sorted = matchups.sort_by do |matchup|
+        [
+          matchup.dk_goals_expectation ? -matchup.dk_goals_expectation.to_f : Float::INFINITY,
+          matchup.game&.kickoff_at || Time.zone.local(@year, 9, 1),
+          matchup.team.name
+        ]
+      end
       sorted.each_with_index do |matchup, index|
         rank = index + 1
         matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, sorted.size))
