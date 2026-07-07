@@ -1,6 +1,10 @@
 class NflTeamTotalsController < ApplicationController
   skip_before_action :require_authentication
 
+  SOURCE_URLS = {
+    "yahoo_sports_2026_lookahead" => "https://sports.yahoo.com/nfl/betting/article/2026-nfl-betting-lines-odds-for-every-game-this-season-164646933.html"
+  }.freeze
+
   def index
     @year = params.fetch(:year, Nfl::CacheExpectedTeamTotals::DEFAULT_YEAR).to_i
     @available_weeks = NflTeamTotalProjection.for_year(@year).distinct.order(:week).pluck(:week)
@@ -12,6 +16,7 @@ class NflTeamTotalsController < ApplicationController
       .ordered
     @games = @projections.group_by(&:game_slug)
     @source = @projections.first
+    @source_url = SOURCE_URLS[@source&.source]
     @highest_projection = @projections.max_by(&:expected_points)
     @average_expected_points = average_expected_points
   end

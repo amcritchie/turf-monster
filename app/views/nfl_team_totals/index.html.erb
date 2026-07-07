@@ -12,8 +12,8 @@
           <% if @source.source_published_on %>
             <span class="text-muted">/ <%= @source.source_published_on.to_fs(:long) %></span>
           <% end %>
-          <% if @source.source_url.present? %>
-            <%= link_to "Source", @source.source_url, class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
+          <% if @source_url.present? %>
+            <%= link_to "Source", @source_url, class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
           <% end %>
         </p>
       <% end %>
