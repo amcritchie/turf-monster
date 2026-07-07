@@ -647,6 +647,9 @@ puts "  Created World Cup knockout slates (#{WorldCup2026KnockoutSeed::FIXTURES.
 # ─── NFL 2026 Regular Season Weeks 1-17 ───────────────────────
 load Rails.root.join("db/seeds/nfl_2026.rb")
 
+# ─── NFL 2026 Expected Team Totals ────────────────────────────
+load Rails.root.join("db/seeds/nfl_expected_team_totals_2026.rb")
+
 # ─── Default Slate (formula defaults record) ──────────────────
 Slate.find_or_create_by!(name: "Default")
 puts "  Created Default slate for formula defaults"

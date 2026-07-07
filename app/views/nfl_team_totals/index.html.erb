@@ -1,0 +1,119 @@
+<% content_for :title, "NFL Team Totals" %>
+<% content_for :meta_description, "Expected 2026 NFL team totals by week for Turf Totals." %>
+
+<section class="mx-auto max-w-6xl px-4 py-8">
+  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="label-upper mb-2">2026 season baseline</p>
+      <h1 class="text-3xl font-extrabold text-heading">NFL Team Totals</h1>
+      <% if @source %>
+        <p class="mt-2 max-w-3xl text-sm text-secondary">
+          <%= @source.source.titleize %>
+          <% if @source.source_published_on %>
+            <span class="text-muted">/ <%= @source.source_published_on.to_fs(:long) %></span>
+          <% end %>
+          <% if @source_url.present? %>
+            <%= link_to "Source", @source_url, class: "text-primary hover:underline", target: "_blank", rel: "noopener" %>
+          <% end %>
+        </p>
+      <% end %>
+    </div>
+
+    <div class="grid grid-cols-3 gap-2 sm:min-w-[28rem]">
+      <div class="rounded-lg border border-subtle bg-surface p-3">
+        <p class="text-xs text-muted">Games</p>
+        <p class="mt-1 text-2xl font-bold text-heading"><%= @games.size %></p>
+      </div>
+      <div class="rounded-lg border border-subtle bg-surface p-3">
+        <p class="text-xs text-muted">Teams</p>
+        <p class="mt-1 text-2xl font-bold text-heading"><%= @projections.size %></p>
+      </div>
+      <div class="rounded-lg border border-subtle bg-surface p-3">
+        <p class="text-xs text-muted">Avg</p>
+        <p class="mt-1 text-2xl font-bold text-heading"><%= number_with_precision(@average_expected_points, precision: 1) %></p>
+      </div>
+    </div>
+  </div>
+
+  <% if @available_weeks.any? %>
+    <nav aria-label="NFL weeks" class="mb-6 overflow-x-auto pb-1">
+      <div class="flex min-w-max gap-2">
+        <% @available_weeks.each do |week| %>
+          <% active = week == @week %>
+          <%= link_to "Week #{week}", nfl_team_totals_path(year: @year, week: week),
+            class: "rounded-lg border px-3 py-2 text-sm font-bold transition #{active ? 'border-primary bg-primary text-white' : 'border-subtle bg-surface text-secondary hover:text-heading'}",
+            aria: { current: (active ? "page" : nil) } %>
+        <% end %>
+      </div>
+    </nav>
+  <% end %>
+
+  <% if @projections.empty? %>
+    <%= render "components/empty_state", message: "No NFL team totals cached yet." %>
+  <% else %>
+    <% if @highest_projection %>
+      <div class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-subtle bg-surface-alt px-4 py-3 text-sm">
+        <span class="text-muted">Highest team total</span>
+        <span class="font-bold text-heading"><%= @highest_projection.team.name %></span>
+        <span class="font-mono text-primary"><%= number_with_precision(@highest_projection.expected_points, precision: 1) %></span>
+      </div>
+    <% end %>
+
+    <div class="space-y-3">
+      <% @games.each_value do |game_projections| %>
+        <% away_projection = game_projections.find { |projection| !projection.home? } %>
+        <% home_projection = game_projections.find(&:home?) %>
+        <% game = game_projections.first.game %>
+        <% favorite = game_projections.first.favorite_team %>
+        <% favorite_spread = game_projections.first.favorite_spread %>
+        <article class="card p-4" data-total-card>
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>Week <%= @week %></span>
+                <span>/</span>
+                <% if game.kickoff_at.present? %>
+                  <span><%= game.kickoff_at.strftime("%b %-d, %-l:%M %p") %></span>
+                <% else %>
+                  <span>TBD</span>
+                <% end %>
+                <% if game.venue.present? %>
+                  <span>/</span>
+                  <span class="truncate"><%= game.venue %></span>
+                <% end %>
+              </div>
+              <h2 class="mt-1 text-lg font-bold text-heading">
+                <%= away_projection.team.name %> at <%= home_projection.team.name %>
+              </h2>
+              <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                <span class="rounded border border-subtle bg-surface-alt px-2 py-1 text-secondary">Total <%= number_with_precision(game_projections.first.game_total, precision: 1) %></span>
+                <span class="rounded border border-subtle bg-surface-alt px-2 py-1 text-secondary"><%= favorite.short_name || favorite.name %> <%= number_with_precision(favorite_spread, precision: 1) %></span>
+              </div>
+            </div>
+
+            <div class="grid w-full gap-2 sm:grid-cols-2 md:w-[28rem]">
+              <% [away_projection, home_projection].each do |projection| %>
+                <% team = projection.team %>
+                <div class="rounded-lg border border-subtle bg-surface-alt p-3">
+                  <div class="flex items-center gap-2">
+                    <% if team.color_primary.present? %>
+                      <span class="h-8 w-1 rounded-full" style="background-color: <%= team.color_primary %>"></span>
+                    <% end %>
+                    <span class="text-xl"><%= team.emoji %></span>
+                    <div class="min-w-0">
+                      <p class="truncate text-sm font-bold text-heading"><%= team.short_name || team.name %></p>
+                      <p class="text-xs text-muted"><%= projection.home? ? "Home" : "Away" %></p>
+                    </div>
+                    <p class="ml-auto font-mono text-2xl font-extrabold text-primary">
+                      <%= number_with_precision(projection.expected_points, precision: 1) %>
+                    </p>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </article>
+      <% end %>
+    </div>
+  <% end %>
+</section>
