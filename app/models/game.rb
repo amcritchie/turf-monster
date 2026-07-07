@@ -6,6 +6,7 @@ class Game < ApplicationRecord
   belongs_to :advancing_team, class_name: "Team", foreign_key: :advancing_team_slug, primary_key: :slug, optional: true
   belongs_to :survivor_round, optional: true
   has_many :goals, foreign_key: :game_slug, primary_key: :slug, dependent: :destroy
+  has_many :nfl_team_total_projections, foreign_key: :game_slug, primary_key: :slug, dependent: :destroy
 
   # Recount goals and update home_score / away_score from Goal records
   def update_scores_from_goals!
@@ -38,5 +39,18 @@ class Game < ApplicationRecord
 
   def name_slug
     "#{home_team_slug}-vs-#{away_team_slug}"
+  end
+
+  def expected_total_for(team_or_slug)
+    team_slug = team_or_slug.respond_to?(:slug) ? team_or_slug.slug : team_or_slug
+    nfl_team_total_projections.find { |projection| projection.team_slug == team_slug }&.expected_points
+  end
+
+  def home_expected_total
+    expected_total_for(home_team_slug)
+  end
+
+  def away_expected_total
+    expected_total_for(away_team_slug)
   end
 end

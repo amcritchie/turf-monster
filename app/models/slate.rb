@@ -11,6 +11,7 @@ class Slate < ApplicationRecord
 
   has_many :slate_matchups, dependent: :destroy
   has_many :contests
+  has_many :nfl_team_total_projections, dependent: :nullify
 
   validates :name, presence: true
 

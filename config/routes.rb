@@ -297,6 +297,7 @@ Rails.application.routes.draw do
   resources :teams, only: [:index, :show]
   resources :players, only: [:index]
   resources :games, only: [:index]
+  get "nfl/team-totals", to: "nfl_team_totals#index", as: :nfl_team_totals
 
   # Entry-time age gate (ENABLE_AGE_GATE) — DOB verification before first entry.
   post "/age/verify", to: "age_verifications#create", as: :age_verify

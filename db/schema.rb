@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_06_21_120001) do
+ActiveRecord::Schema[7.2].define(version: 2026_07_07_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -297,6 +297,33 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_21_120001) do
     t.index ["contest_id", "user_id", "system"], name: "index_messages_on_contest_user_system", where: "system"
     t.index ["hidden_by_id"], name: "index_messages_on_hidden_by_id", where: "(hidden_by_id IS NOT NULL)"
     t.index ["user_id"], name: "index_messages_on_user_id"
+  end
+
+  create_table "nfl_team_total_projections", force: :cascade do |t|
+    t.integer "year", null: false
+    t.integer "week", null: false
+    t.bigint "slate_id"
+    t.string "game_slug", null: false
+    t.string "team_slug", null: false
+    t.string "opponent_team_slug", null: false
+    t.boolean "home", null: false
+    t.decimal "expected_points", precision: 5, scale: 2, null: false
+    t.decimal "game_total", precision: 5, scale: 2, null: false
+    t.decimal "home_spread", precision: 5, scale: 2, null: false
+    t.string "favorite_team_slug", null: false
+    t.decimal "favorite_spread", precision: 5, scale: 2, null: false
+    t.string "source", null: false
+    t.date "source_published_on"
+    t.string "source_url"
+    t.text "source_text"
+    t.datetime "cached_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slate_id"], name: "index_nfl_team_total_projections_on_slate_id"
+    t.index ["source"], name: "index_nfl_team_total_projections_on_source"
+    t.index ["year", "week", "expected_points"], name: "index_nfl_team_totals_on_year_week_points"
+    t.index ["year", "week", "game_slug", "team_slug"], name: "index_nfl_team_totals_unique_team_game", unique: true
+    t.index ["year", "week", "team_slug"], name: "index_nfl_team_totals_on_year_week_team"
   end
 
   create_table "outbound_requests", force: :cascade do |t|
@@ -666,6 +693,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_06_21_120001) do
   add_foreign_key "landing_pages", "contests", on_delete: :nullify
   add_foreign_key "messages", "contests"
   add_foreign_key "messages", "users"
+  add_foreign_key "nfl_team_total_projections", "slates"
   add_foreign_key "paypal_purchases", "users"
   add_foreign_key "reactions", "messages"
   add_foreign_key "reactions", "users"
