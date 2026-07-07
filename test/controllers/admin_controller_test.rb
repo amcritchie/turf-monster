@@ -18,6 +18,7 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     assert_select "h2", text: "Admin"               # hub section
     assert_select "a[href=?]", admin_models_path    # QA browser for seeded models
     assert_select "a[href=?]", admin_seasons_path   # a navigation link moved off the gear
+    assert_select "a[href=?]", nfl_team_totals_path # NFL baseline totals dashboard
     assert_select "button", text: "Refresh Balance" # an action control kept out of the gear sidebar
   end
 
