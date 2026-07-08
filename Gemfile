@@ -89,7 +89,7 @@ gem "sentry-rails"
 # 0.11.0 widens the Rails bound to allow 8.1; it also ships the opt-in
 # Studio::Enumeral table (0.9.0) and the Studio::Redis / Studio::Cable
 # websocket primitives (0.10.0), neither of which turf adopts yet.
-gem "studio-engine", "~> 0.11"
+gem "studio-engine", "~> 0.12" # 0.12 adds the model-page protocol (Studio::ModelPage)
 
 # Solana primitives (Client, Keypair, Borsh, Transaction, AuthVerifier)
 # 0.4.7 adds Solana::Transaction.cosign_wire + Client#simulate_transaction for the
