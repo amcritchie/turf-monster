@@ -1,18 +1,18 @@
-<% content_for :title, "Login with Your Wallet" %>
+<% content_for :title, "Log In with Your Wallet" %>
 
 <div class="min-h-[70vh] flex items-center justify-center">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
       <%= brand_logo px: 80, classes: "w-20 h-20 shadow-lg mx-auto mb-4" %>
-      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Login with Your Wallet</h1>
+      <h1 class="text-3xl font-extrabold text-heading tracking-tight">Log In with Your Wallet</h1>
     </div>
 
     <div class="card shadow p-8">
       <div class="mb-6 p-4 rounded-lg bg-surface-alt border border-subtle text-sm">
         <p class="text-heading font-semibold mb-1">This account is secured by a Solana wallet</p>
         <p class="text-secondary">
-          <span class="text-heading font-medium"><%= @pending_email %></span> belongs to a wallet,
-          please log in to connect to Google.
+          <span class="text-heading font-medium"><%= @pending_email %></span> belongs to a wallet.
+          Please log in to connect to Google.
         </p>
       </div>
 

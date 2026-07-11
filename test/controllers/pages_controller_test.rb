@@ -89,6 +89,13 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "terms page referral copy uses the corrected grammar" do
+    get terms_path
+    assert_response :success
+    assert_match "every two qualifying invitees earn one free entry", response.body
+    assert_no_match(/invitees earns/, response.body)
+  end
+
   test "terms page carries the refund and cancellation policy" do
     get terms_path
     assert_response :success

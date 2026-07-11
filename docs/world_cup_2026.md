@@ -116,7 +116,7 @@ Single-elimination survivor pick. Players pick ONE team per `SurvivorRound`; tha
 - **Picks required at entry confirm**: 0 — picks happen per-round, not up front
 - **Team reuse**: not allowed across rounds within a single entry (enforced by unique index on `[team_slug, entry_id]` on `SurvivorPick`)
 
-| Tier | Entry fee | Max entries | Winner takeall |
+| Tier | Entry fee | Max entries | Winner take-all |
 |------|----------:|------------:|---------------:|
 | `survivor_wc_paid` | $19 | 59 | $1,000 |
 | `survivor_wc_free` | $0  | 59 | $200 |
