@@ -38,7 +38,7 @@
             Generate
           </button>
           <% if existing %>
-            <%= link_to "✓ live — /l/#{existing.slug}", landing_page_path(existing), target: "_blank", rel: "noopener",
+            <%= link_to "✓ live — /lp/#{existing.slug}", landing_page_path(existing), target: "_blank", rel: "noopener",
                   class: "block text-xs text-mint mt-2 hover:underline" %>
           <% else %>
             <p class="text-xs text-muted mt-2">Not provisioned yet.</p>
@@ -82,7 +82,7 @@
           return;
         }
 
-        if (!confirm('Provision "' + label + '" + /l/' + slug + '?\n\nYour Phantom will sign a TX that funds the prize pool on-chain.')) {
+        if (!confirm('Provision "' + label + '" + /lp/' + slug + '?\n\nYour Phantom will sign a TX that funds the prize pool on-chain.')) {
           return;
         }
 

@@ -77,7 +77,7 @@ class WalletsController < ApplicationController
       # has no funding source to draw against. Point them at the wallet
       # they exported into instead. See task #11 + WalletExportsController.
       if current_user.self_custodied?
-        raise "Your wallet is self-custodied. Send USDC directly from the wallet you imported into."
+        raise "Your wallet is self-custodied. Send USDC directly from the wallet you imported it into."
       end
 
       # OPSEC-031: cap at on-chain balance at request time. Previously the

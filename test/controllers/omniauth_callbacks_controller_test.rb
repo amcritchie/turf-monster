@@ -104,7 +104,7 @@ class OmniauthCallbacksControllerTest < ActionDispatch::IntegrationTest
 
     follow_redirect!
     assert_response :success
-    assert_select "h1", text: /Login with Your Wallet/
+    assert_select "h1", text: /Log In with Your Wallet/
   end
 
   test "wallet login completes the stashed Google link" do
