@@ -198,7 +198,13 @@ class CiWorkflowTriggersTest < Minitest::Test
   #     · it must not be neutered by `continue-on-error`, a `paths` filter, a `concurrency`
   #       group, or a dropped branch;
   #     · it must not be NARROWED by an env var Rails actually reads (NARROWING_ENV_KEYS),
-  #       at ANY of the three scopes GitHub honors — workflow, job, or step.
+  #       at ANY of the FOUR scopes that reach the suite step — the workflow `env:`, the
+  #       job `env:`, the step's own `env:`, and the DYNAMIC one: a `$GITHUB_ENV` write
+  #       from an EARLIER step in the same job, which the runner exports to every
+  #       subsequent step. (This bullet said "the three scopes GitHub honors" until a
+  #       reviewer demonstrated the fourth, with the suite step byte-identical and
+  #       unconditional, running zero tests, green. The count was the tell: I had asserted
+  #       a closed set without enumerating what could write to it.)
   #
   #   NOT PROVEN — the honest edges, so nobody mistakes silence here for safety:
   #     · anything OUTSIDE this YAML. Neuter `bin/rails`, `Rakefile`, `test_helper.rb`, or
@@ -228,14 +234,27 @@ class CiWorkflowTriggersTest < Minitest::Test
   # Re-run that grep on a Rails upgrade; this list is a claim about railties, not a
   # guess:
   #   TEST                 testing.rake:10 — `run_from_rake("test", Array(ENV["TEST"]))`.
-  #                        `TEST=test/foo_test.rb` → that ONE file runs, exit 0, GREEN.
-  #   TESTOPTS             runner.rb:52 — Shellwords-spliced into the spawned command, so
-  #                        `-n /nothing_matches_this/` runs zero tests. Applies to
-  #                        `test:system` too, since it also routes through run_from_rake.
+  #                        `TEST=test/foo_test.rb` → that ONE file runs, exit 0. SILENT.
+  #   TESTOPTS             runner.rb:52 — Shellwords-spliced into the spawned command.
+  #                        Applies to `test:system` too (same run_from_rake path).
   #   DEFAULT_TEST         runner.rb:117 — overrides the glob `test/**/*_test.rb`.
   #   DEFAULT_TEST_EXCLUDE runner.rb:121 — excludes it. `'test/**/*_test.rb'` → 0 runs,
-  #                        exit 0, GREEN: a green required check over an EMPTY suite.
-  # All four measured on the real command in this repo (336 runs → 31, and → 0).
+  #                        exit 0: a green required check over an EMPTY suite. SILENT.
+  #
+  # LOUD vs SILENT — measured, because it changes which payload actually threatens the RC,
+  # and the obvious one is NOT the dangerous one:
+  #   · `TESTOPTS='-n /nothing_matches_this/'` → 0 runs, exit **1**. LOUD: minitest fails
+  #     the lane, CI goes red, everybody sees it. It is the spelling people reach for, and
+  #     it is the one that cannot hurt you.
+  #   · `TESTOPTS='-n /<a small PASSING subset>/'` → a couple of runs, exit **0**. SILENT.
+  #     This is why TESTOPTS stays on the list — for the subset spelling, not the zero one.
+  #   · `TEST=<one passing file>` → that file's runs, exit **0**. SILENT.
+  #   · `DEFAULT_TEST_EXCLUDE='test/**/*_test.rb'` → 0 runs, exit **0**. SILENT, and the
+  #     purest of the set: an EMPTY suite reporting success.
+  # A guard tuned to the loud payload guards the one CI already catches. Tune to the quiet
+  # ones. (Measured on this repo's real rake command; exact run COUNTS are deliberately not
+  # pinned here — they drift with the suite and a stale number in a comment is its own
+  # small lie. Re-measure, don't cite.)
   #
   # THE MECHANISM, so the next person tests the right path: the suite line is a MULTI-TASK
   # RAKE invocation (`db:test:prepare test test:system`), which routes through
@@ -283,13 +302,48 @@ class CiWorkflowTriggersTest < Minitest::Test
   # deliberately BLANKED at a more specific level (`TESTOPTS: ""`, which restores the full
   # suite) is correctly not a narrowing. A false RED here would train people to delete the
   # guard.
+  # The env a step INHERITS from an earlier step in the same job. The GitHub runner exports
+  # every `KEY=value` appended to the `$GITHUB_ENV` file to all SUBSEQUENT steps — a
+  # DYNAMIC fourth scope that no static `env:` map in this file can see:
+  #
+  #     - name: Cache warm
+  #       run: echo "DEFAULT_TEST_EXCLUDE=test/**/*_test.rb" >> "$GITHUB_ENV"
+  #     - name: Run tests
+  #       run: bin/rails db:test:prepare test test:system   # byte-identical, unconditional
+  #
+  # The suite step is untouched — same command, no `if:`, no env: block — and it runs ZERO
+  # tests and exits 0. Only the steps ORDERED BEFORE it in the same job can reach it, so
+  # that is exactly what this scans.
+  def github_env_writes(job, suite_step)
+    steps = Array(job["steps"]).grep(Hash)
+    index = steps.index(suite_step)
+    return {} if index.nil?
+
+    steps[0...index].each_with_object({}) do |step, written|
+      run = step["run"].to_s
+      next unless run.include?("GITHUB_ENV")
+
+      NARROWING_ENV_KEYS.each do |key|
+        match = run.match(/(?:^|["'\s])#{Regexp.escape(key)}=([^"'\n]*)/)
+        written[key] = match[1] if match
+      end
+    end
+  end
+
   def narrowing_env_lanes(yaml_text)
     workflow_env = YAML.safe_load(yaml_text)["env"]
 
     suite_command_lanes(yaml_text).flat_map do |name, job, step|
+      # PRECEDENCE, least specific → most specific:
+      #   workflow `env:` < job `env:` < $GITHUB_ENV (earlier step) < the step's own `env:`
+      # The most specific scope that DEFINES the key supplies the value, and that scope is
+      # the one named in the finding. The blank-out exemption falls out of this for free: a
+      # key set upstream but explicitly emptied on the suite step's own `env:` restores the
+      # full suite, so it is correctly NOT a narrowing.
       scopes = [
         [ "workflow `env:`", workflow_env ],
         [ lane_label(name), job["env"] ],
+        [ "job `#{name}` → an earlier step's $GITHUB_ENV write", github_env_writes(job, step) ],
         [ lane_label(name, step), step["env"] ]
       ]
 
@@ -687,8 +741,8 @@ class CiWorkflowTriggersTest < Minitest::Test
     # `TEST` (singular) is the key railties ACTUALLY reads — testing.rake:10,
     # `run_from_rake("test", Array(ENV["TEST"]))`. The first cut of NARROWING_ENV_KEYS
     # guarded `TESTS` (plural), which railties never reads: a guard pointed at a dead key,
-    # while `TEST: test/one_trivial_test.rb` sailed through. Measured on the real command:
-    # 336 runs → 31, exit 0, GREEN.
+    # while `TEST: test/one_trivial_test.rb` sailed through — the full suite collapses to
+    # that one file's runs, exit 0, GREEN (measured on this repo's real rake command).
     yaml = <<~YML
       on:
         push:
@@ -723,6 +777,88 @@ class CiWorkflowTriggersTest < Minitest::Test
               run: bin/rails db:test:prepare test test:system
     YML
     assert_equal [ "job `test` → step `Run tests` (DEFAULT_TEST_EXCLUDE)" ], narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_detects_a_GITHUB_ENV_write_from_an_EARLIER_step
+    # THE FOURTH SCOPE — and the hole in the env walk's second cut, which read the three
+    # STATIC `env:` maps and declared the class closed. The runner exports anything an
+    # earlier step appends to $GITHUB_ENV to every SUBSEQUENT step, so the suite step is
+    # narrowed without a single character of it changing: same command, no `if:`, no env:.
+    # Demonstrated GREEN against the previous guard while the suite ran 0 tests, exit 0.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Cache warm
+              run: echo "DEFAULT_TEST_EXCLUDE=test/**/*_test.rb" >> "$GITHUB_ENV"
+            - name: Run tests
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_equal [ "job `test` → an earlier step's $GITHUB_ENV write (DEFAULT_TEST_EXCLUDE)" ],
+                 narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_a_GITHUB_ENV_write_AFTER_the_suite_step_is_not_a_narrowing
+    # Ordering is the whole mechanism: $GITHUB_ENV reaches only SUBSEQUENT steps. A write
+    # that lands after the suite has already run cannot narrow it, and flagging it would be
+    # a false red.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: bin/rails db:test:prepare test test:system
+            - name: Hand off to the next job
+              run: echo "DEFAULT_TEST_EXCLUDE=test/**/*_test.rb" >> "$GITHUB_ENV"
+    YML
+    assert_empty narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_the_suite_steps_own_env_blanks_out_an_earlier_GITHUB_ENV_write
+    # Precedence across the new scope: `step env:` outranks $GITHUB_ENV, so an upstream
+    # write explicitly emptied on the suite step restores the full suite — not a narrowing.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Cache warm
+              run: echo "DEFAULT_TEST_EXCLUDE=test/**/*_test.rb" >> "$GITHUB_ENV"
+            - name: Run tests
+              env:
+                DEFAULT_TEST_EXCLUDE: ""
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_empty narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_an_ordinary_GITHUB_ENV_write_is_not_flagged
+    # The walk must not flag every $GITHUB_ENV write — only one carrying a key Rails reads.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Record the SHA
+              run: echo "BUILD_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+            - name: Run tests
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_empty narrowing_env_lanes(yaml)
   end
 
   def test_unit_a_more_specific_scope_blanking_the_key_is_not_a_narrowing
