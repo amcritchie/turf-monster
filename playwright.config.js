@@ -4,10 +4,14 @@ module.exports = defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   // CI retries: this single-worker e2e suite has documented full-suite
-  // flakiness (cross-spec DB/session state pollution + timing under load —
-  // see CLAUDE.md). Retry only in CI so a transient flake doesn't fail the
-  // whole job; a genuinely broken test still fails all attempts. Local runs
-  // stay at 0 to surface flakes during development.
+  // flakiness (cross-spec DB/session state pollution + timing under load).
+  // The dominant "timing under load" source — the test server blocking on
+  // live public-devnet RPC per authenticated page render — is fixed at the
+  // root: CI pins SOLANA_RPC_URL to a black-hole loopback (see the playwright
+  // job in .github/workflows/ci.yml and test/lib/ci_playwright_hermetic_test.rb).
+  // Retry only in CI so a transient flake doesn't fail the whole job; a
+  // genuinely broken test still fails all attempts. Local runs stay at 0 to
+  // surface flakes during development.
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   // Swap alex's wallet to MOCK_PUBKEY_B58 before tests (so loginViaPhantom
