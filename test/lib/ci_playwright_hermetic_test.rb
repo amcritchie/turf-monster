@@ -26,20 +26,32 @@ require "yaml"
 # `skipped`; it has never run). This pin is NOT justified by coverage living
 # elsewhere — it lives nowhere.
 #
-# It costs no coverage either, but for a CONTINGENT reason. After the
-# async-navbar-balance change the preload fires exactly ONE server-side on-chain
-# RPC for a wallet-connected user: Solana::Vault#list_entry_tokens
-# (application_controller.rb:617) → getProgramAccounts(dataSize:124,
-# memcmp@8=wallet) (vault.rb:1771-1786). Run against devnet for the e2e wallet
-# (MOCK_PUBKEY_B58, 6ASf…pGWt) it returns [] — and NOT vacuously: the same
-# program holds 72 entry-token accounts today, none owned by the mock wallet. So
-# the count was 0 before this pin and rescues to 0 after it. Mint an entry token
-# to that wallet on devnet and this premise EXPIRES.
+# WHAT LICENSES THE PIN: no e2e asserts the observables these RPCs feed. That is
+# a MEASUREMENT, not an argument — the full chromium suite is 79/79 green under
+# the black hole. It is NOT that "nothing changes"; it is that nothing we assert
+# changes. Do not weaken this into a no-op claim.
+#
+# The e2e user is an ADMIN (e2e/global-setup.js swaps the canonical admin's
+# wallet to MOCK_PUBKEY_B58), so an admin render fires TWO server-side on-chain
+# RPCs, both re-firing every request under :null_store:
+#
+#   1. list_entry_tokens (application_controller.rb:617) →
+#      getProgramAccounts(dataSize:124, memcmp@8=wallet) (vault.rb:1771-1786).
+#      Against devnet for the e2e wallet it returns [] — NOT vacuously: the
+#      program holds 72 entry-token accounts today, none owned by that wallet.
+#      0 live, rescues to 0 here. CONTINGENT: mint one to that wallet and this
+#      stops being true.
+#   2. vault_state (application_controller.rb:626-639) → read_vault_state →
+#      get_account_info on the vault PDA (seeds [b"vault"] = J7b5g9uS…HkK2).
+#      That PDA EXISTS on devnet (1515 bytes, program-owned): live returns a
+#      real struct, whereas under this pin it rescues to Current.vault_state =
+#      nil + vault_state_error = true (:643-652). This observable REALLY DOES
+#      CHANGE — no running spec asserts it, which is exactly why the pin holds.
 #
 # Do NOT restate this as "the e2e wallet has no devnet state" — it does: 6ASf…
-# pGWt holds ~86 SOL on devnet in a real program-owned account. The claim holds
-# only because the preload no longer reads balances (application_controller.rb
-# :605-614). Browser-side RPC is mocked in e2e/rpc-mock.js.
+# pGWt holds ~86 SOL on devnet in a real program-owned account. These reads stay
+# harmless only because the preload no longer fires get_balance / the USDC+seeds
+# reads (application_controller.rb:605-614). Browser RPC: e2e/rpc-mock.js.
 class CiPlaywrightHermeticTest < ActiveSupport::TestCase
   WORKFLOW_PATH = Rails.root.join(".github/workflows/ci.yml")
 
