@@ -156,11 +156,20 @@ class CiWorkflowTriggersTest < Minitest::Test
 
   # ---- the POSITIVE invariant's machinery --------------------------------------------
 
-  # THE COMMAND THAT CONSTITUTES A VERDICT. If no lane runs this on a release push, the
-  # RC tip's green check is backed by zero tests — and a SHA-addressed CI auditor
-  # (mcritchie-studio #514) would read that empty-but-green run as a CLEAN verdict and
-  # certify it.
-  TEST_COMMAND = %r{bin/rails\b[^\n]*\btest\b}
+  # THE COMMAND THAT CONSTITUTES A VERDICT — pinned to the REAL suite invocation, not a
+  # keyword sniff. If no lane runs this on a release push, the RC tip's green check is
+  # backed by zero tests — and a SHA-addressed CI auditor (mcritchie-studio #514) would
+  # read that empty-but-green run as a CLEAN verdict and certify it.
+  #
+  # WHY PINNED (mutation-caught in review of the satellite port): the first port matched
+  # /bin\/rails\b[^\n]*\btest\b/ — but `:` is a word boundary, so `\btest\b` matches
+  # inside `db:test:prepare`, and a bare `test` token rides in `runner -e test …`. A
+  # prepare-only gut of the suite, or the e2e SEED step, counted as the verdict lane —
+  # so deleting the entire rails `test` job stayed GREEN. Pinning fails SAFE: if the
+  # suite command legitimately changes, the positive guard goes RED (refute_empty) and
+  # you re-point this constant — a loud false red, never a silent false green. The two
+  # refutation fixtures below (`…prepare_only…`, `…runner_seed_step…`) hold the line.
+  TEST_COMMAND = %r{bin/rails\s+db:test:prepare\s+test\s+test:system(?!\S)}
 
   def jobs_of(yaml_text)
     YAML.safe_load(yaml_text).fetch("jobs", {}).select { |_n, j| j.is_a?(Hash) }
@@ -172,14 +181,18 @@ class CiWorkflowTriggersTest < Minitest::Test
     "job `#{job_name}` → step `#{step["name"] || step["uses"] || "run"}`"
   end
 
-  # Every [job_name, job, step] whose `run:` actually invokes the suite. Vector 7 (the
-  # gutted command) is invisible to every blacklist in this file and lands only here.
-  def suite_command_lanes(yaml_text)
+  # Every [job_name, job, step] whose `run:` invokes `command`. Vector 7 (the gutted
+  # command) is invisible to every blacklist in this file and lands only here.
+  def command_lanes(yaml_text, command)
     jobs_of(yaml_text).flat_map do |name, job|
       Array(job["steps"]).grep(Hash)
-                         .select { |step| step["run"].to_s.match?(TEST_COMMAND) }
+                         .select { |step| step["run"].to_s.match?(command) }
                          .map { |step| [name, job, step] }
     end
+  end
+
+  def suite_command_lanes(yaml_text)
+    command_lanes(yaml_text, TEST_COMMAND)
   end
 
   # Vector 6. `continue-on-error: true` on a job or step: it RUNS, it FAILS, it reports
@@ -401,6 +414,48 @@ class CiWorkflowTriggersTest < Minitest::Test
     assert_empty suite_command_lanes(yaml), "but NO lane runs the suite — only this catches it"
   end
 
+  def test_unit_a_prepare_only_command_is_not_a_test_lane
+    # THE HOLE IN THE FIRST PORT OF THIS GUARD (mutation-caught in review of the
+    # satellite port, task ci-on-satellite-release): `:` is a word boundary, so a
+    # keyword sniff like /\btest\b/ matches INSIDE `db:test:prepare`. A step that
+    # only PREPARES the test database then counts as the verdict lane, and gutting
+    # the suite run to prepare-only stays GREEN — a green check over zero tests on
+    # the RC tip, the exact failure this file exists to eliminate.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Prepare test DB (runs no tests)
+              run: bin/rails db:test:prepare
+    YML
+    assert_empty suite_command_lanes(yaml),
+                 "a prepare-only step runs ZERO tests — it must never count as the suite lane"
+  end
+
+  def test_unit_a_runner_seed_step_is_not_a_test_lane
+    # The other spelling of the same mutation hole: an e2e SEED step carries both
+    # `db:test:prepare` and a bare `test` token (`runner -e test`) while running
+    # zero tests. With this step counted as a lane, DELETING the entire rails
+    # `test` job kept the positive guard green.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        playwright:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Seed test DB
+              run: bin/rails db:test:prepare && bin/rails runner -e test e2e/seed.rb
+    YML
+    assert_empty suite_command_lanes(yaml),
+                 "a seed/runner step runs ZERO tests — it must never count as the suite lane"
+  end
+
   def test_unit_recognizes_the_real_suite_command_as_a_test_lane
     # The other half of vector 7: TEST_COMMAND must actually MATCH the live command, or
     # the positive guard asserts a lane that never existed and passes vacuously — the
@@ -463,6 +518,33 @@ class CiWorkflowTriggersTest < Minitest::Test
                  "#{lanes.inspect} set `continue-on-error: true` — the lane RUNS, the " \
                  "tests FAIL, and it reports GREEN anyway. Zero-tests-green and " \
                  "failing-tests-green are the same lie told to the release candidate."
+  end
+
+  # turf-monster only: the sharded Playwright e2e suite is part of THIS repo's RC
+  # verdict, so it gets the same positive invariant as the rails suite — some step
+  # must actually run it, unconditionally. (The `if:` walk and the continue-on-error
+  # walk above already cover its steps; this closes the delete-the-job /
+  # gut-the-command class for the e2e lane too.)
+  E2E_COMMAND = /\bnpm test\b/
+
+  def test_integration_the_e2e_lane_runs_UNCONDITIONALLY_on_a_release_push
+    lanes = command_lanes(File.read(CI_YML), E2E_COMMAND)
+
+    refute_empty lanes,
+                 "NO step in ci.yml runs a command matching #{E2E_COMMAND.source}. The " \
+                 "Playwright suite is part of this repo's release-push verdict — if the " \
+                 "e2e runner legitimately changed, re-point E2E_COMMAND at it; do not " \
+                 "delete this."
+
+    lanes.each do |job_name, job, step|
+      assert_nil job["if"],
+                 "#{lane_label(job_name)} runs the e2e suite but carries `if: #{job["if"]}` — " \
+                 "the e2e lane must be UNCONDITIONAL on a release push."
+      assert_nil step["if"],
+                 "#{lane_label(job_name, step)} runs the e2e suite but carries " \
+                 "`if: #{step["if"]}` — a skipped step leaves the job reporting success " \
+                 "over zero e2e tests."
+    end
   end
   # ====================================================================================
 
