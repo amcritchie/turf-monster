@@ -95,6 +95,17 @@ LOCAL_HASH=""; REMOTE_HASHES=""; IDL_BUMP=0; IDL_FILE="config/turf_vault.idl.jso
 if [ "$SKIP_CHECKS" != "1" ]; then
   bold "Pre-flight checks (app: $HEROKU_APP, remote: $REMOTE)"
 
+  # Refresh the index's stat cache before the dirty-tree check. A freshly-checked-out
+  # tree (the release conductor's `_ship` worktree, or a fresh clone) has files whose
+  # mtime/inode no longer match the index's cached stat even though content is
+  # identical — `git worktree add`/`reset --hard` write files + index in the same
+  # clock-second (racy git), and a `bundle`/rails-boot touch bumps a tracked file's
+  # mtime (e.g. a byte-identical Gemfile.lock rewrite). Without this refresh,
+  # `git diff-index --quiet` trusts the stale stat and reports the clean tree as
+  # modified, aborting a legitimate deploy. `--refresh` re-hashes only the stat-dirty
+  # entries and clears the content-identical ones; a genuine change stays dirty and is
+  # caught below. Exit code ignored (non-zero just means it found entries to refresh).
+  git update-index -q --refresh || true
   git diff-index --quiet HEAD -- || fail "Working tree has uncommitted changes. Commit or stash first."
   ok "Working tree clean"
 
