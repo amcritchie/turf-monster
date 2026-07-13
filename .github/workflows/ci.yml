@@ -143,10 +143,31 @@ jobs:
     #   GET /models/contest/random starves (trace: run 29254091915).
     #   Nothing listens on port 9, so connect fails instantly
     #   (Errno::ECONNREFUSED is not in the RPC client's retry set) and the
-    #   app takes its designed nil-safe fallbacks. Browser-side RPC is
-    #   already mocked (e2e/rpc-mock.js); the on-chain specs live behind
-    #   @devnet in devnet-nightly.yml. Pinned by
-    #   test/lib/ci_playwright_hermetic_test.rb.
+    #   app takes its designed nil-safe fallbacks.
+    #
+    #   COVERAGE, STATED HONESTLY: server-side on-chain paths are NOT
+    #   exercised by any e2e that currently runs. This job excludes the
+    #   @devnet specs (--grep-invert), and devnet-nightly.yml — the workflow
+    #   that would run them — is DISABLED: it gates on
+    #   `vars.DEVNET_NIGHTLY_ENABLED == 'true'` and every scheduled run since
+    #   2026-06-14 completed `skipped` (30/30). Do not read this pin as
+    #   "covered elsewhere" — it is not covered anywhere today. No coverage
+    #   is LOST by black-holing, though: the e2e wallet is MOCK_PUBKEY_B58, a
+    #   fabricated pubkey with no devnet state, so these server-side RPCs
+    #   already returned empty/zero. Browser-side RPC is separately mocked
+    #   (e2e/rpc-mock.js).
+    #
+    #   A black hole simulates an ABSENT RPC, not a FLAKY one — ECONNREFUSED
+    #   is never wrapped into Solana::Client::RpcError, so the app's
+    #   RpcError-only fail-open rescues do NOT fire here. Nothing in this job
+    #   proves the production RPC-flake fallbacks work.
+    #
+    #   TEST-ENV ONLY. Copying this URL into a non-test env KILLS BOOT:
+    #   config/initializers/solana_network_alignment.rb rescues only
+    #   Solana::Client::RpcError (:48), so ECONNREFUSED escapes — we are
+    #   saved solely by its `skip = Rails.env.test?` (:21).
+    #
+    #   Pinned by test/lib/ci_playwright_hermetic_test.rb.
     env:
       MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
       RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}

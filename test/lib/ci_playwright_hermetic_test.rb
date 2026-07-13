@@ -15,13 +15,29 @@ require "yaml"
 # the URL stuck on /admin/dashboard while GET /models/contest/random starved
 # (Actions run 29254091915, trace network log: status -1, never answered).
 #
-# The fix pins the playwright job to a black-hole loopback URL: nothing
-# listens on port 9, connect fails instantly (Errno::ECONNREFUSED is not in
-# the RPC client's retry set), and the app takes its designed nil-safe
-# fallbacks. Browser-side RPC is mocked by e2e/rpc-mock.js; specs that truly
-# need a chain are tagged @devnet and run by devnet-nightly.yml, not here.
+# The fix pins the playwright job to a black-hole loopback URL on a closed
+# port: connect fails instantly (Errno::ECONNREFUSED is not in the RPC
+# client's retry set), and the app takes its designed nil-safe fallbacks.
+#
+# COVERAGE, STATED HONESTLY: server-side on-chain paths are NOT exercised by
+# any e2e that runs today. CI excludes the @devnet specs (--grep-invert), and
+# devnet-nightly.yml — the workflow that would run them — is DISABLED (gated on
+# vars.DEVNET_NIGHTLY_ENABLED == 'true'; every scheduled run since 2026-06-14
+# completed `skipped`, 30/30). This pin is NOT justified by coverage living
+# elsewhere — it lives nowhere. It costs no coverage either: the e2e wallet is
+# MOCK_PUBKEY_B58, a fabricated pubkey with no devnet state, so those RPCs
+# already returned empty/zero. Browser-side RPC is mocked in e2e/rpc-mock.js.
 class CiPlaywrightHermeticTest < ActiveSupport::TestCase
   WORKFLOW_PATH = Rails.root.join(".github/workflows/ci.yml")
+
+  LOOPBACK_HOSTS = %w[localhost 127.0.0.1 ::1].freeze
+
+  # Ports the app itself serves in a local/CI context. Aiming the RPC client at
+  # one of these is NOT a black hole — the app would POST JSON-RPC to a Rails
+  # server, get HTML back, and raise JSON::ParserError after a real round trip
+  # (degraded and slower, not instant). 9 (discard) is the intended value; 3100
+  # is the e2e server, 3000/3104 are dev/worktree stacks.
+  APP_PORTS = [3000, 3100, 3104].freeze
 
   def playwright_job
     workflow = YAML.safe_load_file(WORKFLOW_PATH)
@@ -39,9 +55,20 @@ class CiPlaywrightHermeticTest < ActiveSupport::TestCase
            "port (e.g. http://127.0.0.1:9)."
 
     uri = URI.parse(rpc_url)
-    assert_includes %w[localhost 127.0.0.1 ::1], uri.host,
+
+    assert_includes LOOPBACK_HOSTS, uri.host,
                     "playwright job SOLANA_RPC_URL (#{rpc_url.inspect}) must " \
                     "stay on loopback — a non-local RPC reintroduces the " \
                     "time-of-day e2e flake"
+
+    # Loopback alone is not enough: the URL must point at a CLOSED port, so the
+    # connection is refused instantly instead of being answered by our own app.
+    assert_not_includes APP_PORTS, uri.port,
+                        "playwright job SOLANA_RPC_URL (#{rpc_url.inspect}) is " \
+                        "aimed at a port the app itself serves — the RPC client " \
+                        "would POST JSON-RPC to Rails, get HTML, and raise " \
+                        "JSON::ParserError after a real round trip. Point it at a " \
+                        "closed port (9, the discard port) so connect is refused " \
+                        "instantly."
   end
 end
