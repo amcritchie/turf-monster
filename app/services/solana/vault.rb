@@ -1895,22 +1895,54 @@ module Solana
       reward.is_a?(Integer) && reward.positive? ? reward : QUEST_SEED_FALLBACK
     end
 
-    # raise_on_read_error: when true, a getTokenAccountsByOwner RPC failure
-    # RE-RAISES Solana::Client::RpcError instead of being swallowed to an empty
-    # token set. This lets a FUNDING-DECISION caller (ContestsController's entry
-    # pre-check / #entry_funding_status) distinguish a transient read FAILURE
-    # from a confirmed $0 wallet — both otherwise collapse to `usdc: 0` here (a
-    # fresh wallet with no ATA AND a flaked read both yield no USDC entry in
-    # `tokens`), which would FALSE-BLOCK a genuinely funded user during a flake
-    # (Avi review 2026-06-13). The default (false) preserves the navbar-hydrate
-    # behavior: a transient flake just renders a stale/zero pill, never an error.
-    def fetch_wallet_balances(wallet_address, raise_on_read_error: false)
-      sol_result = client.get_balance(wallet_address)
-      sol_lamports = sol_result.is_a?(Hash) ? sol_result["value"] : sol_result
-      sol_balance = sol_lamports.to_f / 1_000_000_000
+    # Connection-level transport failures Net::HTTP can raise that solana-studio's
+    # Solana::Client does NOT already normalize to Solana::Client::RpcError. Its
+    # #call wraps ONLY Net::OpenTimeout/Net::ReadTimeout/Errno::ECONNRESET
+    # (solana-studio lib/solana/client.rb#call); a Helius connection refusal
+    # (Errno::ECONNREFUSED), DNS failure (SocketError), TLS handshake error
+    # (OpenSSL::SSL::SSLError), broken stream (IOError), or host-unreachable
+    # (Errno::EHOSTUNREACH etc. — all SystemCallError) therefore escapes
+    # get_balance UNWRAPPED. Left alone it walks straight past the funding-decision
+    # callers' `rescue Solana::Client::RpcError` (ContestsController
+    # #resolve_web2_entry_funding! / #entry_funding_status) → a false-block / 500
+    # on the entry path while the documented fail-open never fires. We normalize
+    # them to RpcError below so the caller contract holds for EVERY transport
+    # failure. Deliberately NOT StandardError — a genuine bug (decode/NoMethod)
+    # must still surface and, on the funding paths, fail CLOSED.
+    #
+    # UPSTREAM: the correct long-term home is solana-studio's Solana::Client#call
+    # (extend the timeout rescue's exception list) so EVERY consumer benefits; this
+    # vault-side normalization is defense-in-depth and stays a harmless no-op if the
+    # gem is later hardened (the earlier `rescue Solana::Client::RpcError` catches
+    # the wrapped error first). See task fix-vault-connection-error-escape.
+    WALLET_READ_TRANSPORT_ERRORS = [
+      SocketError,            # DNS resolution failure (getaddrinfo)
+      SystemCallError,        # parent of every Errno:: (ECONNREFUSED, EHOSTUNREACH, ETIMEDOUT, EPIPE, ...)
+      OpenSSL::SSL::SSLError, # TLS handshake / certificate failure
+      IOError                 # broken / closed stream mid-read
+    ].freeze
 
+    # raise_on_read_error: when true, a balance-read RPC failure RE-RAISES
+    # Solana::Client::RpcError instead of being swallowed to an empty/zero balance.
+    # This lets a FUNDING-DECISION caller (ContestsController's entry pre-check /
+    # #entry_funding_status) distinguish a transient read FAILURE from a confirmed
+    # $0 wallet — both otherwise collapse to `usdc: 0` here (a fresh wallet with no
+    # ATA AND a flaked read both yield no USDC entry in `tokens`), which would
+    # FALSE-BLOCK a genuinely funded user during a flake (Avi review 2026-06-13).
+    # The default (false) preserves the navbar-hydrate behavior: a transient flake
+    # just renders a stale/zero pill, never an error. Both RPC reads (get_balance
+    # AND get_token_accounts_by_owner) share one rescue so a connection-level fault
+    # on EITHER read routes through the same contract — previously get_balance sat
+    # outside any rescue, so a connection failure there escaped entirely.
+    def fetch_wallet_balances(wallet_address, raise_on_read_error: false)
+      sol_balance = 0.0
       tokens = {}
+
       begin
+        sol_result = client.get_balance(wallet_address)
+        sol_lamports = sol_result.is_a?(Hash) ? sol_result["value"] : sol_result
+        sol_balance = sol_lamports.to_f / 1_000_000_000
+
         result = client.get_token_accounts_by_owner(wallet_address)
         if result && result["value"]
           result["value"].each do |account|
@@ -1923,6 +1955,12 @@ module Solana
         end
       rescue Solana::Client::RpcError
         raise if raise_on_read_error
+      rescue *WALLET_READ_TRANSPORT_ERRORS => e
+        # A connection-level failure the gem left UNWRAPPED. Normalize to the
+        # RpcError the funding-decision callers already rescue so the fail-open
+        # fires instead of a 500 / false-block; the default (navbar) path still
+        # collapses to a stale/zero pill, never an error.
+        raise Solana::Client::RpcError.new("Network error: #{e.class}: #{e.message}") if raise_on_read_error
       end
 
       {
