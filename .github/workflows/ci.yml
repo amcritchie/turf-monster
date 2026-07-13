@@ -132,10 +132,26 @@ jobs:
     # key; RAILS_MASTER_KEY lets credentials decrypt for the test server.
     # SOLANA_ADMIN_KEY (throwaway, see test job) — the test server boots the
     # app, and admin-signed Solana paths call Solana::Keypair.admin.
+    # SOLANA_RPC_URL: black-hole loopback so the e2e stack is HERMETIC.
+    #   Without it the test server defaults to public devnet
+    #   (https://api.devnet.solana.com) and every authenticated HTML request
+    #   blocks on live RPC (perform_solana_preload before_action; the test
+    #   env's :null_store disables the 60s caches, so every request re-fires).
+    #   At peak hours devnet throttles (429 + stalls), requests degrade to
+    #   3-6s+, and the tightest post-click assertion window dies first —
+    #   model_page.spec.js toHaveURL(5s) stuck on /admin/dashboard while
+    #   GET /models/contest/random starves (trace: run 29254091915).
+    #   Nothing listens on port 9, so connect fails instantly
+    #   (Errno::ECONNREFUSED is not in the RPC client's retry set) and the
+    #   app takes its designed nil-safe fallbacks. Browser-side RPC is
+    #   already mocked (e2e/rpc-mock.js); the on-chain specs live behind
+    #   @devnet in devnet-nightly.yml. Pinned by
+    #   test/lib/ci_playwright_hermetic_test.rb.
     env:
       MANAGED_WALLET_ENCRYPTION_KEY: ci-test-only-managed-wallet-key-not-a-real-secret
       RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
       SOLANA_ADMIN_KEY: ${{ secrets.SOLANA_ADMIN_KEY }}
+      SOLANA_RPC_URL: http://127.0.0.1:9
     services:
       postgres:
         image: postgres
