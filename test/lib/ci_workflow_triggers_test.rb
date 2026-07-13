@@ -182,29 +182,33 @@ class CiWorkflowTriggersTest < Minitest::Test
   #
   # WHAT THIS PROVES — and NOTHING MORE. Read this before you widen the claim again.
   #
-  # This guard has now been blocked FIVE times, and TWICE the block was not a missing
-  # vector but an OVERCLAIM in this very comment. The claim "any workflow-file mutation of
-  # the suite lane fails safe" was written here — and then falsified the same week by two
-  # workflow-file mutations that sailed straight through (a workflow-level `env:`, and the
-  # `TEST` key). An overclaimed guard is the same lie it exists to catch: it tells the next
-  # reader the class is closed, so they stop looking. So the claim is now an ENUMERATION,
-  # not a universal:
+  # This guard was blocked FIVE times. Three of those blocks were not a missing vector but
+  # an OVERCLAIM in this very comment — and every one of the three was a COUNTED, CLOSED
+  # SET: "any workflow-file mutation", "the three scopes GitHub honors", "the four scopes".
+  # Each number was falsified within the day. The count was always the tell: a closed-set
+  # claim is a promise that nobody needs to look further, which is precisely the lie this
+  # file exists to catch. **So there is no scope count here, and no closed set.**
   #
-  #   PROVEN (each pinned by a refutation fixture, each mutation-verified RED against the
-  #   REAL ci.yml, each having been GREEN before its rung):
-  #     · the suite lane must EXIST and run the pinned command as a whole line — gutted,
-  #       narrowed with an appended flag, commented out, short-circuited, or deleted → RED;
-  #     · it must be UNCONDITIONAL — no job-level or step-level `if:` on the event context;
-  #     · it must not be neutered by `continue-on-error`, a `paths` filter, a `concurrency`
-  #       group, or a dropped branch;
-  #     · it must not be NARROWED by an env var Rails actually reads (NARROWING_ENV_KEYS),
-  #       at ANY of the FOUR scopes that reach the suite step — the workflow `env:`, the
-  #       job `env:`, the step's own `env:`, and the DYNAMIC one: a `$GITHUB_ENV` write
-  #       from an EARLIER step in the same job, which the runner exports to every
-  #       subsequent step. (This bullet said "the three scopes GitHub honors" until a
-  #       reviewer demonstrated the fourth, with the suite step byte-identical and
-  #       unconditional, running zero tests, green. The count was the tell: I had asserted
-  #       a closed set without enumerating what could write to it.)
+  # What ended the regress was not a sixth enumerated row. It was inverting the guard:
+  #
+  #   PROVEN — positively, by pinning the ONE CORRECT SHAPE rather than chasing deformations:
+  #     · a lane EXISTS that runs the suite, and its `run:` script — comments and blank
+  #       lines aside — is EXACTLY SUITE_SCRIPT. Not a substring, not a prefix: the whole
+  #       body. This single assertion closes `export VAR=…` before the command, an inline
+  #       `VAR=x cmd`, a `true ||` short-circuit, a comment-out, a heredoc `$GITHUB_ENV`
+  #       write, a `cd`, a `source` — and every shell spelling nobody has imagined yet,
+  #       WITHOUT predicting any of them. That is the difference between a guard and a
+  #       scoreboard, and it is what this file's own header advised from version one; it
+  #       took five rounds to take the advice.
+  #     · that lane is UNCONDITIONAL — no job-level or step-level `if:` on the event context.
+  #     · it is not neutered by `continue-on-error`, a `paths` filter, a `concurrency`
+  #       group, or a dropped branch.
+  #     · it is not NARROWED by an env var Rails actually reads (NARROWING_ENV_KEYS),
+  #       supplied from outside the run script — the workflow `env:`, the job `env:`, the
+  #       step's own `env:`, or a `$GITHUB_ENV` write from an earlier step in the same job.
+  #       (The env walk earns its keep here: this is narrowing the positive invariant CANNOT
+  #       see, because it arrives from outside the script body. It is stated as coverage,
+  #       not as an exhaustive list of the places env can come from.)
   #
   #   NOT PROVEN — the honest edges, so nobody mistakes silence here for safety:
   #     · anything OUTSIDE this YAML. Neuter `bin/rails`, `Rakefile`, `test_helper.rb`, or
@@ -219,10 +223,22 @@ class CiWorkflowTriggersTest < Minitest::Test
   #       settings, not the repo. Worth their own audit.
   #     · NARROWING_ENV_KEYS is a claim about railties 8.1.3, verified by grep at the time
   #       of writing — not a law. Re-verify it on a Rails upgrade.
+  #     · the PLAYWRIGHT e2e lane is held only to EXISTENCE + UNCONDITIONALITY, not to a
+  #       pinned script body: its command carries a dynamic `--shard=N/M`, so there is no
+  #       single correct string to pin. The shell tricks the positive invariant kills on the
+  #       rails lane (an `export` prefix, a heredoc) would therefore still work THERE. Said
+  #       out loud rather than left as an inviting silence — pinning it modulo the shard
+  #       interpolation is the obvious next move if the e2e verdict starts mattering as much.
   #
   # The right instinct on reading this list is NOT "the class is closed." It is "here is
   # where I would look next."
-  TEST_COMMAND = /^\s*bin\/rails\s+db:test:prepare\s+test\s+test:system\s*$/
+  # THE EXACT SCRIPT the suite lane must run. Not a pattern to match — the whole body.
+  SUITE_SCRIPT = "bin/rails db:test:prepare test test:system"
+
+  # Used only to FIND the lane. Whether that lane is CORRECT is decided by the positive
+  # invariant below (suite_lanes_with_a_foreign_script), which compares the run body to
+  # SUITE_SCRIPT exactly. A regex finds; it does not certify.
+  TEST_COMMAND = /^\s*#{Regexp.escape(SUITE_SCRIPT)}\s*$/
 
   # Env keys that NARROW the suite to a subset (or to nothing) while the COMMAND on the
   # line stays BYTE-IDENTICAL to the real invocation. The anchored pattern above cannot
@@ -285,6 +301,43 @@ class CiWorkflowTriggersTest < Minitest::Test
 
   def suite_command_lanes(yaml_text)
     command_lanes(yaml_text, TEST_COMMAND)
+  end
+
+  # ==== THE POSITIVE INVARIANT — the thing that ENDS the arms race ======================
+  #
+  # The suite lane's `run:` script, stripped of comments and blank lines, must be EXACTLY
+  # SUITE_SCRIPT. Nothing before it, nothing after it, nothing around it.
+  #
+  # WHY THIS AND NOT A SIXTH BLACKLIST ROW. Five review rounds, five silent false-greens,
+  # and every one had the same shape: the guard enumerated the ways the suite might be
+  # neutered, and the next reviewer found a spelling one level away from wherever the last
+  # one looked. `export DEFAULT_TEST_EXCLUDE=… ; bin/rails …` — no `if:`, no filter, no
+  # `continue-on-error`, no `$GITHUB_ENV`, no `env:` key. Nothing for ANY blacklist bullet
+  # to match, and the suite runs zero tests, exit 0, green. The `KEY<<EOF` heredoc form
+  # walks past the `KEY=` regex the same way.
+  #
+  # There is no end to that list. There IS an end to this one: the CORRECT script has
+  # exactly one shape, so pin the shape instead of chasing the deformations. An inline
+  # `VAR=x cmd` prefix, a `true ||` short-circuit, a comment-out, an `export`, a heredoc,
+  # a `cd`, a `source`, and every shell trick nobody has thought of yet all fail the same
+  # single assertion — WITHOUT anyone predicting them. This is the advice this file's own
+  # header has given since the first version ("prefer strengthening the positive
+  # invariant"); it took five rounds to actually take it.
+  #
+  # Comments and blank lines are tolerated (they cannot execute); a trailing newline is
+  # tolerated. The env walk STAYS — it catches narrowing supplied from OUTSIDE the run
+  # script, which this assertion cannot see.
+  def script_body(step)
+    step["run"].to_s.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") }
+  end
+
+  def suite_lanes_with_a_foreign_script(yaml_text)
+    suite_command_lanes(yaml_text).filter_map do |name, _job, step|
+      body = script_body(step)
+      next if body == [ SUITE_SCRIPT ]
+
+      "#{lane_label(name, step)} runs #{body.inspect}"
+    end
   end
 
   # The env spelling of the narrowing attack: the suite lane's COMMAND is byte-identical
@@ -779,6 +832,122 @@ class CiWorkflowTriggersTest < Minitest::Test
     assert_equal [ "job `test` → step `Run tests` (DEFAULT_TEST_EXCLUDE)" ], narrowing_env_lanes(yaml)
   end
 
+  # --- [unit] the POSITIVE invariant: the run script is EXACTLY the pinned command ------
+  #
+  # ONE assertion, and every shell spelling below fails it — including the two that
+  # defeated the blacklist (`export` prefix, heredoc) and every one nobody has imagined.
+  # No new bullet was added for any of them.
+
+  def test_unit_an_export_prefix_in_the_run_script_is_a_foreign_script
+    # THE FIFTH SILENT FALSE-GREEN, and the one that proved the blacklist could never end:
+    # no `if:`, no `continue-on-error`, no path filter, no `$GITHUB_ENV`, no `env:` key —
+    # nothing for ANY enumerated bullet to match. The suite command is byte-identical and
+    # unconditional. It runs ZERO tests, exit 0, GREEN.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: |
+                export DEFAULT_TEST_EXCLUDE='test/**/*_test.rb'
+                bin/rails db:test:prepare test test:system
+    YML
+    refute_empty suite_command_lanes(yaml), "the lane is still FOUND — the command line is intact"
+    assert_empty narrowing_env_lanes(yaml), "and the env walk sees nothing: it is not an env: key"
+    refute_empty suite_lanes_with_a_foreign_script(yaml), "ONLY the positive invariant catches it"
+  end
+
+  def test_unit_an_inline_variable_prefix_is_never_a_valid_suite_lane
+    # `VAR=x cmd` — same neutering, no `export`, nothing for a blacklist to match. Here the
+    # lane is not even FOUND (the command is no longer the whole line), so the PRIMARY
+    # guard's `refute_empty` is what fires. Two independent assertions have to agree that
+    # this workflow has no valid suite lane, and both do.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: DEFAULT_TEST_EXCLUDE='test/**/*_test.rb' bin/rails db:test:prepare test test:system
+    YML
+    assert_empty suite_command_lanes(yaml),
+                 "an inline VAR=x prefix leaves NO lane running the pinned script — the primary " \
+                 "guard's refute_empty fails, which is the RED we want"
+  end
+
+  def test_unit_a_heredoc_GITHUB_ENV_write_in_the_run_script_is_a_foreign_script
+    # GitHub's DOCUMENTED multiline form: `KEY<<EOF`. The $GITHUB_ENV walk keys on `KEY=`,
+    # so the heredoc spelling walks straight past it — a blacklist chasing a syntax. The
+    # positive invariant does not care HOW the extra lines are spelled: they are extra.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: |
+                cat >> "$GITHUB_ENV" <<EOF
+                DEFAULT_TEST_EXCLUDE<<HEREDOC
+                test/**/*_test.rb
+                HEREDOC
+                EOF
+                bin/rails db:test:prepare test test:system
+    YML
+    refute_empty suite_lanes_with_a_foreign_script(yaml),
+                 "the heredoc form must not walk past the guard the way it walks past a `KEY=` regex"
+  end
+
+  def test_unit_a_short_circuit_or_comment_in_the_run_script_is_a_foreign_script
+    # The blacklist already caught these two by ANCHORING; the positive invariant catches
+    # them again, for free, from the other direction. Belt and braces on the worst vectors.
+    short_circuit = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: |
+                true || bin/rails db:test:prepare test test:system
+    YML
+    assert_empty suite_command_lanes(short_circuit), "not even found as a lane — refute_empty fails first"
+  end
+
+  def test_unit_the_intact_script_passes_with_comments_blank_lines_and_a_trailing_newline
+    # THE OTHER HALF, and the one that matters most: the invariant must not FALSE-RED on
+    # the real thing. Comments and blank lines cannot execute, so they are tolerated; a
+    # trailing newline is tolerated. If this ever fails, the guard starts crying wolf —
+    # and a guard that cries wolf is a guard someone deletes.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: |
+                # The whole suite, unconditionally. See test/lib/ci_workflow_triggers_test.rb.
+
+                bin/rails db:test:prepare test test:system
+    YML
+    assert_empty suite_lanes_with_a_foreign_script(yaml)
+    refute_empty suite_command_lanes(yaml)
+  end
+
   def test_unit_detects_a_GITHUB_ENV_write_from_an_EARLIER_step
     # THE FOURTH SCOPE — and the hole in the env walk's second cut, which read the three
     # STATIC `env:` maps and declared the class closed. The runner exports anything an
@@ -936,6 +1105,21 @@ class CiWorkflowTriggersTest < Minitest::Test
                  "conclusion and indistinguishable from a real pass to any auditor " \
                  "reading it by SHA. This is the worst failure mode in the file."
     end
+  end
+
+  def test_integration_the_suite_run_script_is_EXACTLY_the_pinned_command
+    foreign = suite_lanes_with_a_foreign_script(File.read(CI_YML))
+
+    assert_empty foreign,
+                 "#{foreign.inspect} — the suite lane's `run:` script must be EXACTLY " \
+                 "#{SUITE_SCRIPT.inspect} (comments and blank lines aside). Anything else in " \
+                 "that script can neuter the suite while every other assertion in this file " \
+                 "passes: `export DEFAULT_TEST_EXCLUDE=…` before it, an inline `VAR=x` prefix, " \
+                 "a `true ||` short-circuit, a heredoc write to $GITHUB_ENV — all of them ran " \
+                 "ZERO tests and reported GREEN against earlier versions of this guard. This is " \
+                 "the POSITIVE invariant: it does not enumerate the attacks, it pins the one " \
+                 "correct shape. If the suite command legitimately changes, change SUITE_SCRIPT " \
+                 "deliberately — do not relax this into a substring match."
   end
 
   def test_integration_the_suite_lane_is_not_narrowed_by_env
