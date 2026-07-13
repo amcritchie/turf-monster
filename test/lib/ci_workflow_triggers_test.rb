@@ -180,26 +180,69 @@ class CiWorkflowTriggersTest < Minitest::Test
   # Each rung is pinned by a refutation fixture below (`…prepare_only…`,
   # `…runner_seed_step…`, `…appended_filter…`, `…commented_out…`, `…short_circuit…`).
   #
-  # WHAT THIS FAILS SAFE AGAINST, precisely: any WORKFLOW-FILE mutation of the suite
-  # lane. Gut it, narrow it, comment it out, neuter it with a shell prefix, or delete the
-  # job, and the positive guard goes RED (refute_empty) — a loud false red, never a
-  # silent false green. If the suite command legitimately changes, re-point this constant
-  # deliberately.
+  # WHAT THIS PROVES — and NOTHING MORE. Read this before you widen the claim again.
   #
-  # WHAT IT DOES NOT REACH — stated plainly, because an overclaimed guard is the same
-  # lie it exists to catch: this file reads the WORKFLOW YAML, so a mutation OUTSIDE the
-  # YAML is out of its contract. Neutering `bin/rails` itself, or the app's test_helper,
-  # runs the pinned command over zero tests and this guard cannot see it. Env-level
-  # narrowing IS reachable from here and IS asserted (see narrowing_env_lanes — TESTOPTS
-  # / TESTS on the suite lane). Branch-protection and required-check configuration live
-  # in GitHub settings, not the repo; they remain out of scope and worth their own audit.
+  # This guard has now been blocked FIVE times, and TWICE the block was not a missing
+  # vector but an OVERCLAIM in this very comment. The claim "any workflow-file mutation of
+  # the suite lane fails safe" was written here — and then falsified the same week by two
+  # workflow-file mutations that sailed straight through (a workflow-level `env:`, and the
+  # `TEST` key). An overclaimed guard is the same lie it exists to catch: it tells the next
+  # reader the class is closed, so they stop looking. So the claim is now an ENUMERATION,
+  # not a universal:
+  #
+  #   PROVEN (each pinned by a refutation fixture, each mutation-verified RED against the
+  #   REAL ci.yml, each having been GREEN before its rung):
+  #     · the suite lane must EXIST and run the pinned command as a whole line — gutted,
+  #       narrowed with an appended flag, commented out, short-circuited, or deleted → RED;
+  #     · it must be UNCONDITIONAL — no job-level or step-level `if:` on the event context;
+  #     · it must not be neutered by `continue-on-error`, a `paths` filter, a `concurrency`
+  #       group, or a dropped branch;
+  #     · it must not be NARROWED by an env var Rails actually reads (NARROWING_ENV_KEYS),
+  #       at ANY of the three scopes GitHub honors — workflow, job, or step.
+  #
+  #   NOT PROVEN — the honest edges, so nobody mistakes silence here for safety:
+  #     · anything OUTSIDE this YAML. Neuter `bin/rails`, `Rakefile`, `test_helper.rb`, or
+  #       a vendored gem, and the pinned command runs over an empty suite; this file reads
+  #       the workflow, so it cannot see that. (A tampered-suite guard would be its own
+  #       test, and a worthwhile one.)
+  #     · indirection the pattern cannot follow — a composite action, a reusable workflow
+  #       (`uses:`), or a `shell:` wrapper that runs the suite somewhere this file cannot
+  #       read.
+  #     · GitHub-side configuration: branch protection, required-check selection, a
+  #       disabled workflow. Real ways to accept a green-with-no-runs tip; all live in
+  #       settings, not the repo. Worth their own audit.
+  #     · NARROWING_ENV_KEYS is a claim about railties 8.1.3, verified by grep at the time
+  #       of writing — not a law. Re-verify it on a Rails upgrade.
+  #
+  # The right instinct on reading this list is NOT "the class is closed." It is "here is
+  # where I would look next."
   TEST_COMMAND = /^\s*bin\/rails\s+db:test:prepare\s+test\s+test:system\s*$/
 
   # Env keys that NARROW the suite to a subset (or to nothing) while the COMMAND on the
-  # line stays byte-identical to the real invocation. Rails reads both; `TESTOPTS="-n
-  # /nothing/"` on the step is the env spelling of rung 2's appended filter, and the
-  # anchored pattern alone would wave it straight through.
-  NARROWING_ENV_KEYS = %w[TESTOPTS TESTS].freeze
+  # line stays BYTE-IDENTICAL to the real invocation. The anchored pattern above cannot
+  # see any of them — only this walk can.
+  #
+  # VERIFIED against railties 8.1.3 (`grep -rn 'ENV\[' .../rails/test_unit/`), because
+  # the first cut of this list guarded a key Rails NEVER READS (`TESTS` — zero hits in
+  # the gem) while missing the live ones. A guard aimed at a dead key is decoration.
+  # Re-run that grep on a Rails upgrade; this list is a claim about railties, not a
+  # guess:
+  #   TEST                 testing.rake:10 — `run_from_rake("test", Array(ENV["TEST"]))`.
+  #                        `TEST=test/foo_test.rb` → that ONE file runs, exit 0, GREEN.
+  #   TESTOPTS             runner.rb:52 — Shellwords-spliced into the spawned command, so
+  #                        `-n /nothing_matches_this/` runs zero tests. Applies to
+  #                        `test:system` too, since it also routes through run_from_rake.
+  #   DEFAULT_TEST         runner.rb:117 — overrides the glob `test/**/*_test.rb`.
+  #   DEFAULT_TEST_EXCLUDE runner.rb:121 — excludes it. `'test/**/*_test.rb'` → 0 runs,
+  #                        exit 0, GREEN: a green required check over an EMPTY suite.
+  # All four measured on the real command in this repo (336 runs → 31, and → 0).
+  #
+  # THE MECHANISM, so the next person tests the right path: the suite line is a MULTI-TASK
+  # RAKE invocation (`db:test:prepare test test:system`), which routes through
+  # `Rails::TestUnit::Runner.run_from_rake` — that is where TESTOPTS is spliced and where
+  # the TEST/DEFAULT_TEST globs are read. The `bin/rails test <file>` COMMAND path does
+  # NOT read TESTOPTS, so an experiment run that way comes back clean and the hole hides.
+  NARROWING_ENV_KEYS = %w[TEST TESTOPTS DEFAULT_TEST DEFAULT_TEST_EXCLUDE].freeze
 
   def jobs_of(yaml_text)
     YAML.safe_load(yaml_text).fetch("jobs", {}).select { |_n, j| j.is_a?(Hash) }
@@ -226,15 +269,37 @@ class CiWorkflowTriggersTest < Minitest::Test
   end
 
   # The env spelling of the narrowing attack: the suite lane's COMMAND is byte-identical
-  # to the real invocation, and a TESTOPTS/TESTS env var on the step (or the job) cuts it
-  # down to zero tests. Reachable from the YAML, so asserted here rather than waved off.
+  # to the real invocation, and an env var cuts it down to a subset — or to nothing.
+  #
+  # ALL THREE SCOPES. The first cut of this walk read only `job["env"]` and `step["env"]`
+  # — and GitHub applies a TOP-LEVEL `env:` to every step of every job, so this, sitting
+  # above `jobs:`, kept the guard GREEN:
+  #     env:
+  #       TESTOPTS: "-n /nothing_matches_this/"
+  # A guard that inspects two of the three scopes an attacker can write to is not a guard.
+  #
+  # PRECEDENCE (workflow → job → step, most specific wins) is honored rather than flagging
+  # any mention: the level that actually SUPPLIES the value is the one reported, and a key
+  # deliberately BLANKED at a more specific level (`TESTOPTS: ""`, which restores the full
+  # suite) is correctly not a narrowing. A false RED here would train people to delete the
+  # guard.
   def narrowing_env_lanes(yaml_text)
+    workflow_env = YAML.safe_load(yaml_text)["env"]
+
     suite_command_lanes(yaml_text).flat_map do |name, job, step|
-      [[lane_label(name), job["env"]], [lane_label(name, step), step["env"]]].filter_map do |label, env|
-        keys = (env.is_a?(Hash) ? env.keys : []) & NARROWING_ENV_KEYS
-        "#{label} (#{keys.join(", ")})" if keys.any?
+      scopes = [
+        [ "workflow `env:`", workflow_env ],
+        [ lane_label(name), job["env"] ],
+        [ lane_label(name, step), step["env"] ]
+      ]
+
+      NARROWING_ENV_KEYS.filter_map do |key|
+        label, value = scopes.reverse.filter_map { |l, env| [ l, env[key] ] if env.is_a?(Hash) && env.key?(key) }.first
+        next if label.nil? || value.to_s.strip.empty?
+
+        "#{label} (#{key})"
       end
-    end
+    end.uniq
   end
 
   # Vector 6. `continue-on-error: true` on a job or step: it RUNS, it FAILS, it reports
@@ -595,6 +660,91 @@ class CiWorkflowTriggersTest < Minitest::Test
               run: bin/rails db:test:prepare test test:system
     YML
     assert_empty narrowing_env_lanes(yaml), "an ordinary RAILS_ENV must not be flagged as narrowing"
+  end
+
+  def test_unit_detects_a_WORKFLOW_LEVEL_env_narrowing_the_suite
+    # THE HOLE IN THE ENV WALK'S FIRST CUT: it read job["env"] and step["env"] only.
+    # GitHub applies a TOP-LEVEL `env:` to every step of every job, and the real suite step
+    # sets no TESTOPTS to shadow it — so this kept the guard GREEN while the suite ran
+    # zero tests. Two of three scopes is not a guard.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      env:
+        TESTOPTS: "-n /nothing_matches_this/"
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_equal [ "workflow `env:` (TESTOPTS)" ], narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_detects_a_TEST_env_narrowing_the_suite_to_one_file
+    # `TEST` (singular) is the key railties ACTUALLY reads — testing.rake:10,
+    # `run_from_rake("test", Array(ENV["TEST"]))`. The first cut of NARROWING_ENV_KEYS
+    # guarded `TESTS` (plural), which railties never reads: a guard pointed at a dead key,
+    # while `TEST: test/one_trivial_test.rb` sailed through. Measured on the real command:
+    # 336 runs → 31, exit 0, GREEN.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              env:
+                TEST: test/models/one_trivial_test.rb
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_equal [ "job `test` → step `Run tests` (TEST)" ], narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_detects_the_glob_override_keys
+    # DEFAULT_TEST (runner.rb:117) overrides the test glob; DEFAULT_TEST_EXCLUDE
+    # (runner.rb:121) excludes it. Measured: DEFAULT_TEST_EXCLUDE='test/**/*_test.rb' →
+    # 0 runs, exit 0, GREEN — a green required check over an EMPTY suite.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              env:
+                DEFAULT_TEST_EXCLUDE: "test/**/*_test.rb"
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_equal [ "job `test` → step `Run tests` (DEFAULT_TEST_EXCLUDE)" ], narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_a_more_specific_scope_blanking_the_key_is_not_a_narrowing
+    # Precedence, not mere mention: a workflow-level TESTOPTS explicitly BLANKED on the
+    # suite step restores the full suite. Flagging it would be a FALSE RED — and a guard
+    # that cries wolf is a guard people delete.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      env:
+        TESTOPTS: "-n /nothing/"
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              env:
+                TESTOPTS: ""
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_empty narrowing_env_lanes(yaml)
   end
 
   def test_unit_recognizes_the_real_suite_command_as_a_test_lane
