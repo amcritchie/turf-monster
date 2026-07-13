@@ -156,20 +156,50 @@ class CiWorkflowTriggersTest < Minitest::Test
 
   # ---- the POSITIVE invariant's machinery --------------------------------------------
 
-  # THE COMMAND THAT CONSTITUTES A VERDICT — pinned to the REAL suite invocation, not a
-  # keyword sniff. If no lane runs this on a release push, the RC tip's green check is
-  # backed by zero tests — and a SHA-addressed CI auditor (mcritchie-studio #514) would
-  # read that empty-but-green run as a CLEAN verdict and certify it.
+  # THE COMMAND THAT CONSTITUTES A VERDICT — pinned to the REAL suite invocation, and
+  # anchored to the WHOLE LINE. If no lane runs this on a release push, the RC tip's
+  # green check is backed by zero tests — and a SHA-addressed CI auditor
+  # (mcritchie-studio #514) would read that empty-but-green run as a CLEAN verdict and
+  # certify it.
   #
-  # WHY PINNED (mutation-caught in review of the satellite port): the first port matched
-  # /bin\/rails\b[^\n]*\btest\b/ — but `:` is a word boundary, so `\btest\b` matches
-  # inside `db:test:prepare`, and a bare `test` token rides in `runner -e test …`. A
-  # prepare-only gut of the suite, or the e2e SEED step, counted as the verdict lane —
-  # so deleting the entire rails `test` job stayed GREEN. Pinning fails SAFE: if the
-  # suite command legitimately changes, the positive guard goes RED (refute_empty) and
-  # you re-point this constant — a loud false red, never a silent false green. The two
-  # refutation fixtures below (`…prepare_only…`, `…runner_seed_step…`) hold the line.
-  TEST_COMMAND = %r{bin/rails\s+db:test:prepare\s+test\s+test:system(?!\S)}
+  # THE MUTATION LADDER THIS CONSTANT CLIMBED — each rung was a REAL silent false green
+  # a reviewer proved against the rung below, so do not loosen it without climbing back:
+  #   1. /bin\/rails\b[^\n]*\btest\b/ — a keyword sniff. `:` is a word boundary, so
+  #      `\btest\b` matched inside `db:test:prepare`, and a bare `test` rode in
+  #      `runner -e test …`. A prepare-only gut, and the e2e SEED step, counted as the
+  #      verdict lane — so DELETING the entire rails `test` job stayed GREEN.
+  #   2. `…test:system(?!\S)` — pinned, but only forbade a non-space IMMEDIATELY after.
+  #      APPENDING a filter (`… test test:system -n /nothing_matches_this/`) still
+  #      counted: zero tests run, guard GREEN. The flag someone adds to quiet a flaky
+  #      lane sails through (Avi's catch).
+  #   3. `^\s*…\s*$` — anchored BOTH ends, so the pinned command must be the ENTIRE line.
+  #      This also closes two vectors the trailing anchor alone did NOT: a COMMENTED-OUT
+  #      suite line (`# bin/rails db:test:prepare test test:system` — matched, ran
+  #      nothing), and a SHORT-CIRCUIT prefix (`true || bin/rails …` — matched, never
+  #      executed). Both were live under rung 2.
+  # Each rung is pinned by a refutation fixture below (`…prepare_only…`,
+  # `…runner_seed_step…`, `…appended_filter…`, `…commented_out…`, `…short_circuit…`).
+  #
+  # WHAT THIS FAILS SAFE AGAINST, precisely: any WORKFLOW-FILE mutation of the suite
+  # lane. Gut it, narrow it, comment it out, neuter it with a shell prefix, or delete the
+  # job, and the positive guard goes RED (refute_empty) — a loud false red, never a
+  # silent false green. If the suite command legitimately changes, re-point this constant
+  # deliberately.
+  #
+  # WHAT IT DOES NOT REACH — stated plainly, because an overclaimed guard is the same
+  # lie it exists to catch: this file reads the WORKFLOW YAML, so a mutation OUTSIDE the
+  # YAML is out of its contract. Neutering `bin/rails` itself, or the app's test_helper,
+  # runs the pinned command over zero tests and this guard cannot see it. Env-level
+  # narrowing IS reachable from here and IS asserted (see narrowing_env_lanes — TESTOPTS
+  # / TESTS on the suite lane). Branch-protection and required-check configuration live
+  # in GitHub settings, not the repo; they remain out of scope and worth their own audit.
+  TEST_COMMAND = /^\s*bin\/rails\s+db:test:prepare\s+test\s+test:system\s*$/
+
+  # Env keys that NARROW the suite to a subset (or to nothing) while the COMMAND on the
+  # line stays byte-identical to the real invocation. Rails reads both; `TESTOPTS="-n
+  # /nothing/"` on the step is the env spelling of rung 2's appended filter, and the
+  # anchored pattern alone would wave it straight through.
+  NARROWING_ENV_KEYS = %w[TESTOPTS TESTS].freeze
 
   def jobs_of(yaml_text)
     YAML.safe_load(yaml_text).fetch("jobs", {}).select { |_n, j| j.is_a?(Hash) }
@@ -193,6 +223,18 @@ class CiWorkflowTriggersTest < Minitest::Test
 
   def suite_command_lanes(yaml_text)
     command_lanes(yaml_text, TEST_COMMAND)
+  end
+
+  # The env spelling of the narrowing attack: the suite lane's COMMAND is byte-identical
+  # to the real invocation, and a TESTOPTS/TESTS env var on the step (or the job) cuts it
+  # down to zero tests. Reachable from the YAML, so asserted here rather than waved off.
+  def narrowing_env_lanes(yaml_text)
+    suite_command_lanes(yaml_text).flat_map do |name, job, step|
+      [[lane_label(name), job["env"]], [lane_label(name, step), step["env"]]].filter_map do |label, env|
+        keys = (env.is_a?(Hash) ? env.keys : []) & NARROWING_ENV_KEYS
+        "#{label} (#{keys.join(", ")})" if keys.any?
+      end
+    end
   end
 
   # Vector 6. `continue-on-error: true` on a job or step: it RUNS, it FAILS, it reports
@@ -456,6 +498,105 @@ class CiWorkflowTriggersTest < Minitest::Test
                  "a seed/runner step runs ZERO tests — it must never count as the suite lane"
   end
 
+  def test_unit_an_appended_filter_flag_is_not_a_test_lane
+    # THE HOLE IN THE PINNED PATTERN'S FIRST CUT (Avi's catch): `(?!\S)` only forbids a
+    # non-space IMMEDIATELY after `test:system`, so APPENDING a narrowing flag left the
+    # lane counted and the guard GREEN. `-n /nothing_matches_this/` runs ZERO tests while
+    # the command still reads like the real suite — precisely what someone reaches for to
+    # quiet a flaky lane "temporarily". The command must be the WHOLE trailing command on
+    # its line (`\s*$`), not merely a prefix of one.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: bin/rails db:test:prepare test test:system -n /nothing_matches_this/
+    YML
+    assert_empty suite_command_lanes(yaml),
+                 "a narrowed suite command runs ~zero tests — it must never count as the suite lane"
+  end
+
+  def test_unit_a_commented_out_suite_command_is_not_a_test_lane
+    # Live under the trailing-anchor-only pattern: the line still ENDS in `test:system`,
+    # so it matched — while running nothing at all. Anchoring the START is what kills it.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: |
+                # bin/rails db:test:prepare test test:system
+                echo "suite temporarily disabled"
+    YML
+    assert_empty suite_command_lanes(yaml),
+                 "a commented-out suite command runs ZERO tests — it must never count as the suite lane"
+  end
+
+  def test_unit_a_short_circuited_suite_command_is_not_a_test_lane
+    # The other one the trailing anchor missed: the line ends in `test:system`, but the
+    # shell never reaches it (`true ||` short-circuits). Matched, executed nothing.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              run: |
+                true || bin/rails db:test:prepare test test:system
+    YML
+    assert_empty suite_command_lanes(yaml),
+                 "a short-circuited suite command never executes — it must never count as the suite lane"
+  end
+
+  def test_unit_detects_a_narrowing_TESTOPTS_env_on_the_suite_lane
+    # The env spelling of the appended filter: the command is byte-identical to the real
+    # suite invocation (so TEST_COMMAND matches, correctly), and TESTOPTS cuts it to zero
+    # tests. The pattern alone cannot see this — only the env walk does.
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              env:
+                TESTOPTS: "-n /nothing_matches_this/"
+              run: bin/rails db:test:prepare test test:system
+    YML
+    refute_empty suite_command_lanes(yaml), "the command itself still reads as the suite lane"
+    assert_equal ["job `test` → step `Run tests` (TESTOPTS)"], narrowing_env_lanes(yaml)
+  end
+
+  def test_unit_the_real_suite_lane_carries_no_narrowing_env
+    yaml = <<~YML
+      on:
+        push:
+          branches: [ main, release ]
+      jobs:
+        test:
+          runs-on: ubuntu-latest
+          steps:
+            - name: Run tests
+              env:
+                RAILS_ENV: test
+              run: bin/rails db:test:prepare test test:system
+    YML
+    assert_empty narrowing_env_lanes(yaml), "an ordinary RAILS_ENV must not be flagged as narrowing"
+  end
+
   def test_unit_recognizes_the_real_suite_command_as_a_test_lane
     # The other half of vector 7: TEST_COMMAND must actually MATCH the live command, or
     # the positive guard asserts a lane that never existed and passes vacuously — the
@@ -509,6 +650,15 @@ class CiWorkflowTriggersTest < Minitest::Test
                  "conclusion and indistinguishable from a real pass to any auditor " \
                  "reading it by SHA. This is the worst failure mode in the file."
     end
+  end
+
+  def test_integration_the_suite_lane_is_not_narrowed_by_env
+    lanes = narrowing_env_lanes(File.read(CI_YML))
+
+    assert_empty lanes,
+                 "#{lanes.inspect} set #{NARROWING_ENV_KEYS.join("/")} on the lane that IS the " \
+                 "verdict — the command still reads as the full suite while running a subset (or " \
+                 "nothing). Same lie as an appended `-n` filter, spelled in the environment."
   end
 
   def test_integration_no_lane_reports_green_over_failing_tests
