@@ -3,7 +3,10 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ main ]
+    # `release` too — the sweep's merge commit (what QA deploys and ship
+    # fast-forwards to main) must earn its own CI verdict, not just the local
+    # G3 gate. Guarded by test/lib/ci_workflow_triggers_test.rb.
+    branches: [ main, release ]
 
 jobs:
   scan_ruby:
