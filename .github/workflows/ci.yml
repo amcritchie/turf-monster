@@ -149,13 +149,30 @@ jobs:
     #   exercised by any e2e that currently runs. This job excludes the
     #   @devnet specs (--grep-invert), and devnet-nightly.yml — the workflow
     #   that would run them — is DISABLED: it gates on
-    #   `vars.DEVNET_NIGHTLY_ENABLED == 'true'` and every scheduled run since
-    #   2026-06-14 completed `skipped` (30/30). Do not read this pin as
-    #   "covered elsewhere" — it is not covered anywhere today. No coverage
-    #   is LOST by black-holing, though: the e2e wallet is MOCK_PUBKEY_B58, a
-    #   fabricated pubkey with no devnet state, so these server-side RPCs
-    #   already returned empty/zero. Browser-side RPC is separately mocked
-    #   (e2e/rpc-mock.js).
+    #   `vars.DEVNET_NIGHTLY_ENABLED == 'true'`, and every scheduled run has
+    #   completed `skipped`. It has never run. Do not read this pin as
+    #   "covered elsewhere" — it is covered nowhere today.
+    #
+    #   WHY NO COVERAGE IS LOST — and it is a CONTINGENT reason, not a
+    #   permanent one. After the async-navbar-balance change the preload
+    #   fires exactly ONE server-side on-chain RPC for a wallet-connected
+    #   user: Solana::Vault#list_entry_tokens (see :617 below /
+    #   application_controller.rb) → getProgramAccounts(dataSize:124,
+    #   memcmp@8=wallet) (vault.rb:1771-1786). Run against devnet for the e2e
+    #   wallet (MOCK_PUBKEY_B58, 6ASf…pGWt) that returns [] — and NOT
+    #   vacuously: the same program holds 72 entry-token accounts today, none
+    #   of them owned by the mock wallet. So the count was 0 before this pin
+    #   and rescues to 0 after it — the code path changes, the observable
+    #   does not. Mint an entry token to that wallet on devnet and this
+    #   premise EXPIRES.
+    #
+    #   Note what saves us: the preload NO LONGER fires get_balance / the
+    #   USDC+seeds reads (:605-614). It does not follow that the e2e wallet
+    #   is state-free — on devnet 6ASf…pGWt holds ~86 SOL in a real
+    #   program-owned account. If the preload still read balances, the
+    #   "nothing is lost" claim above would be flatly WRONG.
+    #
+    #   Browser-side RPC is separately mocked (e2e/rpc-mock.js).
     #
     #   A black hole simulates an ABSENT RPC, not a FLAKY one — ECONNREFUSED
     #   is never wrapped into Solana::Client::RpcError, so the app's
@@ -164,8 +181,9 @@ jobs:
     #
     #   TEST-ENV ONLY. Copying this URL into a non-test env KILLS BOOT:
     #   config/initializers/solana_network_alignment.rb rescues only
-    #   Solana::Client::RpcError (:48), so ECONNREFUSED escapes — we are
-    #   saved solely by its `skip = Rails.env.test?` (:21).
+    #   Solana::Client::RpcError (:48), so ECONNREFUSED escapes. In CI we are
+    #   saved by its `skip` (:21) — which is `Rails.env.test?` OR
+    #   `SOLANA_SKIP_NETWORK_CHECK=true`; only the former applies here.
     #
     #   Pinned by test/lib/ci_playwright_hermetic_test.rb.
     env:

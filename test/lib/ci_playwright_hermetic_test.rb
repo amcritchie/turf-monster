@@ -22,22 +22,36 @@ require "yaml"
 # COVERAGE, STATED HONESTLY: server-side on-chain paths are NOT exercised by
 # any e2e that runs today. CI excludes the @devnet specs (--grep-invert), and
 # devnet-nightly.yml — the workflow that would run them — is DISABLED (gated on
-# vars.DEVNET_NIGHTLY_ENABLED == 'true'; every scheduled run since 2026-06-14
-# completed `skipped`, 30/30). This pin is NOT justified by coverage living
-# elsewhere — it lives nowhere. It costs no coverage either: the e2e wallet is
-# MOCK_PUBKEY_B58, a fabricated pubkey with no devnet state, so those RPCs
-# already returned empty/zero. Browser-side RPC is mocked in e2e/rpc-mock.js.
+# vars.DEVNET_NIGHTLY_ENABLED == 'true'; every scheduled run has completed
+# `skipped`; it has never run). This pin is NOT justified by coverage living
+# elsewhere — it lives nowhere.
+#
+# It costs no coverage either, but for a CONTINGENT reason. After the
+# async-navbar-balance change the preload fires exactly ONE server-side on-chain
+# RPC for a wallet-connected user: Solana::Vault#list_entry_tokens
+# (application_controller.rb:617) → getProgramAccounts(dataSize:124,
+# memcmp@8=wallet) (vault.rb:1771-1786). Run against devnet for the e2e wallet
+# (MOCK_PUBKEY_B58, 6ASf…pGWt) it returns [] — and NOT vacuously: the same
+# program holds 72 entry-token accounts today, none owned by the mock wallet. So
+# the count was 0 before this pin and rescues to 0 after it. Mint an entry token
+# to that wallet on devnet and this premise EXPIRES.
+#
+# Do NOT restate this as "the e2e wallet has no devnet state" — it does: 6ASf…
+# pGWt holds ~86 SOL on devnet in a real program-owned account. The claim holds
+# only because the preload no longer reads balances (application_controller.rb
+# :605-614). Browser-side RPC is mocked in e2e/rpc-mock.js.
 class CiPlaywrightHermeticTest < ActiveSupport::TestCase
   WORKFLOW_PATH = Rails.root.join(".github/workflows/ci.yml")
 
   LOOPBACK_HOSTS = %w[localhost 127.0.0.1 ::1].freeze
 
-  # Ports the app itself serves in a local/CI context. Aiming the RPC client at
-  # one of these is NOT a black hole — the app would POST JSON-RPC to a Rails
-  # server, get HTML back, and raise JSON::ParserError after a real round trip
-  # (degraded and slower, not instant). 9 (discard) is the intended value; 3100
-  # is the e2e server, 3000/3104 are dev/worktree stacks.
-  APP_PORTS = [3000, 3100, 3104].freeze
+  # The discard port: reserved by RFC 863 and closed everywhere, so connect is
+  # REFUSED instantly. Asserted exactly rather than denylisting known-listening
+  # ports — a denylist misses whatever happens to listen next (postgres 5432 and
+  # redis 6379 both listen in this job) and rots the moment the e2e server moves
+  # off 3100. Any port that ANSWERS is disqualifying: the RPC client would POST
+  # JSON-RPC, get something back, and pay a real round trip before failing.
+  BLACK_HOLE_PORT = 9
 
   def playwright_job
     workflow = YAML.safe_load_file(WORKFLOW_PATH)
@@ -62,13 +76,13 @@ class CiPlaywrightHermeticTest < ActiveSupport::TestCase
                     "time-of-day e2e flake"
 
     # Loopback alone is not enough: the URL must point at a CLOSED port, so the
-    # connection is refused instantly instead of being answered by our own app.
-    assert_not_includes APP_PORTS, uri.port,
-                        "playwright job SOLANA_RPC_URL (#{rpc_url.inspect}) is " \
-                        "aimed at a port the app itself serves — the RPC client " \
-                        "would POST JSON-RPC to Rails, get HTML, and raise " \
-                        "JSON::ParserError after a real round trip. Point it at a " \
-                        "closed port (9, the discard port) so connect is refused " \
-                        "instantly."
+    # connection is refused instantly instead of being answered by something.
+    assert_equal BLACK_HOLE_PORT, uri.port,
+                 "playwright job SOLANA_RPC_URL (#{rpc_url.inspect}) must use the " \
+                 "discard port #{BLACK_HOLE_PORT} — the only port guaranteed closed. " \
+                 "Any port that ANSWERS (the e2e server on 3100, postgres 5432, " \
+                 "redis 6379) is not a black hole: the RPC client would POST " \
+                 "JSON-RPC, pay a real round trip, and fail slowly instead of " \
+                 "being refused instantly."
   end
 end
