@@ -617,6 +617,66 @@ class ContestsControllerTest < ActionDispatch::IntegrationTest
     assert entry.reload.active?
   end
 
+  # SAFETY-NET regression guard (fix-vault-connection-error-escape). Sibling of
+  # the token-accounts-flake test above, but for a CONNECTION-level RPC failure.
+  # A Helius connection refusal surfaces from the gem client as a RAW
+  # Errno::ECONNREFUSED — solana-studio's Solana::Client#call wraps only
+  # timeouts/ECONNRESET into RpcError, never ECONNREFUSED/SocketError. Before the
+  # fix that raw error escaped Solana::Vault#fetch_wallet_balances (get_balance
+  # sat OUTSIDE any rescue) and walked past the pre-check's
+  # `rescue Solana::Client::RpcError` → the entry false-blocked (422) instead of
+  # deferring to the self-protecting atomic USDC enter. The pre-check must FAIL
+  # OPEN on a transport failure exactly as it does on a token-accounts flake.
+  test "enter fails OPEN on a CONNECTION-level RPC failure (ECONNREFUSED) and proceeds to the atomic USDC enter" do
+    @user.update!(
+      web3_solana_address: nil,
+      web2_solana_address: "ManagedAddr#{SecureRandom.hex(4)}",
+      encrypted_web2_solana_private_key: "ciphertext"
+    )
+    @contest.update!(onchain_contest_id: "onchain123", season_id: 1)
+    SeasonConfig.set_current!(1)
+
+    log_in_as @user
+    entry = @contest.entries.create!(user: @user, status: :cart)
+    [@m1, @m2, @m3, @m4, @m5, @m6].each { |m| entry.selections.create!(slate_matchup: m) }
+
+    # REAL Solana::Vault so the ACTUAL fetch_wallet_balances rescue boundary runs
+    # (the fix lives there, not at the controller call site). Inject the failure
+    # BELOW it at the gem client: get_balance raises a raw Errno::ECONNREFUSED,
+    # exactly as Net::HTTP does when Helius is unreachable and the gem does NOT
+    # wrap. The atomic USDC enter + entry-slot probe are stubbed so the test stays
+    # hermetic while exercising the real fail-open routing.
+    raising_client = Class.new do
+      def get_balance(_addr)
+        raise Errno::ECONNREFUSED
+      end
+
+      def get_token_accounts_by_owner(_addr)
+        raise Errno::ECONNREFUSED
+      end
+    end.new
+    vault = Solana::Vault.new(client: raising_client)
+    enter_usdc_calls = []
+    vault.define_singleton_method(:next_free_entry_index) { |*_args, **_kwargs| 0 }
+    vault.define_singleton_method(:enter_contest_with_usdc) do |user:, contest:, entry_num:|
+      enter_usdc_calls << { user: user.id, contest: contest.slug, entry_num: entry_num }
+      { signature: "fake-usdc-sig-conn", entry_pda: "epda-conn" }
+    end
+
+    AppFlags.stub :web2_usdc_entry?, true do
+      Solana::Vault.stub :new, vault do
+        post enter_contest_path(@contest), as: :json
+      end
+    end
+
+    assert_response :success
+    json = JSON.parse(response.body)
+    assert json["success"], "a connection-level RPC failure must NOT false-block a funded user, got: #{json["error"]}"
+    assert_equal 1, enter_usdc_calls.length,
+                 "a connection-level failure must defer to the self-protecting atomic USDC enter, not false-block"
+    assert entry.reload.active?
+  end
+
   # --- check_funding (hold-to-confirm funding pre-check, 2026-06-13) ---
   #
   # check_funding is a pure capability check on the contest fee + wallet, so
