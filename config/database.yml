@@ -57,6 +57,21 @@ development:
 test:
   <<: *default
   database: turf_monster_test
+  # TEST_DATABASE_URL lets a worktree point the TEST env at its OWN isolated test DB
+  # (written to .env.test.local by mcritchie-studio's bin/agent-worktree) WITHOUT being
+  # overridden by DATABASE_URL — which a worktree exports at its seeded DEV DB. An explicit
+  # `url:` wins over DATABASE_URL; when TEST_DATABASE_URL is unset it renders EMPTY and
+  # Rails falls back to `database:` above (CI and a normal local `bin/rails test` unchanged).
+  #
+  # WITHOUT THIS LINE THE PIN IS INERT, AND THAT WAS A LIVE HAZARD (2026-07-14). Every turf
+  # desk wrote TEST_DATABASE_URL=…/turf_monster_test_<slug>, this file ignored it, and the
+  # suite resolved to the SHARED turf_monster_test — so `bin/full-suite-check`'s first lane,
+  # `db:test:purge`, DESTROYED the database every other turf desk and the release gate were
+  # mid-suite against. mcritchie-studio's DeskGuard now PROVES this by booting the app and
+  # reading back `connection_db_config`, so a desk on a turf checkout without this line is
+  # REFUSED rather than silently sharing. Keep it. test/models/test_database_isolation_test.rb
+  # asserts the PROPERTY (the pin actually moves the connection), not the spelling.
+  url: <%= ENV["TEST_DATABASE_URL"] %>
 
 # As with config/credentials.yml, you never want to store sensitive information,
 # like your database password, in your source code. If your source code is
