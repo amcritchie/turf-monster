@@ -18,15 +18,18 @@
     dkTotal: '#4BAF50'             // DK Expectation (green)
   };
 
-  var _fcMatchups = <%== @matchups.ranked.includes(:team, :opponent_team).map { |m|
+  <%# Charted per TEAM, not per matchup row — a three-week slate would otherwise
+      plot 96 points for 32 teams and rank each team three times. team_total is
+      the SUM across the team's games, which is what the curve is fitted on. %>
+  var _fcMatchups = <%== @team_rows.map { |row|
     {
-      rank: m.rank,
-      emoji: m.team.emoji,
-      team: m.team.name,
-      short: m.team.short_name,
-      opponent: m.opponent_team&.short_name,
-      turf_score: m.turf_score&.to_f,
-      team_total: m.dk_goals_expectation&.to_f
+      rank: row.rank,
+      emoji: row.team.emoji,
+      team: row.team.name,
+      short: row.team.short_name,
+      opponent: row.matchups.filter_map { |m| m.opponent_team&.short_name }.join(" / "),
+      turf_score: row.turf_score&.to_f,
+      team_total: row.expected_points
     }
   }.to_json %>;
 
@@ -347,22 +350,29 @@
       </div>
 
       <div class="space-y-1" x-ref="sortableList">
-        <% @matchups.each_with_index do |matchup, i| %>
+        <%# One row per TEAM. A team's DK total is the SUM across every game it
+            plays in this slate, and that sum is what its rank and multiplier are
+            derived from. A one-week slate has one game per team, so this renders
+            exactly as it always did. The drag handle carries the team's FIRST
+            matchup id; update_rankings resolves it to the team and writes the
+            rank to all of that team's games. %>
+        <% @team_rows.each_with_index do |row, i| %>
           <div class="flex items-center gap-3 bg-surface rounded-lg px-4 py-3 border border-subtle cursor-grab active:cursor-grabbing sortable-item"
-               data-matchup-id="<%= matchup.id %>"
-               data-team-total="<%= matchup.dk_goals_expectation&.to_f %>">
-            <span class="font-mono text-muted text-sm w-8 text-right rank-number"><%= matchup.rank || i + 1 %></span>
-            <span class="text-lg"><%= matchup.team.emoji %></span>
-            <div class="flex-1 flex items-center gap-2">
-              <span class="text-heading font-semibold text-sm"><%= matchup.team.name %></span>
-              <% if matchup.opponent_team %>
-                <span class="text-muted text-xs">vs <%= matchup.opponent_team.short_name %></span>
+               data-matchup-id="<%= row.matchups.first.id %>"
+               data-team-total="<%= row.expected_points %>">
+            <span class="font-mono text-muted text-sm w-8 text-right rank-number"><%= row.rank || i + 1 %></span>
+            <span class="text-lg"><%= row.team.emoji %></span>
+            <div class="flex-1 flex items-center gap-2 flex-wrap">
+              <span class="text-heading font-semibold text-sm"><%= row.team.name %></span>
+              <% opponents = row.matchups.filter_map { |m| m.opponent_team&.short_name } %>
+              <% if opponents.any? %>
+                <span class="text-muted text-xs">vs <%= opponents.join(" / ") %></span>
               <% end %>
-              <% if matchup.dk_goals_expectation %>
-                <span class="text-muted text-xs">DK <%= sprintf('%.1f', matchup.dk_goals_expectation) %></span>
+              <% if row.expected_points.positive? %>
+                <span class="text-muted text-xs">DK <%= sprintf('%.1f', row.expected_points) %></span>
               <% end %>
             </div>
-            <span class="font-mono text-primary text-sm w-12 text-right turf-score-display"><%= matchup.turf_score ? sprintf('%.1f', matchup.turf_score) : '—' %>x</span>
+            <span class="font-mono text-primary text-sm w-12 text-right turf-score-display"><%= row.turf_score ? sprintf('%.1f', row.turf_score) : '—' %>x</span>
           </div>
         <% end %>
       </div>

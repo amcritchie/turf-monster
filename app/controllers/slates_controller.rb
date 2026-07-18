@@ -32,17 +32,29 @@ class SlatesController < ApplicationController
   def show
     @slates = Slate.where.not(name: "Default").order(:created_at)
     @matchups = @slate.slate_matchups.ranked.includes(:team, :opponent_team, :game)
+    # The page ranks TEAMS, not matchup rows: a team's standing is its summed
+    # expected points across every game it plays in this slate. A one-week slate
+    # yields one row per team exactly as before; a "Weeks 1-3" slate yields 32
+    # rows rather than 96.
+    @team_rows = @slate.team_rows
   end
 
   def update_rankings
     rescue_and_log(target: @slate) do
       if params[:matchup_ids].present?
+        # The dragged rows are TEAMS. Each posted id identifies a team via one of
+        # its matchups, and the rank it lands on is written to EVERY game that
+        # team plays in this slate — otherwise a multi-week team would be priced
+        # by whichever of its three rows happened to be the handle.
         n = params[:matchup_ids].size
         params[:matchup_ids].each_with_index do |id, index|
           matchup = @slate.slate_matchups.find_by(id: id)
           next unless matchup
+
           rank = index + 1
-          matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, n))
+          @slate.slate_matchups.where(team_slug: matchup.team_slug).find_each do |team_matchup|
+            team_matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, n))
+          end
         end
       end
       redirect_to slate_path(@slate), notice: "Rankings saved! Multipliers recalculated."
@@ -57,7 +69,11 @@ class SlatesController < ApplicationController
         params[:turf_scores].each do |entry|
           matchup = @slate.slate_matchups.find_by(id: entry[:id])
           next unless matchup
-          matchup.update!(turf_score: entry[:turf_score].to_f.round(1))
+
+          # Same as update_rankings: the edited row is a TEAM, so the multiplier
+          # applies to every game that team plays here.
+          @slate.slate_matchups.where(team_slug: matchup.team_slug)
+                .update_all(turf_score: entry[:turf_score].to_f.round(1))
         end
       end
       redirect_to slate_path(@slate), notice: "Turf Scores saved!"
