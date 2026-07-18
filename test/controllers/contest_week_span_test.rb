@@ -1,4 +1,5 @@
 require "test_helper"
+require "minitest/mock"
 
 # The create form's "Weeks" control and the server-side span resolution behind
 # it. The span is NOT trusted from the form: the controller resolves it into the
@@ -134,5 +135,39 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
 
     assert_not contest.multi_week?
     assert_equal "Week 1", contest.week_span_label
+  end
+
+  # --- mainnet lock-time guard -------------------------------------------
+  #
+  # A weekly NFL slate carries no game kickoff times, so a Turf Totals contest
+  # built on it can't resolve a lock time. onchain_params would then fall back
+  # to lock_timestamp: 0 — a contest that NEVER locks, minted on live mainnet.
+  # #create must refuse BEFORE any on-chain instruction is built.
+  test "create refuses a no-start weekly slate before any on-chain build" do
+    # Admin phantom: past the require_admin + phantom_wallet? gates so the flow
+    # reaches the lock-time guard rather than short-circuiting earlier.
+    users(:alex).update!(web3_solana_address: "AdMiNPhantoM1111111111111111111111111111111")
+    assert_nil @w1.starts_at
+    assert_nil @w1.first_game_starts_at, "the weekly slate has no resolvable start"
+
+    vault = FakeVault.new(usdc_balance: 100_000.0)
+
+    assert_no_difference("Contest.count") do
+      Solana::Vault.stub :new, vault do
+        post contests_path,
+          params: { contest: { name: "No Lock Cup", slug: "no-lock-cup",
+                               slate_id: @w1.id, contest_type: "medium" } },
+          as: :json
+      end
+    end
+
+    assert_response :unprocessable_entity
+    json = JSON.parse(response.body)
+    assert_equal false, json["success"]
+    assert_match(/set a lock time/i, json["error"])
+    # Load-bearing: the guard short-circuits BEFORE the vault builds anything —
+    # no create_contest instruction, and no params_token to sign it with.
+    assert_empty vault.create_contest_calls
+    assert_nil json["params_token"], "no create token may be issued when the contest is refused"
   end
 end
