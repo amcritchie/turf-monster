@@ -188,6 +188,34 @@ GeoSetting.create!(
   banned_states: GeoSetting::DEFAULT_BANNED_STATES
 )
 
+# ── Multi-week slate (NFL Weeks 1-3) ─────────────────────────────────
+# A Slate is a POOL OF GAMES: this one holds three weeks, so each team appears
+# three times and is ranked on its SUMMED expected points. Backs
+# e2e/multi_week_slate.spec.js. Guarded on the three weeks existing.
+span_source_weeks = Slate.where(name: ["NFL 2026 Week 1", "NFL 2026 Week 2", "NFL 2026 Week 3"]).to_a
+if span_source_weeks.size == 3
+  span_slate = Slate.find_or_create_by!(name: "NFL 2026 Weeks 1-3") { |s| s.slug = "nfl-2026-weeks-1-3" }
+  span_slate.slate_matchups.destroy_all
+
+  span_source_weeks.each do |week_slate|
+    week_slate.slate_matchups.each do |week_matchup|
+      span_slate.slate_matchups.create!(
+        team_slug: week_matchup.team_slug,
+        opponent_team_slug: week_matchup.opponent_team_slug,
+        game_slug: week_matchup.game_slug,
+        dk_goals_expectation: week_matchup.dk_goals_expectation,
+        status: "pending"
+      )
+    end
+  end
+
+  span_rankings = span_slate.team_rankings
+  span_slate.slate_matchups.find_each do |span_matchup|
+    ranking = span_rankings[span_matchup.team_slug]
+    span_matchup.update!(rank: ranking[:rank], turf_score: ranking[:turf_score]) if ranking
+  end
+end
+
 puts "Seeded: #{User.count} users, #{Team.count} teams, #{Slate.count} slates, " \
      "#{Contest.count} contests, #{SlateMatchup.count} matchups, " \
      "#{SurvivorRound.count} survivor rounds, #{GeoSetting.count} geo_settings"

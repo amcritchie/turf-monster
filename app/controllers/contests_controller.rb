@@ -2054,12 +2054,11 @@ class ContestsController < ApplicationController
   # since slate names are operator-controlled and consistent.
   #   "World Cup 2026 Group 1" → "fifa"
   #   "NFL 2026 Week 1"        → "nfl"
+  # Delegates to Slate#sport, which is the single home for this rule — the
+  # selector row needs the same classification to pick its 🏈 / ⚽ marker, and
+  # two copies of the regex would drift.
   def sport_for_slate(slate)
-    return "fifa" unless slate
-    name = slate.name.to_s.downcase
-    return "nfl"  if name.match?(/\bnfl\b|\bweek\s+\d/)
-    return "fifa" if name.include?("world cup") || name.include?("fifa") || name.include?("uefa") || name.include?("group")
-    "fifa"
+    slate&.sport || "fifa"
   end
 
   # :contest_image is intentionally NOT permitted here — the banner saves through
