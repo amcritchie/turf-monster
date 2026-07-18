@@ -106,6 +106,32 @@ contest.update!(onchain_contest_id: nil)
 # smoke specs that navigate to `/` expecting selection cards.
 SeasonConfig.set_main_contest!(contest)
 
+# ── Multi-week span contest (NFL Weeks 15-17) ────────────────────────
+# Backs e2e/multi_week_contest.spec.js. A span contest picks TEAMS, not games:
+# the board renders one card per team with its three weekly opponents, priced by
+# a single span multiplier. Guarded on the three weeks actually existing so this
+# can't break the whole seed if the NFL feed is short.
+span_weeks = Slate.weekly.where(week: [15, 16, 17]).order(:week).to_a
+if span_weeks.size == 3
+  multi_week = Contest.new(
+    name: "NFL Weeks 15-17",
+    entry_fee_cents: 1900,
+    status: "open",
+    max_entries: 30,
+    contest_type: "standard",
+    # Future start: the board (not the leaderboard) must render, with picks
+    # selectable rather than locked.
+    starts_at: 1.week.from_now,
+    slate: span_weeks.first,
+    rank: 110
+  )
+  multi_week.pending_week_slate_ids = span_weeks.map(&:id)
+  multi_week.skip_onchain_callback = true
+  multi_week.save!
+  multi_week.update_column(:slug, "nfl-weeks-15-17") unless multi_week.slug == "nfl-weeks-15-17"
+  multi_week.update!(onchain_contest_id: nil)
+end
+
 # ── World Cup Survivor ───────────────────────────────────────────────
 # 8 global rounds; round 1 reuses the standard fixture slate's games.
 survivor_rounds = [
