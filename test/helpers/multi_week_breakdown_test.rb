@@ -6,41 +6,42 @@ class MultiWeekBreakdownTest < ActionView::TestCase
 
   setup do
     @contest = contests(:one)
-    @week1 = slates(:one)
-    @week1.update!(week: 1)
-    @week2 = Slate.create!(name: "NFL 2026 Week 2", slug: "nfl-2026-week-2", week: 2)
-    @week3 = Slate.create!(name: "NFL 2026 Week 3", slug: "nfl-2026-week-3", week: 3)
+    @span = Slate.create!(name: "NFL 2026 Weeks 1-3", slug: "nfl-2026-weeks-1-3", week: 1)
 
-    @w2 = SlateMatchup.create!(slate: @week2, team_slug: "team-a", opponent_team_slug: "team-c",
-                               rank: 1, turf_score: 2.0, dk_goals_expectation: 2.0, status: "pending")
-    @w3 = SlateMatchup.create!(slate: @week3, team_slug: "team-a", opponent_team_slug: "team-d",
-                               rank: 1, turf_score: 3.0, dk_goals_expectation: 2.0, status: "pending")
-    @contest.assign_week_slates!([@week1.id, @week2.id, @week3.id])
+    # Three games for team-a, all carrying the same FROZEN multiplier — which is
+    # what ranking a span slate writes to every row of a team.
+    @games = (1..3).map do |week|
+      SlateMatchup.create!(
+        slate: @span, team_slug: "team-a", opponent_team_slug: "team-f",
+        game_slug: "team-a-wk#{week}-#{SecureRandom.hex(3)}",
+        week: week, dk_goals_expectation: 25.0, turf_score: 2.0, rank: 1, status: "pending"
+      )
+    end
+    @contest.update!(slate: @span)
 
     entry = entries(:one)
     entry.selections.destroy_all
-    @selection = Selection.create!(entry: entry, slate_matchup: slate_matchups(:m1))
+    @selection = Selection.create!(entry: entry, slate_matchup: @games.first)
   end
 
-  def breakdown(multiplier: 2.0)
+  def breakdown
     weekly_points_breakdown(@selection.reload,
-                            weeks: @contest.week_slates,
+                            weeks: [1, 2, 3],
                             by_team: @contest.matchups_by_team,
-                            multiplier: multiplier)
+                            multiplier: 2.0)
   end
 
   test "shows each week's goals, the span total, and the one multiplier" do
-    slate_matchups(:m1).update!(goals: 2)
-    @w2.update!(goals: 3)
-    @w3.update!(goals: 1)
+    @games[0].update!(goals: 2)
+    @games[1].update!(goals: 3)
+    @games[2].update!(goals: 1)
     @selection.compute_points!
 
-    assert_equal "W1 2 · W2 3 · W3 1 · 6 goals × 2.0 = #{format('%.1f', @selection.reload.points)} pts",
-                 breakdown
+    assert_equal "W1 2 · W2 3 · W3 1 · 6 goals × 2.0 = 12.0 pts", breakdown
   end
 
   test "an unplayed week shows a dash, not a zero" do
-    slate_matchups(:m1).update!(goals: 2)
+    @games[0].update!(goals: 2)
     @selection.compute_points!
 
     # A dash distinguishes "hasn't happened yet" from "was shut out" — a zero
@@ -50,8 +51,8 @@ class MultiWeekBreakdownTest < ActionView::TestCase
   end
 
   test "a shutout week shows 0, distinct from an unplayed one" do
-    slate_matchups(:m1).update!(goals: 2)
-    @w2.update!(goals: 0)
+    @games[0].update!(goals: 2)
+    @games[1].update!(goals: 0)
     @selection.compute_points!
 
     assert_includes breakdown, "W1 2 · W2 0 · W3 —"
@@ -59,9 +60,9 @@ class MultiWeekBreakdownTest < ActionView::TestCase
   end
 
   test "a bye week shows a dash rather than raising" do
-    @w3.destroy! # team-a is on bye in week 3
-    slate_matchups(:m1).update!(goals: 2)
-    @w2.update!(goals: 3)
+    @games[2].destroy! # team-a is on bye in week 3
+    @games[0].update!(goals: 2)
+    @games[1].update!(goals: 3)
     @selection.compute_points!
 
     assert_includes breakdown, "W1 2 · W2 3 · W3 —"

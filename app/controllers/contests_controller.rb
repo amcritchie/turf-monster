@@ -148,6 +148,12 @@ class ContestsController < ApplicationController
     unless Contest.selectable_formats.key?(contest.contest_type)
       return render_create_error("Unknown or unavailable contest format")
     end
+    # A requested span that could not be assembled (a gap, or a week with no
+    # slate) must REFUSE, not fall back to a shorter contest — the on-chain fees
+    # and prize pool are sized for the span the operator asked for.
+    if @span_slate_error.present?
+      return render_create_error(@span_slate_error)
+    end
     # onchain_params falls back to `lock_timestamp: 0` when no start can be
     # resolved, which would put a contest on chain that never locks. Weekly NFL
     # slates carry no game times, so this is reachable from the form — refuse it
@@ -1670,30 +1676,39 @@ class ContestsController < ApplicationController
       c.entry_fee_cents = config[:entry_fee_cents]
       c.max_entries     = config[:max_entries]
       c.status          = :open
-      # A multi-week contest anchors on its FIRST week: that slate defines the
-      # pickable matchups AND the single lock at week-one kickoff.
-      week_slate_ids    = requested_week_slate_ids
-      c.slate_id        ||= week_slate_ids.first
-      c.pending_week_slate_ids = week_slate_ids
+      # A multi-week contest is played on ONE span slate holding every week's
+      # games. Resolving it here means slate_id stays a plain scalar FK and the
+      # frozen per-team turf_score on that slate is what prices and settles.
+      span = resolve_span_slate(c)
+      c.slate_id = span.id if span
       c.starts_at       ||= default_start_for_slate(c.slate)
       c.season_id       ||= SeasonConfig.current_season_id
     end
   end
 
-  # The span the operator picked, resolved server-side into CONSECUTIVE weekly
-  # slates starting at the chosen anchor. Resolving here (rather than trusting a
-  # list of slate ids from the form) is what guarantees "Week 1-3" is actually
-  # weeks 1, 2, 3 and not an arbitrary three slates.
+  # Resolve the operator's "N weeks from this anchor" into the ONE span slate the
+  # contest is played on, building it if it doesn't exist yet.
   #
-  # A span of 1 returns [] so the single-week path stays byte-identical.
-  def requested_week_slate_ids
+  # Nfl::BuildSpanSlate RAISES on a gap or a missing week rather than returning a
+  # shorter span. That matters: a silently-truncated span was minted on-chain
+  # with three-week fees and a three-week prize pool, then scored as one week.
+  # `span_slate_error` carries the message so #create can refuse.
+  #
+  # A span of 1 returns nil, leaving the plain slate_id select untouched.
+  def resolve_span_slate(contest)
     span = params.dig(:contest, :week_span).to_i
-    return [] if span <= 1
+    return nil if span <= 1
 
-    anchor = Slate.find_by(id: params.dig(:contest, :slate_id))
-    return [] if anchor.nil?
+    anchor = Slate.find_by(id: params.dig(:contest, :slate_id)) || contest.slate
+    return nil if anchor.nil? || anchor.week.blank?
 
-    anchor.consecutive_weeks(span).map(&:id)
+    year = anchor.name[/\b(\d{4})\b/, 1] || Time.current.year
+    weeks = (anchor.week...(anchor.week + span)).to_a
+
+    Nfl::BuildSpanSlate.call(year: year, weeks: weeks)
+  rescue Nfl::BuildSpanSlate::Error => e
+    @span_slate_error = e.message
+    nil
   end
 
   # Reconstruct an unpersisted Contest from the signed create payload so its
@@ -1719,7 +1734,6 @@ class ContestsController < ApplicationController
       name:                       payload[:name],
       slug:                       payload[:slug],
       slate_id:                   payload[:slate_id],
-      pending_week_slate_ids:     payload[:week_slate_ids],
       contest_type:               payload[:contest_type],
       starts_at:                  payload[:starts_at],
       locks_at_date_selected:     payload[:locks_at_date_selected],
@@ -1865,10 +1879,6 @@ class ContestsController < ApplicationController
       slug:                       contest.slug,
       name:                       contest.name,
       slate_id:                   contest.slate_id,
-      # The full week span rides the SIGNED token so finalize can't be handed a
-      # different set of weeks than the operator saw. It does not feed
-      # onchain_params, so the TX rebuilt in #rebuild_create_tx is unaffected.
-      week_slate_ids:             Array(contest.pending_week_slate_ids),
       contest_type:               contest.contest_type,
       starts_at:                  contest.starts_at&.iso8601,
       locks_at_date_selected:     contest.locks_at_date_selected,

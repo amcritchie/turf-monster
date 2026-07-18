@@ -53,16 +53,17 @@ class SlateWeekSpanTest < ActiveSupport::TestCase
 
   # --- span labelling -----------------------------------------------------
 
-  test "week_span_label reads Weeks 1-3 for a three week contest" do
+  test "week_span_label reads Weeks 1-3 off a span slate" do
+    span = Slate.create!(name: "NFL 2026 Weeks 1-3", slug: "nfl-2026-weeks-1-3", week: 1)
     contest = contests(:one)
-    contest.assign_week_slates!([@w1.id, @w2.id, @w3.id])
+    contest.update!(slate: span)
 
     assert_equal "Weeks 1-3", contest.week_span_label
   end
 
   test "week_span_label reads a single week for a one week contest" do
     contest = contests(:one)
-    contest.assign_week_slates!([@w2.id])
+    contest.update!(slate: @w2)
 
     assert_equal "Week 2", contest.week_span_label
   end

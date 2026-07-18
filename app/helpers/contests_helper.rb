@@ -31,13 +31,13 @@ module ContestsHelper
   def weekly_points_breakdown(selection, weeks:, by_team:, multiplier: nil)
     pool = by_team[selection.slate_matchup.team_slug] || []
     total = 0
-    parts = weeks.map do |slate|
-      matchup = pool.find { |m| m.slate_id == slate.id }
+    parts = weeks.map do |week|
+      matchup = pool.find { |m| m.week == week }
       if matchup&.goals.present?
         total += matchup.goals
-        "W#{slate.week || '?'} #{matchup.goals}"
+        "W#{week || '?'} #{matchup.goals}"
       else
-        "W#{slate.week || '?'} —"
+        "W#{week || '?'} —"
       end
     end
 

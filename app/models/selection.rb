@@ -11,7 +11,7 @@ class Selection < ApplicationRecord
   # Single week: goals × that matchup's turf_score, unchanged.
   #
   # Multi-week: the picked TEAM rides every week, so this is the team's TOTAL
-  # goals across the span × ONE span multiplier (Contest#span_turf_scores),
+  # goals across the span × the team's ONE frozen turf_score,
   # which is itself derived from the team's expected points summed over the same
   # weeks. Keeping it to a single multiplier is what makes the format scale from
   # one opponent to three — a player reads exactly the same "points per goal"
@@ -27,7 +27,12 @@ class Selection < ApplicationRecord
       scored = scoring_matchups.select { |matchup| matchup.goals.present? }
       return if scored.empty?
 
-      multiplier = contest.span_turf_score_for(slate_matchup.team_slug)
+      # The FROZEN multiplier, stored on the matchup rows at rank time — NOT a
+      # value recomputed now. A recomputed one drifted between pick time and
+      # settlement (measured 1.0x -> 3.0x) because a projections refresh re-ranks
+      # the span after picks are locked. Settlement is on-chain, so a player must
+      # be paid at the price they were shown.
+      multiplier = slate_matchup.turf_score
       return if multiplier.blank?
 
       update!(points: scored.sum(&:goals) * multiplier)
@@ -42,14 +47,15 @@ class Selection < ApplicationRecord
     "#{entry.slug}-#{slate_matchup.team_slug}"
   end
 
-  # Per-week breakdown for the leaderboard / board UI: [[slate, matchup], ...]
-  # in week order. Single-week contests return their one pair.
+  # Per-week breakdown for the leaderboard: [[week, matchup], ...] in week order.
+  # On a span slate each of the team's games carries its own week, so the label
+  # stays honest rather than guessing from position. Single-week contests return
+  # their one pair.
   def weekly_breakdown
     contest = entry.contest
-    return [[slate_matchup.slate, slate_matchup]] unless contest&.multi_week?
+    return [[slate_matchup.week, slate_matchup]] unless contest&.multi_week?
 
-    by_slate = contest.matchups_for_team(slate_matchup.team_slug).index_by(&:slate_id)
-    contest.week_slates.map { |slate| [slate, by_slate[slate.id]] }
+    contest.matchups_for_team(slate_matchup.team_slug).map { |matchup| [matchup.week, matchup] }
   end
 
   private
@@ -60,6 +66,6 @@ class Selection < ApplicationRecord
     contest = entry.contest
     return [slate_matchup] unless contest&.multi_week?
 
-    contest.matchups_for_team(slate_matchup.team_slug).to_a
+    contest.matchups_for_team(slate_matchup.team_slug)
   end
 end

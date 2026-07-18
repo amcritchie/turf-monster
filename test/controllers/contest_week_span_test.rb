@@ -1,13 +1,20 @@
 require "test_helper"
 
 # The create form's "Weeks" control and the server-side span resolution behind
-# it. The span is deliberately NOT trusted from the form as a list of slate ids —
-# the controller resolves consecutive weeks from the anchor.
+# it. The span is NOT trusted from the form: the controller resolves it into the
+# ONE span slate the contest is played on, and refuses rather than truncates.
 class ContestWeekSpanTest < ActionDispatch::IntegrationTest
   setup do
     @w1 = Slate.create!(name: "NFL 2026 Week 1", slug: "nfl-2026-week-1", week: 1)
     @w2 = Slate.create!(name: "NFL 2026 Week 2", slug: "nfl-2026-week-2", week: 2)
     @w3 = Slate.create!(name: "NFL 2026 Week 3", slug: "nfl-2026-week-3", week: 3)
+    [[@w1, 1], [@w2, 2], [@w3, 3]].each do |slate, week|
+      %w[team-a team-b].each_with_index do |team, index|
+        SlateMatchup.create!(slate: slate, team_slug: team, opponent_team_slug: "team-f",
+                             game_slug: "#{team}-wk#{week}-#{SecureRandom.hex(3)}",
+                             week: week, dk_goals_expectation: 25.0 - index, status: "pending")
+      end
+    end
     log_in_as(users(:alex)) # admin
   end
 
@@ -20,8 +27,6 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
   end
 
   test "weekly NFL slates are selectable even though they have no start time" do
-    # These slates carry a week but no starts_at (the projections feed has no
-    # kickoff times); the old options query filtered them out entirely.
     assert_nil @w1.starts_at
 
     get new_contest_path
@@ -32,9 +37,7 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
 
   test "the generator renders slates that have no start time" do
     # Regression: making weekly slates selectable exposed them to the generator,
-    # which called strftime on a nil starts_at and 500'd the whole page. These
-    # slates have no starts_at AND no game kickoffs — the projections feed
-    # carries no times — so there is nothing to fall back to.
+    # which called strftime on a nil starts_at and 500'd the whole page.
     assert_nil @w1.starts_at
     assert_nil @w1.first_game_starts_at
 
@@ -54,71 +57,82 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "starts #{dated.starts_at.strftime('%b %-d, %Y')}"
   end
 
-  test "a contest built with a span records consecutive weeks in order" do
-    contest = Contest.new(
-      name: "Week 1-3 Test", slug: "week-1-3-test", contest_type: "standard",
-      status: :open, slate_id: @w1.id, starts_at: 10.days.from_now,
-      entry_fee_cents: 1900, max_entries: 29
-    )
-    contest.pending_week_slate_ids = @w1.consecutive_weeks(3).map(&:id)
-    contest.save!
+  # --- span assembly ------------------------------------------------------
 
-    assert_equal [@w1, @w2, @w3], contest.week_slates
-    assert_equal "Weeks 1-3", contest.week_span_label
-    assert contest.multi_week?
+  test "a span builds ONE slate holding every week's games" do
+    span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+
+    assert_equal "NFL 2026 Weeks 1-3", span.name
+    assert_equal 6, span.slate_matchups.count, "2 teams x 3 weeks"
+    assert_equal 3, span.games_per_team
+    assert span.multi_game_per_team?
   end
 
-  test "the anchor always takes position one even if the span is mis-ordered" do
-    contest = Contest.new(
-      name: "Mis-ordered Span", slug: "mis-ordered-span", contest_type: "standard",
-      status: :open, slate_id: @w1.id, starts_at: 10.days.from_now,
-      entry_fee_cents: 1900, max_entries: 29
-    )
-    contest.pending_week_slate_ids = [@w3.id, @w2.id, @w1.id]
-    contest.save!
+  test "the span slate stores a FROZEN multiplier on every row of a team" do
+    span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
 
-    # slate_id is the anchor and defines the pickable set + the lock; position 1
-    # must never drift away from it.
-    assert_equal @w1, contest.week_slates.first
-    assert_equal @w1.id, contest.contest_slates.find_by(position: 1).slate_id
+    scores = span.matchups_by_team["team-a"].map(&:turf_score).uniq
+    assert_equal 1, scores.size, "one multiplier per team, written to all its rows"
+    assert scores.first.present?
+    # Highest summed expectation ranks 1, which is exactly the 1.0x floor.
+    assert_equal 1.0, scores.first.to_f
   end
 
-  test "the contest page names the span and shows each week's points" do
+  test "a span REFUSES a gap instead of silently truncating" do
+    @w2.slate_matchups.destroy_all
+    @w2.destroy!
+
+    # Truncating here would sell a three-week contest, mint it on-chain with
+    # three-week fees and prize pool, and then score it as two weeks.
+    error = assert_raises(Nfl::BuildSpanSlate::Error) do
+      Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+    end
+    assert_match(/week 2/, error.message)
+  end
+
+  test "a span REFUSES a week the season does not have" do
+    error = assert_raises(Nfl::BuildSpanSlate::Error) do
+      Nfl::BuildSpanSlate.call(year: 2026, weeks: [17, 18, 19])
+    end
+    assert_match(/17/, error.message)
+  end
+
+  test "a span never absorbs a slate from another season" do
+    # Same week numbers, different year. slates carry a week but no year column,
+    # so the year lives in the name — a lookup on week alone would collapse them.
+    other = Slate.create!(name: "NFL 2025 Week 1", slug: "nfl-2025-week-1", week: 1)
+    SlateMatchup.create!(slate: other, team_slug: "team-c", opponent_team_slug: "team-f",
+                         game_slug: "stale-#{SecureRandom.hex(3)}", week: 1,
+                         dk_goals_expectation: 99.0, status: "pending")
+
+    span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+
+    assert_not_includes span.matchups_by_team.keys, "team-c",
+                        "a 2026 span must not pull in a 2025 slate"
+  end
+
+  test "rebuilding a span does not duplicate its games" do
+    Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+    span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+
+    assert_equal 6, span.slate_matchups.count
+  end
+
+  test "a contest on a span slate is multi-week and labels its span" do
+    span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
     contest = contests(:one)
-    @week1 = slates(:one)
-    @week1.update!(week: 1)
-    w2_a = SlateMatchup.create!(slate: @w2, team_slug: "team-a", opponent_team_slug: "team-c",
-                                rank: 1, turf_score: 2.0, status: "pending")
-    contest.assign_week_slates!([@week1.id, @w2.id, @w3.id])
+    contest.update!(slate: span)
 
-    entry = entries(:one)
-    entry.selections.destroy_all
-    selection = Selection.create!(entry: entry, slate_matchup: slate_matchups(:m1))
-    slate_matchups(:m1).update!(goals: 2) # x1.0 -> 2.0
-    w2_a.update!(goals: 3)                # x2.0 -> 6.0
-    selection.compute_points!
-
-    get contest_path(contest)
-
-    assert_response :success
-    # The header must name the SPAN, not just the anchor slate — "Test Slate"
-    # alone would read as a single-week contest.
-    assert_select "span", text: "Weeks 1-3"
-    # Goals per week, then the single span multiplier. Week 3 is unplayed, so it
-    # shows a dash rather than a zero.
-    assert_includes response.body, "W1 2 · W2 3 · W3 — · 5 goals ×"
+    assert contest.multi_week?
+    assert_equal "Weeks 1-3", contest.week_span_label
+    assert_equal 2, contest.pickable_matchups.size, "one pickable row per team"
   end
 
-  test "a contest built with no span is single week and unchanged" do
-    contest = Contest.new(
-      name: "Single Week", slug: "single-week-test", contest_type: "standard",
-      status: :open, slate_id: @w1.id, starts_at: 10.days.from_now,
-      entry_fee_cents: 1900, max_entries: 29
-    )
-    contest.save!
+  test "a single-week contest is unchanged" do
+    contest = contests(:one)
+    contest.update!(slate: @w1)
 
     assert_not contest.multi_week?
-    assert_equal [@w1], contest.week_slates
-    assert_equal 1, contest.contest_slates.count
+    assert_equal "Week 1", contest.week_span_label
   end
 end

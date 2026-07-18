@@ -50,7 +50,18 @@ class SlateMatchup < ApplicationRecord
     update!(turf_score: self.class.turf_score_for(rank, n))
   end
 
+  # On a SPAN slate a team has several rows, and two of them can share an
+  # opponent (a division rival played twice inside the span), which made this
+  # slug collide against the unique index and refuse the row outright. Qualify it
+  # by week in that case.
+  #
+  # Deliberately scoped to span slates: Sluggable rewrites the slug on EVERY
+  # save, so appending unconditionally would churn every existing weekly
+  # matchup's slug for no gain.
   def name_slug
-    "#{slate.slug}-#{team_slug}-vs-#{opponent_team_slug}"
+    base = "#{slate.slug}-#{team_slug}-vs-#{opponent_team_slug}"
+    return base unless week.present? && slate&.week_range&.size.to_i > 1
+
+    "#{base}-wk#{week}"
   end
 end

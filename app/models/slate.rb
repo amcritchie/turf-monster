@@ -11,7 +11,6 @@ class Slate < ApplicationRecord
 
   has_many :slate_matchups, dependent: :destroy
   has_many :contests
-  has_many :contest_slates, dependent: :destroy
   has_many :nfl_team_total_projections, dependent: :nullify
 
   validates :name, presence: true
@@ -97,18 +96,35 @@ class Slate < ApplicationRecord
   # those earn. Ordered by rank.
   TeamRow = Data.define(:team_slug, :team, :matchups, :expected_points, :rank, :turf_score)
 
+  # Reads the STORED rank/turf_score off the matchups — the same values
+  # Selection#compute_points! settles from — rather than recomputing.
+  #
+  # This is load-bearing, not a preference. Rendering from a live #team_rankings
+  # call made the page disagree with settlement in three ways:
+  #   * World Cup slates never set dk_goals_expectation, so a live ranking ties
+  #     everything and falls through to alphabetical — the favourite rendered as
+  #     the 3.0x longshot, exactly inverted from how it actually scores.
+  #   * The admin drag-to-reorder wrote stored ranks the page then ignored, so it
+  #     was write-only under a "Rankings saved!" flash.
+  #   * A manual multiplier override was invisible for the same reason.
+  # Compute at rank time, store, read stored everywhere.
+  #
+  # Falls back to a computed ranking ONLY when nothing is stored yet (a slate
+  # built but never ranked), so a fresh slate still renders in a sane order.
   def team_rows
-    rankings = team_rankings
+    by_team = matchups_by_team
+    fallback = by_team.values.all? { |matchups| matchups.first.rank.nil? } ? team_rankings : {}
 
-    rows = matchups_by_team.map do |team_slug, matchups|
-      ranking = rankings[team_slug] || {}
+    rows = by_team.map do |team_slug, matchups|
+      anchor = matchups.first
+      computed = fallback[team_slug] || {}
       TeamRow.new(
         team_slug: team_slug,
-        team: matchups.first.team,
+        team: anchor.team,
         matchups: matchups,
         expected_points: matchups.sum { |matchup| matchup.dk_goals_expectation.to_f },
-        rank: ranking[:rank],
-        turf_score: ranking[:turf_score]
+        rank: anchor.rank || computed[:rank],
+        turf_score: anchor.turf_score || computed[:turf_score]
       )
     end
 
@@ -163,6 +179,14 @@ class Slate < ApplicationRecord
   # from the soccer ones.
   def sport_emoji
     sport == "nfl" ? "🏈" : "⚽"
+  end
+
+  # "Week 3" / "Weeks 1-3" for contest headers and cards.
+  def week_range_label
+    range = week_range
+    return nil if range.nil?
+
+    range.size == 1 ? "Week #{range.first}" : "Weeks #{range.first}-#{range.last}"
   end
 
   # Compact label for the slate selector. The competition + year prefix is

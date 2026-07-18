@@ -46,14 +46,12 @@
   # the anchor (week-one) set, so selections stay keyed exactly as they are on a
   # single-week board.
   multi_week   = @contest.multi_week?
-  span_scores  = multi_week ? @contest.span_turf_scores : {}
-  span_weeks   = multi_week ? @contest.week_slates : []
-  span_opponents = {}
-  if multi_week
-    @contest.matchups_by_team.each do |team_slug, team_matchups|
-      by_slate = team_matchups.index_by(&:slate_id)
-      span_opponents[team_slug] = span_weeks.map { |slate| [slate, by_slate[slate.id]] }
-    end
+  span_matchups_by_team = multi_week ? @contest.matchups_by_team : {}
+  span_scores  = multi_week ? span_matchups_by_team.transform_values { |ms| ms.first.turf_score } : {}
+  # [[week, matchup], ...] per team, in week order — each of the team's games in
+  # the span slate carries its own week.
+  span_opponents = span_matchups_by_team.transform_values do |team_matchups|
+    team_matchups.map { |matchup| [matchup.week, matchup] }
   end
 
   @matchups.each do |m|
@@ -76,7 +74,7 @@
 
   # Team cards, cheapest multiplier first (same ordering idea as the flat
   # multiplier view).
-  span_team_cards = multi_week ? @matchups.sort_by { |m| span_scores[m.team_slug] || 999 } : []
+  span_team_cards = multi_week ? @contest.pickable_matchups.sort_by { |m| m.turf_score || 999 } : []
 
   # Game pairs (group by game, each pair low-turf-first, pairs ordered by lower
   # turf_score). Computed ONCE here and reused by both firstMatchupIds below (the

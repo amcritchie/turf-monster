@@ -16,7 +16,7 @@
           'matchup-pulse': pulseId === '<%= matchup.id %>' && selectionCount === 0
         }"
         role="checkbox" :aria-checked="!!selections['<%= matchup.id %>']"
-        aria-label="<%= matchup.team.name %> — <%= opponents.map { |slate, m| "week #{slate.week}: #{m&.opponent_team&.name || 'bye'}" }.join(', ') %>"
+        aria-label="<%= matchup.team.name %> — <%= opponents.map { |week, m| "week #{week}: #{m&.opponent_team&.name || 'bye'}" }.join(', ') %>"
         <% if locked %>disabled<% end %>>
   <% if locked %>
     <span class="absolute top-2 left-2 text-[10px] text-yellow-500">&#128274;</span>
@@ -35,11 +35,11 @@
       (a 2- or 4-week contest would otherwise need a class that isn't compiled). %>
   <div class="mt-3 pt-3 border-t border-subtle grid"
        style="grid-template-columns: repeat(<%= [opponents.size, 1].max %>, minmax(0, 1fr))">
-    <% opponents.each_with_index do |(slate, week_matchup), index| %>
+    <% opponents.each_with_index do |(week, week_matchup), index| %>
       <% opponent = week_matchup&.opponent_team %>
       <div class="px-1 text-center <%= index.positive? ? 'border-l border-subtle' : '' %>"
-           title="Week <%= slate.week || '?' %> &mdash; <%= opponent ? "vs #{opponent.name}" : 'bye week' %>">
-        <p class="text-[10px] uppercase tracking-wide text-subtle leading-tight">Week <%= slate.week || '?' %></p>
+           title="Week <%= week || '?' %> &mdash; <%= opponent ? "vs #{opponent.name}" : 'bye week' %>">
+        <p class="text-[10px] uppercase tracking-wide text-subtle leading-tight">Week <%= week || '?' %></p>
         <p class="text-xs text-muted leading-tight mt-0.5 truncate">
           <% if opponent %>
             <span><%= opponent.emoji %></span>

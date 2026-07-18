@@ -31,19 +31,23 @@ class Game < ApplicationRecord
 
   # Find all contests that include this game's matchups and re-score entries.
   #
-  # Matches on BOTH the anchor slate_id and the contest_slates span: a multi-week
-  # contest's Week 2/3 slates are never its anchor, so an anchor-only lookup
-  # would silently never re-score those weeks. The anchor leg is kept as a
-  # belt-and-braces for any contest lacking a join row.
+  # A multi-week contest is played on ONE span slate holding every week's games,
+  # so this scalar slate_id lookup reaches weeks 2 and 3 without a join — that is
+  # a direct benefit of converging onto the span-slate model.
+  #
+  # Each contest is scored independently: one entry that raises must not abort
+  # the loop and leave every later contest silently unscored.
   def score_affected_contests!
     slate_ids = SlateMatchup.where(game_slug: slug).pluck(:slate_id).uniq
     return if slate_ids.empty?
 
-    contest_ids = Contest.where(slate_id: slate_ids).ids |
-                  ContestSlate.where(slate_id: slate_ids).pluck(:contest_id)
-
-    Contest.where(id: contest_ids, status: [:open]).find_each do |contest|
-      contest.score_entries!
+    Contest.where(slate_id: slate_ids, status: [:open]).find_each do |contest|
+      begin
+        contest.score_entries!
+      rescue StandardError => e
+        Rails.logger.error("[Game#score_affected_contests!] game=#{slug} contest=#{contest.slug} #{e.class}: #{e.message}")
+        ErrorLog.capture!(e)
+      end
     end
   end
 

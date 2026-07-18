@@ -22,9 +22,11 @@
   # the week list and that team's matchup in each week, and resolving those
   # per-pill would be an N+1 across six picks per entry.
   multi_week    = contest.multi_week?
-  span_weeks    = multi_week ? contest.week_slates : []
   span_matchups = multi_week ? contest.matchups_by_team : {}
-  span_scores   = multi_week ? contest.span_turf_scores : {}
+  # Weeks come off the matchups themselves, and the multiplier is the FROZEN
+  # turf_score stored on them — the same value settlement multiplies by.
+  span_weeks    = multi_week ? span_matchups.values.flatten.filter_map(&:week).uniq.sort : []
+  span_scores   = multi_week ? span_matchups.transform_values { |ms| ms.first.turf_score } : {}
   everyone_equal = !contest.settled? && entries.size > 1 &&
                    entries.map { |e| e.score.to_i }.uniq.size <= 1
   if everyone_equal && viewer

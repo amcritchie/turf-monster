@@ -1,153 +1,110 @@
 require "test_helper"
 
-# A multi-week Turf Totals contest ("NFL Week 1-3"): the player picks six TEAMS
-# once, before Week 1 kickoff, and those same six ride every week of the span.
-# Score is the sum of each pick's weekly points, each week weighted by its own
-# turf_score.
+# A multi-week Turf Totals contest ("NFL Weeks 1-3") is played on ONE span slate
+# holding several games per team. The player picks six TEAMS once, before week
+# one's kickoff, and each pick scores that team's TOTAL goals across the span
+# times ONE multiplier — the FROZEN turf_score stored on its matchup rows.
 class MultiWeekContestTest < ActiveSupport::TestCase
   setup do
     @contest = contests(:one)
-    @week1 = slates(:one)
-    @week2 = Slate.create!(name: "Test Slate Week 2", slug: "test-slate-week-2")
-    @week3 = Slate.create!(name: "Test Slate Week 3", slug: "test-slate-week-3")
+    @span = Slate.create!(name: "NFL 2026 Weeks 1-3", slug: "nfl-2026-weeks-1-3", week: 1)
   end
 
-  # team-a plays in all three weeks. Expected points (dk_goals_expectation) are
-  # what the SPAN multiplier is ranked on — the per-week turf_score values are
-  # deliberately varied to prove they no longer drive multi-week scoring.
-  def build_span!
-    @w2_a = SlateMatchup.create!(slate: @week2, team_slug: "team-a", opponent_team_slug: "team-c",
-                                 rank: 1, turf_score: 2.0, dk_goals_expectation: 2.0, status: "pending")
-    @w3_a = SlateMatchup.create!(slate: @week3, team_slug: "team-a", opponent_team_slug: "team-d",
-                                 rank: 1, turf_score: 3.0, dk_goals_expectation: 2.0, status: "pending")
-    @contest.assign_week_slates!([@week1.id, @week2.id, @week3.id])
+  # Three games for a team, all carrying the SAME frozen multiplier (that is what
+  # ranking a span slate writes).
+  def add_games!(team_slug, expectations, turf_score:, goals: [])
+    expectations.each_with_index.map do |expected, index|
+      SlateMatchup.create!(
+        slate: @span, team_slug: team_slug, opponent_team_slug: "team-f",
+        game_slug: "#{team_slug}-wk#{index + 1}-#{SecureRandom.hex(3)}",
+        week: index + 1, dk_goals_expectation: expected,
+        turf_score: turf_score, rank: 1, goals: goals[index], status: "pending"
+      )
+    end
   end
 
-  def pick_team_a!
+  def span_contest!
+    @contest.update!(slate: @span)
+    @contest
+  end
+
+  def pick!(team_slug)
     entry = entries(:one)
     entry.selections.destroy_all
-    Selection.create!(entry: entry, slate_matchup: slate_matchups(:m1))
+    Selection.create!(entry: entry, slate_matchup: @span.matchups_by_team[team_slug].first)
   end
 
   # --- span shape ---------------------------------------------------------
 
-  test "a slate-backed contest is single-week and backfilled to one anchor row" do
-    assert_not @contest.multi_week?
-    assert_equal 1, @contest.weeks_count
-    assert_equal [@week1], @contest.week_slates
-  end
-
-  test "assign_week_slates! records the span in order and anchors on week one" do
-    build_span!
+  test "a slate with several games per team makes the contest multi-week" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0)
+    span_contest!
 
     assert @contest.multi_week?
     assert_equal 3, @contest.weeks_count
-    assert_equal [@week1, @week2, @week3], @contest.week_slates
-    assert_equal [1, 2, 3], @contest.contest_slates.map(&:position)
-    # slate_id must stay the anchor — picks_required, locking, and every
-    # pre-existing query still read through it.
-    assert_equal @week1.id, @contest.slate_id
+    assert_equal "Weeks 1-3", @contest.week_span_label
   end
 
-  test "assign_week_slates! is idempotent and does not duplicate join rows" do
-    build_span!
-    @contest.assign_week_slates!([@week1.id, @week2.id, @week3.id])
-
-    assert_equal 3, @contest.contest_slates.count
+  test "a single-game-per-team slate is NOT multi-week" do
+    assert_not contests(:one).multi_week?
   end
 
-  test "picks are made from week one only and the pick count is unchanged" do
-    build_span!
+  test "the pickable rows are one per team, not one per game" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0)
+    add_games!("team-b", [20.0, 20.0, 20.0], turf_score: 3.0)
+    span_contest!
 
-    # The pickable universe stays the anchor week: you pick a TEAM, once.
-    assert_equal @week1.slate_matchups.sort, @contest.matchups.sort
-    assert_equal Contest::TURF_TOTALS_DEFAULT_PICKS_REQUIRED, @contest.picks_required
-  end
-
-  test "matchups_for_team spans every week" do
-    build_span!
-
-    found = @contest.matchups_for_team("team-a")
-    assert_equal 3, found.count
-    assert_equal [@week1.id, @week2.id, @week3.id].sort, found.map(&:slate_id).sort
+    assert_equal 6, @contest.matchups.count, "six game rows in the pool"
+    assert_equal 2, @contest.pickable_matchups.size, "but a pick is a TEAM"
+    assert_equal %w[team-a team-b], @contest.pickable_matchups.map(&:team_slug).sort
   end
 
   # --- scoring ------------------------------------------------------------
 
-  test "a pick scores its total span goals times the ONE span multiplier" do
-    build_span!
-    selection = pick_team_a!
-
-    slate_matchups(:m1).update!(goals: 2)
-    @w2_a.update!(goals: 3)
-    @w3_a.update!(goals: 1)
+  test "a pick scores total span goals times the ONE frozen multiplier" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0, goals: [2, 3, 1])
+    span_contest!
+    selection = pick!("team-a")
 
     selection.compute_points!
 
-    multiplier = @contest.span_turf_score_for("team-a")
-    assert_equal (6 * multiplier).to_f, selection.reload.points.to_f
+    assert_equal 12.0, selection.reload.points.to_f, "(2+3+1) goals x 2.0"
   end
 
-  test "per-week turf_scores do NOT drive multi-week scoring" do
-    build_span!
-    selection = pick_team_a!
-    slate_matchups(:m1).update!(goals: 2)
-    @w2_a.update!(goals: 3)
-    @w3_a.update!(goals: 1)
+  test "the multiplier is READ FROM STORAGE, not recomputed at scoring time" do
+    # The defect this guards: the multiplier used to be recomputed live from
+    # dk_goals_expectation, and a projections refresh after lock re-ranked the
+    # span — measured drift 1.0x at pick time to 3.0x at settlement. Settlement
+    # is on-chain, so a player must be paid the price they were shown.
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 1.0, goals: [2, 2, 2])
+    span_contest!
+    selection = pick!("team-a")
     selection.compute_points!
-    before = selection.reload.points.to_f
+    assert_equal 6.0, selection.reload.points.to_f
 
-    # Swing the individual weeks' multipliers wildly. Under the span model the
-    # score must not move — only the summed EXPECTED points (which set the span
-    # multiplier) and the actual goals matter.
-    slate_matchups(:m1).update!(turf_score: 9.9)
-    @w2_a.update!(turf_score: 0.1)
-    selection.compute_points!
-
-    assert_equal before, selection.reload.points.to_f
-  end
-
-  test "the span multiplier ranks on expected points summed across the weeks" do
-    build_span!
-
-    # Give team-a the highest three-week expectation and team-b the lowest.
-    @contest.matchups_by_team.each do |team_slug, matchups|
-      matchups.each { |m| m.update!(dk_goals_expectation: team_slug == "team-a" ? 9.9 : 0.1) }
-    end
-    slate_matchups(:m2).update!(dk_goals_expectation: 0.0) # team-b lowest
-
-    scores = @contest.span_turf_scores
-
-    # turf_score_for(1, n) is exactly 1.0 and turf_score_for(n, n) is exactly
-    # 3.0, whatever n is — so the extremes are assertable without knowing the
-    # pool size. Highest expected points = lowest multiplier.
-    assert_equal 1.0, scores["team-a"]
-    assert_equal 3.0, scores.values.max
-    assert_operator scores["team-b"], :>, scores["team-a"]
-  end
-
-  test "the span multiplier is one number, not one per week" do
-    build_span!
-
-    # The whole point of the span multiplier: a player reads the same single
-    # "points per goal" number they'd read on a one-week contest.
-    assert_kind_of Numeric, @contest.span_turf_score_for("team-a")
-  end
-
-  test "only completed weeks contribute so the leaderboard accrues live" do
-    build_span!
-    selection = pick_team_a!
-
-    slate_matchups(:m1).update!(goals: 2) # week 1 done, weeks 2-3 unplayed
+    # Projections move hard AFTER the pick is locked. The frozen turf_score does
+    # not, so the score must not move either.
+    @span.slate_matchups.update_all(dk_goals_expectation: 0.1)
     selection.compute_points!
 
-    multiplier = @contest.span_turf_score_for("team-a")
-    assert_equal (2 * multiplier).to_f, selection.reload.points.to_f
+    assert_equal 6.0, selection.reload.points.to_f,
+                 "a projections refresh must not re-price a locked pick"
   end
 
-  test "points are left untouched when no week has a result yet" do
-    build_span!
-    selection = pick_team_a!
+  test "only completed games contribute, so the board accrues live" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0, goals: [2, nil, nil])
+    span_contest!
+    selection = pick!("team-a")
+
+    selection.compute_points!
+
+    assert_equal 4.0, selection.reload.points.to_f
+  end
+
+  test "points are left untouched when no game has a result yet" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0)
+    span_contest!
+    selection = pick!("team-a")
     selection.update!(points: 7.5)
 
     selection.compute_points!
@@ -155,81 +112,67 @@ class MultiWeekContestTest < ActiveSupport::TestCase
     assert_equal 7.5, selection.reload.points.to_f
   end
 
-  test "a bye week contributes no goals instead of raising" do
-    # team-e plays week 1 and week 3, but is on bye in week 2.
-    bye_w3 = SlateMatchup.create!(slate: @week3, team_slug: "team-e", opponent_team_slug: "team-f",
-                                  rank: 5, turf_score: 2.0, dk_goals_expectation: 2.0, status: "pending")
-    @contest.assign_week_slates!([@week1.id, @week2.id, @week3.id])
-
-    entry = entries(:one)
-    entry.selections.destroy_all
-    selection = Selection.create!(entry: entry, slate_matchup: slate_matchups(:m5))
-
-    slate_matchups(:m5).update!(goals: 1)
-    bye_w3.update!(goals: 2)
+  test "a bye contributes no goals and keeps the team's own multiplier" do
+    # Operator ruling (2026-07-18): a bye is not a special case. It lowers the
+    # team's projected total, which lowers its rank and RAISES its multiplier —
+    # exactly the mechanism that equalises expected value across picks. So a bye
+    # team simply plays fewer games at its own price.
+    add_games!("team-a", [25.0, 25.0], turf_score: 2.5, goals: [2, 3])
+    span_contest!
+    selection = pick!("team-a")
 
     assert_nothing_raised { selection.compute_points! }
-    multiplier = @contest.span_turf_score_for("team-e")
-    assert_equal (3 * multiplier).to_f, selection.reload.points.to_f
+    assert_equal 12.5, selection.reload.points.to_f, "(2+3) goals x 2.5"
   end
 
-  test "entry score sums its picks across the whole span" do
-    build_span!
+  test "entry score sums its picks across the span" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0, goals: [2, 3, 1])
+    add_games!("team-b", [20.0, 20.0, 20.0], turf_score: 3.0, goals: [1, 1, 1])
+    span_contest!
+
     entry = entries(:one)
     entry.selections.destroy_all
-    Selection.create!(entry: entry, slate_matchup: slate_matchups(:m1)) # team-a, all 3 weeks
-    Selection.create!(entry: entry, slate_matchup: slate_matchups(:m2)) # team-b, week 1 only
+    Selection.create!(entry: entry, slate_matchup: @span.matchups_by_team["team-a"].first)
+    Selection.create!(entry: entry, slate_matchup: @span.matchups_by_team["team-b"].first)
 
-    slate_matchups(:m1).update!(goals: 2)
-    @w2_a.update!(goals: 3)
-    @w3_a.update!(goals: 1)
-    slate_matchups(:m2).update!(goals: 5)
-
-    # reload: the selections were created behind this instance's cached
-    # association. Production always scores a freshly-loaded entry
-    # (Contest#score_entries! -> entries.find_each).
     entry.reload.score!
 
-    expected = (6 * @contest.span_turf_score_for("team-a")) +
-               (5 * @contest.span_turf_score_for("team-b"))
-    assert_in_delta expected.to_f, entry.reload.score, 0.001
+    assert_in_delta 21.0, entry.reload.score, 0.001, "(6 x 2.0) + (3 x 3.0)"
   end
 
-  test "weekly_breakdown returns one entry per week in order, nil on a bye" do
-    build_span!
-    selection = pick_team_a!
+  test "weekly_breakdown labels each game by its own week" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0, goals: [2, 3, 1])
+    span_contest!
+    selection = pick!("team-a")
 
-    breakdown = selection.weekly_breakdown
-    assert_equal [@week1, @week2, @week3], breakdown.map(&:first)
-    assert_equal [slate_matchups(:m1), @w2_a, @w3_a], breakdown.map(&:last)
+    assert_equal [1, 2, 3], selection.weekly_breakdown.map(&:first)
   end
 
   # --- the scoring trigger ------------------------------------------------
 
-  test "a later-week game re-scores the contest even though it is not the anchor" do
-    build_span!
-    selection = pick_team_a!
+  test "a later-week game re-scores the contest through the plain slate_id" do
+    add_games!("team-a", [25.0, 25.0, 25.0], turf_score: 2.0)
+    span_contest!
+    @contest.update!(status: "open")
+    selection = pick!("team-a")
 
-    game = Game.create!(slug: "wk2-a-vs-c", home_team_slug: "team-a", away_team_slug: "team-c",
-                        kickoff_at: 1.day.ago, status: "completed")
-    @w2_a.update!(game_slug: game.slug)
-
-    # A Week 2 slate is never the contest's anchor slate_id — an anchor-only
-    # lookup would silently never re-score it.
-    affected = Contest.where(slate_id: [@week2.id]).ids
-    assert_empty affected, "week 2 must not be reachable via the anchor"
+    week2 = @span.matchups_by_team["team-a"][1]
+    game = Game.create!(slug: "wk2-#{SecureRandom.hex(3)}", home_team_slug: "team-a",
+                        away_team_slug: "team-c", kickoff_at: 1.day.ago, status: "completed")
+    week2.update!(game_slug: game.slug)
 
     game.update!(home_score: 3, away_score: 0)
     game.update_slate_matchups!
 
-    multiplier = @contest.span_turf_score_for("team-a")
-    assert_equal (3 * multiplier).to_f, selection.reload.points.to_f
+    # A span slate IS the contest's slate_id, so week 2 is reachable without a
+    # join — the benefit of converging onto one slate.
+    assert_equal 6.0, selection.reload.points.to_f
   end
 
   # --- single-week regression --------------------------------------------
 
   test "single-week scoring is unchanged" do
-    selection = pick_team_a!
+    selection = pick_single_week!
     slate_matchups(:m1).update!(goals: 4) # turf_score 1.0
 
     selection.compute_points!
@@ -237,13 +180,19 @@ class MultiWeekContestTest < ActiveSupport::TestCase
     assert_equal 4.0, selection.reload.points.to_f
   end
 
-  test "single-week points are left untouched when the week has no result" do
-    selection = pick_team_a!
+  test "single-week points are left untouched with no result" do
+    selection = pick_single_week!
     selection.update!(points: 3.3)
     slate_matchups(:m1).update!(goals: nil)
 
     selection.compute_points!
 
     assert_equal 3.3, selection.reload.points.to_f
+  end
+
+  def pick_single_week!
+    entry = entries(:one)
+    entry.selections.destroy_all
+    Selection.create!(entry: entry, slate_matchup: slate_matchups(:m1))
   end
 end
