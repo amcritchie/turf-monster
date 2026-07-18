@@ -229,11 +229,14 @@
 
   <!-- Slate tab selector -->
   <% if @slates.size > 1 %>
-    <div class="flex gap-2 mb-6">
+    <%# flex-wrap + whitespace-nowrap: a plain `flex` row squeezed ~30 pills until
+        each one wrapped onto three lines. Let the ROW wrap instead and keep every
+        pill on one line. %>
+    <div class="flex flex-wrap gap-2 mb-6">
       <% @slates.each do |slate| %>
         <% active = slate.id == @slate.id %>
-        <%= link_to slate.name.sub("World Cup 2026 Group ", ""), slate_path(slate),
-          class: "px-4 py-2 rounded-full text-sm font-semibold transition-all #{active ? 'bg-primary text-white' : 'bg-surface-alt text-secondary hover:text-heading'}" %>
+        <%= link_to slate.selector_label, slate_path(slate),
+          class: "px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all #{active ? 'bg-primary text-white' : 'bg-surface-alt text-secondary hover:text-heading'}" %>
       <% end %>
     </div>
   <% end %>

@@ -108,6 +108,46 @@ class Slate < ApplicationRecord
     matchups_by_team.values.map(&:size).max.to_i
   end
 
+  # ─── Selector presentation ──────────────────────────────────────────
+
+  WEEK_RANGE_PATTERN = /Weeks?\s+(\d+)(?:\s*[-–]\s*(\d+))?/i
+
+  # The weeks this slate covers, read off its name ("NFL 2026 Weeks 1-3" -> 1..3,
+  # "NFL 2026 Week 7" -> 7..7). Nil when the name carries no week at all, which
+  # is every World Cup slate.
+  def week_range
+    match = name.match(WEEK_RANGE_PATTERN)
+    return nil if match.nil?
+
+    first = match[1].to_i
+    return nil if first.zero?
+
+    last = (match[2] || match[1]).to_i
+    first..[last, first].max
+  end
+
+  # Compact label for the slate selector. The competition + year prefix is
+  # identical on every pill, so it earns nothing and makes each one wrap onto
+  # three lines. Leaves "Week 1", "Weeks 1-3", "Round of 32", "Group 1".
+  def selector_label
+    name.sub(/\A(?:NFL|World Cup)\s+\d{4}\s+/, "").presence || name
+  end
+
+  # Slates for the selector row. Week-bearing slates (the NFL ones) are ordered
+  # by the week they START on, then by span length — so "Weeks 1-3" sits
+  # immediately after "Week 1" instead of at the far end of the row, where it
+  # landed by creation date.
+  #
+  # Slates with no week in the name (World Cup groups and knockout rounds) keep
+  # their creation order, which is already tournament order — sorting those by
+  # name would put the Final first.
+  def self.selector_ordered
+    slates = where.not(name: "Default").order(:created_at).to_a
+    weekly_slates, other = slates.partition(&:week_range)
+
+    other + weekly_slates.sort_by { |slate| [slate.week_range.first, slate.week_range.size, slate.name] }
+  end
+
   def name_slug
     name.parameterize
   end

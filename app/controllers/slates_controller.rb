@@ -30,7 +30,7 @@ class SlatesController < ApplicationController
   end
 
   def show
-    @slates = Slate.where.not(name: "Default").order(:created_at)
+    @slates = Slate.selector_ordered
     @matchups = @slate.slate_matchups.ranked.includes(:team, :opponent_team, :game)
     # The page ranks TEAMS, not matchup rows: a team's standing is its summed
     # expected points across every game it plays in this slate. A one-week slate
