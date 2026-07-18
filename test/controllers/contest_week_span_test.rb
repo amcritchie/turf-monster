@@ -30,6 +30,30 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
     assert_select "select#contest_slate_id option", text: "NFL 2026 Week 1"
   end
 
+  test "the generator renders slates that have no start time" do
+    # Regression: making weekly slates selectable exposed them to the generator,
+    # which called strftime on a nil starts_at and 500'd the whole page. These
+    # slates have no starts_at AND no game kickoffs — the projections feed
+    # carries no times — so there is nothing to fall back to.
+    assert_nil @w1.starts_at
+    assert_nil @w1.first_game_starts_at
+
+    get generator_contests_path
+
+    assert_response :success
+    assert_includes response.body, "NFL 2026 Week 1"
+    assert_includes response.body, "no scheduled start"
+  end
+
+  test "the generator still shows a start time when the slate has one" do
+    dated = Slate.create!(name: "Dated Slate", slug: "dated-slate", starts_at: 5.days.from_now)
+
+    get generator_contests_path
+
+    assert_response :success
+    assert_includes response.body, "starts #{dated.starts_at.strftime('%b %-d, %Y')}"
+  end
+
   test "a contest built with a span records consecutive weeks in order" do
     contest = Contest.new(
       name: "Week 1-3 Test", slug: "week-1-3-test", contest_type: "standard",
