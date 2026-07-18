@@ -23,12 +23,27 @@ class Slate < ApplicationRecord
   # an "NFL Week 1-3" contest. Returns fewer than `count` when the season runs
   # out, and refuses a gap (a missing week would silently shorten the span into
   # a different contest than the operator asked for).
+  #
+  # Scoped to THIS slate's season (parsed from the name). Week numbers recur
+  # every year, so a lookup on week alone would let an "NFL 2025 Week 2" slate
+  # slot into a 2026 span — wrong-season matchups priced and settled on-chain.
   def consecutive_weeks(count)
     return [self] if count.to_i <= 1 || week.blank?
 
     wanted = (week...(week + count.to_i)).to_a
-    found = self.class.weekly.where(week: wanted).index_by(&:week)
+    found = self.class.weekly.where(week: wanted)
+                .select { |slate| slate.season_year == season_year }
+                .index_by(&:week)
     wanted.take_while { |number| found.key?(number) }.map { |number| found[number] }
+  end
+
+  # The season a weekly slate belongs to, read as the 4-digit year in its name
+  # ("NFL 2026 Week 1" → "2026"). slates carry a week but no season/year column,
+  # so the year lives in the name. Nil when the name carries no year — those
+  # slates scope only to other year-less slates, never cross-matching a dated
+  # one. Bounded to 20xx so a stray week number can't read as a year.
+  def season_year
+    name.to_s[/\b(20\d{2})\b/, 1]
   end
 
   def self.default_record

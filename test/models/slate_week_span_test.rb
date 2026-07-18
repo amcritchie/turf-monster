@@ -33,6 +33,28 @@ class SlateWeekSpanTest < ActiveSupport::TestCase
     assert_equal [@w2, @w3], @w2.consecutive_weeks(5)
   end
 
+  test "consecutive_weeks stays within the anchor's season" do
+    # Week numbers recur every year. A prior-season slate shares week 2's number
+    # but belongs to a different contest — pulling it into a 2026 span would
+    # price and settle wrong-season matchups on a money app.
+    prior = Slate.create!(name: "NFL 2025 Week 2", slug: "nfl-2025-week-2", week: 2)
+
+    span = @w1.consecutive_weeks(3)
+
+    # Same-season happy path: exactly the three 2026 slates, in week order.
+    assert_equal [@w1, @w2, @w3], span
+    assert_not_includes span, prior, "a 2026 span must not absorb a 2025 slate"
+  end
+
+  test "consecutive_weeks scopes a year-less slate to other year-less slates" do
+    # A name with no year scopes to other year-less slates rather than silently
+    # cross-matching a dated one that happens to share the week number.
+    a = Slate.create!(name: "Preseason Week 1", slug: "preseason-week-1", week: 1)
+    Slate.create!(name: "Preseason Week 2", slug: "preseason-week-2", week: 2)
+
+    assert_equal ["Preseason Week 1", "Preseason Week 2"], a.consecutive_weeks(2).map(&:name)
+  end
+
   test "a slate with no week number cannot span" do
     assert_equal [slates(:one)], slates(:one).consecutive_weeks(3)
   end
