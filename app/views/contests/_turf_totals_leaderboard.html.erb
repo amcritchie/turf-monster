@@ -24,6 +24,7 @@
   multi_week    = contest.multi_week?
   span_weeks    = multi_week ? contest.week_slates : []
   span_matchups = multi_week ? contest.matchups_by_team : {}
+  span_scores   = multi_week ? contest.span_turf_scores : {}
   everyone_equal = !contest.settled? && entries.size > 1 &&
                    entries.map { |e| e.score.to_i }.uniq.size <= 1
   if everyone_equal && viewer
@@ -226,16 +227,20 @@
                   # Matchups created without ranks (legacy seed paths) have nil
                   # turf_score — render "x?" instead of crashing. Root cause
                   # belongs in seeds/contest-create; this is defense-in-depth.
-                  m = sel.slate_matchup.turf_score
+                  # Multi-week pills carry the SPAN multiplier, not the anchor
+                  # week's — the anchor number would misprice a three-week pick.
+                  m = multi_week ? span_scores[sel.slate_matchup.team_slug] : sel.slate_matchup.turf_score
                   ip = m ? "x#{m.to_i}" : "x?"
                   dp = (m && m != m.to_i) ? ".#{((m % 1) * 10).round}" : nil
                 end
                 tv = if multi_week && sel.points.present?
-                       weekly_points_breakdown(sel, weeks: span_weeks, by_team: span_matchups)
+                       weekly_points_breakdown(sel, weeks: span_weeks, by_team: span_matchups,
+                                                    multiplier: span_scores[sel.slate_matchup.team_slug])
                      elsif done && sel.points.present?
                        "#{sel.points} pts"
                      else
-                       sel.slate_matchup.turf_score ? "x#{sel.slate_matchup.turf_score}" : "x?"
+                       span_or_week = multi_week ? span_scores[sel.slate_matchup.team_slug] : sel.slate_matchup.turf_score
+                       span_or_week ? "x#{span_or_week}" : "x?"
                      end
                 { team: t, c1: c1, c2: c2, ip: ip, dp: dp, tv: tv }
               end

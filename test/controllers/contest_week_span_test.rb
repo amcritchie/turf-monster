@@ -80,8 +80,9 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
     # The header must name the SPAN, not just the anchor slate — "Test Slate"
     # alone would read as a single-week contest.
     assert_select "span", text: "Weeks 1-3"
-    # Week 3 is unplayed, so it shows a dash rather than a zero.
-    assert_includes response.body, "W1 2.0 · W2 6.0 · W3 — = 8.0 pts"
+    # Goals per week, then the single span multiplier. Week 3 is unplayed, so it
+    # shows a dash rather than a zero.
+    assert_includes response.body, "W1 2 · W2 3 · W3 — · 5 goals ×"
   end
 
   test "a contest built with no span is single week and unchanged" do

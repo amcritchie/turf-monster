@@ -152,6 +152,34 @@ class Contest < ApplicationRecord
     SlateMatchup.where(slate_id: week_slates.map(&:id)).group_by(&:team_slug)
   end
 
+  # ONE multiplier per team for the whole span, derived exactly the way a
+  # single-week multiplier is — rank the teams by expected points, then
+  # 1.0 + 2·ln(rank)/ln(n) — except the ranking input is the team's expected
+  # points SUMMED across every week it plays.
+  #
+  # This is what makes the multiplier idea scale from one opponent to three: a
+  # one-week span reduces to today's per-slate ranking, and a three-week span
+  # prices the whole schedule in a single number. A team facing three tough
+  # defenses ranks low on expected points and therefore carries a HIGHER
+  # multiplier, same as it would over one week.
+  #
+  # Ties break on team_slug so the ranking is deterministic run to run.
+  def span_turf_scores
+    totals = matchups_by_team.transform_values do |matchups|
+      matchups.sum { |matchup| matchup.dk_goals_expectation.to_f }
+    end
+    return {} if totals.empty?
+
+    ranked = totals.sort_by { |team_slug, expected| [-expected, team_slug] }
+    ranked.each_with_index.to_h do |(team_slug, _expected), index|
+      [team_slug, SlateMatchup.turf_score_for(index + 1, ranked.size)]
+    end
+  end
+
+  def span_turf_score_for(team_slug)
+    span_turf_scores[team_slug]
+  end
+
   # Mirror the anchor into the join table so `week_slates` is uniform for every
   # contest, including ones created through paths that only set slate_id.
   after_create :sync_anchor_contest_slate

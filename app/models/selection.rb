@@ -6,23 +6,36 @@ class Selection < ApplicationRecord
 
   validates :slate_matchup_id, uniqueness: { scope: :entry_id }
 
-  # Points for one pick. In a multi-week contest the picked TEAM rides every week
-  # of the span, so this sums the team's matchup in each week.
+  # Points for one pick.
   #
-  # Each week keeps its OWN turf_score rather than applying one flat multiplier
-  # to summed goals: a team with a soft Week 1 and a brutal Weeks 2-3 must be
-  # weighted week by week. That per-week weighting is the whole normalization
-  # edge of a multi-week contest.
+  # Single week: goals × that matchup's turf_score, unchanged.
+  #
+  # Multi-week: the picked TEAM rides every week, so this is the team's TOTAL
+  # goals across the span × ONE span multiplier (Contest#span_turf_scores),
+  # which is itself derived from the team's expected points summed over the same
+  # weeks. Keeping it to a single multiplier is what makes the format scale from
+  # one opponent to three — a player reads exactly the same "points per goal"
+  # number they read on a one-week contest.
   #
   # Weeks with no result yet (and bye weeks, which have no matchup at all)
-  # contribute nothing, so the leaderboard accrues live as each week completes.
-  # With NO week scored yet, points are left untouched — matching the
-  # single-week behaviour exactly.
+  # contribute no goals, so the leaderboard accrues live as each week completes.
+  # With NO week scored yet, points are left untouched — matching single-week.
   def compute_points!
-    scored = scoring_matchups.select { |matchup| matchup.goals.present? && matchup.turf_score.present? }
-    return if scored.empty?
+    contest = entry.contest
 
-    update!(points: scored.sum { |matchup| matchup.goals * matchup.turf_score })
+    if contest&.multi_week?
+      scored = scoring_matchups.select { |matchup| matchup.goals.present? }
+      return if scored.empty?
+
+      multiplier = contest.span_turf_score_for(slate_matchup.team_slug)
+      return if multiplier.blank?
+
+      update!(points: scored.sum(&:goals) * multiplier)
+    else
+      return unless slate_matchup.goals.present? && slate_matchup.turf_score.present?
+
+      update!(points: slate_matchup.goals * slate_matchup.turf_score)
+    end
   end
 
   def name_slug

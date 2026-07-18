@@ -1,0 +1,49 @@
+<%# locals: (matchup:, multiplier:, opponents:) %>
+<%# A multi-week pick is a TEAM, not a game — so this card leads with the team
+    and its ONE span multiplier (derived from expected points across every week),
+    and carries the three opponents underneath as supporting detail.
+
+    `matchup` is the team's WEEK-ONE matchup: it is the anchor the selection is
+    keyed on, so toggleSelection / selections[] work exactly as they do on a
+    single-week board. `opponents` is [[slate, matchup_or_nil], ...] in week
+    order; a nil matchup is a bye. %>
+<% locked = matchup.locked? %>
+<button @click="toggleSelection('<%= matchup.id %>')"
+        class="relative w-full bg-surface p-3 md:p-4 rounded-2xl transition-all text-center border-2 shadow <%= locked ? 'opacity-50' : '' %>"
+        :class="{
+          'matchup-selected': selections['<%= matchup.id %>'],
+          'border-subtle hover:bg-surface-alt/50': !selections['<%= matchup.id %>'],
+          'matchup-pulse': pulseId === '<%= matchup.id %>' && selectionCount === 0
+        }"
+        role="checkbox" :aria-checked="!!selections['<%= matchup.id %>']"
+        aria-label="<%= matchup.team.name %> — <%= opponents.map { |slate, m| "week #{slate.week}: #{m&.opponent_team&.name || 'bye'}" }.join(', ') %>"
+        <% if locked %>disabled<% end %>>
+  <% if locked %>
+    <span class="absolute top-2 left-2 text-[10px] text-yellow-500">&#128274;</span>
+  <% end %>
+
+  <p class="text-4xl md:text-5xl mb-2"><%= matchup.team.emoji %></p>
+  <p class="font-bold text-heading text-lg md:text-xl mb-0.5 truncate team-name" title="<%= matchup.team.name %>"><%= matchup.team.name %></p>
+
+  <% if multiplier %>
+    <p class="font-mono text-lg md:text-xl text-primary"><%= format_turf_score(multiplier) %></p>
+    <p class="text-sm text-secondary"><%= multiplier == 1 ? 'Point' : 'Points' %> / Goal</p>
+  <% end %>
+
+  <div class="mt-3 pt-3 border-t border-subtle flex items-center justify-center gap-x-2 gap-y-1 flex-wrap">
+    <% opponents.each_with_index do |(slate, week_matchup), index| %>
+      <% opponent = week_matchup&.opponent_team %>
+      <span class="inline-flex items-center gap-1 text-xs text-muted whitespace-nowrap"
+            title="Week <%= slate.week || '?' %> &mdash; <%= opponent ? "vs #{opponent.name}" : 'bye week' %>">
+        <% if opponent %>
+          <span><%= opponent.emoji %></span><span class="font-medium"><%= opponent.short_name %></span>
+        <% else %>
+          <span class="italic">bye</span>
+        <% end %>
+      </span>
+      <% if index < opponents.size - 1 %>
+        <span class="text-xs text-subtle" aria-hidden="true">&middot;</span>
+      <% end %>
+    <% end %>
+  </div>
+</button>
