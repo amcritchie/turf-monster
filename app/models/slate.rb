@@ -126,6 +126,28 @@ class Slate < ApplicationRecord
     first..[last, first].max
   end
 
+  # Which sport this slate belongs to. Slate carries no sport column yet, so this
+  # matches the name — which is safe because slate names are operator-controlled
+  # and generated to a fixed convention ("NFL <year> Week <n>").
+  #
+  # Canonical home for this rule: ContestsController#sport_for_slate delegates
+  # here rather than keeping a second copy of the regex.
+  #
+  # Note `weeks?` — a span slate is named "Weeks 1-3", which a singular `week\s+\d`
+  # would miss (it only classifies today by also matching the "NFL" token).
+  def sport
+    downcased = name.to_s.downcase
+    return "nfl" if downcased.match?(/\bnfl\b|\bweeks?\s+\d/)
+
+    "fifa"
+  end
+
+  # Sport marker for the selector row, so a glance separates the football slates
+  # from the soccer ones.
+  def sport_emoji
+    sport == "nfl" ? "🏈" : "⚽"
+  end
+
   # Compact label for the slate selector. The competition + year prefix is
   # identical on every pill, so it earns nothing and makes each one wrap onto
   # three lines. Leaves "Week 1", "Weeks 1-3", "Round of 32", "Group 1".

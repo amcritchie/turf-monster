@@ -235,7 +235,7 @@
     <div class="flex flex-wrap gap-2 mb-6">
       <% @slates.each do |slate| %>
         <% active = slate.id == @slate.id %>
-        <%= link_to slate.selector_label, slate_path(slate),
+        <%= link_to "#{slate.sport_emoji} #{slate.selector_label}", slate_path(slate),
           class: "px-3 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all #{active ? 'bg-primary text-white' : 'bg-surface-alt text-secondary hover:text-heading'}" %>
       <% end %>
     </div>

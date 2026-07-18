@@ -55,6 +55,26 @@ class SlateSelectorTest < ActiveSupport::TestCase
     assert_equal "Custom Slate", slate!("Custom Slate").selector_label
   end
 
+  # --- sport marker -------------------------------------------------------
+
+  test "NFL slates are football, World Cup slates are soccer" do
+    assert_equal "🏈", slate!("NFL 2026 Week 1").sport_emoji
+    assert_equal "⚽", slate!("World Cup 2026 Round of 32").sport_emoji
+    assert_equal "⚽", slate!("World Cup 2026 Group 1").sport_emoji
+  end
+
+  test "a span slate is football even though it says Weeks, not Week" do
+    # `week\s+\d` (singular) misses "Weeks 1-3"; it only classified today by
+    # also matching the "NFL" token, so a span named without it would fall to
+    # soccer.
+    assert_equal "🏈", slate!("Weeks 1-3").sport_emoji
+    assert_equal "nfl", slate!("NFL 2026 Weeks 5-7").sport
+  end
+
+  test "an unrecognised slate falls back to soccer" do
+    assert_equal "⚽", slate!("Custom Slate").sport_emoji
+  end
+
   # --- ordering -----------------------------------------------------------
 
   test "a span sits immediately after the week it starts on" do
