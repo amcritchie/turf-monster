@@ -11,9 +11,26 @@ class Slate < ApplicationRecord
 
   has_many :slate_matchups, dependent: :destroy
   has_many :contests
+  has_many :contest_slates, dependent: :destroy
   has_many :nfl_team_total_projections, dependent: :nullify
 
   validates :name, presence: true
+
+  # Weekly slates in week order. Excludes the "Default" formula-holder row and
+  # any slate with no week (World Cup slates).
+  scope :weekly, -> { where.not(name: "Default").where.not(week: nil).order(:week) }
+
+  # The `count` consecutive weekly slates starting at this one — the span behind
+  # an "NFL Week 1-3" contest. Returns fewer than `count` when the season runs
+  # out, and refuses a gap (a missing week would silently shorten the span into
+  # a different contest than the operator asked for).
+  def consecutive_weeks(count)
+    return [self] if count.to_i <= 1 || week.blank?
+
+    wanted = (week...(week + count.to_i)).to_a
+    found = self.class.weekly.where(week: wanted).index_by(&:week)
+    wanted.take_while { |number| found.key?(number) }.map { |number| found[number] }
+  end
 
   def self.default_record
     find_by(name: "Default")

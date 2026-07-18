@@ -29,10 +29,20 @@ class Game < ApplicationRecord
     score_affected_contests!
   end
 
-  # Find all contests that include this game's matchups and re-score entries
+  # Find all contests that include this game's matchups and re-score entries.
+  #
+  # Matches on BOTH the anchor slate_id and the contest_slates span: a multi-week
+  # contest's Week 2/3 slates are never its anchor, so an anchor-only lookup
+  # would silently never re-score those weeks. The anchor leg is kept as a
+  # belt-and-braces for any contest lacking a join row.
   def score_affected_contests!
     slate_ids = SlateMatchup.where(game_slug: slug).pluck(:slate_id).uniq
-    Contest.where(slate_id: slate_ids, status: [:open]).find_each do |contest|
+    return if slate_ids.empty?
+
+    contest_ids = Contest.where(slate_id: slate_ids).ids |
+                  ContestSlate.where(slate_id: slate_ids).pluck(:contest_id)
+
+    Contest.where(id: contest_ids, status: [:open]).find_each do |contest|
       contest.score_entries!
     end
   end

@@ -4,6 +4,13 @@ class Contest < ApplicationRecord
   has_many :entries, dependent: :destroy
   has_many :messages, dependent: :destroy
   belongs_to :slate, optional: true
+
+  # A Turf Totals contest may span consecutive NFL weeks ("NFL Week 1-3").
+  # `slate` above stays the ANCHOR (position 1) — it defines the PICKABLE set of
+  # matchups and every pre-existing query still reads through it. These add the
+  # later weeks a pick also scores in.
+  has_many :contest_slates, -> { order(:position) }, dependent: :destroy, inverse_of: :contest
+  has_many :slates, through: :contest_slates
   belongs_to :user, optional: true
   has_one_attached :contest_image
 
@@ -68,6 +75,14 @@ class Contest < ApplicationRecord
   attr_accessor :skip_onchain_callback
   after_create :create_onchain_with_rollback!, unless: :skip_onchain_callback_active?
 
+  # The weeks this contest spans, carried from the create form through the
+  # signed Phantom payload to the after_create hook (the join rows can't be
+  # written until the contest has an id). Consumed by #sync_anchor_contest_slate.
+  # Does NOT affect #onchain_params — the on-chain Contest PDA has one
+  # lock_timestamp and it comes from the anchor week, so a 3-week contest builds
+  # byte-identical instruction data to a 1-week one.
+  attr_accessor :pending_week_slate_ids
+
   # OPSEC-023: bind each contest to the active season at creation. turf-vault
   # v0.13.0 stores season_id on the Contest PDA and rejects any entry whose
   # Season account doesn't match it, so entries must always pass this season.
@@ -90,8 +105,71 @@ class Contest < ApplicationRecord
       where(status: [:open, :settled]).order(created_at: :desc).first
   end
 
+  # The slates this contest spans, in week order. Falls back to the anchor so a
+  # contest whose join rows haven't been written yet (or a survivor contest with
+  # no slate at all) still answers sanely.
+  def week_slates
+    joined = contest_slates.map(&:slate)
+    joined.presence || [slate].compact
+  end
+
+  def weeks_count
+    week_slates.size
+  end
+
+  # "Week 3" / "Weeks 1-3" for headers and cards. Nil for slates with no week
+  # number (World Cup), so callers can fall back to the slate name.
+  def week_span_label
+    weeks = week_slates.map(&:week).compact
+    return nil if weeks.empty?
+
+    weeks.size == 1 ? "Week #{weeks.first}" : "Weeks #{weeks.first}-#{weeks.last}"
+  end
+
+  def multi_week?
+    weeks_count > 1
+  end
+
+  # The PICKABLE universe. Deliberately the anchor week only: a player picks six
+  # TEAMS once, and those teams ride every week of the span, so the choice is
+  # made from week 1's matchups. Keeping this anchored is what lets
+  # picks_required, toggle_selection!, and assert_enterable! stay untouched.
   def matchups
     slate.slate_matchups
+  end
+
+  # Every matchup a picked team plays across the whole span — one per week.
+  # This is the scoring set behind a single Selection.
+  def matchups_for_team(team_slug)
+    SlateMatchup.where(slate_id: week_slates.map(&:id), team_slug: team_slug)
+  end
+
+  # Whole-span matchups grouped by team, for callers that need MANY teams at
+  # once (the leaderboard renders six picks per entry — one query here instead
+  # of one per pick per row). Deliberately NOT memoized: the scoring path
+  # re-reads matchups right after goals change.
+  def matchups_by_team
+    SlateMatchup.where(slate_id: week_slates.map(&:id)).group_by(&:team_slug)
+  end
+
+  # Mirror the anchor into the join table so `week_slates` is uniform for every
+  # contest, including ones created through paths that only set slate_id.
+  after_create :sync_anchor_contest_slate
+
+  # Set the full span. Position 1 becomes the anchor (`slate_id`), which keeps
+  # the "slate_id is week 1" invariant the rest of the model relies on.
+  def assign_week_slates!(ids)
+    ordered = Array(ids).map(&:to_i).uniq.reject(&:zero?)
+    return if ordered.empty?
+
+    transaction do
+      update!(slate_id: ordered.first)
+      contest_slates.destroy_all
+      ordered.each_with_index do |slate_id, index|
+        contest_slates.create!(slate_id: slate_id, position: index + 1)
+      end
+    end
+    reload
   end
 
   def picks_required
@@ -599,6 +677,24 @@ class Contest < ApplicationRecord
   end
 
   private
+
+  # Every slate-backed contest gets a position-1 join row mirroring its anchor,
+  # so `week_slates` never has to special-case "created before the span existed".
+  # A multi-week contest overwrites this via #assign_week_slates!.
+  def sync_anchor_contest_slate
+    return if slate_id.blank?
+    return if contest_slates.exists?
+
+    # The anchor is authoritative: whatever the caller asked for, position 1 is
+    # always slate_id, so the "slate_id is week 1" invariant can't be violated
+    # by a mis-ordered request.
+    requested = Array(pending_week_slate_ids).map(&:to_i).uniq.reject(&:zero?)
+    ordered = [slate_id] + (requested - [slate_id])
+
+    ordered.each_with_index do |week_slate_id, index|
+      contest_slates.create!(slate_id: week_slate_id, position: index + 1)
+    end
+  end
 
   # NEUTRALIZE Sluggable's auto-derive. Sluggable runs `before_save :set_slug`,
   # which by default does `self.slug = name_slug` on EVERY save — that re-couples

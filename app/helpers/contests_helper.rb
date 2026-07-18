@@ -17,6 +17,29 @@ module ContestsHelper
   # picks-visibility rule above. When picks are hidden for the viewer,
   # the selections array is stripped from the entry's payload — every
   # other field is preserved so the block stays useful for debugging.
+  # Per-week breakdown for one pick in a multi-week contest, e.g.
+  # "W1 2.0 · W2 6.0 · W3 3.0 = 11.0 pts". An unplayed week (or a bye, which has
+  # no matchup at all) shows a dash rather than a zero, so "hasn't happened yet"
+  # reads differently from "was shut out".
+  #
+  # `weeks` and `by_team` are hoisted by the caller (contest.week_slates /
+  # contest.matchups_by_team) so rendering a full leaderboard stays two queries
+  # rather than two per pick.
+  def weekly_points_breakdown(selection, weeks:, by_team:)
+    pool = by_team[selection.slate_matchup.team_slug] || []
+    parts = weeks.map do |slate|
+      matchup = pool.find { |m| m.slate_id == slate.id }
+      value = if matchup&.goals.present? && matchup&.turf_score.present?
+        format("%.1f", matchup.goals * matchup.turf_score)
+      else
+        "—"
+      end
+      "W#{slate.week || '?'} #{value}"
+    end
+
+    "#{parts.join(' · ')} = #{format('%.1f', selection.points.to_f)} pts"
+  end
+
   def contest_debug_entries(entries, contest = @contest)
     entries.map do |entry|
       if picks_visible_for?(entry, contest)

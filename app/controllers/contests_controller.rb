@@ -148,6 +148,13 @@ class ContestsController < ApplicationController
     unless Contest.selectable_formats.key?(contest.contest_type)
       return render_create_error("Unknown or unavailable contest format")
     end
+    # onchain_params falls back to `lock_timestamp: 0` when no start can be
+    # resolved, which would put a contest on chain that never locks. Weekly NFL
+    # slates carry no game times, so this is reachable from the form — refuse it
+    # rather than mint an unlockable contest.
+    if contest.turf_totals? && contest.starts_in_at.blank?
+      return render_create_error("Set a lock time — the selected slate has no scheduled game times.")
+    end
     if (err = onchain_create_precheck(contest, current_user))
       return render_create_error(err)
     end
@@ -1663,9 +1670,30 @@ class ContestsController < ApplicationController
       c.entry_fee_cents = config[:entry_fee_cents]
       c.max_entries     = config[:max_entries]
       c.status          = :open
+      # A multi-week contest anchors on its FIRST week: that slate defines the
+      # pickable matchups AND the single lock at week-one kickoff.
+      week_slate_ids    = requested_week_slate_ids
+      c.slate_id        ||= week_slate_ids.first
+      c.pending_week_slate_ids = week_slate_ids
       c.starts_at       ||= default_start_for_slate(c.slate)
       c.season_id       ||= SeasonConfig.current_season_id
     end
+  end
+
+  # The span the operator picked, resolved server-side into CONSECUTIVE weekly
+  # slates starting at the chosen anchor. Resolving here (rather than trusting a
+  # list of slate ids from the form) is what guarantees "Week 1-3" is actually
+  # weeks 1, 2, 3 and not an arbitrary three slates.
+  #
+  # A span of 1 returns [] so the single-week path stays byte-identical.
+  def requested_week_slate_ids
+    span = params.dig(:contest, :week_span).to_i
+    return [] if span <= 1
+
+    anchor = Slate.find_by(id: params.dig(:contest, :slate_id))
+    return [] if anchor.nil?
+
+    anchor.consecutive_weeks(span).map(&:id)
   end
 
   # Reconstruct an unpersisted Contest from the signed create payload so its
@@ -1691,6 +1719,7 @@ class ContestsController < ApplicationController
       name:                       payload[:name],
       slug:                       payload[:slug],
       slate_id:                   payload[:slate_id],
+      pending_week_slate_ids:     payload[:week_slate_ids],
       contest_type:               payload[:contest_type],
       starts_at:                  payload[:starts_at],
       locks_at_date_selected:     payload[:locks_at_date_selected],
@@ -1836,6 +1865,10 @@ class ContestsController < ApplicationController
       slug:                       contest.slug,
       name:                       contest.name,
       slate_id:                   contest.slate_id,
+      # The full week span rides the SIGNED token so finalize can't be handed a
+      # different set of weeks than the operator saw. It does not feed
+      # onchain_params, so the TX rebuilt in #rebuild_create_tx is unaffected.
+      week_slate_ids:             Array(contest.pending_week_slate_ids),
       contest_type:               contest.contest_type,
       starts_at:                  contest.starts_at&.iso8601,
       locks_at_date_selected:     contest.locks_at_date_selected,
@@ -2041,8 +2074,16 @@ class ContestsController < ApplicationController
     params.require(:contest).permit(:name, :slug, :slate_id, :contest_type, :season_id, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
   end
 
+  # Slates an operator may build a contest on. Weekly NFL slates carry a `week`
+  # but no starts_at (the projections feed has no kickoff times), so they'd been
+  # invisible to this form entirely — include them and order them by week after
+  # the dated slates. #create refuses a contest whose lock time can't be
+  # resolved, so a slate with no game times still can't produce a lock_timestamp
+  # of 0 on-chain.
   def contest_slate_options
-    Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at)
+    Slate.where.not(name: "Default")
+         .where("starts_at IS NOT NULL OR week IS NOT NULL")
+         .order(Arel.sql("starts_at ASC NULLS LAST"), :week)
   end
 
   def default_start_for_slate(slate)

@@ -126,6 +126,9 @@ module Nfl
     def ensure_slate!(week:)
       slate = Slate.find_or_initialize_by(name: "NFL #{@year} Week #{week}")
       @slates_created += 1 if slate.new_record?
+      # Record the week as data, not just as a substring of the name — it's what
+      # multi-week contests order and validate consecutiveness on.
+      slate.week = week
       slate.save!
       slate
     end
