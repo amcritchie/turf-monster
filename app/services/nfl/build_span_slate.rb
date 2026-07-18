@@ -31,8 +31,25 @@ module Nfl
 
       sources = source_slates
       slate = ensure_slate!
-      rebuild_matchups!(slate, sources)
-      freeze_rankings!(slate)
+
+      # A span slate is FROZEN once it backs any pick, and it is deterministic
+      # for a given (year, weeks) — so an already-built one is correct to reuse
+      # AS-IS. Rebuilding it would destroy_all its matchups (SlateMatchup
+      # has_many :selections, dependent: :destroy, so the wipe cascades to live
+      # Selections) and re-freeze would re-price a locked pick off refreshed
+      # source projections. A SECOND contest on the same span (a normal
+      # multi-tier GTM pattern) must not wipe or re-price the first's live
+      # entries — their USDC settlement is on-chain. Never destroy_all matchups
+      # that back existing Selections.
+      return slate.reload if slate.slate_matchups.joins(:selections).exists?
+
+      # Rebuild + freeze are one unit: a partial rebuild must not leave a
+      # half-wiped or unranked slate that a contest could then be priced on.
+      ActiveRecord::Base.transaction do
+        rebuild_matchups!(slate, sources)
+        freeze_rankings!(slate)
+      end
+
       slate.reload
     end
 

@@ -119,6 +119,42 @@ class ContestWeekSpanTest < ActionDispatch::IntegrationTest
     assert_equal 6, span.slate_matchups.count
   end
 
+  # --- frozen-slate guard: real-funds payout integrity --------------------
+  #
+  # #create runs BuildSpanSlate.call on EVERY span create, and the span slate is
+  # REUSED by (year, anchor-week, span) via find_or_create_by!. A rebuild does
+  # slate.slate_matchups.destroy_all, and SlateMatchup has_many :selections,
+  # dependent: :destroy — so a SECOND contest on the same span (a normal
+  # multi-tier GTM pattern) would cascade-delete the FIRST live contest's
+  # Selections. Those entries would then hold zero picks, settle to 0, and pay
+  # the wrong USDC on live mainnet. The guard freezes a span slate once it backs
+  # any pick: it is deterministic for a (year, weeks), so reuse it AS-IS.
+
+  test "a fresh span with no picks still builds its matchups" do
+    span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+
+    assert_equal 6, span.slate_matchups.count, "first build populates the pool"
+  end
+
+  test "a second span build preserves the first contest's live picks" do
+    first = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+
+    # A real pick on the first contest: a Selection on one of the span's rows.
+    picked = first.matchups_by_team["team-a"].first
+    selection = Selection.create!(entry: entries(:one), slate_matchup: picked)
+    frozen_score = picked.turf_score
+
+    # A SECOND contest on the SAME year+anchor-week+span reuses the slate.
+    second = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+
+    assert_equal first.id, second.id, "the span slate is reused, not duplicated"
+    assert Selection.exists?(selection.id), "the first contest's live pick must survive"
+    assert_equal picked.id, selection.reload.slate_matchup_id, "and stay linked to its matchup"
+    assert_equal 1, Selection.where(slate_matchup: SlateMatchup.where(slate_id: first.id)).count
+    assert_equal 6, second.slate_matchups.count, "the frozen slate's rows are untouched"
+    assert_equal frozen_score, picked.reload.turf_score, "and its frozen multiplier is not re-priced"
+  end
+
   test "a contest on a span slate is multi-week and labels its span" do
     span = Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
     contest = contests(:one)
