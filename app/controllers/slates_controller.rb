@@ -27,6 +27,14 @@ class SlatesController < ApplicationController
         line: line
       }
     end
+
+    # NFL rank-curve section; nil (section hidden) until the historical
+    # dataset ships in this environment.
+    @nfl_distribution = begin
+      Nfl::PointsDistribution.call
+    rescue ArgumentError
+      nil
+    end
   end
 
   def show
