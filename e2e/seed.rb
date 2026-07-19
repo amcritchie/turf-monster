@@ -106,6 +106,32 @@ contest.update!(onchain_contest_id: nil)
 # smoke specs that navigate to `/` expecting selection cards.
 SeasonConfig.set_main_contest!(contest)
 
+# ── Multi-week span contest (NFL Weeks 15-17) ────────────────────────
+# Played on ONE span slate holding all three weeks, which is what freezes the
+# per-team multiplier. Backs e2e/multi_week_contest.spec.js.
+begin
+  span_15_17 = Nfl::BuildSpanSlate.call(year: 2026, weeks: [15, 16, 17])
+
+  multi_week = Contest.new(
+    name: "NFL Weeks 15-17",
+    entry_fee_cents: 1900,
+    status: "open",
+    max_entries: 30,
+    contest_type: "standard",
+    # Future start: the board (not the leaderboard) must render, with picks
+    # selectable rather than locked.
+    starts_at: 1.week.from_now,
+    slate: span_15_17,
+    rank: 110
+  )
+  multi_week.skip_onchain_callback = true
+  multi_week.save!
+  multi_week.update_column(:slug, "nfl-weeks-15-17") unless multi_week.slug == "nfl-weeks-15-17"
+  multi_week.update!(onchain_contest_id: nil)
+rescue Nfl::BuildSpanSlate::Error => e
+  warn "skipping Weeks 15-17 span contest: #{e.message}"
+end
+
 # ── World Cup Survivor ───────────────────────────────────────────────
 # 8 global rounds; round 1 reuses the standard fixture slate's games.
 survivor_rounds = [
@@ -188,32 +214,15 @@ GeoSetting.create!(
   banned_states: GeoSetting::DEFAULT_BANNED_STATES
 )
 
-# ── Multi-week slate (NFL Weeks 1-3) ─────────────────────────────────
+# ── Multi-week span slate (NFL Weeks 1-3) ────────────────────────────
 # A Slate is a POOL OF GAMES: this one holds three weeks, so each team appears
-# three times and is ranked on its SUMMED expected points. Backs
-# e2e/multi_week_slate.spec.js. Guarded on the three weeks existing.
-span_source_weeks = Slate.where(name: ["NFL 2026 Week 1", "NFL 2026 Week 2", "NFL 2026 Week 3"]).to_a
-if span_source_weeks.size == 3
-  span_slate = Slate.find_or_create_by!(name: "NFL 2026 Weeks 1-3") { |s| s.slug = "nfl-2026-weeks-1-3" }
-  span_slate.slate_matchups.destroy_all
-
-  span_source_weeks.each do |week_slate|
-    week_slate.slate_matchups.each do |week_matchup|
-      span_slate.slate_matchups.create!(
-        team_slug: week_matchup.team_slug,
-        opponent_team_slug: week_matchup.opponent_team_slug,
-        game_slug: week_matchup.game_slug,
-        dk_goals_expectation: week_matchup.dk_goals_expectation,
-        status: "pending"
-      )
-    end
-  end
-
-  span_rankings = span_slate.team_rankings
-  span_slate.slate_matchups.find_each do |span_matchup|
-    ranking = span_rankings[span_matchup.team_slug]
-    span_matchup.update!(rank: ranking[:rank], turf_score: ranking[:turf_score]) if ranking
-  end
+# three times, is ranked on its SUMMED expected points, and carries a FROZEN
+# turf_score on every row. Built through the real service so the seed cannot
+# drift from production behaviour. Backs e2e/multi_week_slate.spec.js.
+begin
+  Nfl::BuildSpanSlate.call(year: 2026, weeks: [1, 2, 3])
+rescue Nfl::BuildSpanSlate::Error => e
+  warn "skipping Weeks 1-3 span slate: #{e.message}"
 end
 
 puts "Seeded: #{User.count} users, #{Team.count} teams, #{Slate.count} slates, " \

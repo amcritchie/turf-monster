@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_18_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_18_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -472,8 +472,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_18_140000) do
     t.string "team_slug", null: false
     t.decimal "turf_score", precision: 3, scale: 1
     t.datetime "updated_at", null: false
+    t.integer "week"
     t.index ["game_slug"], name: "index_slate_matchups_on_game_slug"
     t.index ["slate_id", "team_slug", "game_slug"], name: "index_slate_matchups_on_slate_team_and_game", unique: true
+    t.index ["slate_id", "week"], name: "index_slate_matchups_on_slate_id_and_week"
     t.index ["slate_id"], name: "index_slate_matchups_on_slate_id"
     t.index ["slug"], name: "index_slate_matchups_on_slug", unique: true
     t.index ["status"], name: "index_slate_matchups_on_status"

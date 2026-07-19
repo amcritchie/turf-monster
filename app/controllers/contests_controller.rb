@@ -148,6 +148,19 @@ class ContestsController < ApplicationController
     unless Contest.selectable_formats.key?(contest.contest_type)
       return render_create_error("Unknown or unavailable contest format")
     end
+    # A requested span that could not be assembled (a gap, or a week with no
+    # slate) must REFUSE, not fall back to a shorter contest — the on-chain fees
+    # and prize pool are sized for the span the operator asked for.
+    if @span_slate_error.present?
+      return render_create_error(@span_slate_error)
+    end
+    # onchain_params falls back to `lock_timestamp: 0` when no start can be
+    # resolved, which would put a contest on chain that never locks. Weekly NFL
+    # slates carry no game times, so this is reachable from the form — refuse it
+    # rather than mint an unlockable contest.
+    if contest.turf_totals? && contest.starts_in_at.blank?
+      return render_create_error("Set a lock time — the selected slate has no scheduled game times.")
+    end
     if (err = onchain_create_precheck(contest, current_user))
       return render_create_error(err)
     end
@@ -1663,9 +1676,39 @@ class ContestsController < ApplicationController
       c.entry_fee_cents = config[:entry_fee_cents]
       c.max_entries     = config[:max_entries]
       c.status          = :open
+      # A multi-week contest is played on ONE span slate holding every week's
+      # games. Resolving it here means slate_id stays a plain scalar FK and the
+      # frozen per-team turf_score on that slate is what prices and settles.
+      span = resolve_span_slate(c)
+      c.slate_id = span.id if span
       c.starts_at       ||= default_start_for_slate(c.slate)
       c.season_id       ||= SeasonConfig.current_season_id
     end
+  end
+
+  # Resolve the operator's "N weeks from this anchor" into the ONE span slate the
+  # contest is played on, building it if it doesn't exist yet.
+  #
+  # Nfl::BuildSpanSlate RAISES on a gap or a missing week rather than returning a
+  # shorter span. That matters: a silently-truncated span was minted on-chain
+  # with three-week fees and a three-week prize pool, then scored as one week.
+  # `span_slate_error` carries the message so #create can refuse.
+  #
+  # A span of 1 returns nil, leaving the plain slate_id select untouched.
+  def resolve_span_slate(contest)
+    span = params.dig(:contest, :week_span).to_i
+    return nil if span <= 1
+
+    anchor = Slate.find_by(id: params.dig(:contest, :slate_id)) || contest.slate
+    return nil if anchor.nil? || anchor.week.blank?
+
+    year = anchor.name[/\b(\d{4})\b/, 1] || Time.current.year
+    weeks = (anchor.week...(anchor.week + span)).to_a
+
+    Nfl::BuildSpanSlate.call(year: year, weeks: weeks)
+  rescue Nfl::BuildSpanSlate::Error => e
+    @span_slate_error = e.message
+    nil
   end
 
   # Reconstruct an unpersisted Contest from the signed create payload so its
@@ -2041,8 +2084,16 @@ class ContestsController < ApplicationController
     params.require(:contest).permit(:name, :slug, :slate_id, :contest_type, :season_id, :starts_at, :contest_image, :locks_at_date_selected, :locks_at_time_selected, :locks_at_timezone_selected)
   end
 
+  # Slates an operator may build a contest on. Weekly NFL slates carry a `week`
+  # but no starts_at (the projections feed has no kickoff times), so they'd been
+  # invisible to this form entirely — include them and order them by week after
+  # the dated slates. #create refuses a contest whose lock time can't be
+  # resolved, so a slate with no game times still can't produce a lock_timestamp
+  # of 0 on-chain.
   def contest_slate_options
-    Slate.where.not(name: "Default").where.not(starts_at: nil).order(:starts_at)
+    Slate.where.not(name: "Default")
+         .where("starts_at IS NOT NULL OR week IS NOT NULL")
+         .order(Arel.sql("starts_at ASC NULLS LAST"), :week)
   end
 
   def default_start_for_slate(slate)

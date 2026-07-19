@@ -15,6 +15,37 @@ class Slate < ApplicationRecord
 
   validates :name, presence: true
 
+  # Weekly slates in week order. Excludes the "Default" formula-holder row and
+  # any slate with no week (World Cup slates).
+  scope :weekly, -> { where.not(name: "Default").where.not(week: nil).order(:week) }
+
+  # The `count` consecutive weekly slates starting at this one — the span behind
+  # an "NFL Week 1-3" contest. Returns fewer than `count` when the season runs
+  # out, and refuses a gap (a missing week would silently shorten the span into
+  # a different contest than the operator asked for).
+  #
+  # Scoped to THIS slate's season (parsed from the name). Week numbers recur
+  # every year, so a lookup on week alone would let an "NFL 2025 Week 2" slate
+  # slot into a 2026 span — wrong-season matchups priced and settled on-chain.
+  def consecutive_weeks(count)
+    return [self] if count.to_i <= 1 || week.blank?
+
+    wanted = (week...(week + count.to_i)).to_a
+    found = self.class.weekly.where(week: wanted)
+                .select { |slate| slate.season_year == season_year }
+                .index_by(&:week)
+    wanted.take_while { |number| found.key?(number) }.map { |number| found[number] }
+  end
+
+  # The season a weekly slate belongs to, read as the 4-digit year in its name
+  # ("NFL 2026 Week 1" → "2026"). slates carry a week but no season/year column,
+  # so the year lives in the name. Nil when the name carries no year — those
+  # slates scope only to other year-less slates, never cross-matching a dated
+  # one. Bounded to 20xx so a stray week number can't read as a year.
+  def season_year
+    name.to_s[/\b(20\d{2})\b/, 1]
+  end
+
   def self.default_record
     find_by(name: "Default")
   end
@@ -80,18 +111,35 @@ class Slate < ApplicationRecord
   # those earn. Ordered by rank.
   TeamRow = Data.define(:team_slug, :team, :matchups, :expected_points, :rank, :turf_score)
 
+  # Reads the STORED rank/turf_score off the matchups — the same values
+  # Selection#compute_points! settles from — rather than recomputing.
+  #
+  # This is load-bearing, not a preference. Rendering from a live #team_rankings
+  # call made the page disagree with settlement in three ways:
+  #   * World Cup slates never set dk_goals_expectation, so a live ranking ties
+  #     everything and falls through to alphabetical — the favourite rendered as
+  #     the 3.0x longshot, exactly inverted from how it actually scores.
+  #   * The admin drag-to-reorder wrote stored ranks the page then ignored, so it
+  #     was write-only under a "Rankings saved!" flash.
+  #   * A manual multiplier override was invisible for the same reason.
+  # Compute at rank time, store, read stored everywhere.
+  #
+  # Falls back to a computed ranking ONLY when nothing is stored yet (a slate
+  # built but never ranked), so a fresh slate still renders in a sane order.
   def team_rows
-    rankings = team_rankings
+    by_team = matchups_by_team
+    fallback = by_team.values.all? { |matchups| matchups.first.rank.nil? } ? team_rankings : {}
 
-    rows = matchups_by_team.map do |team_slug, matchups|
-      ranking = rankings[team_slug] || {}
+    rows = by_team.map do |team_slug, matchups|
+      anchor = matchups.first
+      computed = fallback[team_slug] || {}
       TeamRow.new(
         team_slug: team_slug,
-        team: matchups.first.team,
+        team: anchor.team,
         matchups: matchups,
         expected_points: matchups.sum { |matchup| matchup.dk_goals_expectation.to_f },
-        rank: ranking[:rank],
-        turf_score: ranking[:turf_score]
+        rank: anchor.rank || computed[:rank],
+        turf_score: anchor.turf_score || computed[:turf_score]
       )
     end
 
@@ -146,6 +194,14 @@ class Slate < ApplicationRecord
   # from the soccer ones.
   def sport_emoji
     sport == "nfl" ? "🏈" : "⚽"
+  end
+
+  # "Week 3" / "Weeks 1-3" for contest headers and cards.
+  def week_range_label
+    range = week_range
+    return nil if range.nil?
+
+    range.size == 1 ? "Week #{range.first}" : "Weeks #{range.first}-#{range.last}"
   end
 
   # Compact label for the slate selector. The competition + year prefix is
