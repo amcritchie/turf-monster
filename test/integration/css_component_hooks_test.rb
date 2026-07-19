@@ -1,0 +1,68 @@
+require "test_helper"
+
+# Component tier for the application.css dedupe (task
+# dedupe-turf-application-css). The refactor deleted duplicate CSS
+# definitions; the surviving copies style class hooks that live in rendered
+# markup. These tests pin the markup <-> stylesheet contract from the
+# component side: the partials still emit every hook class, and the
+# stylesheet source still defines styling for each of them — so deleting
+# either half (or deleting the wrong duplicate) goes red here, not in QA.
+class CssComponentHooksTest < ActionDispatch::IntegrationTest
+  CSS = File.read(Rails.root.join("app/assets/tailwind/application.css"))
+
+  test "hold button partial renders every hook the hold-btn utility styles" do
+    html = ApplicationController.render(partial: "shared/hold_button")
+    doc = Nokogiri::HTML::DocumentFragment.parse(html)
+
+    button = doc.at_css("button.hold-btn")
+    assert button, "hold button must render with the .hold-btn class"
+
+    assert doc.at_css(".hold-btn > .hold-icon > svg.progress circle"), "progress ring markup"
+    assert doc.at_css(".hold-btn > .hold-icon > svg.tick polyline"), "tick markup"
+    assert_equal 4, doc.css(".hold-btn ul.hold-text > li").size,
+      "sliding text needs 4 slots (default/hold/success/error)"
+    assert doc.at_css(".hold-btn .nudge-debug .countdown-num"), "debug countdown markup"
+
+    # The styling for all of the above lives INSIDE @utility hold-btn (the
+    # dedupe deleted the bare hold-icon/hold-text/state utilities).
+    assert_includes CSS, "@utility hold-btn", "@utility hold-btn must define the component"
+    %w[.hold-icon .hold-text .nudge-debug].each do |hook|
+      assert_match(/@utility hold-btn \{.*#{Regexp.escape(hook)}/m, CSS,
+        "#{hook} must be styled within @utility hold-btn")
+    end
+  end
+
+  test "gear sidebar renders the nav emoji swap hooks the stylesheet styles" do
+    log_in_as(users(:alex))
+    get account_path
+    assert_response :success
+
+    doc = Nokogiri::HTML5.parse(response.body)
+    swap = doc.at_css(".group .nav-emoji-swap")
+    assert swap, "gear sidebar rows must render .nav-emoji-swap inside a .group row"
+    assert swap.at_css(".nav-emoji-base"), "base emoji span"
+    assert swap.at_css(".nav-emoji-hover"), "hover emoji span"
+
+    # One surviving definition block styles the swap (hover slide keyed on .group).
+    assert_includes CSS, ".nav-emoji-swap {", "stylesheet must define .nav-emoji-swap"
+    assert_includes CSS, ".group:hover .nav-emoji-hover", "hover reveal rule must survive"
+  end
+
+  test "dev-mode debug paint stays scoped and its markup hooks stay styled" do
+    log_in_as(users(:alex))
+    get account_path
+    assert_response :success
+
+    # The layout binds .dev-mode via Alpine on <body>; the dm-* hooks in the
+    # navbar markup must keep a scoped definition (never bare/unscoped).
+    assert_includes response.body, "'dev-mode': $store.devMode"
+    doc = Nokogiri::HTML5.parse(response.body)
+    dm_classes = doc.css("[class*='dm-']").flat_map { |el| el["class"].split }
+                    .grep(/\Adm-[a-z]+\z/).uniq
+    assert_not_empty dm_classes, "expected dm-* diagnostic hooks in the chrome markup"
+    dm_classes.each do |cls|
+      assert_match(/@utility #{Regexp.escape(cls)} \{(?:\s*\/\*.*?\*\/)*\s*\.dev-mode &/m, CSS,
+        "#{cls} must be defined scoped under .dev-mode")
+    end
+  end
+end

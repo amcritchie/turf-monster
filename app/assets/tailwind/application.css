@@ -20,11 +20,6 @@
   }
 }
 
-@utility px-1 {
-  padding-left: 0.25rem;
-  padding-right: 0.25rem;
-}
-
 @utility lp-splash {
   /* Landing-page splash text overrides. The dark-background splash
      partials (landing_pages/backgrounds/{_blobs,_circles,_gradient}) force
@@ -537,279 +532,6 @@
   }
 }
 
-@utility nudge {
-  &.hold-btn {
-    animation: hold-nudge 0.5s ease-in-out 1;
-  }
-}
-
-@utility nudge-soft {
-  &.hold-btn {
-    animation: hold-nudge-soft 0.4s ease-in-out 1;
-  }
-}
-
-@utility hold-icon {
-  /* Progress circle */
-  .hold-btn > & {
-    position: absolute;
-    top: 50%;
-    left: 14px;
-    width: 20px;
-    height: 20px;
-    margin-top: -10px;
-    border-radius: 50%;
-    background: var(--progress-border);
-    opacity: var(--icon-o, 0);
-    transform: translateX(var(--icon-x, -4px));
-    transition:
-      transform 0.3s,
-      opacity 0.2s;
-  }
-  .hold-btn > &::before {
-    content: '';
-    width: 16px;
-    height: 16px;
-    left: 2px;
-    top: 2px;
-    z-index: 1;
-    position: absolute;
-    background: var(--bg);
-    border-radius: inherit;
-    transform: scale(var(--bg-scale, 1));
-    transition: transform 0.32s ease;
-  }
-  .hold-btn > & svg {
-    display: block;
-    fill: none;
-    width: 20px;
-    height: 20px;
-  }
-  .hold-btn > & svg.progress {
-    transform: rotate(-90deg) scale(var(--progress-scale, 1));
-    transition: transform 0.5s ease;
-  }
-  .hold-btn > & svg.progress circle {
-    stroke-dashoffset: 1;
-    stroke-dasharray: var(--progress-array, 0) 52;
-    stroke-width: 16;
-    stroke: var(--progress-active);
-    transition: stroke-dasharray var(--duration) linear;
-  }
-  .hold-btn > & svg.tick {
-    position: absolute;
-    left: 0;
-    top: 0;
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke: var(--tick-stroke);
-    transition: stroke 0.3s ease 0.7s;
-  }
-  .hold-btn > & svg.tick polyline {
-    stroke-dasharray: 18 18 18;
-    stroke-dashoffset: var(--tick-offset, 18);
-    transition: stroke-dashoffset 0.4s ease 0.7s;
-  }
-  .hold-btn.success > & svg.progress {
-    animation: hold-tick 0.3s linear forwards 0.4s;
-  }
-  .hold-btn.loading > & {
-    background: transparent;
-  }
-  .hold-btn.loading > &::before {
-    display: none;
-  }
-  .hold-btn.loading > & svg.progress {
-    animation: hold-spinner 0.8s linear infinite;
-    transition: none;
-  }
-  .hold-btn.loading > & svg.progress circle {
-    stroke-width: 3;
-    stroke-dasharray: 30 21;
-    stroke-dashoffset: 0;
-    stroke: rgb(var(--color-primary-rgb));
-    transition: none;
-  }
-}
-
-@utility hold-text {
-  /* Sliding text */
-  .hold-btn & {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    text-align: center;
-    pointer-events: none;
-    position: relative;
-    backface-visibility: hidden;
-    transition: transform 0.3s;
-    transform: translate3d(var(--ul-x, 0), 0, 0);
-  }
-  .hold-btn & li {
-    backface-visibility: hidden;
-    transform: translateY(var(--ul-y, 0));
-    transition:
-      transform 0.3s ease 0.16s,
-      opacity 0.2s ease 0.16s;
-  }
-  .hold-btn & li:not(:first-child) {
-    position: absolute;
-    left: 0;
-    right: 0;
-  }
-  .hold-btn & li:nth-child(1) {
-    top: 0;
-    opacity: var(--ul-o-1, 1);
-  }
-  .hold-btn & li:nth-child(2) {
-    top: 100%;
-    opacity: var(--ul-o-2, 0);
-  }
-  .hold-btn & li:nth-child(3) {
-    top: 200%;
-    opacity: var(--ul-o-3, 0);
-  }
-  .hold-btn & li:nth-child(4) {
-    top: 300%;
-    opacity: var(--ul-o-4, 0);
-  }
-}
-
-@utility process {
-  &.hold-btn {
-    animation: none;
-  }
-
-  /* State: process (holding) */
-  &.hold-btn {
-    --icon-x: 0;
-    --ul-y: -100%;
-    --ul-o-1: 0;
-    --ul-o-2: 1;
-    --ul-o-3: 0;
-    --bg: var(--color-page, #1e1b35);
-    border-color: rgb(var(--color-primary-rgb) / 0.7);
-    box-shadow:
-      0 0 30px rgb(var(--color-primary-rgb) / 0.45),
-      0 0 80px rgb(var(--color-primary-rgb) / 0.25),
-      0 0 120px rgb(var(--color-primary-rgb) / 0.1),
-      inset 0 0 40px rgb(var(--color-primary-rgb) / 0.1);
-    transition:
-      transform 0.3s,
-      box-shadow 2.5s ease-out,
-      border-color 1s,
-      background 0.5s;
-  }
-  &.hold-btn {
-    --ul-x: 8px;
-    --icon-o: 1;
-    --progress-array: 52;
-  }
-  &.hold-btn .nudge-debug {
-    opacity: 0;
-  }
-}
-
-@utility success {
-  & .hold-btn {
-    animation: none;
-  }
-  & .hold-btn {
-    --ul-x: 8px;
-    --icon-o: 1;
-    --progress-array: 52;
-  }
-
-  /* State: success */
-  &.hold-btn {
-    --scale: 1.03;
-    --icon-x: 6px;
-    --progress-border: none;
-    --progress-scale: 0.11;
-    --tick-stroke: var(--progress-success);
-    --bg-scale: 0;
-    --tick-offset: 36;
-    --ul-y: -200%;
-    --ul-o-1: 0;
-    --ul-o-2: 0;
-    --ul-o-3: 1;
-    border-color: #06d6a0;
-    background: linear-gradient(135deg, #025e40, #06d6a0);
-    --color: #fff;
-    box-shadow:
-      0 0 40px rgba(6, 214, 160, 0.7),
-      0 0 100px rgba(6, 214, 160, 0.4),
-      0 0 160px rgba(6, 214, 160, 0.15);
-    animation: hold-glow-pulse 0.8s ease-in-out 1;
-  }
-  &.hold-btn > .hold-icon svg.progress {
-    animation: hold-tick 0.3s linear forwards 0.4s;
-  }
-  & .hold-btn .nudge-debug {
-    opacity: 0;
-  }
-}
-
-@utility error {
-  /* State: error */
-  &.hold-btn {
-    --ul-x: 0;
-    --icon-o: 0;
-    --ul-y: -300%;
-    --ul-o-1: 0;
-    --ul-o-2: 0;
-    --ul-o-3: 0;
-    --ul-o-4: 1;
-    --bg: var(--color-danger, #ef4444);
-    border-color: rgba(239, 68, 68, 0.7);
-    box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
-    animation: none;
-    cursor: default;
-  }
-}
-
-@utility loading {
-  /* State: loading — hold completed, submission in flight, waiting for
-     server confirmation. Keeps the green glow from .process so the user
-     sees continuity, but swaps the filled progress ring for a spinning
-     arc so the visual reads as "still working" rather than "done". */
-  &.hold-btn {
-    --icon-x: 0;
-    --ul-y: -100%;
-    --ul-o-1: 0;
-    --ul-o-2: 1;
-    --ul-o-3: 0;
-    --bg: var(--color-page, #1e1b35);
-    --ul-x: 8px;
-    --icon-o: 1;
-    border-color: rgb(var(--color-primary-rgb) / 0.7);
-    box-shadow:
-      0 0 30px rgb(var(--color-primary-rgb) / 0.45),
-      0 0 80px rgb(var(--color-primary-rgb) / 0.25),
-      0 0 120px rgb(var(--color-primary-rgb) / 0.1),
-      inset 0 0 40px rgb(var(--color-primary-rgb) / 0.1);
-    cursor: default;
-  }
-  &.hold-btn > .hold-icon {
-    background: transparent;
-  }
-  &.hold-btn > .hold-icon::before {
-    display: none;
-  }
-  &.hold-btn > .hold-icon svg.progress {
-    animation: hold-spinner 0.8s linear infinite;
-    transition: none;
-  }
-  &.hold-btn > .hold-icon svg.progress circle {
-    stroke-width: 3;
-    stroke-dasharray: 30 21;
-    stroke-dashoffset: 0;
-    stroke: rgb(var(--color-primary-rgb));
-    transition: none;
-  }
-}
-
 @utility cta-spinner {
   /* Reusable CTA spinner — a simple border spinner for any modal button in a
      pending state (e.g. the username modal's "Saving…"). Uses currentColor so
@@ -883,58 +605,6 @@
   }
   .hold-btn.success & {
     opacity: 0;
-  }
-}
-
-@utility dev-mode {
-  & .nudge-debug {
-    display: block;
-  }
-
-  /* ── Dev Mode Debug Colors ──
-     `!important` is intentional here: these are diagnostic overlays
-     applied via `.dm-{color}` classes on arbitrary elements, and they
-     must override whatever the element's own background is. Scoped to
-     `.dev-mode` (toggled by Alpine $store.devMode) so production users
-     never see them. Don't refactor — `!important` is the right tool for
-     "diagnostic paint on top of everything." */
-  & .dm-blue {
-    background: rgba(100, 149, 237, 0.75) !important;
-  } /* cornflowerblue */
-  & .dm-green {
-    background: rgba(144, 238, 144, 0.75) !important;
-  } /* lightgreen */
-  & .dm-orange {
-    background: rgba(244, 164, 96, 0.75) !important;
-  } /* sandybrown */
-  & .dm-salmon {
-    background: rgba(250, 128, 114, 0.75) !important;
-  } /* lightsalmon */
-  & .dm-purple {
-    background: rgba(128, 0, 128, 0.75) !important;
-  } /* purple */
-  & .dm-coral {
-    background: rgba(240, 128, 128, 0.75) !important;
-  } /* lightcoral */
-  & .dm-yellow {
-    background: rgba(240, 230, 140, 0.75) !important;
-  } /* khaki */
-  & .dm-teal {
-    background: rgba(175, 238, 238, 0.75) !important;
-  }
-}
-
-@utility countdown-num {
-  .nudge-debug & {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 800;
-    color: #f6f8ff;
-    font-family: ui-monospace, monospace;
   }
 }
 
@@ -1196,63 +866,62 @@
      `.dev-mode` (toggled by Alpine $store.devMode) so production users
      never see them. Don't refactor — `!important` is the right tool for
      "diagnostic paint on top of everything." */
+  /* cornflowerblue */
   .dev-mode & {
     background: rgba(100, 149, 237, 0.75) !important;
   }
 }
 
 @utility dm-green {
-  /* cornflowerblue */
+  /* lightgreen */
   .dev-mode & {
     background: rgba(144, 238, 144, 0.75) !important;
   }
 }
 
 @utility dm-orange {
-  /* lightgreen */
+  /* sandybrown */
   .dev-mode & {
     background: rgba(244, 164, 96, 0.75) !important;
   }
 }
 
 @utility dm-salmon {
-  /* sandybrown */
+  /* lightsalmon */
   .dev-mode & {
     background: rgba(250, 128, 114, 0.75) !important;
   }
 }
 
 @utility dm-purple {
-  /* lightsalmon */
+  /* purple */
   .dev-mode & {
     background: rgba(128, 0, 128, 0.75) !important;
   }
 }
 
 @utility dm-coral {
-  /* purple */
+  /* lightcoral */
   .dev-mode & {
     background: rgba(240, 128, 128, 0.75) !important;
   }
 }
 
 @utility dm-yellow {
-  /* lightcoral */
+  /* khaki */
   .dev-mode & {
     background: rgba(240, 230, 140, 0.75) !important;
   }
 }
 
 @utility dm-teal {
-  /* khaki */
+  /* paleturquoise */
   .dev-mode & {
     background: rgba(175, 238, 238, 0.75) !important;
   }
 }
 
 @utility nav-level-pop {
-  /* paleturquoise */
-
   /* Nav level-up bounce (shared by _user_nav and _navbar_seeds_bar) */
   animation: navLevelPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -1302,10 +971,11 @@
 @layer utilities {
   /* Navbar responsive sizing. Promoted from layouts/_navbar.html.erb's
    inline style block 2026-05-24 — these rules fight Tailwind text,
-   gap, and sizing utilities applied to the same elements. Lives outside
-   any @layer (Tailwind's PostCSS pipeline doesn't accept @media inside
-   @layer); unlayered rules outrank any @layer in the cascade, so the
-   !important workarounds the inline block needed are dropped. */
+   gap, and sizing utilities applied to the same elements. This block
+   compiles into the utilities layer AFTER Tailwind's own utilities, so
+   equal-specificity conflicts resolve in this block's favor by source
+   order and the !important workarounds the inline block needed are
+   dropped. */
   .user-nav-col {
     width: 14rem;
     max-width: min(20rem, calc(100vw - 1rem));
@@ -1372,68 +1042,6 @@
     }
     .is-scrolled .nav-title span:last-child {
       font-size: 1rem;
-    }
-  }
-
-  /* Toast z-index defaults from studio-engine (60/55) sit below our
-   sticky navbar (z-[125] from layouts/_navbar.html.erb) and the modal
-   backdrop (z-[120]). Override via the engine's CSS custom properties
-   so toasts (200/199) surface above everything — including any open
-   modal — no !important needed since studio-engine 0.4.10. */
-  :root {
-    --studio-toast-z: 200;
-    --studio-toast-blur-z: 199;
-  }
-
-  /* Navbar gear-menu emoji hover slide (components/_admin_dropdown via the
-   emoji_swap helper). Both emoji are stacked in a fixed gutter; on row hover the
-   base slides off to the RIGHT + fades while the hover emoji slides in from the
-   LEFT. Keyed on the row's `group` class. Reduced-motion degrades to a fade. */
-  .nav-emoji-swap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    vertical-align: middle;
-    width: 1.5rem;
-    height: 1.25rem;
-    overflow: hidden;
-  }
-  .nav-emoji-swap > span {
-    position: absolute;
-    inset: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition:
-      transform 240ms cubic-bezier(0.34, 1.2, 0.5, 1),
-      opacity 180ms ease;
-  }
-  .nav-emoji-base {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  .nav-emoji-hover {
-    transform: translateX(-110%);
-    opacity: 0;
-  }
-  .group:hover .nav-emoji-base {
-    transform: translateX(110%);
-    opacity: 0;
-  }
-  .group:hover .nav-emoji-hover {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .nav-emoji-swap > span {
-      transition: opacity 120ms ease;
-    }
-    .nav-emoji-base,
-    .nav-emoji-hover,
-    .group:hover .nav-emoji-base,
-    .group:hover .nav-emoji-hover {
-      transform: none;
     }
   }
 
