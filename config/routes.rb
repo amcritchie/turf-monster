@@ -222,6 +222,7 @@ Rails.application.routes.draw do
     end
     collection do
       get :formula_report
+      get :nfl_report
       get :admin_formula
       patch :update_admin_formula
     end

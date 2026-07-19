@@ -29,6 +29,17 @@ class SlatesController < ApplicationController
     end
   end
 
+  # NFL analog of the formula report, on its own tab. nil (empty state) when
+  # the historical dataset is missing (ArgumentError), corrupt
+  # (JSON::ParserError), or malformed (KeyError from the fetch reads).
+  def nfl_report
+    @nfl_distribution = begin
+      Nfl::PointsDistribution.call
+    rescue ArgumentError, JSON::ParserError, KeyError
+      nil
+    end
+  end
+
   def show
     @slates = Slate.selector_ordered
     @matchups = @slate.slate_matchups.ranked.includes(:team, :opponent_team, :game)
