@@ -11,22 +11,13 @@ class SlatesController < ApplicationController
   end
 
   def formula_report
-    # Pull real matchup data from the most recent slate
-    @slate = Slate.where("starts_at >= ?", Time.current).order(starts_at: :asc).first ||
-             Slate.order(starts_at: :desc, created_at: :desc).first
-
-    matchups = @slate&.slate_matchups&.includes(:team) || []
-
-    @sample_matchups = matchups.filter_map do |m|
-      next unless m.dk_goals_expectation
-      line = m.dk_goals_expectation.to_f
-
-      {
-        team: m.team.name,
-        emoji: m.team.emoji,
-        line: line
-      }
-    end
+    # The report's sample tables and charts render O/U line + over odds +
+    # implied probability per team. The odds columns left SlateMatchup in the
+    # schema audit (1fd6c50), so no matchup can produce a complete sample —
+    # a line-only row (every NFL matchup) crashed the page the moment
+    # "NFL 2026 Week 1" became the next upcoming slate. Until an odds source
+    # returns, the page renders as its static formula reference.
+    @sample_matchups = []
   end
 
   # NFL analog of the formula report, on its own tab. nil (empty state) when
