@@ -89,6 +89,7 @@ Admin page for managing game results within a slate. Each game renders as a card
 - `/slates/:id/update_rankings` — PATCH, save drag-reordered ranks + recalculated multipliers
 - `/slates/:id/update_turf_scores` — PATCH, save slider-computed turf score values
 - `/slates/:id/update_formula` — PATCH, save formula slider values to this slate
-- `/slates/formula_report` — DK Score formula iterations page with comparison charts + playground
+- `/slates/formula_report` — DK Score formula iterations page (soccer) with comparison charts + playground; link-tabs to the NFL report
+- `/slates/nfl_report` — NFL points-distribution report (rank chart, linear + log fits, rank table) on its own tab
 - `/slates/admin_formula` — GET, admin page for editing Default slate formula variables
 - `/slates/update_admin_formula` — PATCH, save Default slate formula variables

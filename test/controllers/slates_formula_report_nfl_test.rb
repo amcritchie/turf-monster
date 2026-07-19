@@ -1,23 +1,36 @@
 require "test_helper"
 
-# /slates/formula_report overlays the NFL points-distribution model as its own
-# section: rank chart data, both fitted formulas, and the 32-row rank table.
+# The formula reports live on two link-tabs: /slates/formula_report (soccer DK
+# iterations, untouched) and /slates/nfl_report (the NFL points-distribution
+# model: rank chart, both fitted formulas, 32-row rank table).
 class SlatesFormulaReportNflTest < ActionDispatch::IntegrationTest
   setup do
-    log_in_as(users(:alex)) # admin — the formula report is admin-gated
+    log_in_as(users(:alex)) # admin — both reports are admin-gated
   end
 
-  test "renders the NFL section from the checked-in dataset" do
+  test "soccer report keeps its content and links to the NFL tab" do
     get formula_report_slates_path
 
     assert_response :success
-    assert_select "h2", text: "NFL Points Distribution"
+    assert_select "h1", text: "DK Score Formula — Iterations"
+    assert_select "a[href=?]", nfl_report_slates_path
+    assert_select "a[href=?]", formula_report_slates_path
+    assert_select "canvas#chart-v1", 1
+    assert_select "canvas#chart-nfl-dist", 0
+    refute_includes response.body, "_nflDist"
+  end
+
+  test "NFL report renders the model from the checked-in dataset" do
+    get nfl_report_slates_path
+
+    assert_response :success
+    assert_select "h1", text: "NFL Points Distribution"
+    assert_select "a[href=?]", formula_report_slates_path
     assert_select "canvas#chart-nfl-dist", 1
     assert_includes response.body, "_nflDist"
     assert_includes response.body, "Linear — best fit"
     assert_includes response.body, "Log — World Cup family"
 
-    # Rank table: header row + one row per team.
     result = Nfl::PointsDistribution.call
     assert_select "table" do
       assert_select "td", text: format("%.2f", result.expected_points_by_rank.first)
@@ -25,15 +38,16 @@ class SlatesFormulaReportNflTest < ActionDispatch::IntegrationTest
     assert_equal 32, result.team_count
   end
 
-  test "hides the NFL section when the dataset is missing" do
+  test "NFL report shows an empty state when the dataset is missing" do
     raises_missing = ->(*) { raise ArgumentError, "Missing historical scores dataset" }
 
     Nfl::PointsDistribution.stub(:call, raises_missing) do
-      get formula_report_slates_path
+      get nfl_report_slates_path
     end
 
     assert_response :success
     assert_select "canvas#chart-nfl-dist", 0
+    assert_includes response.body, "Historical dataset not available"
     refute_includes response.body, "_nflDist"
   end
 end

@@ -28,8 +28,11 @@ class SlatesController < ApplicationController
       }
     end
 
-    # NFL rank-curve section; nil (section hidden) until the historical
-    # dataset ships in this environment.
+  end
+
+  # NFL analog of the formula report, on its own tab. nil (empty state) until
+  # the historical dataset ships in this environment.
+  def nfl_report
     @nfl_distribution = begin
       Nfl::PointsDistribution.call
     rescue ArgumentError
