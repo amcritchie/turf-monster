@@ -8,6 +8,7 @@
     nfl_n = @nfl_distribution.team_count
     nfl_payload = {
       teamCount: nfl_n,
+      actualLabel: "Actual (#{@nfl_distribution.seasons.min}–#{@nfl_distribution.seasons.max} avg)",
       actual: @nfl_distribution.expected_points_by_rank,
       linear: (1..nfl_n).map { |r| @nfl_distribution.fits[:linear].expected_points_for(r, nfl_n) },
       log: (1..nfl_n).map { |r| @nfl_distribution.fits[:log].expected_points_for(r, nfl_n) }
@@ -38,7 +39,7 @@
         labels: labels,
         datasets: [
           {
-            label: 'Actual (2023-25 avg)',
+            label: _nflDist.actualLabel,
             data: _nflDist.actual,
             borderColor: violet,
             backgroundColor: 'rgba(142, 130, 254, 0.08)',
@@ -138,25 +139,28 @@
     <p class="text-secondary text-sm mb-4">
       Expected points for each of the 32 teams in a full NFL week (no byes), ranked highest to lowest —
       averaged from <%= nfl.full_weeks.length %> full weeks (<%= nfl.games_analyzed %> games) across
-      <%= nfl.seasons.join(", ") %>. League mean <%= nfl.mean_points %> points per team. The log curve is
-      the World Cup goals family (0.2 + 4.3 · ln(n/rank)/ln(n)); NFL scoring by rank runs nearly linear instead.
+      <%= nfl.seasons.join(", ") %>; <%= nfl.partial_weeks_skipped %> bye weeks were skipped so every
+      sample holds all 32 teams. League mean <%= nfl.mean_points %> points per team. The log curve reuses
+      the World Cup goals curve <em>family</em> — the World Cup's own constants are 0.2 + 4.3, shown here
+      only as the shape reference; the NFL coefficients are in the fit card below. NFL scoring by rank
+      runs nearly linear instead.
     </p>
 
     <div class="grid sm:grid-cols-2 gap-3 mb-4">
-      <div class="bg-inset border border-subtle rounded-lg px-4 py-2">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-xs font-bold uppercase tracking-wider text-primary">Linear — best fit</span>
-          <span class="text-muted text-xs font-mono">r² <%= nfl_linear.r_squared %> · rmse <%= nfl_linear.rmse %></span>
+      <% { linear: "Linear", log: "Log — World Cup family" }.each do |kind, label| %>
+        <% fit = nfl.fits.fetch(kind) %>
+        <% best = nfl.best_fit.kind == kind %>
+        <div class="bg-inset border border-subtle rounded-lg px-4 py-2">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-bold uppercase tracking-wider <%= best ? 'text-primary' : 'text-muted' %>"><%= label %></span>
+            <% if best %>
+              <span class="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary text-white">Best fit</span>
+            <% end %>
+            <span class="text-muted text-xs font-mono">r² <%= fit.r_squared %> · rmse <%= fit.rmse %></span>
+          </div>
+          <div class="font-mono text-sm text-violet"><%= fit.formula(nfl.team_count) %></div>
         </div>
-        <div class="font-mono text-sm text-violet"><%= nfl_linear.formula(nfl.team_count) %></div>
-      </div>
-      <div class="bg-inset border border-subtle rounded-lg px-4 py-2">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-xs font-bold uppercase tracking-wider text-muted">Log — World Cup family</span>
-          <span class="text-muted text-xs font-mono">r² <%= nfl_log.r_squared %> · rmse <%= nfl_log.rmse %></span>
-        </div>
-        <div class="font-mono text-sm text-violet"><%= nfl_log.formula(nfl.team_count) %></div>
-      </div>
+      <% end %>
     </div>
 
     <div class="bg-surface border border-subtle rounded-lg p-4 mb-6" style="height: 300px;">

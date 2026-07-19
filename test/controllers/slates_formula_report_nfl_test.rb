@@ -28,7 +28,6 @@ class SlatesFormulaReportNflTest < ActionDispatch::IntegrationTest
     assert_select "a[href=?]", formula_report_slates_path
     assert_select "canvas#chart-nfl-dist", 1
     assert_includes response.body, "_nflDist"
-    assert_includes response.body, "Linear — best fit"
     assert_includes response.body, "Log — World Cup family"
 
     result = Nfl::PointsDistribution.call
@@ -36,18 +35,32 @@ class SlatesFormulaReportNflTest < ActionDispatch::IntegrationTest
       assert_select "td", text: format("%.2f", result.expected_points_by_rank.first)
     end
     assert_equal 32, result.team_count
+
+    # The best-fit badge is data-driven, and the prose names the World Cup's
+    # own constants only as the family's shape reference — the plotted log
+    # coefficients live in the fit card, never in the sentence.
+    assert_includes response.body, "Best fit"
+    assert_includes response.body, result.best_fit.formula(result.team_count)
+    assert_includes response.body, "only as the shape reference"
+    assert_includes response.body, "#{result.partial_weeks_skipped} bye weeks were skipped"
   end
 
-  test "NFL report shows an empty state when the dataset is missing" do
-    raises_missing = ->(*) { raise ArgumentError, "Missing historical scores dataset" }
+  test "NFL report shows an empty state for missing, corrupt, or malformed datasets" do
+    failure_modes = [
+      ArgumentError.new("Missing historical scores dataset"),
+      JSON::ParserError.new("unexpected token"),
+      KeyError.new("key not found: \"games\"")
+    ]
 
-    Nfl::PointsDistribution.stub(:call, raises_missing) do
-      get nfl_report_slates_path
+    failure_modes.each do |error|
+      Nfl::PointsDistribution.stub(:call, ->(*) { raise error }) do
+        get nfl_report_slates_path
+      end
+
+      assert_response :success
+      assert_select "canvas#chart-nfl-dist", 0
+      assert_includes response.body, "Historical dataset not available"
+      refute_includes response.body, "_nflDist"
     end
-
-    assert_response :success
-    assert_select "canvas#chart-nfl-dist", 0
-    assert_includes response.body, "Historical dataset not available"
-    refute_includes response.body, "_nflDist"
   end
 end
