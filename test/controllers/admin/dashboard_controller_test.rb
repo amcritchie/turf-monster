@@ -27,6 +27,13 @@ class Admin::DashboardControllerTest < ActionDispatch::IntegrationTest
     assert_select "form"
   end
 
+  test "show links the NFL points distribution report" do
+    log_in_as(@admin)
+    get admin_dashboard_path
+    assert_response :success
+    assert_select "a[href=?]", nfl_report_slates_path, text: /🏈 NFL Points Distribution/
+  end
+
   test "show surfaces a settled explicit pick alongside its resolved fallback" do
     settled = Contest.create!(
       name: "Settled Pick", status: :settled, contest_type: "small",
