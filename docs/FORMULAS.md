@@ -7,6 +7,15 @@ All scoring/ranking formulas live as class methods on `SlateMatchup` — single 
 - **Turf Score**: `SlateMatchup.turf_score_for(rank, n)` — `1.0 + 2.0 * Math.log(rank) / Math.log(n)`. Logarithmic curve, x1.0 at rank 1 to x3.0 at rank N. (Scale `2.0` is `Slate::FORMULA_DEFAULTS[:formula_mult_scale]`; per-slate overridable.)
 - **Goals Distribution**: `SlateMatchup.goals_distribution_for(rank, n)` — `0.2 + 4.3 * Math.log(n / rank) / Math.log(n)`.
 
+## NFL Points Distribution (historical model)
+
+The NFL analog of the goals distribution, learned from real scores instead of hand-fitted: `Nfl::PointsDistribution` reads the checked-in ESPN dataset (`db/seeds/data/nfl/historical_scores_2023_2025.json`), keeps only full weeks (all 32 teams playing — no byes), ranks each week's 32 team scores, averages actual points by rank, and least-squares fits two curve families:
+
+- **log** (the World Cup family): `base + scale * ln(n/rank)/ln(n)` — 2023-2025 snapshot: `12.52 + 37.84 * ln(32/rank)/ln(32)`, r² 0.9184
+- **linear** (best fit for NFL): `base + scale * (n-rank)/(n-1)` — 2023-2025 snapshot: `6.76 + 31.54 * (32-rank)/31`, r² 0.9583
+
+In both, `base` is the rank-32 expectation and `base + scale` the rank-1 expectation. NFL weekly scoring by rank is nearly linear (~1 point per rank, ~46 down to ~4), unlike World Cup goals which decay logarithmically. Refresh the dataset with `bin/rails nfl:fetch_historical_scores`; print the rank table and current fits with `bin/rails nfl:points_distribution`. Bye-week handling (partial weeks) is deliberately out of scope for now.
+
 ## Formula Color System
 
 Chart/formula visualization colors are defined once at the top of `slates/show.html.erb`:
