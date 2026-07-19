@@ -126,6 +126,9 @@ module Nfl
     def ensure_slate!(week:)
       slate = Slate.find_or_initialize_by(name: "NFL #{@year} Week #{week}")
       @slates_created += 1 if slate.new_record?
+      # Record the week as data, not just as a substring of the name — it's what
+      # multi-week contests order and validate consecutiveness on.
+      slate.week = week
       slate.save!
       slate
     end
@@ -135,6 +138,7 @@ module Nfl
         matchup = SlateMatchup.find_or_initialize_by(slate: slate, team_slug: team.slug)
         @matchups_created += 1 if matchup.new_record?
         matchup.assign_attributes(
+          week: slate.week,
           opponent_team_slug: opponent.slug,
           game_slug: game.slug,
           dk_goals_expectation: expected_points_by_team_slug.fetch(team.slug).round(1)
@@ -145,18 +149,27 @@ module Nfl
       rank_slate_matchups!(slate)
     end
 
+    # Rank by TEAM, not by matchup row. A team's standing in the slate is its
+    # SUMMED expected points across every game it plays here, so a multi-week
+    # slate ranks 32 teams rather than 96 rows.
+    #
+    # The resulting rank + turf_score are written to EVERY row of that team, so
+    # each row still carries the value that prices it. That keeps every existing
+    # per-row read working untouched, and it FREEZES the multiplier: it is stored
+    # at ingest rather than recomputed on each render, so a pick cannot be
+    # repriced under a player after they commit.
+    #
+    # A one-week slate is the degenerate case — one game per team, so this
+    # reduces exactly to the previous per-row ranking.
     def rank_slate_matchups!(slate)
-      matchups = slate.slate_matchups.includes(:team, :game).to_a
-      sorted = matchups.sort_by do |matchup|
-        [
-          matchup.dk_goals_expectation ? -matchup.dk_goals_expectation.to_f : Float::INFINITY,
-          matchup.game&.kickoff_at || Time.zone.local(@year, 9, 1),
-          matchup.team.name
-        ]
-      end
-      sorted.each_with_index do |matchup, index|
-        rank = index + 1
-        matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, sorted.size))
+      rankings = slate.team_rankings
+      return if rankings.empty?
+
+      slate.slate_matchups.includes(:team).find_each do |matchup|
+        ranking = rankings[matchup.team_slug]
+        next if ranking.nil?
+
+        matchup.update!(rank: ranking[:rank], turf_score: ranking[:turf_score])
       end
     end
 

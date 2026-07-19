@@ -41,15 +41,40 @@
 <script type="application/json" id="board-config">
 <%
   matchup_data = {}
+  # Multi-week span: the pick is a TEAM riding every week, priced by ONE
+  # multiplier derived from expected points across the whole span. @matchups is
+  # the anchor (week-one) set, so selections stay keyed exactly as they are on a
+  # single-week board.
+  multi_week   = @contest.multi_week?
+  span_matchups_by_team = multi_week ? @contest.matchups_by_team : {}
+  span_scores  = multi_week ? span_matchups_by_team.transform_values { |ms| ms.first.turf_score } : {}
+  # [[week, matchup], ...] per team, in week order — each of the team's games in
+  # the span slate carries its own week.
+  span_opponents = span_matchups_by_team.transform_values do |team_matchups|
+    team_matchups.map { |matchup| [matchup.week, matchup] }
+  end
+
   @matchups.each do |m|
+    # The cart, summary, and every JS readout must show the SPAN multiplier on a
+    # multi-week board \u2014 the anchor week's number would misprice the pick.
+    shown_score = multi_week ? span_scores[m.team_slug] : m.turf_score
     matchup_data[m.id.to_s] = {
       name: m.team.name,
+      # Cart rows are narrow — the city wraps a three-opponent row onto two
+      # lines. Mascot ("Chargers"), NOT short_name, which is the abbreviation
+      # ("LAC") the opponent chips use. `name` is kept for anywhere that wants
+      # the full team name.
+      shortName: m.team.mascot.presence || m.team.name,
       emoji: m.team.emoji,
-      opName: m.opponent_team&.short_name.to_s,
-      turfScore: m.turf_score ? sprintf("%.1f", m.turf_score) : "\u2014",
+      opName: multi_week ? span_opponents[m.team_slug].to_a.filter_map { |_s, wm| wm&.opponent_team&.short_name }.join(" / ") : m.opponent_team&.short_name.to_s,
+      turfScore: shown_score ? sprintf("%.1f", shown_score) : "\u2014",
       locked: m.locked?
     }
   end
+
+  # Team cards, cheapest multiplier first (same ordering idea as the flat
+  # multiplier view).
+  span_team_cards = multi_week ? @contest.pickable_matchups.sort_by { |m| m.turf_score || 999 } : []
 
   # Game pairs (group by game, each pair low-turf-first, pairs ordered by lower
   # turf_score). Computed ONCE here and reused by both firstMatchupIds below (the
@@ -476,6 +501,7 @@ window.selectionBoard = function() {
       return this.selectionOrder.filter(id => this.selections[id]).map(matchupId => ({
         matchupId: matchupId,
         name: matchupData[matchupId]?.name || matchupId,
+        shortName: matchupData[matchupId]?.shortName || matchupData[matchupId]?.name || matchupId,
         emoji: matchupData[matchupId]?.emoji || '',
         opName: matchupData[matchupId]?.opName || '',
         turfScore: matchupData[matchupId]?.turfScore || ''
@@ -1621,6 +1647,14 @@ window.selectionBoard = function() {
   <section class="mb-8 transition-all" :class="{ 'tm-sidebar-pushed': cartOpen }">
     <div class="flex items-center justify-between gap-2 mb-4">
       <div class="flex items-center gap-2">
+        <% if multi_week %>
+          <%# The multi-week board is one team-card grid ordered by span
+              multiplier — there is no game view to sort against, so the toggle
+              is replaced by the span label. %>
+          <span class="text-sm text-muted font-medium">
+            <%= @contest.week_span_label %> &middot; pick <%= @contest.picks_required %> teams
+          </span>
+        <% else %>
         <span class="text-sm text-muted font-medium">Sort by</span>
         <button @click="toggleSort('game')"
                 class="px-3 py-1.5 rounded-full text-sm font-semibold transition-all"
@@ -1635,6 +1669,7 @@ window.selectionBoard = function() {
           Advantage
           <span x-show="sortMode === 'turfScore'" x-text="sortDir === 'asc' ? '↑' : '↓'" class="text-xs"></span>
         </button>
+        <% end %>
       </div>
       <div class="relative">
         <input type="text" x-model="filterText" placeholder="Filter teams..."
@@ -1645,6 +1680,22 @@ window.selectionBoard = function() {
     </div>
 
     <!-- Game view: paired cards -->
+    <% if multi_week %>
+      <%# Multi-week board: ONE card per team, since the pick is a team riding
+          every week. A game-paired view has no meaning here — the team plays a
+          different opponent each week, so the pairing would be arbitrary. %>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <% span_team_cards.each do |matchup| %>
+          <% opponents = span_opponents[matchup.team_slug] || [] %>
+          <div x-show="matchesFilter('<%= j(matchup.team.name) %>', '<%= j(opponents.filter_map { |_s, wm| wm&.opponent_team&.name }.join(' ')) %>')">
+            <%= render "contests/multi_week_team_card",
+                  matchup: matchup,
+                  multiplier: span_scores[matchup.team_slug],
+                  opponents: opponents %>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
     <div x-show="sortMode === 'game'" class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
       <% game_pairs.each do |pair| %>
         <% left, right = pair %>
@@ -1671,6 +1722,7 @@ window.selectionBoard = function() {
         </div>
       <% end %>
     </div>
+    <% end %>
   </section>
 
   <% if logged_in? %>
@@ -1837,7 +1889,7 @@ window.selectionBoard = function() {
         <div>
           <template x-if="selectionSlots[i-1]">
             <div class="bg-surface-alt rounded-md px-1.5 py-1 border border-primary-700 text-center relative" style="min-height:2.75rem">
-              <p class="text-heading font-semibold text-xs truncate" x-text="selectionSlots[i-1].emoji + ' ' + selectionSlots[i-1].name"></p>
+              <p class="text-heading font-semibold text-xs truncate" x-text="selectionSlots[i-1].emoji + ' ' + selectionSlots[i-1].shortName"></p>
               <p class="text-muted text-[10px] truncate">vs <span x-text="selectionSlots[i-1].opName"></span> <span class="text-primary font-mono" x-text="'x' + selectionSlots[i-1].turfScore"></span></p>
               <button @click="removeSelection(selectionSlots[i-1].matchupId)"
                       class="absolute -top-1 -right-1 w-4 h-4 bg-surface border border-strong rounded-full text-muted hover:text-red-400 text-[10px] leading-none flex items-center justify-center">&times;</button>

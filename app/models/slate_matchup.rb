@@ -8,7 +8,14 @@ class SlateMatchup < ApplicationRecord
 
   has_many :selections, dependent: :destroy
 
-  validates :team_slug, uniqueness: { scope: :slate_id }
+  # A team appears once per GAME it plays in the slate — a "Weeks 1-3" slate
+  # holds three rows per team. Scoped on game_slug rather than the slate alone,
+  # which is what used to cap a team at one appearance.
+  #
+  # This also covers what the DB index can't: game_slug is nullable and PG 14
+  # predates NULLS NOT DISTINCT, so the index treats NULL rows as all distinct.
+  # Rails generates `game_slug IS NULL` here and catches that case.
+  validates :team_slug, uniqueness: { scope: [:slate_id, :game_slug] }
 
   scope :ranked, -> { order(:rank) }
   scope :pending, -> { where(status: "pending") }
@@ -43,7 +50,18 @@ class SlateMatchup < ApplicationRecord
     update!(turf_score: self.class.turf_score_for(rank, n))
   end
 
+  # On a SPAN slate a team has several rows, and two of them can share an
+  # opponent (a division rival played twice inside the span), which made this
+  # slug collide against the unique index and refuse the row outright. Qualify it
+  # by week in that case.
+  #
+  # Deliberately scoped to span slates: Sluggable rewrites the slug on EVERY
+  # save, so appending unconditionally would churn every existing weekly
+  # matchup's slug for no gain.
   def name_slug
-    "#{slate.slug}-#{team_slug}-vs-#{opponent_team_slug}"
+    base = "#{slate.slug}-#{team_slug}-vs-#{opponent_team_slug}"
+    return base unless week.present? && slate&.week_range&.size.to_i > 1
+
+    "#{base}-wk#{week}"
   end
 end

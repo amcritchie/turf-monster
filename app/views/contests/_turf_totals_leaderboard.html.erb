@@ -17,6 +17,16 @@
   # Contest::LiveBroadcast path omits it (one HTML for all subscribers, no
   # per-viewer float) — same locals-shim convention as the ivars above.
   viewer = local_assigns.fetch(:viewer, nil)
+
+  # Multi-week span, hoisted ONCE for the whole board: every pick's tooltip needs
+  # the week list and that team's matchup in each week, and resolving those
+  # per-pill would be an N+1 across six picks per entry.
+  multi_week    = contest.multi_week?
+  span_matchups = multi_week ? contest.matchups_by_team : {}
+  # Weeks come off the matchups themselves, and the multiplier is the FROZEN
+  # turf_score stored on them — the same value settlement multiplies by.
+  span_weeks    = multi_week ? span_matchups.values.flatten.filter_map(&:week).uniq.sort : []
+  span_scores   = multi_week ? span_matchups.transform_values { |ms| ms.first.turf_score } : {}
   everyone_equal = !contest.settled? && entries.size > 1 &&
                    entries.map { |e| e.score.to_i }.uniq.size <= 1
   if everyone_equal && viewer
@@ -208,7 +218,10 @@
                 g = sel.slate_matchup.game
                 c1 = t.color_primary || "#666"
                 c2 = t.color_secondary || c1
-                done = g&.status == "completed"
+                # Multi-week: a pick is "live" as soon as ANY week of its span has
+                # scored — the anchor week's game status alone would keep the pill
+                # showing a multiplier for the whole rest of the contest.
+                done = multi_week ? sel.points.present? : g&.status == "completed"
                 if done && sel.points.present?
                   sv = sel.points; ip = sv.to_i.to_s
                   dp = sv == sv.to_i ? nil : ".#{((sv % 1) * 10).round}"
@@ -216,14 +229,20 @@
                   # Matchups created without ranks (legacy seed paths) have nil
                   # turf_score — render "x?" instead of crashing. Root cause
                   # belongs in seeds/contest-create; this is defense-in-depth.
-                  m = sel.slate_matchup.turf_score
+                  # Multi-week pills carry the SPAN multiplier, not the anchor
+                  # week's — the anchor number would misprice a three-week pick.
+                  m = multi_week ? span_scores[sel.slate_matchup.team_slug] : sel.slate_matchup.turf_score
                   ip = m ? "x#{m.to_i}" : "x?"
                   dp = (m && m != m.to_i) ? ".#{((m % 1) * 10).round}" : nil
                 end
-                tv = if done && sel.points.present?
+                tv = if multi_week && sel.points.present?
+                       weekly_points_breakdown(sel, weeks: span_weeks, by_team: span_matchups,
+                                                    multiplier: span_scores[sel.slate_matchup.team_slug])
+                     elsif done && sel.points.present?
                        "#{sel.points} pts"
                      else
-                       sel.slate_matchup.turf_score ? "x#{sel.slate_matchup.turf_score}" : "x?"
+                       span_or_week = multi_week ? span_scores[sel.slate_matchup.team_slug] : sel.slate_matchup.turf_score
+                       span_or_week ? "x#{span_or_week}" : "x?"
                      end
                 { team: t, c1: c1, c2: c2, ip: ip, dp: dp, tv: tv }
               end

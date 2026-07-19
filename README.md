@@ -77,6 +77,24 @@ npm run test:headed             # with visible browser
 - **Phantom wallet** connect, self-custody USDC/USDT entry, and on-chain payouts
 - **Dark/light theme** toggle with green primary palette
 
+## Release flow
+
+Turf Monster integrates through the McRitchie Studio DevOps cycle on a
+three-rung branch ladder — **`accepted` → `release` → `main`**:
+
+- **Feature PRs target `accepted`.** Cut `feat/<slug>` from `accepted` and open
+  the PR into `accepted` — never against `release` or `main`. Review merges it to
+  `accepted` and moves the task to `reviewed`.
+- **The studio sweep promotes `accepted` → `release`.** `bin/release prepare`
+  opens one batch PR per repo and merges it, so the `release` tip earns its own
+  CI verdict.
+- **Ship fast-forwards `release` → `main` and deploys production** via
+  `bin/deploy` (see [Deploy](#deploy) below).
+
+`main` holds shipped integration; it is not a merge target. The full cycle lives
+in the hub —
+[`devops-cycle-design.md`](https://github.com/amcritchie/mcritchie-studio/blob/main/docs/agents/system/devops-cycle-design.md).
+
 ## Deploy
 
 ```bash

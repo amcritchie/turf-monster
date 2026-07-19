@@ -87,6 +87,18 @@
       </div>
 
       <div class="mb-5">
+        <label for="contest_week_span" class="block text-sm text-secondary mb-2 font-medium">Weeks</label>
+        <%# Span is resolved server-side into consecutive weekly slates from the
+            selected anchor, so this can't produce a non-consecutive span. %>
+        <%= select_tag "contest[week_span]",
+              options_for_select([["1 week", 1], ["2 weeks", 2], ["3 weeks", 3]], params.dig(:contest, :week_span) || 1),
+              id: "contest_week_span", class: "input-field" %>
+        <p class="text-xs text-muted mt-1">
+          A multi-week contest runs forward from the selected slate. Six picks are made once and ride every week; all of them lock at the first week's kickoff.
+        </p>
+      </div>
+
+      <div class="mb-5">
         <label for="contest_season_id" class="block text-sm text-secondary mb-2 font-medium">Season</label>
         <% season_choices = Array(@season_options).map do |season|
              season_id = season[:season_id].to_i
