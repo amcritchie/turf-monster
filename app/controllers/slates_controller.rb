@@ -27,7 +27,6 @@ class SlatesController < ApplicationController
         line: line
       }
     end
-
   end
 
   # NFL analog of the formula report, on its own tab. nil (empty state) until
