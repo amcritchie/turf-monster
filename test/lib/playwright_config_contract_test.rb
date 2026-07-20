@@ -10,7 +10,13 @@ class PlaywrightConfigContractTest < ActiveSupport::TestCase
   CONFIG_PATH = Rails.root.join("playwright.config.js")
 
   test "webServer timeout floor covers the seeded boot" do
-    timeout = CONFIG_PATH.read[/timeout:\s*([\d_]+)/, 1]
+    config = CONFIG_PATH.read
+    web_server_index = config.index("webServer:")
+    assert web_server_index, "webServer block not found in playwright.config.js"
+
+    # First timeout AFTER the webServer key — the file also carries global
+    # per-test and expect timeouts before it, which must not satisfy this.
+    timeout = config[web_server_index..][/timeout:\s*([\d_]+)/, 1]
 
     assert timeout, "webServer timeout not found in playwright.config.js"
     assert_operator timeout.delete("_").to_i, :>=, 120_000
