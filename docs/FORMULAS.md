@@ -47,6 +47,14 @@ Alpine components read/write these globals directly. Never use `this.chart` or `
 
 > **Same gotcha applies to DOM refs used with `scrollIntoView`.** Alpine wraps the element in a Proxy, which silently breaks the scroll API. Keep `scrollIntoView` element refs in plain `var`s outside Alpine and call the method from a plain function (see the Slate Manager simulate-all flow below for a working example).
 
+### Theme-Observer Teardown Pattern
+
+The report pages rebuild their charts when the theme toggles by watching `document.documentElement` class changes with a `MutationObserver`. Inline page scripts re-execute on every Turbo visit, so a bare `new MutationObserver(...).observe(...)` leaks one live observer per visit. Convention (see `slates/formula_report.html.erb` and `slates/nfl_report.html.erb`):
+
+- Hold the observer in a plain top-level `var` (outside Alpine, per the proxy rule) declared **without an initializer** — `var _themeObserver;` — so a re-run of the same script (e.g. Turbo preview + fresh render) sees the existing value instead of resetting it.
+- Guard creation with `if (!_themeObserver)` so re-runs never stack a second observer.
+- Disconnect and null it in a `turbo:before-cache` listener registered with `{ once: true }` inside the same guard, so each visit leaves exactly one teardown listener and departs with zero live observers.
+
 ### Cross-Component Communication Pattern
 
 Two Alpine components on the slate show page (`formulaCurves` for the chart/sliders, `rankManager` for the ranking list) communicate via global functions:
