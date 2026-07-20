@@ -55,7 +55,11 @@ module.exports = defineConfig({
           "bin/rails db:test:prepare && bin/rails runner e2e/seed.rb && bin/rails server -p 3100 -e test",
         url: "http://127.0.0.1:3100/up",
         reuseExistingServer: !process.env.CI,
-        timeout: 30_000,
+        // Boot budget covers db:test:prepare + the e2e seed (incl. the full
+        // NFL 2026 totals cache) + server boot on a slow CI runner. 30s was
+        // marginal once the NFL cache joined the seed and red-flaked shard 1
+        // twice; the floor is guarded by test/lib/playwright_config_contract_test.rb.
+        timeout: 120_000,
         env: { RAILS_ENV: "test", PLAYWRIGHT_SEED: "true" },
       },
 });
