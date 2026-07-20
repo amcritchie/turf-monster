@@ -116,9 +116,21 @@
 
   document.addEventListener('turbo:load', _buildNflDistChart);
   document.addEventListener('DOMContentLoaded', _buildNflDistChart);
-  new MutationObserver(function() {
-    _buildNflDistChart();
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  // Rebuild the chart on theme toggle so colors update. The observer lives in
+  // a plain var outside Alpine (Chart.js proxy rule, docs/FORMULAS.md) and is
+  // disconnected on turbo:before-cache; the guard keeps re-runs of this
+  // script from stacking a second live observer.
+  var _nflThemeObserver;
+  if (!_nflThemeObserver) {
+    _nflThemeObserver = new MutationObserver(function() {
+      _buildNflDistChart();
+    });
+    _nflThemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    document.addEventListener('turbo:before-cache', function() {
+      if (_nflThemeObserver) { _nflThemeObserver.disconnect(); }
+      _nflThemeObserver = null;
+    }, { once: true });
+  }
 </script>
 <% end %>
 
