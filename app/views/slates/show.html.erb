@@ -72,7 +72,9 @@
     var dkMax = Math.max.apply(null, dkVals);
     var dkMin = Math.min.apply(null, dkVals);
     if (dkMax === dkMin) return null;
-    var pad = Math.max(1, (dkMax - dkMin) * 0.06);
+    // ~one extra deviation of margin: the lines float inside the window
+    // (e.g. 50-85 / 0.8-2.2 on a 54-81 spread) instead of touching its edges.
+    var pad = Math.max(2, (dkMax - dkMin) * 0.13);
     var y2Min = Math.floor(dkMin - pad);
     var y2Max = Math.ceil(dkMax + pad);
     var tMin = 1 - multScale * (y2Max - dkMax) / (dkMax - dkMin);
