@@ -85,59 +85,15 @@ nfl_team_metadata = {
 }
 nfl_team_metadata["WSH"] = nfl_team_metadata.fetch("WAS")
 
-# Four-color brand palette per team — the single place to edit team colors.
-# Reseeding is idempotent (teams upsert by slug), so change a value here and
-# re-run `bin/rails db:seed` to recolor without a migration.
-#   primary    → card background (the "paint")
-#   secondary  → the distinctive accent used for the mascot text
-#   alt_light  → the team's light neutral (usually white); "" = none
-#   alt_dark   → the team's dark neutral (usually black/navy); "" = none
-#   text_light → true only for a LIGHT primary that wants dark foreground text
-# Sourced from teamcolorcodes.com; Saints/Steelers kept light-forward.
-nfl_team_colors = {
-  "ARI" => { primary: "#97233F", secondary: "#FFB612", alt_light: "#FFFFFF", alt_dark: "#000000" },
-  "ATL" => { primary: "#A71930", secondary: "#000000", alt_light: "#FFFFFF", alt_dark: "" },
-  "BAL" => { primary: "#241773", secondary: "#9E7C0C", alt_light: "#C60C30", alt_dark: "#000000" },
-  "BUF" => { primary: "#00338D", secondary: "#C60C30", alt_light: "#FFFFFF", alt_dark: "#041E42" },
-  "CAR" => { primary: "#0085CA", secondary: "#101820", alt_light: "#FFFFFF", alt_dark: "" },
-  "CHI" => { primary: "#0B162A", secondary: "#C83803", alt_light: "#FFFFFF", alt_dark: "" },
-  "CIN" => { primary: "#FB4F14", secondary: "#000000", alt_light: "#FFFFFF", alt_dark: "" },
-  "CLE" => { primary: "#311D00", secondary: "#FF3C00", alt_light: "#FFFFFF", alt_dark: "" },
-  "DAL" => { primary: "#003594", secondary: "#869397", alt_light: "#FFFFFF", alt_dark: "#041E42" },
-  "DEN" => { primary: "#FB4F14", secondary: "#002244", alt_light: "#FFFFFF", alt_dark: "" },
-  "DET" => { primary: "#0076B6", secondary: "#B0B7BC", alt_light: "#FFFFFF", alt_dark: "#000000" },
-  "GB"  => { primary: "#203731", secondary: "#FFB612", alt_light: "#FFFFFF", alt_dark: "" },
-  "HOU" => { primary: "#03202F", secondary: "#A71930", alt_light: "#FFFFFF", alt_dark: "" },
-  "IND" => { primary: "#002C5F", secondary: "#FFFFFF", alt_light: "", alt_dark: "" },
-  "JAX" => { primary: "#006778", secondary: "#D7A22A", alt_light: "#FFFFFF", alt_dark: "#101820" },
-  "KC"  => { primary: "#E31837", secondary: "#FFB81C", alt_light: "#FFFFFF", alt_dark: "" },
-  "LAC" => { primary: "#0080C6", secondary: "#FFC20E", alt_light: "#FFFFFF", alt_dark: "" },
-  "LAR" => { primary: "#003594", secondary: "#FFA300", alt_light: "#FFFFFF", alt_dark: "" },
-  "LV"  => { primary: "#000000", secondary: "#A5ACAF", alt_light: "", alt_dark: "" },
-  "MIA" => { primary: "#008E97", secondary: "#FC4C02", alt_light: "#FFFFFF", alt_dark: "#005778" },
-  "MIN" => { primary: "#4F2683", secondary: "#FFC62F", alt_light: "#FFFFFF", alt_dark: "#000000" },
-  "NE"  => { primary: "#002244", secondary: "#C60C30", alt_light: "#B0B7BC", alt_dark: "" },
-  "NO"  => { primary: "#D3BC8D", secondary: "#101820", alt_light: "#FFFFFF", alt_dark: "", text_light: true },
-  "NYG" => { primary: "#0B2265", secondary: "#A71930", alt_light: "#FFFFFF", alt_dark: "" },
-  "NYJ" => { primary: "#125740", secondary: "#FFFFFF", alt_light: "", alt_dark: "" },
-  "PHI" => { primary: "#004C54", secondary: "#A5ACAF", alt_light: "#FFFFFF", alt_dark: "#000000" },
-  "PIT" => { primary: "#FFB612", secondary: "#101820", alt_light: "#FFFFFF", alt_dark: "", text_light: true },
-  "SEA" => { primary: "#002244", secondary: "#69BE28", alt_light: "#A5ACAF", alt_dark: "" },
-  "SF"  => { primary: "#AA0000", secondary: "#B3995D", alt_light: "#FFFFFF", alt_dark: "#000000" },
-  "TB"  => { primary: "#D50A0A", secondary: "#B1BABF", alt_light: "#FF7900", alt_dark: "#3E3C3B" },
-  "TEN" => { primary: "#0C2340", secondary: "#4B92DB", alt_light: "#FFFFFF", alt_dark: "" },
-  "WAS" => { primary: "#5A1414", secondary: "#FFB612", alt_light: "#FFFFFF", alt_dark: "" }
-}
-nfl_team_colors.each do |abbr, colors|
+# Four-color brand palette lives in Nfl::TeamPalette::PALETTE — the single place
+# to edit team colors, shared with the `nfl:recolor` post-deploy task. Merge it
+# onto the metadata so freshly-seeded teams get their colors here; existing rows
+# are recolored idempotently on reseed (and in prod via `bin/rails nfl:recolor`,
+# which touches ONLY color columns — never games, slates, or frozen turf_scores).
+Nfl::TeamPalette::PALETTE.each_key do |abbr|
   next unless nfl_team_metadata.key?(abbr)
 
-  nfl_team_metadata[abbr].merge!(
-    color_primary: colors[:primary],
-    color_secondary: colors[:secondary],
-    color_alt_light: colors[:alt_light].to_s.presence,
-    color_alt_dark: colors[:alt_dark].to_s.presence,
-    color_text_light: colors.fetch(:text_light, false)
-  )
+  nfl_team_metadata[abbr].merge!(Nfl::TeamPalette.attributes_for(abbr))
 end
 
 nfl_home_arenas.merge(nfl_schedule_only_arenas).each do |slug, attributes|
