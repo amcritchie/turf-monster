@@ -3,47 +3,64 @@
     and its ONE span multiplier (derived from expected points across every week),
     and carries the three opponents underneath as supporting detail.
 
+    The card wears the team's own colors: a team-hue gradient background, the
+    city on a small light line above the mascot in a bold accent color. Light-
+    forward teams (color_text_light, e.g. the gold Saints) flip to dark text.
+    See TeamColorsHelper#team_card_palette for how the three brand fields become
+    these CSS values.
+
     `matchup` is the team's WEEK-ONE matchup: it is the anchor the selection is
     keyed on, so toggleSelection / selections[] work exactly as they do on a
     single-week board. `opponents` is [[slate, matchup_or_nil], ...] in week
     order; a nil matchup is a bye. %>
 <% locked = matchup.locked? %>
+<% team = matchup.team %>
+<% pal = team_card_palette(team) %>
 <button @click="toggleSelection('<%= matchup.id %>')"
-        class="relative w-full bg-surface p-3 md:p-4 rounded-2xl transition-all text-center border-2 shadow <%= locked ? 'opacity-50' : '' %>"
+        class="relative w-full p-3 md:p-4 rounded-2xl transition-all text-center border-2 shadow overflow-hidden hover:brightness-110 <%= locked ? 'opacity-50' : '' %>"
+        style="background: <%= pal[:gradient] %>; border-color: <%= pal[:border] %>; color: <%= pal[:fg] %>;"
         :class="{
           'matchup-selected': selections['<%= matchup.id %>'],
-          'border-subtle hover:bg-surface-alt/50': !selections['<%= matchup.id %>'],
           'matchup-pulse': pulseId === '<%= matchup.id %>' && selectionCount === 0
         }"
         role="checkbox" :aria-checked="!!selections['<%= matchup.id %>']"
-        aria-label="<%= matchup.team.name %> — <%= opponents.map { |week, m| "week #{week}: #{m&.opponent_team&.name || 'bye'}" }.join(', ') %>"
+        aria-label="<%= team.name %> — <%= opponents.map { |week, m| "week #{week}: #{m&.opponent_team&.name || 'bye'}" }.join(', ') %>"
         <% if locked %>disabled<% end %>>
   <% if locked %>
-    <span class="absolute top-2 left-2 text-[10px] text-yellow-500">&#128274;</span>
+    <span class="absolute top-2 left-2 text-[10px]" style="color: <%= pal[:fg_faint] %>">&#128274;</span>
   <% end %>
 
-  <p class="text-4xl md:text-5xl mb-2"><%= matchup.team.emoji %></p>
-  <p class="font-bold text-heading text-lg md:text-xl mb-0.5 truncate team-name" title="<%= matchup.team.name %>"><%= matchup.team.name %></p>
+  <%# City small + lighter, mascot large + bold in the team accent. Two lines
+      also cure the old single-line truncation ("San Francisco 49...",
+      "Los Angeles Char..."). %>
+  <% if team.location.present? %>
+    <p class="text-xs md:text-sm font-medium leading-tight truncate"
+       style="color: <%= pal[:fg_soft] %>" title="<%= team.name %>"><%= team.location %></p>
+  <% end %>
+  <p class="font-extrabold text-2xl md:text-3xl leading-tight truncate team-name"
+     style="color: <%= pal[:accent] %>" title="<%= team.name %>"><%= team.mascot %></p>
 
   <% if multiplier %>
-    <p class="font-mono text-lg md:text-xl text-primary"><%= format_turf_score(multiplier) %></p>
-    <p class="text-sm text-secondary"><%= multiplier == 1 ? 'Point' : 'Points' %> / Goal</p>
+    <p class="font-mono font-bold text-lg md:text-xl mt-1.5" style="color: <%= pal[:fg] %>"><%= format_turf_score(multiplier) %></p>
+    <p class="text-sm" style="color: <%= pal[:fg_faint] %>"><%= multiplier == 1 ? 'Point' : 'Points' %> / Goal</p>
   <% end %>
 
   <%# One column per week, each labelled. grid-template-columns is inline rather
       than a Tailwind grid-cols-N class so a span of any length lays out evenly
-      (a 2- or 4-week contest would otherwise need a class that isn't compiled). %>
-  <div class="mt-3 pt-3 border-t border-subtle grid"
-       style="grid-template-columns: repeat(<%= [opponents.size, 1].max %>, minmax(0, 1fr))">
+      (a 2- or 4-week contest would otherwise need a class that isn't compiled).
+      Colors are foreground-relative so they read on the team gradient. %>
+  <div class="mt-3 pt-3 grid"
+       style="border-top: 1px solid <%= pal[:divider] %>; grid-template-columns: repeat(<%= [opponents.size, 1].max %>, minmax(0, 1fr))">
     <% opponents.each_with_index do |(week, week_matchup), index| %>
       <% opponent = week_matchup&.opponent_team %>
-      <div class="px-1 text-center <%= index.positive? ? 'border-l border-subtle' : '' %>"
+      <div class="px-1 text-center"
+           style="<%= "border-left: 1px solid #{pal[:divider]};" if index.positive? %>"
            title="Week <%= week || '?' %> &mdash; <%= opponent ? "vs #{opponent.name}" : 'bye week' %>">
-        <p class="text-[10px] uppercase tracking-wide text-subtle leading-tight">Week <%= week || '?' %></p>
-        <p class="text-xs text-muted leading-tight mt-0.5 truncate">
+        <p class="text-[10px] uppercase tracking-wide leading-tight" style="color: <%= pal[:fg_faint] %>">Week <%= week || '?' %></p>
+        <p class="text-xs leading-tight mt-0.5 truncate" style="color: <%= pal[:fg_soft] %>">
           <% if opponent %>
             <span><%= opponent.emoji %></span>
-            <span class="font-medium"><%= opponent.short_name %></span>
+            <span class="font-semibold"><%= opponent.short_name %></span>
           <% else %>
             <span class="italic">bye</span>
           <% end %>
