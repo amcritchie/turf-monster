@@ -52,9 +52,12 @@ class Slate < ApplicationRecord
 
   def resolved_formula
     defaults = self.class.default_record
-    FORMULA_DEFAULTS.each_with_object({}) do |(key, hardcoded), hash|
+    resolved = FORMULA_DEFAULTS.each_with_object({}) do |(key, hardcoded), hash|
       hash[key] = read_attribute(key) || (defaults&.id != id ? defaults&.read_attribute(key) : nil) || hardcoded
     end
+    # Rank 1 always prices x1.0 — the multiplier base is pinned, not tunable.
+    # Stored slider states (one slate carried base 3.0) no longer leak through.
+    resolved.merge(formula_mult_base: 1.0)
   end
 
   # ─── Team-level view of the slate ───────────────────────────────────
@@ -102,7 +105,7 @@ class Slate < ApplicationRecord
 
     ranked.each_with_index.to_h do |(team_slug, _matchups), index|
       rank = index + 1
-      [team_slug, { rank: rank, turf_score: SlateMatchup.turf_score_for(rank, ranked.size) }]
+      [team_slug, { rank: rank, turf_score: SlateMatchup.turf_score_for(rank, ranked.size, sport: sport) }]
     end
   end
 

@@ -35,6 +35,16 @@
 
   var _fcChart = null;
 
+  // Sport-aware multiplier curve, base PINNED at 1.0 (rank 1 always x1.0).
+  // fifa: log decay; nfl: linear (points run nearly linear by rank).
+  // Ruby mirror: SlateMatchup.turf_score_for.
+  var FC_SPORT = '<%= @slate.sport %>';
+  function _fcMult(rank, N, multScale) {
+    if (N <= 1) return 1.0;
+    var curve = FC_SPORT === 'nfl' ? (rank - 1) / (N - 1) : Math.log(rank) / Math.log(N);
+    return 1.0 + multScale * curve;
+  }
+
   function _fcCompute(A, lineExp, probExp, multBase, multScale, goalBase, goalScale) {
     var N = _fcMatchups.length;
     var lnN = Math.log(N);
@@ -42,7 +52,7 @@
       var rank = i + 1;
       return {
         emoji: m.emoji, team: m.team, opponent: m.opponent, rank: rank,
-        mult: Math.round((multBase + multScale * Math.log(rank) / lnN) * 100) / 100,
+        mult: Math.round(_fcMult(rank, N, multScale) * 100) / 100,
         goals: Math.round((goalBase + goalScale * Math.log(N / rank) / lnN) * 100) / 100,
         teamTotal: m.team_total
       };
@@ -181,7 +191,7 @@
     items.forEach(function(item, i) {
       var rank = i + 1;
       var line = parseFloat(item.dataset.teamTotal);
-      var mult = (multBase + multScale * Math.log(rank) / lnN);
+      var mult = _fcMult(rank, N, multScale);
       item.querySelector('.turf-score-display').textContent = mult.toFixed(1) + 'x';
     });
   }
@@ -262,15 +272,15 @@
         <div class="mb-3">
           <span class="text-sm font-bold text-heading">Turf Score</span>
           <span class="text-muted text-sm"> = </span>
-          <span class="font-mono text-sm" style="color: var(--fc-mult)" x-text="multBase.toFixed(1)"></span>
+          <span class="font-mono text-sm" style="color: var(--fc-mult)">1.0</span>
           <span class="text-muted text-sm"> + </span>
           <span class="font-mono text-sm" style="color: var(--fc-mult)" x-text="multScale.toFixed(1)"></span>
-          <span class="text-muted text-sm"> &times; ln(rank) / ln(N)</span>
+          <span class="text-muted text-sm"> &times; <%= @slate.sport == "nfl" ? "(rank − 1) / (N − 1)" : "ln(rank) / ln(N)" %></span>
         </div>
+        <%# Base is pinned — rank 1 always prices x1.0; only the top end flexes. %>
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="text-xs text-muted block mb-1">Base <span class="font-mono" style="color: var(--fc-mult)" x-text="multBase.toFixed(1)"></span></label>
-            <input type="range" min="0" max="3" step="0.1" x-model.number="multBase" @input="refresh()" class="w-full" style="accent-color: var(--fc-mult);">
+            <label class="text-xs text-muted block mb-1">Base <span class="font-mono" style="color: var(--fc-mult)">1.0</span> <span class="text-muted">(pinned — rank 1 is always x1.0)</span></label>
           </div>
           <div>
             <label class="text-xs text-muted block mb-1">Scale <span class="font-mono" style="color: var(--fc-mult)" x-text="multScale.toFixed(1)"></span></label>
