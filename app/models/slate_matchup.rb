@@ -38,6 +38,20 @@ class SlateMatchup < ApplicationRecord
     (0.2 + 4.3 * Math.log(n.to_f / rank) / Math.log(n)).round(2)
   end
 
+  # V3 "anchored" DK Score (restored verbatim from 405f902; dropped with the
+  # odds columns in 1fd6c50): integer-anchored line + implied-probability
+  # spread, floored at zero. Renders on /slates/formula_report.
+  def self.dk_score_for(line, over_odds)
+    return nil unless line && over_odds
+
+    prob = if over_odds < 0
+      over_odds.abs.to_f / (over_odds.abs + 100)
+    else
+      100.0 / (over_odds + 100)
+    end
+    [(line - 0.5) + (prob - 0.5) * 3, 0].max.round(2)
+  end
+
   # ─── Instance Methods ───────────────────────────────────────
 
   def locked?

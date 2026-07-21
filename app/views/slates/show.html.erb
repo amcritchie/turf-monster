@@ -83,7 +83,7 @@
             data: data.map(function(d) { return d.teamTotal; }),
             borderColor: FC.dkTotal,
             backgroundColor: FC.dkTotal + '14',
-            borderWidth: 1.5, borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y', spanGaps: true, order: 3
+            borderWidth: 1.5, borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y2', spanGaps: true, order: 3
           }
         ]
       },
@@ -117,8 +117,14 @@
         },
         scales: {
           x: { ticks: { color: textColor, font: { size: 14 }, maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 48 }, grid: { color: gridColor } },
-          y: { position: 'left', title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: 0, max: 5 },
-          y2: { position: 'right', title: { display: true, text: 'DK Total', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { drawOnChartArea: false }, min: 0, max: 5 }
+          // DK Total owns the LEFT axis and auto-scales to the data — an NFL
+          // span slate reads ~0-85 while a World Cup goals slate reads ~0-5.
+          // The old config bound DK Expectation to the 0-5 Turf axis, drawing
+          // an 81-point total off-chart while a hardcoded 0-5 "DK Total" axis
+          // mirrored uselessly on the right. Axis text wears the series green
+          // so the accurate scale reads as the green line's.
+          y2: { position: 'left', title: { display: true, text: 'DK Total', color: FC.dkTotal, font: { size: 11 } }, ticks: { color: FC.dkTotal }, grid: { drawOnChartArea: false }, beginAtZero: true },
+          y: { position: 'right', title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: 0, max: 5 }
         }
       }
     });

@@ -11,13 +11,39 @@ class SlatesController < ApplicationController
   end
 
   def formula_report
-    # The report's sample tables and charts render O/U line + over odds +
-    # implied probability per team. The odds columns left SlateMatchup in the
-    # schema audit (1fd6c50), so no matchup can produce a complete sample —
-    # a line-only row (every NFL matchup) crashed the page the moment
-    # "NFL 2026 Week 1" became the next upcoming slate. Until an odds source
-    # returns, the page renders as its static formula reference.
-    @sample_matchups = []
+    # Samples come from the most recent SOCCER slate whose matchups carry the
+    # seeded DK odds (Soccer::CacheTeamTotalOdds). Only rows with BOTH the
+    # line and the over odds join the sample — the report computes implied
+    # probability and v1/v2/v3 from them, and a partial row (every NFL
+    # matchup: line, no odds) is what 500'd this page before.
+    @slate = Slate.order(starts_at: :desc, created_at: :desc)
+                  .detect { |s| s.sport == "fifa" && s.slate_matchups.where.not(team_total_over_odds: nil).exists? }
+
+    matchups = @slate&.slate_matchups&.includes(:team) || []
+
+    @sample_matchups = matchups.filter_map do |m|
+      next unless m.dk_goals_expectation && m.team_total_over_odds
+
+      odds = m.team_total_over_odds
+      line = m.dk_goals_expectation.to_f
+      prob = if odds < 0
+        odds.abs.to_f / (odds.abs + 100)
+      else
+        100.0 / (odds + 100)
+      end
+
+      {
+        team: m.team.name,
+        emoji: m.team.emoji,
+        line: line,
+        over_odds: odds,
+        over_dec: nil,
+        prob: prob,
+        v1: (line + (prob - 0.5)).round(2),
+        v2: (line + (prob - 0.5) * 3).round(2),
+        v3: SlateMatchup.dk_score_for(line, odds)
+      }
+    end
   end
 
   # NFL analog of the formula report, on its own tab. nil (empty state) when
