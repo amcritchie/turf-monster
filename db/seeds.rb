@@ -697,6 +697,15 @@ rescue => e
   end
 end
 
+# ─── DK team-total odds cache (soccer formula report samples) ─
+# Writes the checked-in 2026 World Cup group-stage DK odds onto the fifa-slate
+# matchups so /slates/formula_report renders live samples straight off a seed.
+if Soccer::CacheTeamTotalOdds::DEFAULT_PATH.exist?
+  odds = Soccer::CacheTeamTotalOdds.call
+  puts "  Cached DK team-total odds (#{odds.rows} rows, #{odds.matchups_updated} matchups updated" \
+       "#{odds.teams_missing.any? ? ", missing teams: #{odds.teams_missing.join(', ')}" : ''})"
+end
+
 # ─── Landing pages (marketing funnels) ───────────────────────
 load Rails.root.join("db/seeds/landing_pages.rb")
 
