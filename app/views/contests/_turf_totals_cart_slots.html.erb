@@ -14,7 +14,7 @@
                 <%# Short name ("Chargers"), not the full "Los Angeles Chargers" —
                     a multi-week row already carries three opponents and the city
                     pushes it onto a second line. %>
-                <span class="font-extrabold" :style="{ color: selectionSlots[i-1].accent }" x-text="selectionSlots[i-1].shortName || selectionSlots[i-1].name"></span>
+                <span class="font-extrabold" :style="{ color: selectionSlots[i-1].accent, textShadow: selectionSlots[i-1].mascotShadow }" x-text="selectionSlots[i-1].shortName || selectionSlots[i-1].name"></span>
                 <template x-if="selectionSlots[i-1].opName">
                   <span class="font-normal text-xs ml-1" :style="{ color: selectionSlots[i-1].fgSoft }">vs <span x-text="selectionSlots[i-1].opName"></span></span>
                 </template>

@@ -16,14 +16,17 @@ class Nfl::TeamPaletteTest < ActiveSupport::TestCase
     assert_nil attrs[:color_alt_dark]
   end
 
-  test "apply! recolors only existing rows and returns the count" do
-    bal = Team.create!(name: "Recolor Ravens", slug: "recolor-ravens", short_name: "BAL",
-                       league: "nfl", sport: "football", color_secondary: "#000000")
+  test "apply! recolors NFL rows only, never a same-abbreviation non-NFL team" do
+    nfl_bal = Team.create!(name: "Recolor Ravens", slug: "recolor-ravens", short_name: "BAL",
+                           league: "nfl", sport: "football", color_secondary: "#000000")
+    other_bal = Team.create!(name: "Balkan United", slug: "balkan-united", short_name: "BAL",
+                             league: "fifa", sport: "soccer", color_secondary: "#000000")
 
-    count = Nfl::TeamPalette.apply!(Team.where(short_name: "BAL"))
+    count = Nfl::TeamPalette.apply! # default scope = Team.nfl
 
-    assert_equal 1, count, "only the BAL row in scope is recolored"
-    assert_equal "#9E7C0C", bal.reload.color_secondary, "Ravens mascot becomes gold"
-    assert_equal "#C60C30", bal.color_alt_light,        "red kept as alt-light"
+    assert_equal 1, count, "only the NFL BAL row is recolored"
+    assert_equal "#9E7C0C", nfl_bal.reload.color_secondary, "NFL Ravens becomes gold"
+    assert_equal "#C60C30", nfl_bal.color_alt_light,        "red kept as alt-light"
+    assert_equal "#000000", other_bal.reload.color_secondary, "non-NFL BAL is untouched"
   end
 end

@@ -19,6 +19,7 @@ module TeamColorsHelper
     secondary = normalize_hex(team&.color_secondary)
     light     = team_text_light?(team)
     fg        = light ? DARK_FG : LIGHT_FG
+    accent    = team_accent(primary, secondary, light)
 
     {
       gradient: team_gradient(primary, light),
@@ -27,8 +28,21 @@ module TeamColorsHelper
       fg_faint: rgba(fg, 0.55),  # labels, "Points / Goal"
       border: rgba(fg, 0.18),    # card edge
       divider: rgba(fg, 0.14),   # week-row rules
-      accent: team_accent(primary, secondary, light) # the mascot
+      accent: accent,            # the mascot
+      mascot_shadow: mascot_shadow(accent) # legibility halo on the gradient
     }
+  end
+
+  # A subtle halo that keeps the mascot legible on the team gradient even when
+  # the brand accent is low-contrast against it (Bills red on blue, Falcons
+  # black on red). It outlines the glyph WITHOUT changing the brand color: a
+  # light halo for dark accents, a dark halo for light ones.
+  def mascot_shadow(accent)
+    hex = normalize_hex(accent)
+    return "none" unless hex
+
+    halo = relative_luminance(hex) < 0.5 ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)"
+    "0 0 2px #{halo}, 0 1px 2px #{halo}"
   end
 
   # A vertical gradient in the team's own hue. Light-forward teams stay airy;

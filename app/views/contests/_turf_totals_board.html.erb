@@ -76,7 +76,8 @@
       fg: pal[:fg],
       fgSoft: pal[:fg_soft],
       fgFaint: pal[:fg_faint],
-      accent: pal[:accent]
+      accent: pal[:accent],
+      mascotShadow: pal[:mascot_shadow]
     }
   end
 
@@ -517,7 +518,8 @@ window.selectionBoard = function() {
         fg: matchupData[matchupId]?.fg || '',
         fgSoft: matchupData[matchupId]?.fgSoft || '',
         fgFaint: matchupData[matchupId]?.fgFaint || '',
-        accent: matchupData[matchupId]?.accent || ''
+        accent: matchupData[matchupId]?.accent || '',
+        mascotShadow: matchupData[matchupId]?.mascotShadow || ''
       }));
     },
 
@@ -1903,7 +1905,7 @@ window.selectionBoard = function() {
           <template x-if="selectionSlots[i-1]">
             <div class="rounded-md px-1.5 py-1 border text-center relative overflow-hidden" style="min-height:2.75rem"
                  :style="{ background: selectionSlots[i-1].gradient, color: selectionSlots[i-1].fg, borderColor: selectionSlots[i-1].fgFaint }">
-              <p class="font-extrabold text-xs truncate" :style="{ color: selectionSlots[i-1].accent }" x-text="selectionSlots[i-1].shortName"></p>
+              <p class="font-extrabold text-xs truncate" :style="{ color: selectionSlots[i-1].accent, textShadow: selectionSlots[i-1].mascotShadow }" x-text="selectionSlots[i-1].shortName"></p>
               <p class="text-[10px] truncate" :style="{ color: selectionSlots[i-1].fgSoft }">vs <span x-text="selectionSlots[i-1].opName"></span> <span class="font-mono" :style="{ color: selectionSlots[i-1].fg }" x-text="'x' + selectionSlots[i-1].turfScore"></span></p>
               <button @click="removeSelection(selectionSlots[i-1].matchupId)"
                       class="absolute -top-1 -right-1 w-4 h-4 bg-surface border border-strong rounded-full text-muted hover:text-red-400 text-[10px] leading-none flex items-center justify-center">&times;</button>

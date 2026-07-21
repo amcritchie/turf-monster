@@ -38,7 +38,7 @@
        style="color: <%= pal[:fg_soft] %>" title="<%= team.name %>"><%= team.location %></p>
   <% end %>
   <p class="font-extrabold text-2xl md:text-3xl leading-tight truncate team-name"
-     style="color: <%= pal[:accent] %>" title="<%= team.name %>"><%= team.mascot %></p>
+     style="color: <%= pal[:accent] %>; text-shadow: <%= pal[:mascot_shadow] %>" title="<%= team.name %>"><%= team.mascot %></p>
 
   <% if multiplier %>
     <p class="font-mono font-bold text-lg md:text-xl mt-1.5" style="color: <%= pal[:fg] %>"><%= format_turf_score(multiplier) %></p>

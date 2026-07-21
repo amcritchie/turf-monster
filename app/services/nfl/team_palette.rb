@@ -59,10 +59,11 @@ module Nfl
       }
     end
 
-    # Upsert ONLY the color columns onto existing team rows (matched by
-    # short_name). Safe for production: touches no games, slates, or rankings.
-    # Returns the number of teams recolored.
-    def self.apply!(scope = Team.all)
+    # Upsert ONLY the color columns onto existing NFL team rows (matched by
+    # short_name WITHIN the nfl scope, so a same-abbreviation non-NFL team can
+    # never be recolored). Safe for production: touches no games, slates, or
+    # rankings — and no non-NFL rows. Returns the number of teams recolored.
+    def self.apply!(scope = Team.nfl)
       PALETTE.keys.count do |abbr|
         team = scope.find_by(short_name: abbr)
         team&.update!(attributes_for(abbr)) ? true : false

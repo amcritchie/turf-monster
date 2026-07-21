@@ -82,7 +82,14 @@ class TeamColorsHelperTest < ActionView::TestCase
     # The board cards, the cart rows, and the compact pick chips all read these
     # keys — renaming one silently breaks a consumer. Lock the contract.
     pal = team_card_palette(TeamDouble.new(color_primary: "#241773", color_secondary: "#9e7c0c", color_text_light: false))
-    assert_equal %i[gradient fg fg_soft fg_faint border divider accent].sort, pal.keys.sort
+    assert_equal %i[gradient fg fg_soft fg_faint border divider accent mascot_shadow].sort, pal.keys.sort
+  end
+
+  test "mascot_shadow outlines a low-contrast accent for legibility" do
+    # Dark accent (Falcons black) → light halo; light accent (gold) → dark halo.
+    assert_includes mascot_shadow("#000000"), "255, 255, 255"
+    assert_includes mascot_shadow("#ffd700"), "rgba(0, 0, 0"
+    assert_equal "none", mascot_shadow(nil)
   end
 
   test "palette survives a team with no brand colors" do
