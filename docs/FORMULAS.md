@@ -4,8 +4,8 @@
 
 All scoring/ranking formulas live as class methods on `SlateMatchup` — single source of truth. JS mirrors in `slates/show.html.erb` and `slates/formula_report.html.erb` with comments noting the model as authoritative.
 
-- **Turf Score**: `SlateMatchup.turf_score_for(rank, n)` — `1.0 + 2.0 * Math.log(rank) / Math.log(n)`. Logarithmic curve, x1.0 at rank 1 to x3.0 at rank N. (Scale `2.0` is `Slate::FORMULA_DEFAULTS[:formula_mult_scale]`; per-slate overridable.)
-- **Goals Distribution**: `SlateMatchup.goals_distribution_for(rank, n)` — `0.2 + 4.3 * Math.log(n / rank) / Math.log(n)`.
+- **Turf Score**: `SlateMatchup.turf_score_for(rank, n, sport:)` — base PINNED to 1.0 (rank 1 always prices x1.0; `Slate#resolved_formula` forces `formula_mult_base` to 1.0 and the Base slider is gone). Sport-keyed curve: fifa `1.0 + 2.0 * ln(rank)/ln(n)` (log decay, x3 top), nfl `1.0 + 1.0 * (rank-1)/(n-1)` (linear, x2 top — NFL scoring runs near-linear by rank per the points-distribution fit, and the flatter cap keeps the Turf and DK chart lines mirrored). Per-slate `formula_mult_scale` overrides either default. On NFL slates the chart's Turf axis renders REVERSED (x1.0 at top) so both lines fall with rank. Repricing pass after formula changes: `bin/rails slates:recompute_turf_scores` (preserves stored ranks).
+- **Goals Distribution**: `SlateMatchup.goals_distribution_for(rank, n)` — `0.2 + 4.3 * Math.log(n / rank) / Math.log(n)`. Soccer slates only — the chart series and slider card are hidden on NFL slates (goals are not a football concept).
 
 ## NFL Points Distribution (historical model)
 
@@ -29,7 +29,7 @@ Admin-only interactive page for tuning multiplier formulas. Key sections:
 
 1. **Slate tabs** — navigate between slates (shown when multiple exist)
 2. **Turf Score Formula chart** — Chart.js line chart with 5 datasets (Turf Score, Goals Distribution, DK Total Score, DK Total, DK Total Odds). Updates live as sliders change.
-3. **Formula variable sliders** — 7 interactive Alpine.js sliders (A, lineExp, probExp, multBase, multScale, goalBase, goalScale) grouped into formula variable cards with colored left accent bars and math notation.
+3. **Formula variable sliders** — 6 interactive Alpine.js sliders (A, lineExp, probExp, multScale, goalBase, goalScale) grouped into formula variable cards with colored left accent bars and math notation. multBase is pinned at 1.0 (displayed, not slidable).
 4. **Ranking list** — sortable table of all slate matchups. Score/Turf Score columns update dynamically when sliders change. Drag-to-reorder via SortableJS library.
 5. **Save buttons** — "Save Rankings" (persists rank order + computed turf scores), "Save Turf Scores" (persists arbitrary slider-computed values), and "Save Formula" (persists current slider values to this slate's DB columns). All appear at top and bottom of the rank list.
 

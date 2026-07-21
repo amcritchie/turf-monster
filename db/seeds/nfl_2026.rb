@@ -170,7 +170,7 @@ games_by_week.sort.each do |week, entries|
 
   sorted_matchups.each_with_index do |matchup, index|
     rank = index + 1
-    matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, sorted_matchups.size))
+    matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, sorted_matchups.size, sport: "nfl"))
   end
 
   puts "  Created slate: #{slate.name} (#{entries.size} games, #{slate.slate_matchups.count} matchups, starts #{first_game_at.utc.iso8601})"

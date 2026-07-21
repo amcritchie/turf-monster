@@ -24,14 +24,21 @@ class SlateMatchup < ApplicationRecord
   # ─── Centralized Formulas ───────────────────────────────────
   # JS mirrors live in show.html.erb and formula_report.html.erb
 
-  # Hardcoded fallback (no per-slate config available). Mirrors the
-  # Slate::FORMULA_DEFAULTS turf-score defaults: base 1.0, scale 2.0.
-  # Per-slate overrides live on Slate.formula_mult_base / mult_scale and
-  # are resolved at render time via Slate#resolved_formula; the JS
-  # mirrors in slates/show.html.erb + slates/formula_report.html.erb
-  # use those resolved values.
-  def self.turf_score_for(rank, n)
-    (1.0 + 2.0 * Math.log(rank) / Math.log(n)).round(1)
+  # Sport-aware multiplier curve, base PINNED to 1.0 — rank 1 always prices
+  # x1.0 (operator rule); only the top end flexes via scale.
+  #   fifa: 1.0 + 2.0 * ln(rank)/ln(N)    — goals decay logarithmically, x3 top
+  #   nfl:  1.0 + 1.0 * (rank-1)/(N-1)    — points run nearly linear
+  #         (measured: the 2023-25 points-distribution fit, r² .958 linear),
+  #         x2 top so the Turf and DK curves roughly mirror on the chart
+  # Scale defaults mirror Slate#resolved_formula's sport-aware fallback;
+  # per-slate overrides resolve at render time and the JS mirrors in
+  # slates/show.html.erb use those resolved values.
+  def self.turf_score_for(rank, n, sport: "fifa")
+    return 1.0 if n <= 1
+
+    nfl = sport.to_s == "nfl"
+    curve = nfl ? (rank - 1).to_f / (n - 1) : Math.log(rank) / Math.log(n)
+    (1.0 + (nfl ? 1.0 : 2.0) * curve).round(1)
   end
 
   def self.goals_distribution_for(rank, n)
@@ -61,7 +68,7 @@ class SlateMatchup < ApplicationRecord
   def compute_turf_score!(n = nil)
     return unless rank.present?
     n ||= slate.slate_matchups.count
-    update!(turf_score: self.class.turf_score_for(rank, n))
+    update!(turf_score: self.class.turf_score_for(rank, n, sport: slate.sport))
   end
 
   # On a SPAN slate a team has several rows, and two of them can share an

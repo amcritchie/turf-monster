@@ -81,7 +81,7 @@ class SlatesController < ApplicationController
 
           rank = index + 1
           @slate.slate_matchups.where(team_slug: matchup.team_slug).find_each do |team_matchup|
-            team_matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, n))
+            team_matchup.update!(rank: rank, turf_score: SlateMatchup.turf_score_for(rank, n, sport: @slate.sport))
           end
         end
       end

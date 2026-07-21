@@ -17,11 +17,14 @@ class SlatesShowChartAxesTest < ActionDispatch::IntegrationTest
     assert_response :success
     # The DK dataset is the only spanGaps series — its binding rides with it.
     assert_includes response.body, "yAxisID: 'y2', spanGaps: true"
-    assert_includes response.body, "y2: { position: 'left'"
-    assert_includes response.body, "y: { position: 'right'"
+    # DK Total owns the LEFT axis in both window branches (data-fit + fallback);
+    # Turf sits right. NFL windows derive from the data via _fcNflAxisWindows.
+    assert_includes response.body, "position: 'left', title: { display: true, text: 'DK Total'"
+    assert_includes response.body, "position: 'right', reverse:"
+    assert_includes response.body, "_fcNflAxisWindows"
     assert_includes response.body, "beginAtZero: true"
-    refute_includes response.body, "y2: { position: 'right'"
-    # Only the Turf Score axis stays pinned to 0-5.
+    refute_includes response.body, "position: 'right', title: { display: true, text: 'DK Total'"
+    # Only the Turf Score axis's static fallback stays pinned to 0-5.
     assert_equal 1, response.body.scan("max: 5").count
   end
 end
