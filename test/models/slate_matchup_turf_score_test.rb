@@ -15,10 +15,10 @@ class SlateMatchupTurfScoreTest < ActiveSupport::TestCase
     assert_equal 2.0, SlateMatchup.turf_score_for(4, 16, sport: "fifa")
   end
 
-  test "nfl runs linear between the pinned base and the top" do
-    assert_equal 3.0, SlateMatchup.turf_score_for(32, 32, sport: "nfl")
+  test "nfl runs linear between the pinned base and the x2 top" do
+    assert_equal 2.0, SlateMatchup.turf_score_for(32, 32, sport: "nfl")
     # (3-1)/(5-1) = 0.5 -> exactly halfway up the curve
-    assert_equal 2.0, SlateMatchup.turf_score_for(3, 5, sport: "nfl")
+    assert_equal 1.5, SlateMatchup.turf_score_for(3, 5, sport: "nfl")
     # Linear spacing: consecutive ranks step evenly (log would front-load)
     step1 = SlateMatchup.turf_score_for(2, 33, sport: "nfl") - SlateMatchup.turf_score_for(1, 33, sport: "nfl")
     step2 = SlateMatchup.turf_score_for(33, 33, sport: "nfl") - SlateMatchup.turf_score_for(32, 33, sport: "nfl")

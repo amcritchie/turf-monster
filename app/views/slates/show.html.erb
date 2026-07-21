@@ -69,33 +69,38 @@
     var gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
     var textColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
 
+    var datasets = [
+      {
+        label: 'Turf Score',
+        data: data.map(function(d) { return d.mult; }),
+        borderColor: FC.mult,
+        backgroundColor: FC.mult + '14',
+        borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y', order: 1
+      }
+    ];
+    // Goals are a soccer concept — on NFL slates the series is noise.
+    if (FC_SPORT !== 'nfl') {
+      datasets.push({
+        label: 'Goals Distribution',
+        data: data.map(function(d) { return d.goals; }),
+        borderColor: FC.goals,
+        backgroundColor: FC.goals + '14',
+        borderWidth: 2, borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y', order: 2
+      });
+    }
+    datasets.push({
+      label: 'DK Expectation',
+      data: data.map(function(d) { return d.teamTotal; }),
+      borderColor: FC.dkTotal,
+      backgroundColor: FC.dkTotal + '14',
+      borderWidth: 1.5, borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y2', spanGaps: true, order: 3
+    });
+
     _fcChart = new Chart(canvas, {
       type: 'line',
       data: {
         labels: data.map(function(d) { return d.emoji; }),
-        datasets: [
-          {
-            label: 'Turf Score',
-            data: data.map(function(d) { return d.mult; }),
-            borderColor: FC.mult,
-            backgroundColor: FC.mult + '14',
-            borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y', order: 1
-          },
-          {
-            label: 'Goals Distribution',
-            data: data.map(function(d) { return d.goals; }),
-            borderColor: FC.goals,
-            backgroundColor: FC.goals + '14',
-            borderWidth: 2, borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y', order: 2
-          },
-          {
-            label: 'DK Expectation',
-            data: data.map(function(d) { return d.teamTotal; }),
-            borderColor: FC.dkTotal,
-            backgroundColor: FC.dkTotal + '14',
-            borderWidth: 1.5, borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 6, tension: 0.3, fill: false, yAxisID: 'y2', spanGaps: true, order: 3
-          }
-        ]
+        datasets: datasets
       },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -134,7 +139,9 @@
           // mirrored uselessly on the right. Axis text wears the series green
           // so the accurate scale reads as the green line's.
           y2: { position: 'left', title: { display: true, text: 'DK Total', color: FC.dkTotal, font: { size: 11 } }, ticks: { color: FC.dkTotal }, grid: { drawOnChartArea: false }, beginAtZero: true },
-          y: { position: 'right', title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: 0, max: 5 }
+          // NFL: reversed so x1.0 sits at the TOP — the Turf line then falls
+          // with rank alongside the DK Expectation line instead of crossing it.
+          y: { position: 'right', reverse: FC_SPORT === 'nfl', title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: 0, max: 5 }
         }
       }
     });
@@ -160,9 +167,13 @@
     var data = _fcCompute(A, lineExp, probExp, multBase, multScale, goalBase, goalScale);
     _fcLastData = data;
     if (!_fcChart) { _fcBuildChart(data); return; }
-    _fcChart.data.datasets[0].data = data.map(function(d) { return d.mult; });
-    _fcChart.data.datasets[1].data = data.map(function(d) { return d.goals; });
-    _fcChart.data.datasets[2].data = data.map(function(d) { return d.teamTotal; });
+    // Label-keyed: NFL charts carry no Goals Distribution dataset, so index
+    // positions are not stable across sports.
+    _fcChart.data.datasets.forEach(function(ds) {
+      if (ds.label === 'Turf Score') ds.data = data.map(function(d) { return d.mult; });
+      else if (ds.label === 'Goals Distribution') ds.data = data.map(function(d) { return d.goals; });
+      else if (ds.label === 'DK Expectation') ds.data = data.map(function(d) { return d.teamTotal; });
+    });
     _fcChart.update('none');
     _fcUpdateRankList(A, lineExp, probExp, multBase, multScale);
   }
@@ -289,27 +300,30 @@
         </div>
       </div>
 
-      <!-- Goals Distribution -->
-      <div class="bg-surface border border-subtle rounded-lg p-4" style="border-left: 3px solid var(--fc-goals);">
-        <div class="mb-3">
-          <span class="text-sm font-bold text-heading">Goals Distribution</span>
-          <span class="text-muted text-sm"> = </span>
-          <span class="font-mono text-sm" style="color: var(--fc-goals)" x-text="goalBase.toFixed(1)"></span>
-          <span class="text-muted text-sm"> + </span>
-          <span class="font-mono text-sm" style="color: var(--fc-goals)" x-text="goalScale.toFixed(1)"></span>
-          <span class="text-muted text-sm"> &times; ln(N/rank) / ln(N)</span>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="text-xs text-muted block mb-1">Base <span class="font-mono" style="color: var(--fc-goals)" x-text="goalBase.toFixed(1)"></span></label>
-            <input type="range" min="0" max="3" step="0.1" x-model.number="goalBase" @input="refresh()" class="w-full" style="accent-color: var(--fc-goals);">
+      <%# Goals are a soccer concept — the card hides on NFL slates. %>
+      <% unless @slate.sport == "nfl" %>
+        <!-- Goals Distribution -->
+        <div class="bg-surface border border-subtle rounded-lg p-4" style="border-left: 3px solid var(--fc-goals);">
+          <div class="mb-3">
+            <span class="text-sm font-bold text-heading">Goals Distribution</span>
+            <span class="text-muted text-sm"> = </span>
+            <span class="font-mono text-sm" style="color: var(--fc-goals)" x-text="goalBase.toFixed(1)"></span>
+            <span class="text-muted text-sm"> + </span>
+            <span class="font-mono text-sm" style="color: var(--fc-goals)" x-text="goalScale.toFixed(1)"></span>
+            <span class="text-muted text-sm"> &times; ln(N/rank) / ln(N)</span>
           </div>
-          <div>
-            <label class="text-xs text-muted block mb-1">Scale <span class="font-mono" style="color: var(--fc-goals)" x-text="goalScale.toFixed(1)"></span></label>
-            <input type="range" min="0" max="10" step="0.5" x-model.number="goalScale" @input="refresh()" class="w-full" style="accent-color: var(--fc-goals);">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-muted block mb-1">Base <span class="font-mono" style="color: var(--fc-goals)" x-text="goalBase.toFixed(1)"></span></label>
+              <input type="range" min="0" max="3" step="0.1" x-model.number="goalBase" @input="refresh()" class="w-full" style="accent-color: var(--fc-goals);">
+            </div>
+            <div>
+              <label class="text-xs text-muted block mb-1">Scale <span class="font-mono" style="color: var(--fc-goals)" x-text="goalScale.toFixed(1)"></span></label>
+              <input type="range" min="0" max="10" step="0.5" x-model.number="goalScale" @input="refresh()" class="w-full" style="accent-color: var(--fc-goals);">
+            </div>
           </div>
         </div>
-      </div>
+      <% end %>
 
       <!-- DK Score -->
       <div class="bg-surface border border-subtle rounded-lg p-4" style="border-left: 3px solid var(--fc-dk-score);">

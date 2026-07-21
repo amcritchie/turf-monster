@@ -26,21 +26,19 @@ class SlateMatchup < ApplicationRecord
 
   # Sport-aware multiplier curve, base PINNED to 1.0 — rank 1 always prices
   # x1.0 (operator rule); only the top end flexes via scale.
-  #   fifa: 1.0 + scale * ln(rank)/ln(N)   — goals decay logarithmically
-  #   nfl:  1.0 + scale * (rank-1)/(N-1)   — points run nearly linear
-  #         (measured: the 2023-25 points-distribution fit, r² .958 linear)
-  # Scale default 2.0 mirrors Slate::FORMULA_DEFAULTS[:formula_mult_scale];
-  # per-slate overrides resolve at render time via Slate#resolved_formula and
-  # the JS mirrors in slates/show.html.erb.
+  #   fifa: 1.0 + 2.0 * ln(rank)/ln(N)    — goals decay logarithmically, x3 top
+  #   nfl:  1.0 + 1.0 * (rank-1)/(N-1)    — points run nearly linear
+  #         (measured: the 2023-25 points-distribution fit, r² .958 linear),
+  #         x2 top so the Turf and DK curves roughly mirror on the chart
+  # Scale defaults mirror Slate#resolved_formula's sport-aware fallback;
+  # per-slate overrides resolve at render time and the JS mirrors in
+  # slates/show.html.erb use those resolved values.
   def self.turf_score_for(rank, n, sport: "fifa")
     return 1.0 if n <= 1
 
-    curve = if sport.to_s == "nfl"
-      (rank - 1).to_f / (n - 1)
-    else
-      Math.log(rank) / Math.log(n)
-    end
-    (1.0 + 2.0 * curve).round(1)
+    nfl = sport.to_s == "nfl"
+    curve = nfl ? (rank - 1).to_f / (n - 1) : Math.log(rank) / Math.log(n)
+    (1.0 + (nfl ? 1.0 : 2.0) * curve).round(1)
   end
 
   def self.goals_distribution_for(rank, n)

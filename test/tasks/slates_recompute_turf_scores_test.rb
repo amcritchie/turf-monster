@@ -25,8 +25,8 @@ class SlatesRecomputeTurfScoresTaskTest < ActiveSupport::TestCase
 
     capture_io { @task.invoke }
 
-    # NFL: linear from the pinned 1.0 base across n=4 teams.
-    assert_equal [1.0, 1.7, 2.3, 3.0], nfl_rows.map { |m| m.reload.turf_score.to_f }
+    # NFL: linear from the pinned 1.0 base to the x2.0 top across n=4 teams.
+    assert_equal [1.0, 1.3, 1.7, 2.0], nfl_rows.map { |m| m.reload.turf_score.to_f }
     assert_equal [1, 2, 3, 4], nfl_rows.map(&:rank)
     # Fifa: log curve — rank 1 pins to 1.0, rank 2 of 2 tops out at 3.0.
     assert_equal [1.0, 3.0], fifa_rows.map { |m| m.reload.turf_score.to_f }

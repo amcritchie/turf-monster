@@ -18,15 +18,21 @@ class SlatesShowSportCurveTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "(rank − 1) / (N − 1)"
     assert_includes response.body, "pinned — rank 1 is always x1.0"
     refute_includes response.body, 'x-model.number="multBase"'
+    # Goals are a soccer concept: no goals sliders on an NFL slate, and the
+    # resolved scale defaults to the x2.0 NFL top.
+    refute_includes response.body, 'x-model.number="goalBase"'
+    assert_equal 1.0, @nfl.resolved_formula[:formula_mult_scale]
   end
 
-  test "soccer slate page keeps the log curve" do
+  test "soccer slate page keeps the log curve and goals card" do
     get slate_path(@fifa)
 
     assert_response :success
     assert_includes response.body, "FC_SPORT = 'fifa'"
     assert_includes response.body, "ln(rank) / ln(N)"
     refute_includes response.body, 'x-model.number="multBase"'
+    assert_includes response.body, 'x-model.number="goalBase"'
+    assert_equal 2.0, @fifa.resolved_formula[:formula_mult_scale]
   end
 
   test "saving nfl rankings writes the linear pinned-base scores" do
@@ -37,7 +43,7 @@ class SlatesShowSportCurveTest < ActionDispatch::IntegrationTest
     patch update_rankings_slate_path(@nfl), params: { matchup_ids: matchups.map(&:id) }
 
     assert_redirected_to slate_path(@nfl)
-    assert_equal [1.0, 2.0, 3.0], matchups.map { |m| m.reload.turf_score.to_f }
+    assert_equal [1.0, 1.5, 2.0], matchups.map { |m| m.reload.turf_score.to_f }
     assert_equal [1, 2, 3], matchups.map { |m| m.rank }
   end
 end
