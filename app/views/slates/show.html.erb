@@ -59,11 +59,33 @@
     });
   }
 
+  // NFL axis windows: shrink the DK axis to the data (visual fidelity), then
+  // derive the reversed Turf window LINEARLY from it so turf 1.0 maps to the
+  // same pixel as the DK maximum — both lines leave the same point, and the
+  // x2 top lands on the DK minimum's pixel. Returns null when the mapping is
+  // undefined (no DK data, or a flat DK line) — callers fall back to static
+  // windows.
+  function _fcNflAxisWindows(data, multScale) {
+    if (FC_SPORT !== 'nfl') return null;
+    var dkVals = data.map(function(d) { return d.teamTotal; }).filter(function(v) { return v !== null && v !== undefined; });
+    if (dkVals.length < 2) return null;
+    var dkMax = Math.max.apply(null, dkVals);
+    var dkMin = Math.min.apply(null, dkVals);
+    if (dkMax === dkMin) return null;
+    var pad = Math.max(1, (dkMax - dkMin) * 0.06);
+    var y2Min = Math.floor(dkMin - pad);
+    var y2Max = Math.ceil(dkMax + pad);
+    var tMin = 1 - multScale * (y2Max - dkMax) / (dkMax - dkMin);
+    var tMax = tMin + multScale * (y2Max - y2Min) / (dkMax - dkMin);
+    return { y2Min: y2Min, y2Max: y2Max, tMin: tMin, tMax: tMax };
+  }
+
   function _fcBuildChart(data) {
     var canvas = document.getElementById('formulaCurvesChart');
     if (!canvas) return;
     var existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
+    var windows = _fcNflAxisWindows(data, _fcSliders.multScale);
 
     var isDark = document.documentElement.classList.contains('dark');
     var gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
@@ -138,10 +160,16 @@
           // an 81-point total off-chart while a hardcoded 0-5 "DK Total" axis
           // mirrored uselessly on the right. Axis text wears the series green
           // so the accurate scale reads as the green line's.
-          y2: { position: 'left', title: { display: true, text: 'DK Total', color: FC.dkTotal, font: { size: 11 } }, ticks: { color: FC.dkTotal }, grid: { drawOnChartArea: false }, beginAtZero: true },
+          y2: windows
+            ? { position: 'left', title: { display: true, text: 'DK Total', color: FC.dkTotal, font: { size: 11 } }, ticks: { color: FC.dkTotal }, grid: { drawOnChartArea: false }, min: windows.y2Min, max: windows.y2Max }
+            : { position: 'left', title: { display: true, text: 'DK Total', color: FC.dkTotal, font: { size: 11 } }, ticks: { color: FC.dkTotal }, grid: { drawOnChartArea: false }, beginAtZero: true },
           // NFL: reversed so x1.0 sits at the TOP — the Turf line then falls
-          // with rank alongside the DK Expectation line instead of crossing it.
-          y: { position: 'right', reverse: FC_SPORT === 'nfl', title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: 0, max: 5 }
+          // with rank alongside the DK Expectation line instead of crossing it,
+          // and the window derived by _fcNflAxisWindows anchors turf 1.0 to the
+          // DK maximum's pixel so both lines leave the same point.
+          y: windows
+            ? { position: 'right', reverse: true, title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: windows.tMin, max: windows.tMax }
+            : { position: 'right', reverse: FC_SPORT === 'nfl', title: { display: true, text: 'Turf Score', color: textColor, font: { size: 11 } }, ticks: { color: textColor }, grid: { color: gridColor }, min: 0, max: 5 }
         }
       }
     });
@@ -174,6 +202,15 @@
       else if (ds.label === 'Goals Distribution') ds.data = data.map(function(d) { return d.goals; });
       else if (ds.label === 'DK Expectation') ds.data = data.map(function(d) { return d.teamTotal; });
     });
+    // A scale change moves the turf window's bottom anchor (top stays pinned
+    // to the DK maximum), so the NFL axis windows recompute on every update.
+    var windows = _fcNflAxisWindows(data, multScale);
+    if (windows) {
+      _fcChart.options.scales.y.min = windows.tMin;
+      _fcChart.options.scales.y.max = windows.tMax;
+      _fcChart.options.scales.y2.min = windows.y2Min;
+      _fcChart.options.scales.y2.max = windows.y2Max;
+    }
     _fcChart.update('none');
     _fcUpdateRankList(A, lineExp, probExp, multBase, multScale);
   }
