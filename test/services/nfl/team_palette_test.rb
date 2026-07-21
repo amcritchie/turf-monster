@@ -29,4 +29,19 @@ class Nfl::TeamPaletteTest < ActiveSupport::TestCase
     assert_equal "#C60C30", nfl_bal.color_alt_light,        "red kept as alt-light"
     assert_equal "#000000", other_bal.reload.color_secondary, "non-NFL BAL is untouched"
   end
+
+  test "apply! is atomic — a mid-run failure rolls back every recolor" do
+    bal = Team.create!(name: "Atomic Ravens", slug: "atomic-ravens", short_name: "BAL",
+                       league: "nfl", sport: "football", color_secondary: "#000000")
+    Team.create!(name: "Atomic Niners", slug: "atomic-niners", short_name: "SF",
+                 league: "nfl", sport: "football", color_secondary: "#000000")
+
+    # BAL sorts before SF in PALETTE, so BAL is updated first; blow up on SF.
+    boom = ->(abbr) { raise "boom" if abbr == "SF"; { color_secondary: "#111111" } }
+    Nfl::TeamPalette.stub(:attributes_for, boom) do
+      assert_raises(RuntimeError) { Nfl::TeamPalette.apply! }
+    end
+
+    assert_equal "#000000", bal.reload.color_secondary, "BAL's update rolled back with the failed run"
+  end
 end

@@ -62,11 +62,15 @@ module Nfl
     # Upsert ONLY the color columns onto existing NFL team rows (matched by
     # short_name WITHIN the nfl scope, so a same-abbreviation non-NFL team can
     # never be recolored). Safe for production: touches no games, slates, or
-    # rankings — and no non-NFL rows. Returns the number of teams recolored.
+    # rankings — and no non-NFL rows. ATOMIC: all 32 updates commit together or
+    # not at all, so a mid-run failure never leaves a half-recolored league.
+    # Returns the number of teams recolored.
     def self.apply!(scope = Team.nfl)
-      PALETTE.keys.count do |abbr|
-        team = scope.find_by(short_name: abbr)
-        team&.update!(attributes_for(abbr)) ? true : false
+      ActiveRecord::Base.transaction do
+        PALETTE.keys.count do |abbr|
+          team = scope.find_by(short_name: abbr)
+          team&.update!(attributes_for(abbr)) ? true : false
+        end
       end
     end
   end
