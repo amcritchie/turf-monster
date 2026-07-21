@@ -85,6 +85,17 @@ nfl_team_metadata = {
 }
 nfl_team_metadata["WSH"] = nfl_team_metadata.fetch("WAS")
 
+# Four-color brand palette lives in Nfl::TeamPalette::PALETTE — the single place
+# to edit team colors, shared with the `nfl:recolor` post-deploy task. Merge it
+# onto the metadata so freshly-seeded teams get their colors here; existing rows
+# are recolored idempotently on reseed (and in prod via `bin/rails nfl:recolor`,
+# which touches ONLY color columns — never games, slates, or frozen turf_scores).
+Nfl::TeamPalette::PALETTE.each_key do |abbr|
+  next unless nfl_team_metadata.key?(abbr)
+
+  nfl_team_metadata[abbr].merge!(Nfl::TeamPalette.attributes_for(abbr))
+end
+
 nfl_home_arenas.merge(nfl_schedule_only_arenas).each do |slug, attributes|
   arena = Arena.find_or_initialize_by(slug: slug)
   arena.assign_attributes(attributes)
@@ -104,6 +115,8 @@ data.fetch("teams").each do |row|
     emoji: metadata.fetch(:emoji),
     color_primary: metadata.fetch(:color_primary),
     color_secondary: metadata.fetch(:color_secondary),
+    color_alt_light: metadata[:color_alt_light],
+    color_alt_dark: metadata[:color_alt_dark],
     color_text_light: metadata.fetch(:color_text_light),
     sport: "football",
     league: "nfl",

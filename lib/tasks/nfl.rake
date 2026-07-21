@@ -45,4 +45,10 @@ namespace :nfl do
     puts "Linear fit: #{linear_fit.formula(result.team_count)}  (r² #{linear_fit.r_squared} · rmse #{linear_fit.rmse})"
     puts "Best: #{result.best_fit.kind}  (World Cup goals curve: 0.2 + 4.3 * ln(n/rank)/ln(n))"
   end
+
+  desc "Recolor existing NFL teams from Nfl::TeamPalette (post-deploy: colors only, never games/slates)"
+  task recolor: :environment do
+    count = Nfl::TeamPalette.apply!
+    puts "nfl:recolor — recolored #{count} team(s) from Nfl::TeamPalette::PALETTE"
+  end
 end

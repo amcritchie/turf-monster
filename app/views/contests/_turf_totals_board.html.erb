@@ -58,6 +58,9 @@
     # The cart, summary, and every JS readout must show the SPAN multiplier on a
     # multi-week board \u2014 the anchor week's number would misprice the pick.
     shown_score = multi_week ? span_scores[m.team_slug] : m.turf_score
+    # Same team palette the board cards wear, carried into the JS so the picks
+    # sidebar rows can dress each pick in its team's gradient + accent.
+    pal = team_card_palette(m.team)
     matchup_data[m.id.to_s] = {
       name: m.team.name,
       # Cart rows are narrow — the city wraps a three-opponent row onto two
@@ -68,7 +71,13 @@
       emoji: m.team.emoji,
       opName: multi_week ? span_opponents[m.team_slug].to_a.filter_map { |_s, wm| wm&.opponent_team&.short_name }.join(" / ") : m.opponent_team&.short_name.to_s,
       turfScore: shown_score ? sprintf("%.1f", shown_score) : "\u2014",
-      locked: m.locked?
+      locked: m.locked?,
+      gradient: pal[:gradient],
+      fg: pal[:fg],
+      fgSoft: pal[:fg_soft],
+      fgFaint: pal[:fg_faint],
+      accent: pal[:accent],
+      mascotShadow: pal[:mascot_shadow]
     }
   end
 
@@ -504,7 +513,13 @@ window.selectionBoard = function() {
         shortName: matchupData[matchupId]?.shortName || matchupData[matchupId]?.name || matchupId,
         emoji: matchupData[matchupId]?.emoji || '',
         opName: matchupData[matchupId]?.opName || '',
-        turfScore: matchupData[matchupId]?.turfScore || ''
+        turfScore: matchupData[matchupId]?.turfScore || '',
+        gradient: matchupData[matchupId]?.gradient || '',
+        fg: matchupData[matchupId]?.fg || '',
+        fgSoft: matchupData[matchupId]?.fgSoft || '',
+        fgFaint: matchupData[matchupId]?.fgFaint || '',
+        accent: matchupData[matchupId]?.accent || '',
+        mascotShadow: matchupData[matchupId]?.mascotShadow || ''
       }));
     },
 
@@ -1888,9 +1903,10 @@ window.selectionBoard = function() {
       <template x-for="i in <%= @contest.picks_required %>" :key="i">
         <div>
           <template x-if="selectionSlots[i-1]">
-            <div class="bg-surface-alt rounded-md px-1.5 py-1 border border-primary-700 text-center relative" style="min-height:2.75rem">
-              <p class="text-heading font-semibold text-xs truncate" x-text="selectionSlots[i-1].emoji + ' ' + selectionSlots[i-1].shortName"></p>
-              <p class="text-muted text-[10px] truncate">vs <span x-text="selectionSlots[i-1].opName"></span> <span class="text-primary font-mono" x-text="'x' + selectionSlots[i-1].turfScore"></span></p>
+            <div class="rounded-md px-1.5 py-1 border text-center relative overflow-hidden" style="min-height:2.75rem"
+                 :style="{ background: selectionSlots[i-1].gradient, color: selectionSlots[i-1].fg, borderColor: selectionSlots[i-1].fgFaint }">
+              <p class="font-extrabold text-xs truncate" :style="{ color: selectionSlots[i-1].accent, textShadow: selectionSlots[i-1].mascotShadow }" x-text="selectionSlots[i-1].shortName"></p>
+              <p class="text-[10px] truncate" :style="{ color: selectionSlots[i-1].fgSoft }">vs <span x-text="selectionSlots[i-1].opName"></span> <span class="font-mono" :style="{ color: selectionSlots[i-1].fg }" x-text="'x' + selectionSlots[i-1].turfScore"></span></p>
               <button @click="removeSelection(selectionSlots[i-1].matchupId)"
                       class="absolute -top-1 -right-1 w-4 h-4 bg-surface border border-strong rounded-full text-muted hover:text-red-400 text-[10px] leading-none flex items-center justify-center">&times;</button>
             </div>

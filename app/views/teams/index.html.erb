@@ -1,4 +1,7 @@
-<section x-data="cardListFilter({ selector: '[data-team-card]' })">
+<%# Friendly names for the raw league codes; anything unmapped shows upcased. %>
+<% league_labels = { "nfl" => "NFL", "fifa" => "World Cup" } %>
+<% leagues = @teams.map(&:league).compact.uniq.sort %>
+<section x-data="cardListFilter({ selector: '[data-team-card]', filters: { league: 'all' } })">
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
     <h2 class="text-2xl font-bold text-heading">Teams</h2>
     <div class="flex items-center gap-3 w-full sm:w-auto">
@@ -10,6 +13,30 @@
     </div>
   </div>
 
+  <%# League filter tabs — reuse cardListFilter's exact-match `filters` map, so
+      "NFL" hides the World Cup national teams. Only shown when more than one
+      league is present. %>
+  <% if leagues.size > 1 %>
+    <div class="flex flex-wrap gap-2 mb-6">
+      <button class="btn btn-sm" :class="filters.league === 'all' ? 'btn-primary' : 'btn-outline'" @click="filters.league = 'all'">All</button>
+      <% leagues.each do |lg| %>
+        <button class="btn btn-sm"
+                :class="filters.league === '<%= lg %>' ? 'btn-primary' : 'btn-outline'"
+                @click="filters.league = '<%= lg %>'">
+          <%= league_labels.fetch(lg, lg.upcase) %>
+        </button>
+      <% end %>
+    </div>
+  <% end %>
+
+  <p class="text-xs text-muted mb-4">
+    Colors:
+    <span class="whitespace-nowrap">🎨 background</span> ·
+    <span class="whitespace-nowrap">🔤 text</span> ·
+    <span class="whitespace-nowrap">☀️ alt light</span> ·
+    <span class="whitespace-nowrap">🌙 alt dark</span>
+  </p>
+
   <% if @teams.empty? %>
     <%= render "components/empty_state", message: "No teams yet." %>
   <% else %>
@@ -19,14 +46,18 @@
               class: "block card-hover p-4",
               data: {
                 team_card: true,
+                league: team.league,
                 name: "#{team.name} #{team.short_name} #{team.location} #{team.league} #{team.division} #{team.home_arena&.name}".downcase
               } do %>
-          <div class="flex items-center gap-2 mb-2">
-            <% if team.color_primary.present? %>
-              <div class="w-4 h-4 rounded-full flex-shrink-0 border border-white/20" style="background-color: <%= team.color_primary %>"></div>
-            <% end %>
-            <% if team.color_secondary.present? && team.color_secondary != team.color_primary %>
-              <div class="w-4 h-4 rounded-full flex-shrink-0 border border-white/20" style="background-color: <%= team.color_secondary %>"></div>
+          <%# Four-color palette, each swatch labelled by its role emoji:
+              🎨 primary (background) · 🔤 secondary (text) · ☀️ alt light · 🌙 alt dark.
+              Alt swatches only appear when the team actually has that color. %>
+          <div class="flex items-center gap-1.5 mb-2">
+            <% [["🎨", team.color_primary], ["🔤", team.color_secondary], ["☀️", team.color_alt_light], ["🌙", team.color_alt_dark]].each do |emoji, hex| %>
+              <% if hex.present? %>
+                <div class="w-7 h-7 rounded-full flex-shrink-0 border border-white/20 flex items-center justify-center text-[8px] leading-none"
+                     style="background-color: <%= hex %>" title="<%= emoji %> <%= hex %>"><span class="opacity-80"><%= emoji %></span></div>
+              <% end %>
             <% end %>
           </div>
           <div class="flex items-start gap-2">
