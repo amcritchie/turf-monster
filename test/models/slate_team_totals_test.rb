@@ -50,9 +50,10 @@ class SlateTeamTotalsTest < ActiveSupport::TestCase
 
     assert_equal 1, rankings["team-a"][:rank], "65.0 total should rank ahead of 60.0"
     assert_equal 2, rankings["team-b"][:rank]
-    # rank 1 of n is always exactly 1.0; rank n of n is always exactly 3.0.
+    # rank 1 of n is always exactly 1.0; rank n of an NFL slate tops at 2.0
+    # (linear curve, x2 cap — see SlateMatchup.turf_score_for).
     assert_equal 1.0, rankings["team-a"][:turf_score]
-    assert_equal 3.0, rankings["team-b"][:turf_score]
+    assert_equal 2.0, rankings["team-b"][:turf_score]
   end
 
   test "team_rows carries one row per team with its games and total" do
@@ -103,7 +104,7 @@ class SlateTeamTotalsTest < ActiveSupport::TestCase
     assert_equal %w[team-a team-c team-b team-d],
                  rankings.sort_by { |_slug, r| r[:rank] }.map(&:first)
     assert_equal 1.0, rankings["team-a"][:turf_score]
-    assert_equal 3.0, rankings["team-d"][:turf_score]
+    assert_equal 2.0, rankings["team-d"][:turf_score]
   end
 
   test "ties break on kickoff then team name, matching the old ordering" do
