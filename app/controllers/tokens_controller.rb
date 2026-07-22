@@ -2,7 +2,7 @@ class TokensController < ApplicationController
   before_action :require_login
   before_action :require_dev_mint_allowed, only: [:dev_mint]
   # B4 / OPSEC-048: frozen accounts can't buy tokens.
-  before_action :require_unfrozen_account, only: [:stripe_checkout, :paypal_order, :paypal_capture]
+  before_action :require_unfrozen_account, only: [:stripe_checkout, :paypal_order, :paypal_capture, :coinflow_order]
 
   def buy
     @packs = StripePurchase.available_packs
@@ -205,6 +205,93 @@ class TokensController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
+  # Coinflow hosted-checkout kickoff (additive rail, gated on AppFlags.coinflow?).
+  # JSON-only. Coinflow's flow is a redirect (no client-side capture leg): we
+  # create the pending purchase row FIRST, ask Coinflow for a hosted-checkout
+  # link, and hand the browser that link. On `Settled` the webhook mints exactly
+  # 1 entry token (Webhooks::CoinflowController) — the same on-chain end state as
+  # the PayPal token-buy. The amount derives SERVER-SIDE from the pack; the
+  # client only ever names a pack id.
+  def coinflow_order
+    pack_id = params[:pack].to_s
+    unless StripePurchase.available_packs.key?(pack_id)
+      return render json: { error: "Unknown or unavailable token pack" }, status: :unprocessable_entity
+    end
+    unless current_user.solana_connected?
+      return render json: { error: "Connect a wallet first." }, status: :unprocessable_entity
+    end
+    unless AppFlags.coinflow?
+      return render json: { error: "Coinflow checkout isn't enabled." }, status: :unprocessable_entity
+    end
+    # OPSEC-036: a prior chargeback flagged this account — block further fiat
+    # purchases so a stolen-card buyer can't keep racking up disputes.
+    if current_user.payment_risk_flag
+      return render json: { error: "Purchases are disabled on this account. Please contact support." }, status: :forbidden
+    end
+
+    pack    = StripePurchase.pack(pack_id)
+    contest = Contest.find_by(slug: params[:contest].presence)
+
+    rescue_and_log(target: current_user) do
+      # Row first, link second: Current.outbound_source needs the purchase to
+      # exist so the create-link API call lands in outbound_requests with
+      # polymorphic attribution (same ordering as paypal_order / TokenPurchaseJob).
+      @coinflow_purchase = CoinflowPurchase.create!(
+        user: current_user,
+        pack_id: pack_id,
+        quantity: pack[:quantity],
+        price_cents: pack[:price_cents],
+        wallet_address: current_user.solana_address,
+        contest_slug: contest&.slug,
+        status: "pending"
+      )
+      # The reference IS the slug — set once here (the slug exists only after
+      # Sluggable's before_save fires on create), then immutable and echoed by
+      # Coinflow / carried on the callback for settlement resolution.
+      @coinflow_purchase.update!(coinflow_reference: @coinflow_purchase.slug)
+      Current.outbound_source = @coinflow_purchase
+
+      return_url = "#{tokens_buy_url}?coinflow=return&reference=#{@coinflow_purchase.coinflow_reference}"
+      link = Coinflow::Client.new.create_checkout_link(
+        user: current_user, pack: pack, return_url: return_url, ip: request.remote_ip
+      )
+      Rails.logger.info "[tokens] coinflow.order_created purchase=#{@coinflow_purchase.id} " \
+                        "reference=#{@coinflow_purchase.coinflow_reference} pack=#{pack_id} user=#{current_user.id}"
+      render json: { link: link, reference: @coinflow_purchase.coinflow_reference }
+    end
+  rescue StandardError => e
+    @coinflow_purchase&.mark_failed_unless_minted!
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
+  # Dev/QA only (not drawn in production): stand in for Coinflow's `Settled`
+  # webhook, which can't reach a localhost stack. Drives the SAME money-path
+  # components the real webhook uses — CoinflowPurchase#capture_matches? +
+  # Coinflow::Fulfillment.enqueue_mint! (the exactly-once CAS + mint) — just
+  # without the shared-secret HTTP hop. Mirrors the dev-mint affordance.
+  def coinflow_simulate_settle
+    return head :not_found if Rails.env.production?
+
+    purchase = current_user.coinflow_purchases.where(status: "pending").order(:created_at).last
+    unless purchase
+      return render json: { error: "No pending Coinflow purchase — click Buy 1 entry first." }, status: :not_found
+    end
+
+    # The subtotal we set server-side at checkout-link time — exactly what a real
+    # Settled event echoes back, so capture_matches? validates the same invariant.
+    event = { "subtotal" => { "cents" => purchase.price_cents, "currency" => "USD" } }
+    unless purchase.capture_matches?(event)
+      return render json: { error: "Simulated amount didn't match the pack." }, status: :unprocessable_entity
+    end
+
+    Coinflow::Fulfillment.enqueue_mint!(purchase, payment_id: "sim_#{SecureRandom.hex(8)}")
+    render json: {
+      simulated: true,
+      reference: purchase.coinflow_reference,
+      message: "Settlement simulated — your entry token is minting on-chain now."
+    }
+  end
+
   def processing
     @session_id = params[:session_id].to_s
     # Gallery preview (/admin/modals) renders this page in a forced state via
@@ -230,6 +317,7 @@ class TokensController < ApplicationController
   def status
     session_id = params[:session_id].to_s
     order_id   = params[:order_id].to_s
+    reference  = params[:reference].to_s
 
     if session_id.present?
       purchase = current_user.stripe_purchases.for_session(session_id).first
@@ -237,6 +325,9 @@ class TokensController < ApplicationController
     elsif order_id.present?
       purchase = current_user.paypal_purchases.for_order(order_id).first
       ref = "order=#{order_id[0, 12]}…"
+    elsif reference.present?
+      purchase = current_user.coinflow_purchases.for_reference(reference).first
+      ref = "coinflow=#{reference[0, 16]}…"
     else
       return render json: { ready: false }, status: :bad_request
     end

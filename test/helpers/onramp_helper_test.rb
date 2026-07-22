@@ -12,12 +12,14 @@ class OnrampHelperTest < ActionView::TestCase
 
   # --- dev/test: every rail visible regardless of backend flags ---
 
-  test "all four rails are visible outside production even with every flag off" do
+  test "all rails are visible outside production even with every flag off" do
     with_cdp_ramp(nil) do
-      swap_provider("none") do
-        swap_stripe_enabled(false) do
-          %i[coinbase paypal venmo stripe].each do |rail|
-            assert onramp_rail_visible?(rail), "#{rail} should be visible in test env"
+      with_coinflow(nil) do
+        swap_provider("none") do
+          swap_stripe_enabled(false) do
+            %i[coinbase coinflow paypal venmo stripe].each do |rail|
+              assert onramp_rail_visible?(rail), "#{rail} should be visible in test env"
+            end
           end
         end
       end
@@ -30,6 +32,13 @@ class OnrampHelperTest < ActionView::TestCase
     in_production do
       with_cdp_ramp("true") { assert onramp_rail_visible?(:coinbase) }
       with_cdp_ramp(nil)    { assert_not onramp_rail_visible?(:coinbase) }
+    end
+  end
+
+  test "coinflow is gated on AppFlags.coinflow? in production" do
+    in_production do
+      with_coinflow("true") { assert onramp_rail_visible?(:coinflow) }
+      with_coinflow(nil)    { assert_not onramp_rail_visible?(:coinflow) }
     end
   end
 
@@ -78,6 +87,14 @@ class OnrampHelperTest < ActionView::TestCase
     yield
   ensure
     original.nil? ? ENV.delete("ENABLE_CDP_RAMP") : ENV["ENABLE_CDP_RAMP"] = original
+  end
+
+  def with_coinflow(value)
+    original = ENV["ENABLE_COINFLOW"]
+    value.nil? ? ENV.delete("ENABLE_COINFLOW") : ENV["ENABLE_COINFLOW"] = value
+    yield
+  ensure
+    original.nil? ? ENV.delete("ENABLE_COINFLOW") : ENV["ENABLE_COINFLOW"] = original
   end
 
   def swap_provider(value)

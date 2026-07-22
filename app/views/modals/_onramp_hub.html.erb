@@ -78,6 +78,27 @@
       </template>
     <% end %>
 
+    <% if onramp_rail_visible?(:coinflow) %>
+      <%# Coinflow — wired to the buy-1-entry hosted-checkout flow. Clones the
+          Coinbase rail card, but is NOT gated behind !tokenFallback: unlike the
+          Coinbase USDC buy, Coinflow mints a spendable ENTRY TOKEN directly, so
+          it's useful to the web2 kill-switch audience too (like the Stripe
+          token rail). tmCoinflowBuyOne() POSTs /tokens/coinflow_order then
+          redirects to Coinflow's hosted checkout. %>
+      <button type="button" data-onramp-rail="coinflow"
+              @click="tmCoinflowBuyOne('single')"
+              class="w-full flex items-center gap-4 p-4 rounded-xl border border-strong hover:border-primary bg-inset transition text-left">
+        <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-extrabold text-lg" style="background-color:#14B8A6">CF</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-heading font-semibold text-sm">Coinflow &middot; $19</span>
+          <span class="block text-xs text-secondary">Buy 1 entry token with a card</span>
+        </span>
+        <svg class="shrink-0 w-4 h-4 text-muted" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+        </svg>
+      </button>
+    <% end %>
+
     <% if onramp_rail_visible?(:paypal) %>
       <%# PayPal — placeholder. Visually complete, non-interactive, tagged
           "Soon". Wire it to the paypal_tokens flow when the rail goes live. %>
@@ -134,4 +155,8 @@
           class="block mx-auto mt-4 text-sm text-secondary hover:text-heading transition">
     &larr; Back
   </button>
+
+  <%# Defines window.tmCoinflowBuyOne for the Coinflow rail above. Inside the
+      single root div so the hub stays a single element under its x-if host. %>
+  <% if onramp_rail_visible?(:coinflow) %><%= render "tokens/coinflow_script" %><% end %>
 </div>

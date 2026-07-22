@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_21_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_22_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -84,6 +84,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_21_190000) do
     t.index ["partner_user_ref"], name: "index_cdp_ramp_transactions_on_partner_user_ref", unique: true
     t.index ["status", "direction"], name: "index_cdp_ramp_transactions_on_status_and_direction"
     t.index ["user_id"], name: "index_cdp_ramp_transactions_on_user_id"
+  end
+
+  create_table "coinflow_purchases", force: :cascade do |t|
+    t.datetime "captured_at"
+    t.string "coinflow_payment_id"
+    t.string "coinflow_reference"
+    t.string "contest_slug"
+    t.datetime "created_at", null: false
+    t.text "mint_tx_signatures"
+    t.datetime "minted_at"
+    t.string "pack_id", null: false
+    t.integer "price_cents", null: false
+    t.integer "quantity", default: 1, null: false
+    t.string "refund_reason"
+    t.datetime "refunded_at"
+    t.string "slug", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.string "wallet_address"
+    t.index ["coinflow_payment_id"], name: "index_coinflow_purchases_on_coinflow_payment_id", unique: true
+    t.index ["coinflow_reference"], name: "index_coinflow_purchases_on_coinflow_reference", unique: true
+    t.index ["slug"], name: "index_coinflow_purchases_on_slug", unique: true
+    t.index ["user_id"], name: "index_coinflow_purchases_on_user_id"
   end
 
   create_table "contest_slates", force: :cascade do |t|
@@ -706,6 +730,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_21_190000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "coinflow_purchases", "users"
   add_foreign_key "contest_slates", "contests"
   add_foreign_key "contest_slates", "slates"
   add_foreign_key "contests", "slates"

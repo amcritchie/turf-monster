@@ -23,6 +23,17 @@ module AppFlags
     ENV["ENABLE_CDP_RAMP"].to_s.strip.downcase == "true"
   end
 
+  # True when the Coinflow entry-token rail is enabled — the "Buy 1 entry"
+  # hosted-checkout flow (Coinflow pays, then we mint exactly 1 entry token,
+  # the same on-chain end state as the PayPal token-buy). Gates the buy-page
+  # card, the Add Funds hub rail, the /tokens/coinflow_order endpoint, and the
+  # /webhooks/coinflow settlement handler. Off by default everywhere; unsetting
+  # ENABLE_COINFLOW is the kill-switch. Additive — stacks ALONGSIDE the
+  # Coinbase / PayPal / Stripe rails, not a mutually-exclusive provider.
+  def self.coinflow?
+    ENV["ENABLE_COINFLOW"].to_s.strip.downcase == "true"
+  end
+
   # True for stable QA apps that run Rails in production mode but must still
   # identify themselves as non-production review targets.
   def self.qa_environment?
