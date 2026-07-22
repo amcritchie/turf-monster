@@ -216,8 +216,8 @@
               pills = sorted_sels.map do |sel|
                 t = sel.slate_matchup.team
                 g = sel.slate_matchup.game
-                c1 = t.color_primary || "#666"
-                c2 = t.color_secondary || c1
+                c1 = t.card_background || "#666"
+                c2 = t.card_mascot || c1
                 # Multi-week: a pick is "live" as soon as ANY week of its span has
                 # scored — the anchor week's game status alone would keep the pill
                 # showing a multiplier for the whole rest of the contest.

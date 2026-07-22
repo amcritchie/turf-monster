@@ -1,21 +1,23 @@
 const { test, expect } = require("@playwright/test");
 
-// /teams is public. It lists every team with a four-color palette (🎨 primary /
-// 🔤 secondary / ☀️ alt-light / 🌙 alt-dark) and a league filter. This guards
-// the whole vertical: seeded colors → DB → view swatches → Alpine filter.
-test.describe("Teams four-color palette", () => {
-  test("shows the palette and filters to NFL @smoke", async ({ page }) => {
+// /teams is public. Each card wears its own team field (disposition-based), and
+// lists its palette on a translucent strip in four families — Dark / Alt /
+// Light / Grey — as click-to-copy swatches (the hex rides the aria-label). This
+// guards the whole vertical: seeded colors → DB → view swatches → Alpine filter.
+test.describe("Teams palette", () => {
+  test("shows each team's palette and filters to NFL @smoke", async ({ page }) => {
     await page.goto("/teams");
 
-    // Legend documents the four roles.
-    await expect(page.getByText("🎨 background")).toBeVisible();
+    // Intro documents the click-to-copy family strip.
+    await expect(page.getByText("click any swatch to copy its hex")).toBeVisible();
 
-    // Bills wear their four brand colors, each swatch tagged by role + hex.
-    const bills = page.locator("a[data-team-card]", { hasText: "Buffalo Bills" });
-    await expect(bills.locator('[title="🎨 #00338D"]')).toBeVisible();
-    await expect(bills.locator('[title="🔤 #C60C30"]')).toBeVisible(); // red mascot text
-    await expect(bills.locator('[title="☀️ #FFFFFF"]')).toBeVisible(); // white alt-light
-    await expect(bills.locator('[title="🌙 #041E42"]')).toBeVisible(); // navy alt-dark
+    // Bills wear their brand colors as copy-able swatches; the aria-label carries
+    // the hex — dark #00338D + dark-alt #041E42, light #C60C30 + light-alt #FFFFFF.
+    const bills = page.locator("[data-team-card]", { hasText: "Buffalo Bills" });
+    await expect(bills.locator('button[aria-label="Copy #00338D"]')).toBeVisible();
+    await expect(bills.locator('button[aria-label="Copy #041E42"]')).toBeVisible();
+    await expect(bills.locator('button[aria-label="Copy #C60C30"]')).toBeVisible();
+    await expect(bills.locator('button[aria-label="Copy #FFFFFF"]')).toBeVisible();
 
     // The NFL pill narrows the grid to the 32 NFL teams.
     await page.getByRole("button", { name: "NFL", exact: true }).click();

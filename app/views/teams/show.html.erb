@@ -20,12 +20,14 @@
           <% end %>
         </div>
       </div>
-      <div class="ml-auto flex items-center gap-2">
-        <% if @team.color_primary.present? %>
-          <div class="w-8 h-8 rounded-full border border-white/20" style="background-color: <%= @team.color_primary %>"></div>
-        <% end %>
-        <% if @team.color_secondary.present? %>
-          <div class="w-8 h-8 rounded-full border border-white/20" style="background-color: <%= @team.color_secondary %>"></div>
+      <%# Brand palette by intrinsic lightness: 🌒 dark · 🌖 dark alt · 🔆 light ·
+          🔅 light alt · ✳️ alt · 🩶 grey. Slots show only when the team curates them. %>
+      <div class="ml-auto flex items-center gap-1.5">
+        <% [["🌒", @team.color_dark], ["🌖", @team.color_dark_alt], ["🔆", @team.color_light], ["🔅", @team.color_light_alt], ["✳️", @team.color_alt], ["🩶", @team.color_grey]].each do |emoji, hex| %>
+          <% if hex.present? %>
+            <div class="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-[9px] leading-none"
+                 style="background-color: <%= hex %>" title="<%= emoji %> <%= hex %>"><span class="opacity-80"><%= emoji %></span></div>
+          <% end %>
         <% end %>
       </div>
     </div>
