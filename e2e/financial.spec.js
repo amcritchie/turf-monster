@@ -64,3 +64,80 @@ test.describe("Admin Transaction Log", () => {
     await expect(page.locator("body")).toContainText("faucet");
   });
 });
+
+// Coinflow buy-1-entry rail. The hosted-checkout redirect and Coinflow's REST
+// API can't run in CI, so we stub at the Coinflow network boundary two ways:
+//   1. Browser side — page.route intercepts POST /tokens/coinflow_order and the
+//      hosted-checkout redirect, so no real Coinflow call leaves the box. This
+//      asserts OUR client wiring: button -> order endpoint -> redirect to link.
+//   2. Server side — we drive the Settled webhook directly with the shared
+//      secret and assert the endpoint authenticates + acks.
+// The settlement -> on-chain mint money path is covered authoritatively (with a
+// real DB row) by the Rails tests: test/controllers/webhooks/
+// coinflow_controller_test.rb + test/jobs/token_purchase_job_test.rb.
+//
+// Gated on ENABLE_COINFLOW so the default CI run (flag off) skips it; enable the
+// flag on the e2e stack to exercise it.
+test.describe("Coinflow entry-token buy", () => {
+  test.skip(
+    process.env.ENABLE_COINFLOW !== "true",
+    "ENABLE_COINFLOW is off — the Coinflow rail is hidden",
+  );
+
+  test("buy-1 button posts to the order endpoint and redirects to the hosted link", async ({ page }) => {
+    await loginAdmin(page);
+
+    const fakeLink = "https://sandbox-merchant.coinflow.cash/purchase-v2/e2e-fake";
+    let orderPosted = false;
+    let redirectHit = false;
+
+    // Stub the order endpoint (the Coinflow network boundary from the client's
+    // view): return a deterministic hosted-checkout link, no real Coinflow call.
+    await page.route("**/tokens/coinflow_order", async (route) => {
+      orderPosted = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ link: fakeLink, reference: "coinflow_e2e_fake" }),
+      });
+    });
+    // Catch the redirect so the browser never leaves the box.
+    await page.route("**/purchase-v2/**", async (route) => {
+      redirectHit = true;
+      await route.fulfill({ status: 200, contentType: "text/html", body: "<html><body>coinflow stub</body></html>" });
+    });
+
+    await page.goto("/tokens/buy");
+    const buyButton = page.locator('[data-coinflow-buy] button');
+    await expect(buyButton).toBeVisible();
+    await buyButton.click();
+
+    // The client hit the order endpoint and followed the returned link.
+    await expect.poll(() => orderPosted).toBe(true);
+    await expect.poll(() => redirectHit).toBe(true);
+  });
+
+  test("Settled webhook authenticates with the shared secret and acks", async ({ request }) => {
+    const key = process.env.COINFLOW_WEBHOOK_VALIDATION_KEY;
+    test.skip(!key, "COINFLOW_WEBHOOK_VALIDATION_KEY not set on the e2e stack");
+
+    // Wrong secret → 401.
+    const bad = await request.post("/webhooks/coinflow", {
+      headers: { Authorization: "WRONG", "Content-Type": "application/json" },
+      data: { eventType: "Settled", id: "e2e_pay_bad", subtotal: { cents: 1900, currency: "USD" } },
+    });
+    expect(bad.status()).toBe(401);
+
+    // Correct secret → 200 ack (unmatched customer is a safe no-op).
+    const ok = await request.post("/webhooks/coinflow", {
+      headers: { Authorization: key, "Content-Type": "application/json" },
+      data: {
+        eventType: "Settled",
+        id: "e2e_pay_ok",
+        subtotal: { cents: 1900, currency: "USD" },
+        customerId: "tm_user_0",
+      },
+    });
+    expect(ok.status()).toBe(200);
+  });
+});
