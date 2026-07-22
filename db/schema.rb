@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_21_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_21_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -568,11 +568,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_21_160000) do
 
   create_table "teams", force: :cascade do |t|
     t.string "coaches_url"
-    t.string "color_alt_dark"
-    t.string "color_alt_light"
-    t.string "color_primary"
-    t.string "color_secondary"
-    t.boolean "color_text_light", default: false, null: false
+    t.string "color_alt"
+    t.string "color_dark"
+    t.string "color_dark_alt"
+    t.string "color_disposition", default: "dark", null: false
+    t.string "color_grey"
+    t.string "color_light"
+    t.string "color_light_alt"
     t.string "conference"
     t.datetime "created_at", null: false
     t.string "division"

@@ -3,7 +3,25 @@ require "test_helper"
 class TeamColorsHelperTest < ActionView::TestCase
   include TeamColorsHelper
 
-  TeamDouble = Struct.new(:color_primary, :color_secondary, :color_text_light, keyword_init: true)
+  # Mirrors the Team color API the helper reads: brand hex keyed by intrinsic
+  # lightness plus the disposition that decides which color is the FIELD.
+  TeamDouble = Struct.new(:color_dark, :color_light, :color_dark_alt, :color_light_alt, :color_alt, :color_grey,
+                          :color_disposition, keyword_init: true) do
+    def disposition_light? = color_disposition.to_s == "light"
+    def dark_alt  = color_dark_alt.presence || color_dark
+    def light_alt = color_light_alt.presence || color_light
+    def card_background = disposition_light? ? color_light : color_dark
+    def card_mascot     = disposition_light? ? color_dark : color_light
+  end
+
+  def dark_team(**overrides)
+    TeamDouble.new({ color_dark: "#241773", color_light: "#9e7c0c", color_disposition: "dark" }.merge(overrides))
+  end
+
+  def light_team(**overrides)
+    # Saints: gold field (light color), near-black mascot (dark color).
+    TeamDouble.new({ color_dark: "#101820", color_light: "#d3bc8d", color_disposition: "light" }.merge(overrides))
+  end
 
   # --- normalize_hex ---
 
@@ -36,64 +54,106 @@ class TeamColorsHelperTest < ActionView::TestCase
     assert_in_delta 1.0, contrast_ratio("#123456", "#123456"), 0.001
   end
 
-  # --- accent: the crux, keeping near-black secondaries legible ---
-
-  test "team_accent keeps a well-contrasting secondary" do
-    # Packers: dark-green primary, gold secondary reads great → keep the gold.
-    assert_equal "#ffb612", team_accent("#203731", "#ffb612", false)
-  end
-
-  test "team_accent uses a low-contrast secondary as-is (curated brand choice)" do
-    # Bills red on royal blue is the team's own identity — used verbatim, not
-    # swapped for a higher-contrast tint.
-    assert_equal "#c60c30", team_accent("#00338d", "#c60c30", false)
-    # Chargers gold on powder blue, likewise.
-    assert_equal "#ffc20e", team_accent("#0080c6", "#ffc20e", false)
-  end
-
-  test "team_accent on a light-forward card keeps a dark readable secondary" do
-    # Saints: gold primary, near-black secondary reads great → keep it dark.
-    assert_equal "#101820", team_accent("#d3bc8d", "#101820", true)
-  end
-
-  test "team_accent falls back when a team has no secondary" do
-    accent = team_accent("#97233f", nil, false)
-    assert_match(/\A#[0-9a-f]{6}\z/, accent)
-    assert_operator contrast_ratio(accent, "#97233f"), :>=, TeamColorsHelper::ACCENT_MIN_CONTRAST
-  end
-
   # --- palette: the whole card contract ---
 
-  test "dark team gets white foreground and a team gradient" do
-    pal = team_card_palette(TeamDouble.new(color_primary: "#241773", color_secondary: "#9e7c0c", color_text_light: false))
+  test "dark team gets white foreground, a team gradient, and the light color as accent" do
+    pal = team_card_palette(dark_team)
     assert_equal TeamColorsHelper::LIGHT_FG, pal[:fg]
     assert_includes pal[:gradient], "linear-gradient"
     assert_includes pal[:fg_soft], "rgba(255, 255, 255"
+    assert_equal "#9e7c0c", pal[:accent], "accent is the mascot (light color) on a dark field"
   end
 
-  test "light-forward team gets dark foreground" do
-    pal = team_card_palette(TeamDouble.new(color_primary: "#d3bc8d", color_secondary: "#101820", color_text_light: true))
+  test "light-forward team gets dark foreground and a dark accent" do
+    pal = team_card_palette(light_team)
     assert_equal TeamColorsHelper::DARK_FG, pal[:fg]
-    assert_equal "#101820", pal[:accent]
+    assert_equal "#101820", pal[:accent], "accent is the mascot (dark color) on a gold field"
     assert_includes pal[:fg_soft], "rgba(15, 18, 22"
+  end
+
+  test "location line rides the light-family alt on a dark field" do
+    # Dark Ravens field → the city line uses the light-family alt (white here).
+    pal = team_card_palette(dark_team(color_light_alt: "#ffffff"))
+    assert_equal "#ffffff", pal[:location]
+  end
+
+  test "location line rides the dark-family alt on a light gold field" do
+    # Gold Saints field → the city line uses the dark-family alt (near-black).
+    pal = team_card_palette(light_team(color_dark_alt: "#101820"))
+    assert_equal "#101820", pal[:location]
   end
 
   test "palette exposes exactly the keys the card and picks sidebar consume" do
     # The board cards, the cart rows, and the compact pick chips all read these
     # keys — renaming one silently breaks a consumer. Lock the contract.
-    pal = team_card_palette(TeamDouble.new(color_primary: "#241773", color_secondary: "#9e7c0c", color_text_light: false))
-    assert_equal %i[gradient fg fg_soft fg_faint border divider accent mascot_shadow].sort, pal.keys.sort
+    pal = team_card_palette(dark_team)
+    assert_equal %i[gradient fg fg_soft fg_faint border divider accent location grey glow mascot_shadow].sort,
+                 pal.keys.sort
   end
 
-  test "mascot_shadow outlines a low-contrast accent for legibility" do
-    # Dark accent (Falcons black) → light halo; light accent (gold) → dark halo.
-    assert_includes mascot_shadow("#000000"), "255, 255, 255"
-    assert_includes mascot_shadow("#ffd700"), "rgba(0, 0, 0"
+  # --- glow: the holographic hover/select tint ---
+
+  test "glow rides the extra alt brand color when a team curates one" do
+    # Ravens park their red in the alt slot → the glow uses it.
+    pal = team_card_palette(dark_team(color_alt: "#c60c30"))
+    assert_equal "#c60c30", pal[:glow]
+  end
+
+  test "glow falls back to the light color when there is no alt" do
+    # No alt curated → the glow drops to the team's light brand color.
+    pal = team_card_palette(dark_team)
+    assert_equal "#9e7c0c", pal[:glow]
+  end
+
+  # --- grey: the OPPONENTS strip color ---
+
+  test "grey defaults to the neutral opponents grey when a team curates none" do
+    assert_equal TeamColorsHelper::DEFAULT_TEAM_GREY, team_card_palette(dark_team)[:grey]
+  end
+
+  test "grey uses the team's curated grey over the default" do
+    pal = team_card_palette(dark_team(color_grey: "#123456"))
+    assert_equal "#123456", pal[:grey]
+  end
+
+  # --- mascot_shadow: the legibility halo, now taking a single hex ---
+
+  test "mascot_shadow gives a near-black mascot the white halo" do
+    assert_includes mascot_shadow("#000000"), "rgba(255, 255, 255"
+    # #101820 (Saints near-black) also clears NEAR_BLACK_LUMINANCE.
+    assert_includes mascot_shadow("#101820"), "rgba(255, 255, 255"
+  end
+
+  test "mascot_shadow gives a colorful mascot the black halo" do
+    # Bears orange is dark-ish but well above near-black → keeps the dark halo.
+    assert_includes mascot_shadow("#c83803"), "rgba(0, 0, 0"
+  end
+
+  test "mascot_shadow returns none without a mascot color" do
     assert_equal "none", mascot_shadow(nil)
   end
 
+  # --- opponent_label_color: the opponent chips on a team card ---
+
+  test "opponent_label_color uses the opponent's light color on a dark host card" do
+    # Dark host field → the opponent's LIGHT color reads on it.
+    opponent = TeamDouble.new(color_dark: "#0b162a", color_light: "#c83803", color_disposition: "dark")
+    assert_equal "#c83803", opponent_label_color(opponent, dark_team)
+  end
+
+  test "opponent_label_color drops to the opponent's dark color on a light gold host card" do
+    # Saints card (gold field) hosting the Raiders: use Vegas' DARK color (black),
+    # since a light accent would wash out on the gold gradient.
+    opponent = TeamDouble.new(color_dark: "#000000", color_light: "#a5acaf", color_disposition: "dark")
+    assert_equal "#000000", opponent_label_color(opponent, light_team)
+  end
+
+  test "opponent_label_color is nil for a bye week" do
+    assert_nil opponent_label_color(nil, dark_team)
+  end
+
   test "palette survives a team with no brand colors" do
-    pal = team_card_palette(TeamDouble.new(color_primary: nil, color_secondary: nil, color_text_light: nil))
+    pal = team_card_palette(TeamDouble.new(color_disposition: "dark"))
     assert_includes pal[:gradient], "linear-gradient"
     assert_equal TeamColorsHelper::LIGHT_FG, pal[:fg]
     assert_match(/\A#[0-9a-f]{6}\z/, pal[:accent])

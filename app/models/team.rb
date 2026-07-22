@@ -10,6 +10,11 @@ class Team < ApplicationRecord
 
   validates :name, presence: true
 
+  # Which brand color is the card FIELD. dark → bg=color_dark, mascot=color_light;
+  # light → the field is the lighter color (gold Saints, red Bucs), so bg and
+  # mascot swap. Gives disposition_dark? / disposition_light?.
+  enum :color_disposition, { dark: "dark", light: "light" }, prefix: :disposition
+
   before_validation :set_default_mascot, if: -> { self[:mascot].blank? && name.present? }
 
   scope :nfl, -> { where(league: "nfl") }
@@ -23,6 +28,26 @@ class Team < ApplicationRecord
 
   def name_slug
     name.parameterize
+  end
+
+  # Alt neutrals fall back to their family's primary color when the team curates
+  # none — so callers can always ask for a dark-family / light-family alt.
+  def dark_alt
+    color_dark_alt.presence || color_dark
+  end
+
+  def light_alt
+    color_light_alt.presence || color_light
+  end
+
+  # The card FIELD (background) and the mascot text sitting on it. Disposition
+  # decides which brand color is which — see TeamColorsHelper#team_card_palette.
+  def card_background
+    disposition_light? ? color_light : color_dark
+  end
+
+  def card_mascot
+    disposition_light? ? color_dark : color_light
   end
 
   private
