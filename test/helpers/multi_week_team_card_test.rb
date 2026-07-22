@@ -1,5 +1,4 @@
 require "test_helper"
-require "ostruct"
 
 # Component tier for the redesigned multi-week team card: renders the real
 # partial and asserts the new identity block (city over mascot, team gradient,
@@ -13,11 +12,13 @@ class MultiWeekTeamCardTest < ActionView::TestCase
   end
   WeekMatchupDouble = Struct.new(:opponent_team, keyword_init: true)
 
+  # Real (unsaved) Team so the card's palette helpers read the actual color API:
+  # a dark-disposition Ravens by default (navy field, gold mascot).
   def team_double(**overrides)
-    OpenStruct.new({
-      name: "Baltimore Ravens", location: "Baltimore", mascot: "Ravens",
+    Team.new({
+      name: "Baltimore Ravens", location: "Baltimore",
       emoji: "🐦‍⬛", short_name: "BAL",
-      color_primary: "#241773", color_secondary: "#9e7c0c", color_text_light: false
+      color_dark: "#241773", color_light: "#9e7c0c", color_disposition: "dark"
     }.merge(overrides))
   end
 
@@ -63,9 +64,9 @@ class MultiWeekTeamCardTest < ActionView::TestCase
   end
 
   test "light-forward team flips to dark foreground and a dark accent" do
-    saints = team_double(name: "New Orleans Saints", location: "New Orleans", mascot: "Saints",
+    saints = team_double(name: "New Orleans Saints", location: "New Orleans",
                          emoji: "⚜️", short_name: "NO",
-                         color_primary: "#d3bc8d", color_secondary: "#101820", color_text_light: true)
+                         color_dark: "#101820", color_light: "#d3bc8d", color_disposition: "light")
     html = render_card(saints)
     assert_includes html, "New Orleans"
     assert_includes html, "Saints"
@@ -77,7 +78,7 @@ class MultiWeekTeamCardTest < ActionView::TestCase
   test "selection and lock wiring survive the restyle" do
     html = render_card(team_double)
     assert_includes html, "toggleSelection('42')"
-    assert_includes html, "matchup-selected"
+    assert_includes html, "is-selected"
   end
 
   test "week opponents still render under the team" do
@@ -85,6 +86,6 @@ class MultiWeekTeamCardTest < ActionView::TestCase
     assert_includes html, "IND"
     assert_includes html, "DAL"
     assert_includes html, "bye"
-    assert_includes html, "Points / Goal"
+    assert_includes html, "Points"
   end
 end

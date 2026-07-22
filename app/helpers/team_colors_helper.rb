@@ -1,87 +1,90 @@
-# Presentation colors for team cards. Teams carry raw brand hex in
-# color_primary / color_secondary and a color_text_light flag (a light brand
-# color that wants dark foreground text, e.g. the gold-forward Saints and
-# Steelers). This helper turns those three fields into ready-to-use CSS: a
-# team-hue gradient, a readable foreground, and a mascot accent that stays
-# legible even when a team's stored secondary is near-black.
+# Presentation colors for team cards. Teams carry brand hex keyed by intrinsic
+# lightness — color_dark / color_light, each with an alt — plus a
+# color_disposition that says which color is the FIELD (see Team#card_background
+# and Team#card_mascot). This helper turns those into ready-to-use CSS: a
+# team-hue gradient, a readable foreground, the mascot color, a legibility halo,
+# and a location line that stays readable on either field.
 module TeamColorsHelper
-  DARK_FG          = "#0f1216".freeze # foreground for light-forward cards
-  LIGHT_FG         = "#ffffff".freeze # foreground for dark cards
-  FALLBACK_PRIMARY = "#3a3f4b".freeze # neutral when a team has no brand color
-  # WCAG large-text contrast floor. The mascot is big and bold, so 3:1 is the
-  # readable minimum; below it we swap the stored secondary for a team tint.
-  ACCENT_MIN_CONTRAST = 3.0
+  DARK_FG           = "#0f1216".freeze # foreground on a LIGHT field (gold Saints)
+  LIGHT_FG          = "#ffffff".freeze # foreground on a DARK field
+  FALLBACK_PRIMARY  = "#3a3f4b".freeze # neutral when a team has no brand color
+  DEFAULT_TEAM_GREY = "#9aa0a6".freeze # the OPPONENTS grey when a team curates none
+
+  # A mascot this dark (Falcons/Bengals black, Panthers/Saints near-black) would
+  # vanish against a dark halo, so it — and only it — takes the light halo. WCAG
+  # luminance in [0,1]; 0.06 sits just above #101820 yet well below any real
+  # brand hue, so orange/red/gold mascots keep the dark halo.
+  NEAR_BLACK_LUMINANCE = 0.06
+
+  # Above this luminance a field reads as LIGHT (dark foreground + dark location
+  # alt). Only the gold Saints/Steelers fields clear it; every other field —
+  # including the red/orange light-disposition cards — stays dark.
+  LIGHT_FIELD_LUMINANCE = 0.4
 
   # Ready-to-use CSS values for one team card. Keys map straight onto inline
   # style attributes in contests/_multi_week_team_card.
   def team_card_palette(team)
-    primary   = normalize_hex(team&.color_primary) || FALLBACK_PRIMARY
-    secondary = normalize_hex(team&.color_secondary)
-    light     = team_text_light?(team)
-    fg        = light ? DARK_FG : LIGHT_FG
-    accent    = team_accent(primary, secondary, light)
+    bg          = normalize_hex(team&.card_background) || FALLBACK_PRIMARY
+    mascot      = normalize_hex(team&.card_mascot) || LIGHT_FG
+    light_field = relative_luminance(bg) > LIGHT_FIELD_LUMINANCE
+    fg          = light_field ? DARK_FG : LIGHT_FG
+    # The city line rides the light-family alt, swapping to the dark-family alt on
+    # a light-disposition field — the same swap the mascot makes. Falls back to
+    # the foreground when a team curates neither alt.
+    location    = if team&.disposition_light?
+                    normalize_hex(team&.dark_alt) || fg
+                  else
+                    normalize_hex(team&.light_alt) || fg
+                  end
 
     {
-      gradient: team_gradient(primary, light),
+      gradient: team_gradient(bg, light_field),
       fg: fg,
-      fg_soft: rgba(fg, 0.72),   # city line, week opponents
-      fg_faint: rgba(fg, 0.55),  # labels, "Points / Goal"
+      fg_soft: rgba(fg, 0.72),   # week-opponent fallback
+      fg_faint: rgba(fg, 0.55),  # labels: "Points", week headers
       border: rgba(fg, 0.18),    # card edge
       divider: rgba(fg, 0.14),   # week-row rules
-      accent: accent,            # the mascot
-      mascot_shadow: mascot_shadow(accent) # legibility halo on the gradient
+      accent: mascot,            # the mascot
+      location: location,        # the city line
+      grey: normalize_hex(team&.color_grey) || DEFAULT_TEAM_GREY, # OPPONENTS strip
+      # Holographic hover/select tint: the alt color when present, else the light.
+      glow: normalize_hex(team&.color_alt) || normalize_hex(team&.color_light) || mascot,
+      mascot_shadow: mascot_shadow(mascot) # legibility halo on the gradient
     }
   end
 
-  # A subtle halo that keeps the mascot legible on the team gradient even when
-  # the brand accent is low-contrast against it (Bills red on blue, Falcons
-  # black on red). It outlines the glyph WITHOUT changing the brand color: a
-  # light halo for dark accents, a dark halo for light ones.
-  def mascot_shadow(accent)
-    hex = normalize_hex(accent)
+  # A subtle halo that keeps the mascot legible on the team gradient: a light
+  # halo behind an essentially-black mascot, a dark halo behind everything else.
+  # Held at 0.5 alpha so it reads as a soft glow, not a hard sticker outline.
+  def mascot_shadow(mascot)
+    hex = normalize_hex(mascot)
     return "none" unless hex
 
-    halo = relative_luminance(hex) < 0.5 ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)"
+    halo = relative_luminance(hex) < NEAR_BLACK_LUMINANCE ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)"
     "0 0 2px #{halo}, 0 1px 2px #{halo}"
   end
 
-  # A vertical gradient in the team's own hue. Light-forward teams stay airy;
-  # dark teams gain depth toward the bottom.
-  def team_gradient(primary, light)
-    top    = lighten_hex(primary, light ? 0.12 : 0.06)
-    bottom = darken_hex(primary, light ? 0.10 : 0.32)
-    "linear-gradient(160deg, #{top} 0%, #{primary} 45%, #{bottom} 100%)"
-  end
+  # The color for an opponent's short name on a team card. Adaptive: the
+  # opponent's LIGHT color reads on a dark host field, its DARK color reads on a
+  # light (gold) host field — so a near-black-accent team like the Saints shows
+  # its gold on a dark card and its near-black on a gold card.
+  def opponent_label_color(opponent, card_team)
+    return nil unless opponent
 
-  # The mascot font color. The curated secondary IS the brand accent, so it is
-  # used as-is even when it's a lower-contrast choice (e.g. Bills red on royal
-  # blue, 49ers gold on scarlet) — that legibility trade-off is the team's own
-  # identity. Only a MISSING secondary falls back to a readable tint of primary.
-  def team_accent(primary, secondary, light)
-    return secondary if secondary.present?
-
-    readable_tint(primary, prefer_dark: light)
-  end
-
-  # Push the primary hue lighter (dark cards) or darker (light cards) until it
-  # clears the contrast floor, so the mascot always pops in-hue. Falls to the
-  # preferred pole if even that isn't enough.
-  def readable_tint(primary, prefer_dark:)
-    directions = prefer_dark ? [true, false] : [false, true]
-    directions.each do |go_dark|
-      (5..9).each do |step|
-        amount = step / 10.0
-        candidate = go_dark ? darken_hex(primary, amount) : lighten_hex(primary, amount)
-        return candidate if contrast_ratio(candidate, primary) >= ACCENT_MIN_CONTRAST
-      end
+    host_bg = normalize_hex(card_team&.card_background) || FALLBACK_PRIMARY
+    if relative_luminance(host_bg) > LIGHT_FIELD_LUMINANCE
+      normalize_hex(opponent.color_dark) || FALLBACK_PRIMARY
+    else
+      normalize_hex(opponent.color_light) || LIGHT_FG
     end
-    prefer_dark ? "#000000" : "#ffffff"
   end
 
-  def team_text_light?(team)
-    return false unless team.respond_to?(:color_text_light)
-
-    ActiveModel::Type::Boolean.new.cast(team.color_text_light) || false
+  # A vertical gradient in the team's own field hue. Light fields stay airy;
+  # dark fields gain depth toward the bottom.
+  def team_gradient(field, light)
+    top    = lighten_hex(field, light ? 0.12 : 0.06)
+    bottom = darken_hex(field, light ? 0.10 : 0.32)
+    "linear-gradient(160deg, #{top} 0%, #{field} 45%, #{bottom} 100%)"
   end
 
   # --- pure color math (hex in, css out) ------------------------------------
