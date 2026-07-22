@@ -60,6 +60,10 @@ class Rack::Attack
     req.ip if req.post? && req.path == "/webhooks/paypal"
   end
 
+  throttle("webhooks/coinflow", limit: 100, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/webhooks/coinflow"
+  end
+
   ### Throttle: devnet faucet / airdrop — money-cost endpoints
   # Faucet is already prod-disabled per OPSEC-020 but rate-limited on devnet
   # too because admin SOL gets burned via mint_spl + ATA creation.
@@ -100,6 +104,11 @@ class Rack::Attack
   ### Throttle: PayPal order/capture creation — fee bleed parity with stripe_checkout
   throttle("paypal_checkout/ip", limit: 10, period: 1.minute) do |req|
     req.ip if req.post? && (req.path == "/tokens/paypal_order" || req.path == "/tokens/paypal_capture")
+  end
+
+  ### Throttle: Coinflow checkout-link creation — fee bleed parity with paypal/stripe
+  throttle("coinflow_checkout/ip", limit: 10, period: 1.minute) do |req|
+    req.ip if req.post? && req.path == "/tokens/coinflow_order"
   end
 
   ### Throttle: email verification — outbound spam prevention

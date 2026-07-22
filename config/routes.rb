@@ -319,6 +319,10 @@ Rails.application.routes.draw do
   # skips the 10/min fee-bleed throttle (and 100/min on the webhook below).
   post "tokens/paypal_order",    to: "tokens#paypal_order",    as: :tokens_paypal_order,   format: false
   post "tokens/paypal_capture",  to: "tokens#paypal_capture",  as: :tokens_paypal_capture, format: false
+  # Coinflow hosted-checkout kickoff (additive rail, AppFlags.coinflow?).
+  # format: false so the rack-attack fee-bleed throttle matches the exact path
+  # (parity with the paypal routes above).
+  post "tokens/coinflow_order",  to: "tokens#coinflow_order",  as: :tokens_coinflow_order, format: false
   get  "tokens/processing",      to: "tokens#processing",      as: :tokens_processing
   get  "tokens/status",          to: "tokens#status",          as: :tokens_status
   # Lazarus audit #21: dev/test-only free-mint endpoint — not drawn in
@@ -326,11 +330,16 @@ Rails.application.routes.draw do
   # tokens/buy view gates its "Mint free (dev)" button the same way.
   unless Rails.env.production?
     post "tokens/dev_mint",      to: "tokens#dev_mint",        as: :tokens_dev_mint
+    # Dev/QA only: stand in for Coinflow's `Settled` webhook (which can't reach
+    # localhost) so the buy -> on-chain-mint loop is demoable end-to-end on the
+    # stack. Drives the same Coinflow::Fulfillment path the real webhook uses.
+    post "tokens/coinflow_simulate_settle", to: "tokens#coinflow_simulate_settle", as: :tokens_coinflow_simulate_settle
   end
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"
   post "webhooks/paypal", to: "webhooks/paypal#create", format: false
+  post "webhooks/coinflow", to: "webhooks/coinflow#create", format: false
 
   # Coinbase CDP Onramp/Offramp — buy USDC / cash out via the Coinbase-hosted
   # widget (docs/CDP_RAMP_INTEGRATION.md §8). The routes stay drawn in every

@@ -40,6 +40,7 @@ class User < ApplicationRecord
   has_many :stripe_purchases, dependent: :destroy
   has_many :cdp_ramp_transactions, dependent: :destroy
   has_many :paypal_purchases, dependent: :destroy
+  has_many :coinflow_purchases, dependent: :destroy
   belongs_to :inviter, class_name: "User", optional: true, foreign_key: :invited_by_id
   has_many :invitees, class_name: "User", foreign_key: :invited_by_id
 
