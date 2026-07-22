@@ -32,10 +32,10 @@ module TeamColorsHelper
     # a light-disposition field — the same swap the mascot makes. Falls back to
     # the foreground when a team curates neither alt.
     location    = if team&.disposition_light?
-                    normalize_hex(team&.dark_alt) || fg
-                  else
-                    normalize_hex(team&.light_alt) || fg
-                  end
+      normalize_hex(team&.dark_alt) || fg
+    else
+      normalize_hex(team&.light_alt) || fg
+    end
 
     {
       gradient: team_gradient(bg, light_field),
