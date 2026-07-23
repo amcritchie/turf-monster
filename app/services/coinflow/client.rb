@@ -28,12 +28,13 @@ module Coinflow
 
     # Payment methods shown on the hosted checkout, in order. Coinflow shows ALL
     # available methods when this is omitted; passing an explicit list hides
-    # everything not named — so this trims the "or" grid down to card + PayPal +
-    # Venmo (no bank/wire/SEPA/crypto/Cash App/APA/Interac, and no Apple/Google
-    # Pay top buttons). Enum strings per docs.coinflow.cash checkout-link API.
-    # NOTE: PayPal/Venmo also require account-level enablement by Coinflow's
-    # integrations team, and Venmo renders only for US buyers; `card` is ungated.
-    ALLOWED_PAYMENT_METHODS = %w[card paypal venmo].freeze
+    # everything not named — so this keeps the consumer rails (Apple Pay + Google
+    # Pay wallet buttons, then card + PayPal + Venmo) and drops the rest of the
+    # "or" grid (no bank/wire/SEPA/crypto/Cash App/APA/Interac). Enum strings per
+    # docs.coinflow.cash checkout-link API. NOTE: Apple/Google Pay render only on
+    # a supporting device/browser; PayPal/Venmo also require account-level
+    # enablement by Coinflow's integrations team, Venmo is US-only; `card` is ungated.
+    ALLOWED_PAYMENT_METHODS = %w[applePay googlePay card paypal venmo].freeze
 
     class << self
       def base_url
