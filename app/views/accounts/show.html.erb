@@ -204,6 +204,11 @@
         <%# Buy USDC (Coinbase CDP onramp) — primary CTA, first in the row;
             outline style matches Refresh; serves both web2 + web3 wallets. %>
         <%= render "shared/buy_usdc_button", button_class: "btn btn-outline btn-sm" %>
+        <%# Buy Entry Token — deep-link to the entry-token purchase page (/tokens/buy),
+            sitting beside Buy USDC + Refresh in the wallet-actions row. %>
+        <%= link_to tokens_buy_path, class: "btn btn-outline btn-sm", data: { testid: "buy-entry-token" } do %>
+          <span class="inline-flex items-center gap-1.5"><span aria-hidden="true">🎟️</span> Buy Entry Token</span>
+        <% end %>
         <button type="button" @click="refresh()" :disabled="refreshing"
                 class="btn btn-outline btn-sm">
           <span x-show="!refreshing" class="inline-flex items-center gap-1.5">

@@ -13,6 +13,17 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to signin_path
   end
 
+  test "account page shows a Buy Entry Token button linking to the entry-token buy page" do
+    # A wallet-connected user renders the wallet-actions row (Buy USDC / Buy Entry
+    # Token / Refresh). Stamp a managed wallet so solana_connected? is true.
+    @alex.update!(web2_solana_address: "TestWalletAddr#{SecureRandom.hex(3)}", encrypted_web2_solana_private_key: "x")
+    log_in_as @alex
+    get account_path
+    assert_response :success
+    assert_select "a[data-testid='buy-entry-token'][href=?]", tokens_buy_path
+    assert_select "a[data-testid='buy-entry-token']", text: /Buy Entry Token/
+  end
+
   test "save_profile saves and redirects to root" do
     log_in_as @alex
     post save_profile_account_path, params: { user: { name: "ignored" } }
