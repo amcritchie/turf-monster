@@ -96,8 +96,8 @@ module Webhooks
 
       unless purchase.capture_matches?(event)
         Rails.logger.warn "[tokens] coinflow.webhook.settled_rejected purchase=#{purchase.id} " \
-                          "subtotal=#{event.dig('subtotal', 'cents')} " \
-                          "currency=#{event.dig('subtotal', 'currency')} " \
+                          "subtotal=#{subtotal_field(event, 'cents')} " \
+                          "currency=#{subtotal_field(event, 'currency')} " \
                           "expected=#{purchase.expected_amount_cents}"
         return
       end
@@ -119,7 +119,7 @@ module Webhooks
     #            (oldest-first so N concurrent settlements consume N pending
     #            rows, one token each — never double-minting one row).
     def purchase_for_event(event)
-      reference = event["reference"].presence || event.dig("subtotal", "reference").presence
+      reference = event["reference"].presence || subtotal_field(event, "reference").presence
       if reference && (purchase = CoinflowPurchase.for_reference(reference).first)
         return purchase
       end
@@ -134,6 +134,17 @@ module Webhooks
       end
 
       nil
+    end
+
+    # Fail-closed read of a `subtotal` sub-field. Coinflow documents `subtotal`
+    # as a {cents:, currency:} hash; a malformed payload (e.g. a bare integer)
+    # would make `event.dig("subtotal", key)` raise TypeError → a webhook 500
+    # (and a Coinflow retry-loop). Read every subtotal sub-field through this so
+    # a malformed payload degrades to nil, mirroring
+    # CoinflowPurchase#capture_matches? — no mint, ack the sender, never 500.
+    def subtotal_field(event, key)
+      subtotal = event["subtotal"]
+      subtotal.is_a?(Hash) ? subtotal[key] : nil
     end
   end
 end
