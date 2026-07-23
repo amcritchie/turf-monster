@@ -1,10 +1,11 @@
-# Fiat purchase (Stripe webhook / PayPal capture / Coinflow settlement) →
-# on-chain entry token mint (turf-vault v0.9.0+). `purchase_type` picks the
-# audit model: "stripe" (legacy default — StripePurchase, keyed by
-# stripe_session_id), "paypal" (PaypalPurchase, keyed by paypal_order_id), or
-# "coinflow" (CoinflowPurchase, keyed by coinflow_reference). For both paypal
-# and coinflow the row always exists (created pending, marked captured) before
-# the job is enqueued.
+# Fiat purchase (Stripe webhook / PayPal capture / Coinflow settlement /
+# Aeropay bank deposit) → on-chain entry token mint (turf-vault v0.9.0+).
+# `purchase_type` picks the audit model: "stripe" (legacy default —
+# StripePurchase, keyed by stripe_session_id), "paypal" (PaypalPurchase, keyed
+# by paypal_order_id), "coinflow" (CoinflowPurchase, keyed by coinflow_reference)
+# or "aeropay" (AeropayPurchase, keyed by aeropay_reference). For paypal,
+# coinflow and aeropay the row always exists (created pending, marked captured)
+# before the job is enqueued.
 #
 # Idempotency (OPSEC-009): per-mint incremental persistence so a partial
 # failure (e.g. 2 of 3 minted then crash) recovers on retry without
@@ -33,10 +34,12 @@ class TokenPurchaseJob < ApplicationJob
   queue_as :default
 
   def perform(user_id:, pack_id:, wallet_address:, stripe_session_id: nil, purchase_type: "stripe",
-              paypal_order_id: nil, coinflow_reference: nil)
+              paypal_order_id: nil, coinflow_reference: nil, aeropay_reference: nil)
     paypal           = purchase_type == "paypal"
     coinflow         = purchase_type == "coinflow"
+    aeropay          = purchase_type == "aeropay"
     ref              = if coinflow then coinflow_reference
+    elsif aeropay then aeropay_reference
     elsif paypal then paypal_order_id
     else stripe_session_id
     end
@@ -54,6 +57,8 @@ class TokenPurchaseJob < ApplicationJob
 
     purchase = if coinflow
                  CoinflowPurchase.for_reference(coinflow_reference).first
+    elsif aeropay
+                 AeropayPurchase.for_reference(aeropay_reference).first
     elsif paypal
                  PaypalPurchase.for_order(paypal_order_id).first
     else
@@ -73,11 +78,12 @@ class TokenPurchaseJob < ApplicationJob
       return
     end
 
-    if paypal || coinflow
-      # PaypalPurchase / CoinflowPurchase rows are created (pending, then
-      # captured) BEFORE the job is enqueued (see TokensController#paypal_order /
-      # #coinflow_order + the *::Fulfillment CAS) — a missing row means nothing
-      # to mint against, never something to create here.
+    if paypal || coinflow || aeropay
+      # PaypalPurchase / CoinflowPurchase / AeropayPurchase rows are created
+      # (pending, then captured) BEFORE the job is enqueued (see
+      # TokensController#paypal_order / #coinflow_order / #aeropay_order + the
+      # *::Fulfillment CAS) — a missing row means nothing to mint against, never
+      # something to create here.
       unless purchase
         Rails.logger.warn "[tokens] job.skip #{purchase_type}_purchase_not_found ref=#{ref_short}..."
         return
@@ -135,6 +141,8 @@ class TokenPurchaseJob < ApplicationJob
 
     metadata = if coinflow
                  { coinflow_reference: coinflow_reference, method: "coinflow", quantity: quantity, all_signatures: signatures }
+    elsif aeropay
+                 { aeropay_reference: aeropay_reference, method: "aeropay", quantity: quantity, all_signatures: signatures }
     elsif paypal
                  { paypal_order_id: paypal_order_id, method: "paypal", quantity: quantity, all_signatures: signatures }
     else

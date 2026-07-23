@@ -141,3 +141,65 @@ test.describe("Coinflow entry-token buy", () => {
     expect(ok.status()).toBe(200);
   });
 });
+
+// Aeropay bank-payment entry-token rail (Turf's Coinflow hedge). Aeropay's REST
+// API + Aerosync bank-link widget can't run in CI, so we stub at the boundary:
+// browser-side stubs POST /tokens/aeropay_order (asserts button -> bank-link ->
+// order-endpoint wiring), and the server side drives the transaction_completed
+// webhook with a valid HMAC signature and asserts the endpoint authenticates.
+// The settlement -> on-chain mint money path is covered authoritatively by the
+// Rails tests (webhooks/aeropay_controller_test.rb + token_purchase_job_test.rb).
+// Gated on ENABLE_AEROPAY so the default CI run (flag off) skips it.
+test.describe("Aeropay entry-token buy", () => {
+  test.skip(
+    process.env.ENABLE_AEROPAY !== "true",
+    "ENABLE_AEROPAY is off — the Aeropay rail is hidden",
+  );
+
+  test("buy-1 button links a bank then posts to the aeropay order endpoint", async ({ page }) => {
+    await loginAdmin(page);
+
+    let orderPosted = false;
+    await page.route("**/tokens/aeropay_order", async (route) => {
+      orderPosted = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "pending", reference: "aeropay_e2e_fake" }),
+      });
+    });
+
+    await page.goto("/tokens/buy");
+    const buyButton = page.locator('[data-aeropay-buy] button').first();
+    await expect(buyButton).toBeVisible();
+    await buyButton.click();
+
+    await expect.poll(() => orderPosted).toBe(true);
+  });
+
+  test("transaction_completed webhook authenticates with the HMAC signature", async ({ request }) => {
+    const key = process.env.AEROPAY_WEBHOOK_SIGNING_KEY;
+    test.skip(!key, "AEROPAY_WEBHOOK_SIGNING_KEY not set on the e2e stack");
+    const crypto = require("crypto");
+
+    const body = JSON.stringify({
+      topic: "transaction_completed",
+      data: { id: "e2e_txn_ok", amount: "19.00", currency: "USD", customerId: "tm_user_0" },
+    });
+    const sig = crypto.createHmac("sha256", key).update(body).digest("hex");
+
+    // Wrong signature -> 401.
+    const bad = await request.post("/webhooks/aeropay", {
+      headers: { "X-Aeropay-Signature": "WRONG", "Content-Type": "application/json" },
+      data: body,
+    });
+    expect(bad.status()).toBe(401);
+
+    // Correct signature -> 200 ack (unmatched customer is a safe no-op).
+    const ok = await request.post("/webhooks/aeropay", {
+      headers: { "X-Aeropay-Signature": sig, "Content-Type": "application/json" },
+      data: body,
+    });
+    expect(ok.status()).toBe(200);
+  });
+});
