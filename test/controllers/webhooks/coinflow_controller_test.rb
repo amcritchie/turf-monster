@@ -110,6 +110,26 @@ class Webhooks::CoinflowControllerTest < ActionDispatch::IntegrationTest
     assert_equal "pending", purchase.reload.status
   end
 
+  test "Settled with a malformed (non-hash) subtotal fails closed — acks 200, never 500, never mints" do
+    purchase = create_purchase
+    # Coinflow documents subtotal as {cents:, currency:}. A bare integer is
+    # malformed; before the guard every `.dig("subtotal", …)` raised TypeError →
+    # a webhook 500 (and a Coinflow retry-loop). Carry a reference so resolution
+    # succeeds and the payload reaches capture_matches? + the rejection-log path.
+    malformed = {
+      "eventType" => "Settled", "id" => "PAY_MALFORMED",
+      "subtotal" => 1900,
+      "reference" => purchase.coinflow_reference
+    }
+    with_webhook_env do
+      assert_no_enqueued_jobs do
+        post_webhook(malformed)
+      end
+    end
+    assert_response :ok
+    assert_equal "pending", purchase.reload.status
+  end
+
   test "Settled for an unmatched customer acks 200 without minting" do
     with_webhook_env do
       assert_no_enqueued_jobs do
