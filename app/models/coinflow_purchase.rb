@@ -60,10 +60,18 @@ class CoinflowPurchase < ApplicationRecord
   # SUBTOTAL (the amount we set at checkout-link creation) against the pack
   # price, in USD. Matching `total` would be wrong: total = subtotal + Coinflow
   # fees, so it never equals the pack price.
+  #
+  # Fail-closed on a malformed payload: if `subtotal` is anything but the
+  # documented `{cents:, currency:}` hash (e.g. a bare integer), return false
+  # (no mint) rather than let `.dig` raise TypeError up into a webhook 500.
   def capture_matches?(payload)
-    payload.present? &&
-      payload.dig("subtotal", "currency") == "USD" &&
-      payload.dig("subtotal", "cents").to_i == expected_amount_cents
+    return false unless payload.present?
+
+    subtotal = payload["subtotal"]
+    return false unless subtotal.is_a?(Hash)
+
+    subtotal["currency"] == "USD" &&
+      subtotal["cents"].to_i == expected_amount_cents
   end
 
   # Coinflow amounts are integer cents (unlike PayPal's "19.00" decimal string).

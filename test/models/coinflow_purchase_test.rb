@@ -68,6 +68,26 @@ class CoinflowPurchaseTest < ActiveSupport::TestCase
     refute purchase.capture_matches?({ "total" => { "cents" => 1900, "currency" => "USD" } }), "must read subtotal, not total"
   end
 
+  test "capture_matches? fails closed (no raise) on a malformed non-hash subtotal" do
+    purchase = build_purchase(pack_id: "single", quantity: 1, price_cents: 19_00)
+
+    # Coinflow documents subtotal as a {cents:, currency:} hash. A bare integer
+    # (or any non-hash) is malformed — `.dig` would raise TypeError → webhook 500.
+    # The guard must fail closed (false, no mint), never raise.
+    result = nil
+    assert_nothing_raised do
+      result = purchase.capture_matches?({ "subtotal" => 1900 })
+    end
+    refute result, "a bare-integer subtotal must return false, not match"
+
+    refute purchase.capture_matches?({ "subtotal" => "1900" }), "string subtotal fails closed"
+    refute purchase.capture_matches?({ "subtotal" => nil }), "nil subtotal fails closed"
+
+    # Happy path stays intact alongside the guard.
+    assert purchase.capture_matches?({ "subtotal" => { "cents" => 1900, "currency" => "USD" } }),
+           "well-formed subtotal hash still matches"
+  end
+
   test "slug is immutable after create — it IS the coinflow_reference resolved on settlement" do
     purchase = build_purchase(coinflow_reference: nil)
     purchase.save!
