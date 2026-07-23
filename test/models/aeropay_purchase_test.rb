@@ -70,6 +70,17 @@ class AeropayPurchaseTest < ActiveSupport::TestCase
     refute purchase.capture_matches?({ "currency" => "USD" }), "a missing amount never matches"
   end
 
+  test "capture_matches? on a scalar amount with no currency degrades to false, never raises" do
+    # Regression: `currency` did `payload.dig("amount","currency")` unguarded, so a
+    # scalar amount ("19.00" — the assumed Aeropay shape) with NO top-level currency
+    # raised TypeError → the webhook 500'd BEFORE the CAS → a paid deposit never
+    # minted. It must degrade to nil → no match → the webhook 200-acks.
+    purchase = build_purchase(pack_id: "single", quantity: 1, price_cents: 19_00)
+    assert_nothing_raised { purchase.capture_matches?({ "amount" => "19.00" }) }
+    refute purchase.capture_matches?({ "amount" => "19.00" }), "scalar amount, no currency → no match"
+    refute purchase.capture_matches?({ "amount" => 19 }), "scalar integer amount, no currency → no match"
+  end
+
   test "slug is immutable after create — it IS the aeropay_reference resolved on settlement" do
     purchase = build_purchase(aeropay_reference: nil)
     purchase.save!

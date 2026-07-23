@@ -90,6 +90,28 @@ class Webhooks::AeropayControllerTest < ActionDispatch::IntegrationTest
     assert_equal "txn_WH", purchase.aeropay_transaction_id
   end
 
+  test "transaction_completed with a scalar amount and no currency acks 200 (never 500) and does not mint" do
+    # Regression (Jasper): a scalar `data.amount` with no `currency` used to raise
+    # TypeError in AeropayPurchase.currency's unguarded `.dig`, 500ing the webhook
+    # BEFORE the CAS — Aeropay retry-loops and a PAID deposit never mints. It must
+    # 200-ack with no mint (odd shape → capture_matches? false), not 500.
+    purchase = create_purchase
+    event = {
+      "topic" => "transaction_completed",
+      "data" => {
+        "id" => "txn_scalar_no_ccy",
+        "amount" => "19.00", # scalar, NO currency key
+        "externalId" => purchase.aeropay_reference,
+        "customerId" => "tm_user_#{purchase.user_id}"
+      }
+    }
+    with_webhook_env do
+      assert_no_enqueued_jobs { post_webhook(event) }
+    end
+    assert_response :ok
+    assert_equal "pending", purchase.reload.status
+  end
+
   test "transaction_completed resolves by the stamped transaction id (tier 1)" do
     purchase = create_purchase(transaction_id: "txn_STAMPED")
     event = {

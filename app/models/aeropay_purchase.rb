@@ -90,9 +90,16 @@ class AeropayPurchase < ApplicationRecord
   end
 
   # [FLAG] Currency lives top-level ("currency") or nested under a
-  # { amount: { currency: } } object.
+  # { amount: { currency: } } object. GUARD the nested read: when `amount` is a
+  # SCALAR ("19.00" / 19 — the assumed Aeropay shape) with no top-level currency,
+  # a bare `payload.dig("amount", "currency")` raises TypeError on the String/Int
+  # (the .dig-on-non-hash trap coinflow-hardening PR #212 fixed). An odd shape must
+  # degrade to nil → capture_matches? false → 200 ack — never a 500 that
+  # retry-loops and, firing BEFORE the CAS, strands a paid settlement unminted.
   def self.currency(payload)
-    (payload["currency"] || payload.dig("amount", "currency")).to_s.upcase
+    amount = payload["amount"]
+    nested = amount.is_a?(Hash) ? amount["currency"] : nil
+    (payload["currency"] || nested).to_s.upcase
   end
 
   private
