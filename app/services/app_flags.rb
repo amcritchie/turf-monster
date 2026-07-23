@@ -34,6 +34,19 @@ module AppFlags
     ENV["ENABLE_COINFLOW"].to_s.strip.downcase == "true"
   end
 
+  # True when the Aeropay bank-payment entry-token rail is enabled — the "Buy 1
+  # entry" pay-by-bank (ACH + RTP) flow (Aeropay pulls from the buyer's linked
+  # bank, then we mint exactly 1 entry token, the same on-chain end state as the
+  # Coinflow / PayPal token-buy). Gates the buy-page card, the Add Funds hub
+  # rail, the /tokens/aeropay_order endpoint, and the /webhooks/aeropay
+  # settlement handler. Off by default everywhere; unsetting ENABLE_AEROPAY is
+  # the kill-switch. Additive — stacks ALONGSIDE the Coinflow / Coinbase /
+  # PayPal / Stripe rails as Turf's INDEPENDENT hedge rail, not a
+  # mutually-exclusive provider.
+  def self.aeropay?
+    ENV["ENABLE_AEROPAY"].to_s.strip.downcase == "true"
+  end
+
   # True for stable QA apps that run Rails in production mode but must still
   # identify themselves as non-production review targets.
   def self.qa_environment?

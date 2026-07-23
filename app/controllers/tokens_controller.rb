@@ -2,7 +2,7 @@ class TokensController < ApplicationController
   before_action :require_login
   before_action :require_dev_mint_allowed, only: [:dev_mint]
   # B4 / OPSEC-048: frozen accounts can't buy tokens.
-  before_action :require_unfrozen_account, only: [:stripe_checkout, :paypal_order, :paypal_capture, :coinflow_order]
+  before_action :require_unfrozen_account, only: [:stripe_checkout, :paypal_order, :paypal_capture, :coinflow_order, :aeropay_order]
 
   def buy
     @packs = StripePurchase.available_packs
@@ -264,6 +264,90 @@ class TokensController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
+  # Aeropay bank-payment kickoff (additive rail, gated on AppFlags.aeropay?).
+  # JSON-only. Aeropay is BANK rails (pay-by-bank ACH + RTP), not a hosted
+  # redirect: the buyer links a bank via the front-end Aerosync widget (STUBBED
+  # until merchant creds land — see tokens/_aeropay_script), the client posts the
+  # resulting bankAccountId here, we create the pending purchase row FIRST, then
+  # ask Aeropay to create the deposit (POST /v2/transaction). On
+  # `transaction_completed` the webhook mints exactly 1 entry token
+  # (Webhooks::AeropayController) — the same on-chain end state as the Coinflow /
+  # PayPal token-buy. The amount derives SERVER-SIDE from the pack; the client
+  # only ever names a pack id + the linked bank account.
+  #
+  # SETTLEMENT CAVEAT: a `transaction_completed` for a standard ACH pay-in is
+  # APPROVED, not settled (~3 business days). Production should prefer the instant
+  # RfP/RTP pay-in (irrevocable) so funds are final before the mint — see
+  # Aeropay::Client#create_deposit.
+  def aeropay_order
+    pack_id = params[:pack].to_s
+    unless StripePurchase.available_packs.key?(pack_id)
+      return render json: { error: "Unknown or unavailable token pack" }, status: :unprocessable_entity
+    end
+    unless current_user.solana_connected?
+      return render json: { error: "Connect a wallet first." }, status: :unprocessable_entity
+    end
+    unless AppFlags.aeropay?
+      return render json: { error: "Aeropay checkout isn't enabled." }, status: :unprocessable_entity
+    end
+    # OPSEC-036: a prior chargeback flagged this account — block further fiat
+    # purchases so a stolen-account buyer can't keep racking up disputes.
+    if current_user.payment_risk_flag
+      return render json: { error: "Purchases are disabled on this account. Please contact support." }, status: :forbidden
+    end
+    # The linked bank account from the front-end Aerosync widget. STUBBED until
+    # merchant creds land (the widget can't load without them) — the server
+    # trusts nothing but this id; the amount still derives from the pack. Refuse
+    # a blank id BEFORE writing a row so we never orphan a pending purchase.
+    bank_account_id = params[:bank_account_id].to_s
+    if bank_account_id.blank?
+      return render json: { error: "Link a bank account first." }, status: :unprocessable_entity
+    end
+
+    pack    = StripePurchase.pack(pack_id)
+    contest = Contest.find_by(slug: params[:contest].presence)
+
+    rescue_and_log(target: current_user) do
+      # Row first, deposit second: Current.outbound_source needs the purchase to
+      # exist so the create-deposit API call lands in outbound_requests with
+      # polymorphic attribution (same ordering as coinflow_order / paypal_order).
+      @aeropay_purchase = AeropayPurchase.create!(
+        user: current_user,
+        pack_id: pack_id,
+        quantity: pack[:quantity],
+        price_cents: pack[:price_cents],
+        wallet_address: current_user.solana_address,
+        contest_slug: contest&.slug,
+        status: "pending"
+      )
+      # The reference IS the slug — set once here (the slug exists only after
+      # Sluggable's before_save fires on create), then immutable and sent to
+      # Aeropay as externalId / echoed on the webhook for settlement resolution.
+      @aeropay_purchase.update!(aeropay_reference: @aeropay_purchase.slug)
+      Current.outbound_source = @aeropay_purchase
+
+      deposit = Aeropay::Client.new.create_deposit(
+        user: current_user, pack: pack, bank_account_id: bank_account_id,
+        reference: @aeropay_purchase.aeropay_reference,
+        idempotency_key: @aeropay_purchase.aeropay_reference
+      )
+      # persist-before-mint: stamp the deposit's transaction id (the dedup key +
+      # what `transaction_completed` echoes back) BEFORE anything mints.
+      @aeropay_purchase.update!(aeropay_transaction_id: deposit["id"])
+      Rails.logger.info "[tokens] aeropay.order_created purchase=#{@aeropay_purchase.id} " \
+                        "reference=#{@aeropay_purchase.aeropay_reference} transaction=#{deposit['id']} " \
+                        "pack=#{pack_id} user=#{current_user.id}"
+      render json: {
+        transaction_id: deposit["id"],
+        reference: @aeropay_purchase.aeropay_reference,
+        status: deposit["status"]
+      }
+    end
+  rescue StandardError => e
+    @aeropay_purchase&.mark_failed_unless_minted!
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
   # Dev/QA only (not drawn in production): stand in for Coinflow's `Settled`
   # webhook, which can't reach a localhost stack. Drives the SAME money-path
   # components the real webhook uses — CoinflowPurchase#capture_matches? +
@@ -292,6 +376,37 @@ class TokensController < ApplicationController
     }
   end
 
+  # Dev/QA only (not drawn in production): stand in for Aeropay's
+  # `transaction_completed` webhook, which can't reach a localhost stack. Drives
+  # the SAME money-path components the real webhook uses —
+  # AeropayPurchase#capture_matches? + Aeropay::Fulfillment.enqueue_mint! (the
+  # exactly-once CAS + mint) — just without the HMAC HTTP hop. Mirrors the
+  # coinflow_simulate_settle affordance.
+  def aeropay_simulate_settle
+    return head :not_found if Rails.env.production?
+
+    purchase = current_user.aeropay_purchases.where(status: "pending").order(:created_at).last
+    unless purchase
+      return render json: { error: "No pending Aeropay purchase — click Buy 1 entry first." }, status: :not_found
+    end
+
+    # The pack amount as decimal dollars — exactly what a real
+    # `transaction_completed` payload echoes back, so capture_matches? validates
+    # the same invariant. [FLAG] amount shape assumed (see AeropayPurchase).
+    event = { "amount" => Aeropay::Client.dollars_string(purchase.price_cents), "currency" => "USD" }
+    unless purchase.capture_matches?(event)
+      return render json: { error: "Simulated amount didn't match the pack." }, status: :unprocessable_entity
+    end
+
+    transaction_id = purchase.aeropay_transaction_id.presence || "sim_#{SecureRandom.hex(8)}"
+    Aeropay::Fulfillment.enqueue_mint!(purchase, transaction_id: transaction_id)
+    render json: {
+      simulated: true,
+      reference: purchase.aeropay_reference,
+      message: "Settlement simulated — your entry token is minting on-chain now."
+    }
+  end
+
   def processing
     @session_id = params[:session_id].to_s
     # Gallery preview (/admin/modals) renders this page in a forced state via
@@ -315,9 +430,10 @@ class TokensController < ApplicationController
   # polling UI works unchanged for either provider (both models expose
   # status / tx_signatures via MintablePurchase).
   def status
-    session_id = params[:session_id].to_s
-    order_id   = params[:order_id].to_s
-    reference  = params[:reference].to_s
+    session_id        = params[:session_id].to_s
+    order_id          = params[:order_id].to_s
+    reference         = params[:reference].to_s
+    aeropay_reference = params[:aeropay_reference].to_s
 
     if session_id.present?
       purchase = current_user.stripe_purchases.for_session(session_id).first
@@ -328,6 +444,9 @@ class TokensController < ApplicationController
     elsif reference.present?
       purchase = current_user.coinflow_purchases.for_reference(reference).first
       ref = "coinflow=#{reference[0, 16]}…"
+    elsif aeropay_reference.present?
+      purchase = current_user.aeropay_purchases.for_reference(aeropay_reference).first
+      ref = "aeropay=#{aeropay_reference[0, 16]}…"
     else
       return render json: { ready: false }, status: :bad_request
     end

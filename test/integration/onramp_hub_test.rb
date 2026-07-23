@@ -30,7 +30,7 @@ class OnrampHubTest < ActionDispatch::IntegrationTest
   test "the hub shows all rails in the test environment" do
     get contests_path
     assert_response :success
-    %w[coinbase coinflow paypal venmo stripe].each do |rail|
+    %w[coinbase coinflow aeropay paypal venmo stripe].each do |rail|
       assert_includes response.body, %(data-onramp-rail="#{rail}"),
                        "expected the #{rail} rail card to render in test env"
     end
@@ -49,6 +49,18 @@ class OnrampHubTest < ActionDispatch::IntegrationTest
     # …and the hub defines that global (the shared coinflow_script partial).
     assert_includes body, "window.tmCoinflowBuyOne"
     assert_includes body, "/tokens/coinflow_order"
+  end
+
+  test "the hub Aeropay rail is wired to the buy-1 kickoff" do
+    get contests_path
+    assert_response :success
+    body = response.body
+    # The rail button calls the global kickoff for pack "single"…
+    assert_match(/data-onramp-rail="aeropay"[^>]*@click="tmAeropayBuyOne\('single'\)"/m, body,
+                 "the Aeropay rail must kick off the buy-1 flow")
+    # …and the hub defines that global (the shared aeropay_script partial).
+    assert_includes body, "window.tmAeropayBuyOne"
+    assert_includes body, "/tokens/aeropay_order"
   end
 
   # Flag-aware degrade (Avi review 2026-06-13): the Coinbase rail buys USDC,

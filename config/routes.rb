@@ -323,6 +323,10 @@ Rails.application.routes.draw do
   # format: false so the rack-attack fee-bleed throttle matches the exact path
   # (parity with the paypal routes above).
   post "tokens/coinflow_order",  to: "tokens#coinflow_order",  as: :tokens_coinflow_order, format: false
+  # Aeropay bank-payment kickoff (additive rail, AppFlags.aeropay?). format:
+  # false so the rack-attack fee-bleed throttle matches the exact path (parity
+  # with the coinflow / paypal routes above).
+  post "tokens/aeropay_order",   to: "tokens#aeropay_order",   as: :tokens_aeropay_order, format: false
   get  "tokens/processing",      to: "tokens#processing",      as: :tokens_processing
   get  "tokens/status",          to: "tokens#status",          as: :tokens_status
   # Lazarus audit #21: dev/test-only free-mint endpoint — not drawn in
@@ -334,12 +338,17 @@ Rails.application.routes.draw do
     # localhost) so the buy -> on-chain-mint loop is demoable end-to-end on the
     # stack. Drives the same Coinflow::Fulfillment path the real webhook uses.
     post "tokens/coinflow_simulate_settle", to: "tokens#coinflow_simulate_settle", as: :tokens_coinflow_simulate_settle
+    # Dev/QA only: stand in for Aeropay's `transaction_completed` webhook (which
+    # can't reach localhost) so the buy -> on-chain-mint loop is demoable on the
+    # stack. Drives the same Aeropay::Fulfillment path the real webhook uses.
+    post "tokens/aeropay_simulate_settle", to: "tokens#aeropay_simulate_settle", as: :tokens_aeropay_simulate_settle
   end
 
   # Payment webhooks
   post "webhooks/stripe", to: "webhooks/stripe#create"
   post "webhooks/paypal", to: "webhooks/paypal#create", format: false
   post "webhooks/coinflow", to: "webhooks/coinflow#create", format: false
+  post "webhooks/aeropay", to: "webhooks/aeropay#create", format: false
 
   # Coinbase CDP Onramp/Offramp — buy USDC / cash out via the Coinbase-hosted
   # widget (docs/CDP_RAMP_INTEGRATION.md §8). The routes stay drawn in every
