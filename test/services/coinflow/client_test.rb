@@ -46,7 +46,7 @@ class Coinflow::ClientTest < ActiveSupport::TestCase
 
   # ── create_checkout_link ─────────────────────────────────────────────────
 
-  test "create_checkout_link derives the pack subtotal and trims methods to card/paypal/venmo" do
+  test "create_checkout_link derives the pack subtotal and lists the wallet + card/paypal/venmo methods" do
     http = FakeHttp.new([ok_link])
     user = Struct.new(:id).new(42)
 
@@ -67,8 +67,9 @@ class Coinflow::ClientTest < ActiveSupport::TestCase
     # Amount derives SERVER-SIDE from the pack — the caller only names a pack id.
     assert_equal 1900, body.dig("subtotal", "cents")
     assert_equal "USD", body.dig("subtotal", "currency")
-    # The trim: only card + PayPal + Venmo render on the hosted checkout.
-    assert_equal %w[card paypal venmo], body["allowedPaymentMethods"]
+    # The consumer rails, wallet buttons first: Apple/Google Pay + card + PayPal
+    # + Venmo (bank/wire/SEPA/crypto/Cash App/APA/Interac all dropped).
+    assert_equal %w[applePay googlePay card paypal venmo], body["allowedPaymentMethods"]
     assert_equal "http://localhost:3111/tokens/buy?coinflow=return",
                  body.dig("standaloneLinkConfig", "callbackUrl")
     assert_equal "1.2.3.4", body.dig("standaloneLinkConfig", "endUserDeviceIpAddress")
