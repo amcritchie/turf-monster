@@ -15,10 +15,12 @@ class OnrampHelperTest < ActionView::TestCase
   test "all rails are visible outside production even with every flag off" do
     with_cdp_ramp(nil) do
       with_coinflow(nil) do
-        swap_provider("none") do
-          swap_stripe_enabled(false) do
-            %i[coinbase coinflow paypal venmo stripe].each do |rail|
-              assert onramp_rail_visible?(rail), "#{rail} should be visible in test env"
+        with_aeropay(nil) do
+          swap_provider("none") do
+            swap_stripe_enabled(false) do
+              %i[coinbase coinflow aeropay paypal venmo stripe].each do |rail|
+                assert onramp_rail_visible?(rail), "#{rail} should be visible in test env"
+              end
             end
           end
         end
@@ -39,6 +41,13 @@ class OnrampHelperTest < ActionView::TestCase
     in_production do
       with_coinflow("true") { assert onramp_rail_visible?(:coinflow) }
       with_coinflow(nil)    { assert_not onramp_rail_visible?(:coinflow) }
+    end
+  end
+
+  test "aeropay is gated on AppFlags.aeropay? in production" do
+    in_production do
+      with_aeropay("true") { assert onramp_rail_visible?(:aeropay) }
+      with_aeropay(nil)    { assert_not onramp_rail_visible?(:aeropay) }
     end
   end
 
@@ -95,6 +104,14 @@ class OnrampHelperTest < ActionView::TestCase
     yield
   ensure
     original.nil? ? ENV.delete("ENABLE_COINFLOW") : ENV["ENABLE_COINFLOW"] = original
+  end
+
+  def with_aeropay(value)
+    original = ENV["ENABLE_AEROPAY"]
+    value.nil? ? ENV.delete("ENABLE_AEROPAY") : ENV["ENABLE_AEROPAY"] = value
+    yield
+  ensure
+    original.nil? ? ENV.delete("ENABLE_AEROPAY") : ENV["ENABLE_AEROPAY"] = original
   end
 
   def swap_provider(value)

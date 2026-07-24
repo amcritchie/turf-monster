@@ -9,6 +9,7 @@ module OnrampHelper
   #
   #   :coinbase        -> AppFlags.cdp_ramp?        (ENABLE_CDP_RAMP)
   #   :coinflow        -> AppFlags.coinflow?        (ENABLE_COINFLOW)
+  #   :aeropay         -> AppFlags.aeropay?         (ENABLE_AEROPAY)
   #   :paypal, :venmo  -> Payments.paypal_checkout? (provider + credentials)
   #   :stripe          -> Payments.stripe?          (provider + key enabled)
   def onramp_rail_visible?(rail)
@@ -17,6 +18,7 @@ module OnrampHelper
     case rail.to_sym
     when :coinbase       then AppFlags.cdp_ramp?
     when :coinflow       then AppFlags.coinflow?
+    when :aeropay        then AppFlags.aeropay?
     when :paypal, :venmo then Payments.paypal_checkout?
     when :stripe         then Payments.stripe?
     else false
